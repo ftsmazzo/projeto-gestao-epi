@@ -1,6 +1,7 @@
 'use client';
 
 import type {
+  CaCertificate,
   EpiCategory,
   EpiItem,
   EpiUnitOfMeasure,
@@ -8,6 +9,12 @@ import type {
 } from '@gestao-epi/shared';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
+import {
+  buildCaepiFormPatch,
+  formatCaStatusLabel,
+  normalizeCaLookupInput,
+} from '../../lib/caepi-assist';
+import { lookupCaCertificate } from '../../lib/caepi';
 import {
   createEpiItem,
   EpiVariantInput,
@@ -153,6 +160,11 @@ function EpisContent() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState<EpiCategory | ''>('');
+  const [caLookupLoading, setCaLookupLoading] = useState(false);
+  const [caLookupError, setCaLookupError] = useState<string | null>(null);
+  const [caLookupMessage, setCaLookupMessage] = useState<string | null>(null);
+  const [caPreview, setCaPreview] = useState<CaCertificate | null>(null);
+  const [caAppliedBanner, setCaAppliedBanner] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -200,6 +212,10 @@ function EpisContent() {
     setEditingId(null);
     setForm(emptyForm);
     setFormError(null);
+    setCaPreview(null);
+    setCaLookupError(null);
+    setCaLookupMessage(null);
+    setCaAppliedBanner(null);
   }
 
   function openEdit(item: EpiItem) {
@@ -237,6 +253,10 @@ function EpisContent() {
       })),
     });
     setFormError(null);
+    setCaPreview(null);
+    setCaLookupError(null);
+    setCaLookupMessage(null);
+    setCaAppliedBanner(null);
   }
 
   function closeForm() {
@@ -244,6 +264,95 @@ function EpisContent() {
     setEditingId(null);
     setForm(emptyForm);
     setFormError(null);
+    setCaPreview(null);
+    setCaLookupError(null);
+    setCaLookupMessage(null);
+    setCaAppliedBanner(null);
+  }
+
+  async function onLookupCa() {
+    const caNumber = normalizeCaLookupInput(form.caNumber);
+    setCaLookupError(null);
+    setCaLookupMessage(null);
+    setCaPreview(null);
+    setCaAppliedBanner(null);
+
+    if (!caNumber) {
+      setCaLookupError('Informe o numero do CA para consultar a base local.');
+      return;
+    }
+
+    setCaLookupLoading(true);
+    try {
+      const result = await lookupCaCertificate(caNumber);
+      if (!result.found || !result.certificate) {
+        setCaLookupMessage(
+          result.message ??
+            'CA nao encontrado na base CAEPI local. Importe a base ou preencha manualmente.',
+        );
+        return;
+      }
+      setCaPreview(result.certificate);
+      setForm((prev) => ({
+        ...prev,
+        caNumber: result.certificate!.caNumber,
+      }));
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Falha ao consultar o CA.';
+      if (/nao autoriz|unauthorized|401|403/i.test(message)) {
+        setCaLookupError(
+          'Sessao expirada ou sem permissao. Entre novamente e tente a consulta.',
+        );
+      } else {
+        setCaLookupError(message);
+      }
+    } finally {
+      setCaLookupLoading(false);
+    }
+  }
+
+  function onApplyCaPreview() {
+    if (!caPreview) {
+      return;
+    }
+
+    const patch = buildCaepiFormPatch(caPreview);
+    const currentDescription = form.description.trim();
+    const officialDescription = patch.description?.trim() || '';
+
+    let nextDescription = currentDescription;
+    if (officialDescription) {
+      if (!currentDescription) {
+        nextDescription = officialDescription;
+      } else if (currentDescription !== officialDescription) {
+        const confirmed = window.confirm(
+          'A descricao atual sera substituida pela descricao oficial do equipamento. Continuar?',
+        );
+        if (!confirmed) {
+          return;
+        }
+        nextDescription = officialDescription;
+      }
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      caNumber: patch.caNumber,
+      caExpiresAt: patch.caExpiresAt,
+      manufacturerName: patch.manufacturerName,
+      reference: patch.reference,
+      color: patch.color,
+      approvedFor: patch.approvedFor,
+      restriction: patch.restriction,
+      technicalNotes: patch.technicalNotes,
+      category: patch.category,
+      description: nextDescription,
+    }));
+
+    setCaAppliedBanner(
+      `Dados do CA ${caPreview.caNumber} aplicados a partir da base local CAEPI. Revise e salve o cadastro.`,
+    );
   }
 
   function updateVariant(
@@ -381,8 +490,8 @@ function EpisContent() {
           <h1 className="page-title">EPIs</h1>
           <p className="page-lead">
             Cadastro operacional com CA, dados oficiais do produto, vida util e
-            grade. A consulta automatica a base CAEPI do Ministerio do Trabalho
-            sera liberada em etapa futura.
+            grade. Consulte a base local CAEPI para preencher campos oficiais
+            com revisao antes de salvar.
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
@@ -492,8 +601,8 @@ function EpisContent() {
               <div className="epi-form-section__head">
                 <h3 id="sec-ca">CA e conformidade</h3>
                 <p>
-                  Prepare o vinculo com a base oficial CAEPI. A busca automatica
-                  ainda nao consulta a fonte externa.
+                  Consulte a base local CAEPI para preencher dados oficiais.
+                  A consulta e opcional e nao salva o EPI automaticamente.
                 </p>
               </div>
               <div className="form-grid">
@@ -528,12 +637,16 @@ function EpisContent() {
                     required={form.requiresCa}
                     placeholder="Ex.: 12345"
                     value={form.caNumber}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      setCaPreview(null);
+                      setCaLookupMessage(null);
+                      setCaLookupError(null);
+                      setCaAppliedBanner(null);
                       setForm((prev) => ({
                         ...prev,
                         caNumber: normalizeCaInput(e.target.value),
-                      }))
-                    }
+                      }));
+                    }}
                   />
                 </div>
                 <div className="field">
@@ -553,25 +666,160 @@ function EpisContent() {
               </div>
               <aside className="caepi-slot" aria-label="Consulta CAEPI">
                 <div>
-                  <p className="page-kicker">Base oficial CAEPI</p>
+                  <p className="page-kicker">Base local CAEPI</p>
                   <p className="field-hint">
-                    Em breve: ao informar o CA, o sistema buscara fabricante,
-                    validade e dados do produto na base local importada do
-                    Ministerio do Trabalho. Por enquanto, preencha manualmente.
+                    Busca os dados oficiais ja importados no sistema. Nao consulta
+                    a internet nem o MeuCA.
                   </p>
                 </div>
-                <button type="button" className="btn btn-secondary" disabled>
-                  Buscar dados do CA (em breve)
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={caLookupLoading || !form.caNumber.trim()}
+                  onClick={() => void onLookupCa()}
+                >
+                  {caLookupLoading ? 'Buscando...' : 'Buscar dados do CA'}
                 </button>
               </aside>
+
+              {caLookupError ? (
+                <p className="error" role="alert">
+                  {caLookupError}
+                </p>
+              ) : null}
+              {caLookupMessage ? (
+                <p className="caepi-message" role="status">
+                  {caLookupMessage}
+                </p>
+              ) : null}
+              {caAppliedBanner ? (
+                <p className="caepi-applied" role="status">
+                  {caAppliedBanner}
+                </p>
+              ) : null}
+
+              {caPreview ? (
+                <div
+                  className={`caepi-preview caepi-preview--${caPreview.status.toLowerCase()}`}
+                  aria-label="Previa dos dados oficiais do CA"
+                >
+                  <div className="caepi-preview__head">
+                    <div>
+                      <p className="page-kicker">Previa CAEPI</p>
+                      <h4 className="caepi-preview__title">
+                        CA {caPreview.caNumber}
+                      </h4>
+                      <p className="field-hint">
+                        Fonte: base local CAEPI
+                        {caPreview.sourceImportedAt
+                          ? ` · importada em ${formatDateBr(caPreview.sourceImportedAt)}`
+                          : ''}
+                      </p>
+                    </div>
+                    <span
+                      className={`caepi-status caepi-status--${caPreview.status.toLowerCase()}`}
+                    >
+                      {formatCaStatusLabel(caPreview.status)}
+                    </span>
+                  </div>
+
+                  {caPreview.status === 'VALIDO' ? (
+                    <p className="caepi-alert caepi-alert--ok">
+                      CA com situacao valida na base local.
+                    </p>
+                  ) : null}
+                  {caPreview.status === 'VENCIDO' ||
+                  caPreview.status === 'CANCELADO' ||
+                  caPreview.status === 'SUSPENSO' ? (
+                    <p className="caepi-alert caepi-alert--warn" role="alert">
+                      Atencao: este CA esta {formatCaStatusLabel(caPreview.status).toLowerCase()}.
+                      Voce ainda pode aplicar os dados e decidir se salva o
+                      cadastro.
+                    </p>
+                  ) : null}
+
+                  <dl className="caepi-preview__grid">
+                    <div>
+                      <dt>Validade</dt>
+                      <dd>{formatDateBr(caPreview.expiresAt)}</dd>
+                    </div>
+                    <div>
+                      <dt>Fabricante</dt>
+                      <dd>{caPreview.manufacturerName || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Equipamento</dt>
+                      <dd>{caPreview.equipmentName || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Referencia</dt>
+                      <dd>{caPreview.reference || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Cor</dt>
+                      <dd>{caPreview.color || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Aprovado para</dt>
+                      <dd>{caPreview.approvedFor || '—'}</dd>
+                    </div>
+                    <div className="caepi-preview__span">
+                      <dt>Restricao</dt>
+                      <dd>{caPreview.restriction || '—'}</dd>
+                    </div>
+                    <div className="caepi-preview__span">
+                      <dt>Observacoes</dt>
+                      <dd>{caPreview.analysisNotes || '—'}</dd>
+                    </div>
+                  </dl>
+
+                  {caPreview.norms?.length ? (
+                    <div className="caepi-norms">
+                      <p className="caepi-norms__title">Normas / laudos</p>
+                      <ul>
+                        {caPreview.norms.map((norm) => (
+                          <li key={norm.id}>
+                            {[
+                              norm.standard,
+                              norm.reportNumber
+                                ? `Laudo ${norm.reportNumber}`
+                                : null,
+                              norm.laboratoryName,
+                            ]
+                              .filter(Boolean)
+                              .join(' · ') || '—'}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
+                  <div className="btn-row">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={onApplyCaPreview}
+                    >
+                      Aplicar dados ao cadastro
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setCaPreview(null)}
+                    >
+                      Descartar previa
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             <section className="epi-form-section" aria-labelledby="sec-official">
               <div className="epi-form-section__head">
                 <h3 id="sec-official">Dados oficiais do produto</h3>
                 <p>
-                  Campos alinhados ao que a consulta CAEPI devera preencher
-                  automaticamente.
+                  Campos alinhados aos dados oficiais do CA. Use a busca CAEPI
+                  para preencher e revise antes de salvar.
                 </p>
               </div>
               <div className="form-grid">

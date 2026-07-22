@@ -1113,6 +1113,144 @@ a.btn-danger:hover {
   background: #edf4ff;
 }
 
+.caepi-message,
+.caepi-applied {
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+}
+
+.caepi-message {
+  background: #fff7e8;
+  color: #8a5a00;
+  border: 1px solid #f0d4a0;
+}
+
+.caepi-applied {
+  background: #e8f7ee;
+  color: #1f6b3a;
+  border: 1px solid #b7e0c5;
+}
+
+.caepi-preview {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.caepi-preview--valido {
+  border-color: #b7e0c5;
+}
+
+.caepi-preview--vencido,
+.caepi-preview--cancelado,
+.caepi-preview--suspenso {
+  border-color: #f0c2b5;
+}
+
+.caepi-preview__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.caepi-preview__title {
+  margin: 0.15rem 0 0;
+  font-size: 1.05rem;
+  color: var(--color-graphite);
+}
+
+.caepi-preview__grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+}
+
+.caepi-preview__grid dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+}
+
+.caepi-preview__grid dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.92rem;
+  color: var(--color-ink);
+}
+
+.caepi-preview__span {
+  grid-column: 1 / -1;
+}
+
+.caepi-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.caepi-status--valido {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.caepi-status--vencido,
+.caepi-status--cancelado,
+.caepi-status--suspenso {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.caepi-status--desconhecido {
+  background: var(--color-surface-muted);
+  color: var(--color-muted);
+}
+
+.caepi-alert {
+  margin: 0;
+  padding: 0.65rem 0.8rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+}
+
+.caepi-alert--ok {
+  background: #e8f7ee;
+  color: #1f6b3a;
+}
+
+.caepi-alert--warn {
+  background: #fff1ed;
+  color: #9b3418;
+}
+
+.caepi-norms__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+}
+
+.caepi-norms ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
 .epi-filters {
   display: grid;
   grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
@@ -1177,5 +1315,9 @@ a.btn-danger:hover {
   .caepi-slot {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .caepi-preview__grid {
+    grid-template-columns: 1fr;
   }
 }
