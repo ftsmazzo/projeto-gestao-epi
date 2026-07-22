@@ -498,6 +498,24 @@ a.btn-danger:hover {
   color: var(--color-muted);
 }
 
+.field-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.field-check input {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: var(--color-accent);
+}
+
 .error {
   margin: 0;
   padding: 0.7rem 0.85rem;

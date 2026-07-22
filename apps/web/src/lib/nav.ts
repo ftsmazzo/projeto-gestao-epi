@@ -30,8 +30,8 @@ export const OPS_NAV: OpsNavItem[] = [
   {
     href: '/epis',
     label: 'EPIs',
-    status: 'soon',
-    description: 'Catalogo com CA, validade e variacoes.',
+    status: 'ready',
+    description: 'Catalogo mestre com CA, validade e status.',
   },
   {
     href: '/estoque',

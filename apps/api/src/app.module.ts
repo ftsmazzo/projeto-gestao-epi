@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { ServedClientsModule } from './served-clients/served-clients.module';
 import { OperationalUnitsModule } from './operational-units/operational-units.module';
 import { WorkersModule } from './workers/workers.module';
+import { EpisModule } from './epis/epis.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { WorkersModule } from './workers/workers.module';
     ServedClientsModule,
     OperationalUnitsModule,
     WorkersModule,
+    EpisModule,
     HealthModule,
   ],
 })

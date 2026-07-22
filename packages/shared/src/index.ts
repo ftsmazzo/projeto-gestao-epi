@@ -100,3 +100,22 @@ export interface ClientLifeSummary {
   activeWorkers: number;
   totalWorkers: number;
 }
+
+export type EpiItemStatus = 'ACTIVE' | 'INACTIVE';
+
+export interface EpiItem {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  caNumber: string | null;
+  caExpirationDate: string | null;
+  category: string | null;
+  manufacturer: string | null;
+  defaultValidityDays: number | null;
+  requiresCa: boolean;
+  status: EpiItemStatus;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

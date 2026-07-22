@@ -28,6 +28,11 @@ enum WorkerStatus {
   INACTIVE
 }
 
+enum EpiItemStatus {
+  ACTIVE
+  INACTIVE
+}
+
 /// Empresa usuaria do software (tenant). Nao e cliente atendido nem unidade operacional.
 model Organization {
   id                  String   @id @default(cuid())
@@ -43,6 +48,7 @@ model Organization {
   servedClients     ServedClient[]
   operationalUnits  OperationalUnit[]
   workers           Worker[]
+  epiItems          EpiItem[]
 }
 
 model User {
@@ -152,6 +158,33 @@ model Worker {
   @@index([servedClientId])
   @@index([operationalUnitId])
   @@index([status])
+}
+
+/// Item do catalogo mestre de EPI do tenant (ainda sem estoque/entrega).
+model EpiItem {
+  id                   String        @id @default(cuid())
+  organizationId       String
+  name                 String
+  description          String?
+  /// Numero do CA normalizado (sem espacos). Unico por tenant quando informado.
+  caNumber             String?
+  caExpirationDate     DateTime?
+  category             String?
+  manufacturer         String?
+  /// Validade padrao de uso em dias (vida util operacional sugerida).
+  defaultValidityDays  Int?
+  requiresCa           Boolean       @default(true)
+  status               EpiItemStatus @default(ACTIVE)
+  notes                String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, caNumber])
+  @@index([organizationId])
+  @@index([status])
+  @@index([category])
 }
 
 model AuditLog {
