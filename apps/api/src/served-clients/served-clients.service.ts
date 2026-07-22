@@ -136,6 +136,11 @@ export class ServedClientsService {
         dto.allocatedLifeQuota,
         id,
       );
+      await this.assertQuotaNotBelowActiveWorkers(
+        organizationId,
+        id,
+        dto.allocatedLifeQuota,
+      );
     }
 
     try {
@@ -278,6 +283,26 @@ export class ServedClientsService {
       );
       throw new BadRequestException(
         `A soma das cotas ultrapassa a franquia contratada (${organization.contractedLifeQuota} vidas). Disponivel para este cliente: ${available}.`,
+      );
+    }
+  }
+
+  private async assertQuotaNotBelowActiveWorkers(
+    organizationId: string,
+    servedClientId: string,
+    nextQuota: number,
+  ) {
+    const activeWorkers = await this.prisma.worker.count({
+      where: {
+        organizationId,
+        servedClientId,
+        status: WorkerStatus.ACTIVE,
+      },
+    });
+
+    if (nextQuota < activeWorkers) {
+      throw new BadRequestException(
+        'A nova cota nao pode ser menor que as vidas ativas ja cadastradas neste cliente.',
       );
     }
   }

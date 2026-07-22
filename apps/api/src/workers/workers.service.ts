@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, WorkerStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
-import { isValidCpf, stripCpf } from '../common/cpf';
+import { isValidCpf, stripCpf, cpfAuditMeta } from '../common/cpf';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateWorkerDto } from './dto/create-worker.dto';
 import type { UpdateWorkerDto } from './dto/update-worker.dto';
@@ -118,8 +118,8 @@ export class WorkersService {
         metadata: {
           servedClientId,
           status: worker.status,
-          cpf: worker.cpf,
           registration: worker.registration,
+          ...cpfAuditMeta(worker.cpf),
         },
       });
 
@@ -218,14 +218,14 @@ export class WorkersService {
           before: {
             name: existing.name,
             status: existing.status,
-            cpf: existing.cpf,
             registration: existing.registration,
+            ...cpfAuditMeta(existing.cpf),
           },
           after: {
             name: worker.name,
             status: worker.status,
-            cpf: worker.cpf,
             registration: worker.registration,
+            ...cpfAuditMeta(worker.cpf),
           },
         },
       });

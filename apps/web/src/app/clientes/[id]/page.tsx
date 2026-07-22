@@ -255,7 +255,8 @@ function ClienteDetalheContent() {
       registration: workerForm.registration.trim() || null,
       role: workerForm.role.trim() || null,
       department: workerForm.department.trim() || null,
-      operationalUnitId: workerForm.operationalUnitId || null,
+      operationalUnitId:
+        units.length === 0 ? null : workerForm.operationalUnitId || null,
       admissionDate: workerForm.admissionDate || null,
       notes: workerForm.notes.trim() || null,
     };
@@ -572,24 +573,51 @@ function ClienteDetalheContent() {
                     <label htmlFor="worker-unit">
                       Unidade operacional (opcional)
                     </label>
-                    <select
-                      id="worker-unit"
-                      value={workerForm.operationalUnitId}
-                      onChange={(e) =>
-                        setWorkerForm((prev) => ({
-                          ...prev,
-                          operationalUnitId: e.target.value,
-                        }))
-                      }
-                    >
-                      <option value="">Sem unidade</option>
-                      {units.map((unit) => (
-                        <option key={unit.id} value={unit.id}>
-                          {unit.name}
-                          {unit.code ? ` (${unit.code})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    {units.length === 0 ? (
+                      <div className="empty-unit-slot">
+                        <p className="field-hint" id="worker-unit-empty">
+                          Nenhuma unidade cadastrada para este cliente. Voce
+                          pode salvar o trabalhador sem unidade ou cadastrar
+                          uma unidade na aba Unidades.
+                        </p>
+                        <input
+                          id="worker-unit"
+                          type="hidden"
+                          value=""
+                          readOnly
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-compact"
+                          onClick={() => {
+                            closeWorkerForm();
+                            setActivePanel('units');
+                            openCreateUnit();
+                          }}
+                        >
+                          Ir para Unidades
+                        </button>
+                      </div>
+                    ) : (
+                      <select
+                        id="worker-unit"
+                        value={workerForm.operationalUnitId}
+                        onChange={(e) =>
+                          setWorkerForm((prev) => ({
+                            ...prev,
+                            operationalUnitId: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="">Sem unidade</option>
+                        {units.map((unit) => (
+                          <option key={unit.id} value={unit.id}>
+                            {unit.name}
+                            {unit.code ? ` (${unit.code})` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <div className="field">
                     <label htmlFor="worker-admission">

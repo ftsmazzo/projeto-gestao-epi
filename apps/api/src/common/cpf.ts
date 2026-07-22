@@ -36,3 +36,18 @@ export function isValidCpf(value: string): boolean {
 
   return cpf === `${base}${digit1}${digit2}`;
 }
+
+/** Metadados seguros para auditoria — nunca inclui CPF completo. */
+export function cpfAuditMeta(cpf: string | null | undefined): {
+  hasCpf: boolean;
+  cpfLast4: string | null;
+} {
+  if (!cpf) {
+    return { hasCpf: false, cpfLast4: null };
+  }
+  const digits = stripCpf(cpf);
+  return {
+    hasCpf: digits.length > 0,
+    cpfLast4: digits.length >= 4 ? digits.slice(-4) : null,
+  };
+}
