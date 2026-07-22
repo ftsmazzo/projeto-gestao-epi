@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, ServedClientStatus, WorkerStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
-import { isValidCnpj, stripCnpj } from '../common/cnpj';
+import { validateCnpj } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateServedClientDto } from './dto/create-served-client.dto';
 import type { UpdateServedClientDto } from './dto/update-served-client.dto';
@@ -216,13 +216,11 @@ export class ServedClientsService {
   }
 
   private normalizeAndValidateCnpj(value: string): string {
-    const cnpj = stripCnpj(value);
-    if (!isValidCnpj(cnpj)) {
-      throw new BadRequestException(
-        'CNPJ invalido. Verifique os digitos e tente novamente.',
-      );
+    const result = validateCnpj(value);
+    if (!result.ok) {
+      throw new BadRequestException(result.message);
     }
-    return cnpj;
+    return result.normalized;
   }
 
   private async assertUniqueCnpj(

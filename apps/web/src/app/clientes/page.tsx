@@ -4,7 +4,7 @@ import type { QuotaSummary, ServedClient } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
-import { formatCnpj, formatCnpjInput, stripCnpj } from '../../lib/cnpj';
+import { formatCnpj, formatCnpjInput, normalizeCnpj, cnpjClientValidationMessage } from '../../lib/cnpj';
 import {
   createServedClient,
   getQuotaSummary,
@@ -114,12 +114,19 @@ function ClientesContent() {
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setFormError(null);
+
+    const cnpjError = cnpjClientValidationMessage(form.cnpj);
+    if (cnpjError) {
+      setFormError(cnpjError);
+      return;
+    }
+
     setSaving(true);
 
     const payload = {
       legalName: form.legalName.trim(),
       tradeName: form.tradeName.trim() || undefined,
-      cnpj: stripCnpj(form.cnpj),
+      cnpj: normalizeCnpj(form.cnpj),
       allocatedLifeQuota: Number(form.allocatedLifeQuota),
       notes: form.notes.trim() || undefined,
     };
@@ -257,7 +264,6 @@ function ClientesContent() {
                 <label htmlFor="cnpj">CNPJ</label>
                 <input
                   id="cnpj"
-                  inputMode="numeric"
                   autoComplete="off"
                   required
                   placeholder="00.000.000/0000-00"
@@ -270,8 +276,8 @@ function ClientesContent() {
                   }
                 />
                 <p className="field-hint">
-                  Aceita digitacao com ou sem mascara. Armazenado sem
-                  formatacao.
+                  Aceita CNPJ numerico ou alfanumerico, com ou sem mascara.
+                  Armazenado sem formatacao.
                 </p>
               </div>
               <div className="field">
