@@ -1,0 +1,554 @@
+Documentação Funcional — Softwares de Entrega e Controle de EPI por Biometria
+Escopo: documentação das funções publicamente descritas nos sites abaixo (somente documentação; sem implementação).
+Fontes: Nexus · SGG · OnSafety · EntregaEPI · Prisma / Senior HCM
+
+Contexto normativo comum: a NR-6 admite registro eletrônico do fornecimento de EPI, inclusive por sistema biométrico (ex.: impressão digital e reconhecimento facial), alinhado à Portaria nº 2.175/2022 (vigência a partir de fev/2023).
+
+1. Visão geral do domínio
+Capacidade	Nexus	SGG	OnSafety	EntregaEPI	Prisma (HCM Senior)
+Biometria facial
+Sim
+Sim
+Sim (app)
+Sim
+Sim (iDFace Max / webcam)
+Biometria digital
+—
+Sim
+—
+Sim
+—
+Ficha digital / assinatura
+Implícito
+Sim (validade jurídica)
+Sim
+Sim (digital, senha, cartão)
+Registro no HCM
+Controle de estoque
+Sim
+Sim
+—
+Sim (incl. trânsito)
+Via ERP / HCM
+Gestão de validade / CA
+Implícito
+Sim (CA + vencimento)
+—
+Sim (lote + fabricante)
+—
+Offline
+—
+—
+—
+Sim
+—
+Integração ERP/HCM
+“Sistemas existentes”
+Ecossistema SST / eSocial
+App OnSafety
+ERP
+HCM Senior
+App móvel
+—
+SGG APP
+App OnSafety
+App + site
+Fluxo com dispositivo facial
+2. Nexus — Entrega de EPI por Biometria Facial
+Produto / posicionamento: solução de medicina ocupacional e SST com foco em entrega automatizada de EPI por reconhecimento facial, integrada ao portfólio Nexus (ex.: Nexus Integra, engenharia de segurança).
+
+Fonte: nexussaude.com.br/entrega-de-epi-por-biometria-facial
+
+2.1 Objetivo funcional
+Automatizar identificação do colaborador, liberação do EPI adequado à função e registro rastreável da retirada, reduzindo erro manual e apoiando conformidade e auditoria.
+
+2.2 Funções descritas
+Identificação biométrica facial
+Captura da face no ponto de retirada.
+Identificação rápida e precisa do colaborador.
+Objetivo: garantir que a pessoa certa receba o equipamento.
+Liberação automática de EPI
+Cruzamento dos dados do colaborador com função e necessidades específicas.
+Liberação do EPI correto para o perfil.
+Redução de entrega inadequada / não conformidade.
+Registro e monitoramento em tempo real
+Log de quem retirou, qual equipamento e quando.
+Relatórios completos e rastreáveis.
+Apoio a controle de estoque e reposição.
+Conformidade e auditoria
+Apoio ao cumprimento de normas de segurança.
+Facilidade para auditorias e inspeções.
+2.3 Benefícios funcionais declarados
+Eficiência (menos processo manual).
+Segurança (EPI adequado à função).
+Conformidade regulatória.
+Controle operacional com relatórios.
+Redução de desperdício / custo de estoque.
+Integração com sistemas já existentes (baixo impacto de infraestrutura).
+2.4 Contexto no ecossistema Nexus (funções correlatas)
+Na área de Engenharia de Segurança do Trabalho, a Nexus lista explicitamente “Controle e entrega de EPI por Biometria”, além de PGR, CIPA, PPP, ordem de serviço, etc. Em ambulatório, há assinatura médica/colaborador por biometria — padrão de autenticação biométrica já usado em outros módulos.
+
+2.5 Lacunas públicas (não detalhadas no material)
+Fluxo de app passo a passo, tipos de leitor, gestão de CA/lote, offline, devolução, eSocial e APIs não estão detalhados na página da solução.
+3. SGG — Controle de EPI digital (NR-6)
+Produto / posicionamento: módulo de Gestão de EPI dentro da plataforma SGG (Segurança e Medicina do Trabalho), com biometria facial e digital, ficha digitalizada e conformidade NR-6 / eSocial.
+
+Fonte: sgg.net.br/controle-de-epi
+
+3.1 Objetivo funcional
+Digitalizar a ficha de EPI, controlar estoque e validade (CA), registrar entregas com biometria e eliminar papel, extravio e risco de multa.
+
+3.2 Funções descritas
+Biometria digital (impressão digital)
+Captura de pontos característicos da digital.
+Conversão em sequência de bits para comparação/identificação.
+Compatibilidade com leitores biométricos específicos.
+Biometria facial
+Extração de traços faciais (distância entre olhos, nariz, contornos).
+Geração de template criptografado para comparação.
+Captura em tempo real no ato da entrega.
+Confirmação imediata com ficha de EPI assinada com validade jurídica.
+Entrega de EPI por biometria
+Cadastro da facial ou digital na primeira entrega.
+Entrega sem ficha impressa.
+Assinatura eletrônica válida (case Refrimate).
+Controle de estoque e custos
+Visibilidade de consumo por setor ou cargo.
+Alertas de estoque mínimo.
+Otimização de compras e redução de desperdício.
+Gestão de vencimentos
+Notificação automática quando o EPI precisa ser substituído.
+Apoio à conformidade e segurança contínua.
+Relatórios gerenciais e auditorias
+Consumo, movimentação de estoque e custos.
+Rastreabilidade para NR-6, eSocial (S-2240) e auditorias trabalhistas.
+Mobilidade e integração
+Acesso remoto.
+Integração com outras áreas (ex.: treinamentos, validades e certificados no mesmo sistema — case Refrimate).
+3.3 Resultados de caso (Grupo Refrimate)
+Fichas 100% digitais.
+Entrega em segundos por biometria.
+Rastreabilidade NR-6 / eSocial / auditoria.
+Treinamentos centralizados no mesmo ecossistema.
+3.4 Diferenciais públicos
+Dupla modalidade biométrica (digital + facial).
+Ênfase em validade jurídica da ficha.
+Certificações ISO/IEC 27001 e 27701 citadas no site institucional.
+Encaixe em suite completa SST (PGR, ASO, PCMSO, eSocial, app, IA).
+4. OnSafety — Entrega de EPI por biometria facial no aplicativo
+Produto / posicionamento: módulo Controle de EPI no App OnSafety; a página analisada é um guia operacional de assinatura facial.
+
+Fonte: atendimento.onsafety.com.br/...biometria-facial...
+
+4.1 Objetivo funcional
+Permitir que a assinatura/confirmação da entrega de EPI seja feita por reconhecimento facial dentro do aplicativo móvel.
+
+4.2 Fluxo funcional (passo a passo)
+Abrir o App OnSafety.
+Acessar o menu Controle de EPI.
+Tocar em “+” para nova entrega.
+Selecionar:
+trabalhador;
+EPI a entregar.
+Pré-requisito: o trabalhador precisa ter o rosto cadastrado previamente; sem cadastro facial, a opção de assinatura por biometria facial não fica disponível.
+Clicar em Salvar a entrega para iniciar a coleta de assinatura.
+Escolher Biometria → Facial.
+Posicionar o rosto corretamente na câmera do dispositivo.
+Sistema reconhece e conclui/salva a entrega.
+4.3 Funções implícitas no módulo (pelo contexto da central de ajuda)
+A árvore de ajuda indica subáreas de Controle de EPI com:
+
+Configurações
+Assinatura
+Ou seja, além da entrega facial, há parametrização e outros modos de assinatura (não detalhados nesta página específica).
+
+4.4 Características técnicas inferidas
+Operação mobile-first (câmera do dispositivo).
+Dependência de cadastro biométrico prévio.
+Assinatura facial como ato final de validade da entrega.
+4.5 Lacunas públicas nesta fonte
+Estoque, CA, relatórios, ERP, offline e regras de NR-6 não são descritos neste artigo de ajuda (apenas o fluxo de assinatura facial).
+5. EntregaEPI — Plataforma completa de gestão de EPI
+Produto / posicionamento: plataforma dedicada à gestão digital de EPI (planejamento, estoque, entrega, treinamentos, conformidade NR-6 e LGPD), com app + web, online/offline e múltiplos métodos de autenticação.
+
+Fontes: entregaepi.com.br · artigo LinkedIn do produto
+
+5.1 Objetivo funcional
+Centralizar estoque, entrega planejada/avulsa, autenticação segura, treinamentos, alertas e relatórios, com rastreabilidade total e eliminação do papel.
+
+5.2 Autenticação e segurança da entrega
+Assinatura digital
+Biometria digital
+Reconhecimento facial (app + IA: compara captura com fotos cadastradas)
+Senha
+Cartão
+Controle de entrada/saída por senha de liberação
+5.3 Planejamento e tipos de entrega
+Função	Descrição
+Entrega planejada
+Baseada em durabilidade, solicitações, grupos de entrega, validade de lote e GHE
+Entrega avulsa / solicitação de troca
+Colaborador ou liderança solicita fora do ciclo; pode haver aprovação
+Entrega com reserva
+Integração com ERP e números de liberação
+Entrega por área
+Obra/projeto/filial; área pode ter CNPJ distinto
+Entrega a distância
+Envio via transportadora + confirmação remota por e-mail
+Entrega offline
+Registro sem internet e sincronização posterior
+Canais
+Site e aplicativo
+5.4 Estoque e cadastro de EPI
+Saldos, tamanhos e características
+Controle de CA
+Controle de lote e validade do fabricante
+Estoque em trânsito
+Motivos de troca (analytics de desgaste/uso)
+5.5 Alertas, bloqueios e conformidade
+Alertas antes do vencimento
+Bloqueio de entrega próximo/fora da validade
+Notificações de uso indevido (configuráveis)
+Dashboard em tempo real
+Lista de trocas necessárias (validade, pendências, lotes vencidos, pendências por GHE)
+5.6 Treinamentos e documentos
+Cadastro de treinamentos e turmas
+Presença, notas e feedbacks
+Verificação se o colaborador tem capacitação adequada ao EPI
+Gestão de validade de documentos do colaborador e da empresa
+5.7 Relatórios e auditoria
+Indicadores gráficos (entregas, trocas, uso, treinamentos)
+Exportação de fichas e listagens em PDF
+Histórico auditável das transações
+5.8 Conformidade declarada
+NR-6 (incluindo biometria facial conforme Portaria 2.175/2022)
+LGPD (tratamento de dados biométricos com consentimento/transparência)
+5.9 Diferenciais públicos
+Maior amplitude funcional entre as fontes analisadas (planejamento, offline, multi-auth, treinamentos, entrega remota).
+Forte ênfase em operação de campo e multiunidade.
+6. Prisma Informática — Entrega de EPI (integração HCM Senior)
+Produto / posicionamento: solução de entrega de EPI com reconhecimento facial integrada ao HCM Senior, com hardware iDFace Max e vínculo a estoque/ERP.
+
+Fonte: store.prismainformatica.com.br/produto/entrega-de-epi-
+
+6.1 Objetivo funcional
+Identificar o colaborador na retirada, liberar apenas EPIs solicitados/aprovados pelo gestor, registrar a entrega no HCM em tempo real e sincronizar com estoque.
+
+6.2 Funções principais
+Reconhecimento facial automático
+Identificação no momento da retirada.
+Garante que só pessoa autorizada receba o EPI.
+Solicitação por gestores
+Gestor seleciona e requisita EPIs dos colaboradores no sistema.
+Retirada limitada ao que foi solicitado/aprovado.
+Entrega automatizada (hardware)
+Uso do equipamento iDFace Max.
+Autenticação facial libera EPIs conforme perfil e registros aprovados.
+Alternativa/requisito: máquina com webcam.
+Registro automático no HCM
+Atualização instantânea após a retirada.
+Histórico detalhado no HCM Senior.
+Devolução
+Registro de devolução de equipamentos no fluxo.
+Integração estoque / ERP
+Minimiza desperdício e perda.
+Otimiza gestão de recursos.
+6.3 Processo operacional descrito
+Selecionar colaboradores com EPIs em aberto.
+Definir quais equipamentos serão entregues.
+Registrar devoluções, se houver.
+Gerar Requisição de Mercadoria (RM).
+Colaborador recebe o número da RM para retirada.
+Autenticação facial na retirada.
+Atualização automática no HCM.
+6.4 Requisitos de implementação
+Módulo de Segurança e Medicina contratado.
+Parametrização de artefatos.
+Máquina com webcam (e/ou iDFace Max no fluxo de entrega).
+Tenant ativo e configurado.
+6.5 Diferenciais públicos
+Forte acoplamento a HCM Senior (RH/folha/segurança corporativa).
+Fluxo de solicitação → RM → retirada biométrica.
+Perfil voltado a empresas já no ecossistema Senior.
+7. Mapa funcional consolidado (capacidade de produto)
+7.1 Núcleo comum (quase todos)
+Identificação do colaborador por biometria facial.
+Registro eletrônico da entrega (substitui/reduz papel).
+Rastreabilidade (quem / o quê / quando).
+Apoio à conformidade NR-6.
+Redução de fraude/entrega indevida.
+7.2 Camadas avançadas (nem todos possuem na documentação pública)
+Camada	Exemplos de funções	Quem evidencia melhor
+Autenticação multi-fator
+Digital, facial, senha, cartão, assinatura
+EntregaEPI, SGG
+Estoque operacional
+Mínimo, custos, trânsito, lote/CA
+SGG, EntregaEPI, Prisma
+Planejamento
+GHE, durabilidade, grupos, alertas/bloqueios
+EntregaEPI
+Mobile / offline
+App + sync offline
+OnSafety (app), EntregaEPI (offline)
+Integração corporativa
+HCM/ERP/eSocial
+Prisma (HCM), SGG (eSocial), EntregaEPI (ERP)
+Treinamento + EPI
+Capacitação vinculada ao uso
+EntregaEPI, SGG (case)
+Hardware dedicado
+iDFace Max / leitores digitais
+Prisma, SGG
+8. Personas e casos de uso (documentação de requisitos)
+Personas
+Almoxarife / entregador de EPI — registra e libera equipamentos.
+Colaborador — retira e confirma identidade.
+Gestor / líder — solicita EPI e aprova trocas.
+Técnico de segurança / SESMT — audita, configura regras, acompanha vencimentos.
+Auditor / fiscalização — consulta fichas e histórico.
+TI / RH — integra HCM/ERP, cadastra biometria, cuida de LGPD.
+Casos de uso principais
+UC01 — Cadastrar biometria (face/digital) do colaborador.
+UC02 — Solicitar EPI (gestor ou colaborador).
+UC03 — Planejar entrega (ciclo por validade/GHE).
+UC04 — Entregar EPI com autenticação biométrica.
+UC05 — Assinar ficha eletrônica (validade jurídica).
+UC06 — Devolver EPI.
+UC07 — Alertar/bloquear por vencimento ou CA.
+UC08 — Controlar estoque e reposição.
+UC09 — Emitir relatório/auditoria/PDF.
+UC10 — Operar offline e sincronizar.
+UC11 — Integrar com HCM/ERP/eSocial.
+UC12 — Vincular treinamento obrigatório ao EPI.
+9. Requisitos não funcionais recorrentes
+Segurança: templates biométricos criptografados (SGG); autenticação inequívoca.
+Privacidade (LGPD): dados biométricos sensíveis; consentimento e transparência (EntregaEPI).
+Disponibilidade operacional: offline para campo (EntregaEPI).
+Integridade jurídica: ficha eletrônica / assinatura com validade (SGG).
+Rastreabilidade: histórico imutável para auditoria.
+Usabilidade: entrega em segundos; app com fluxo curto (OnSafety).
+Interoperabilidade: HCM Senior, ERP, eSocial.
+10. Glossário rápido
+Termo	Significado
+EPI
+Equipamento de Proteção Individual
+CA
+Certificado de Aprovação do EPI
+NR-6
+Norma Regulamentadora de EPI
+GHE
+Grupo Homogêneo de Exposição
+Ficha de EPI
+Registro de fornecimento ao trabalhador
+Template biométrico
+Representação matemática da face/digital (não a foto “crua”)
+HCM
+Human Capital Management
+RM
+Requisição de Mercadoria
+eSocial S-2240
+Evento de condições ambientais / agentes nocivos (contexto SST)
+11. Observações metodológicas
+Conteúdo baseado no material público das páginas (marketing, produto e central de ajuda).
+O fetch direto de entregaepi.com.br falhou por timeout; a documentação desse produto foi complementada com conteúdo indexado do próprio site e do artigo oficial no LinkedIn.
+Funções marcadas como “implícitas” ou “não detalhadas” significam ausência de especificação pública clara — não necessariamente ausência no software.
+Se quiser o próximo passo, posso transformar isso em:
+
+especificação técnica (requisitos funcionais/não funcionais numerados para desenvolvimento),
+matriz comparativa competitiva (gap analysis), ou
+PRD / backlog (épicos e user stories priorizados).
+A ideia é desenvolvermos uma aplicação para essa função. Extraindo oque cada uma das aplicações modelo possuem de melhor. Criando uma Solução completa
+
+
+
+Blueprint da Solução Completa — Gestão & Entrega de EPI
+Abaixo está a proposta de produto: o melhor de cada modelo, reunido em uma aplicação única, pronta para virar PRD e backlog.
+
+1. Posicionamento do produto
+Nome de trabalho: plataforma de Gestão Digital de EPI (ficha eletrônica + biometria + estoque + conformidade NR-6).
+
+Promessa:
+entregar, rastrear e auditar EPIs sem papel — com autenticação biométrica, validade jurídica, estoque inteligente e integração corporativa.
+
+Benchmark usado
+
+Fonte	Extrair o melhor
+Nexus
+Liberação automática por perfil/função; ponto de retirada simples; integração com SST
+SGG
+Dupla biometria (face + digital); ficha com validade jurídica; CA/vencimentos; eSocial; suite SST
+OnSafety
+Fluxo mobile curto e claro; cadastro facial prévio; assinatura no app
+EntregaEPI
+Planejamento, offline, multi-auth, GHE, lote, entrega remota, treinamentos, alertas/bloqueios
+Prisma
+Solicitação por gestor → RM → retirada facial; HCM/ERP; devolução
+2. Arquitetura funcional (módulos)
+┌─────────────────────────────────────────────────────────────┐
+│                     CAMADA DE ACESSO                         │
+│  Web Admin │ App Entrega (campo) │ Totem/Kiosk │ API/ERP    │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+┌───────────────────────────▼─────────────────────────────────┐
+│                   NÚCLEO OPERACIONAL                         │
+│  Colaboradores │ Cadastro EPI/CA │ Entregas │ Devoluções    │
+│  Autenticação (Face/Digital/Senha/Assinatura) │ Offline Sync │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+┌───────────────────────────▼─────────────────────────────────┐
+│                 INTELIGÊNCIA & CONTROLE                      │
+│  Planejamento │ Estoque │ Alertas/Bloqueios │ Treinamentos  │
+│  Solicitações/Aprovações │ Multiempresa/Área/CNPJ            │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+┌───────────────────────────▼─────────────────────────────────┐
+│              CONFORMIDADE & INTEGRAÇÕES                      │
+│  Ficha NR-6 │ Auditoria │ Relatórios │ eSocial │ ERP/HCM    │
+│  LGPD │ Evidências digitais                                  │
+└─────────────────────────────────────────────────────────────┘
+3. Capabilidades “best of” (o que a solução deve ter)
+3.1 Identidade e autenticação (SGG + EntregaEPI + OnSafety)
+Cadastro biométrico prévio (face obrigatória no app; digital opcional).
+No ato da entrega: facial, digital, senha, assinatura eletrônica (fallback).
+Template facial criptografado (não armazenar foto “crua” como evidência biométrica principal).
+Pré-requisito: sem cadastro facial → opção facial indisponível (padrão OnSafety).
+3.2 Entrega (Nexus + OnSafety + Prisma)
+Fluxo rápido no app: trabalhador → EPI(s) → autenticar → concluir.
+Liberação por perfil/cargo/função/GHE (Nexus).
+Fluxo corporativo: solicitação gestor → aprovação → RM/reserva → retirada (Prisma).
+Entrega planejada vs avulsa (EntregaEPI).
+Devolução com registro.
+3.3 Planejamento e conformidade operacional (EntregaEPI)
+Planejar por durabilidade, lote, grupo de entrega, GHE.
+Alertas de vencimento + bloqueio de entrega fora da regra.
+Motivos de troca (analytics).
+Entrega por área/obra/filial (multi-CNPJ).
+Entrega remota (transportadora + confirmação).
+3.4 Estoque (SGG + EntregaEPI + Prisma)
+Saldo por tamanho/característica/CA/lote.
+Estoque mínimo e custos por setor/cargo.
+Estoque em trânsito.
+Integração ERP (entrada/saída automática).
+3.5 Ficha digital e auditoria (SGG + EntregaEPI)
+Ficha eletrônica NR-6 com evidência biométrica/assinatura.
+Histórico imutável (quem, o quê, quando, onde, método de autenticação).
+Exportação PDF / pacote de auditoria.
+Preparação para eSocial (ex.: S-2240 no ecossistema SST).
+3.6 Campo e disponibilidade (EntregaEPI + OnSafety)
+App mobile-first.
+Modo offline com fila de sync e resolução de conflitos.
+Totem/kiosk opcional (webcam ou iDFace-like).
+3.7 Treinamentos vinculados (EntregaEPI + case SGG)
+Bloquear entrega se treinamento obrigatório estiver vencido.
+Turmas, presença, certificados/validades.
+3.8 LGPD e segurança
+Consentimento biométrico, base legal, retenção, exclusão.
+Logs de acesso, criptografia em trânsito e em repouso.
+Papéis: Almoxarife, SESMT, Gestor, Admin, Auditor (somente leitura).
+4. Fluxos principais (produto)
+Fluxo A — Entrega rápida no almoxarifado
+Operador abre entrega no app.
+Identifica colaborador (busca ou face).
+Sistema sugere EPIs do perfil/GHE/pendências.
+Confirma itens + tamanhos.
+Autentica (face/digital).
+Gera ficha + baixa estoque + sync.
+Fluxo B — Solicitação corporativa (HCM-like)
+Gestor solicita EPI.
+SESMT/almoxarife aprova.
+Gera reserva/RM.
+Colaborador retira com biometria.
+Integra ERP/HCM.
+Fluxo C — Planejamento automático
+Job diário lista: vencendo, lote vencido, pendente por GHE, estoque baixo.
+Gera agenda de entregas.
+Notifica líderes e colaboradores.
+Bloqueia uso/registro irregular.
+Fluxo D — Offline em obra
+App baixa base local (colaboradores da área + EPIs + templates).
+Entregas ficam na fila.
+Ao reconectar, sincroniza e reconcilia estoque.
+5. Escopo por fases (recomendado)
+Fase 1 — MVP (6–10 semanas)
+O mínimo competitivo e vendável:
+
+Cadastro de colaboradores, EPIs, CA, tamanhos.
+Entrega no app com reconhecimento facial + assinatura fallback.
+Ficha digital + histórico.
+Estoque básico (saldo e baixa).
+Relatório/auditoria PDF.
+Multiempresa simples (1 empresa, N unidades).
+Roles básicos + LGPD (consentimento biométrico).
+Fase 2 — Operação completa
+Biometria digital.
+Solicitações/aprovações + devolução.
+Planejamento (validade/GHE) + alertas/bloqueios.
+Offline sync.
+Motivos de troca + dashboard gerencial.
+Integração ERP (API).
+Fase 3 — Plataforma SST
+Treinamentos vinculados.
+eSocial / conectores HCM.
+Totem/kiosk + leitores homologados.
+Entrega remota.
+Analytics avançado (custo, desperdício, compliance score).
+6. Modelo de dados (núcleo)
+Entidades mínimas:
+
+Organization, Unit, CostCenter, Area
+Worker (+ biometrics refs, consent)
+EpiItem, EpiVariant (tamanho), CertificateCA, Lot
+StockBalance, StockMovement
+DeliveryOrder / Delivery / DeliveryItem
+AuthEvidence (tipo, hash, timestamp, device)
+EpiSheet (ficha NR-6)
+Request, Approval
+Training, TrainingRequirement
+AlertRule, BlockRule
+IntegrationEvent (ERP/HCM/eSocial)
+7. Stack sugerida (orientação, não obriga)
+Camada	Sugestão
+App campo
+React Native / Flutter (câmera + offline)
+Web admin
+Next.js / React
+API
+Node (Nest) ou .NET
+DB
+PostgreSQL
+Filas/sync
+Redis + jobs
+Storage evidências
+S3-compatible (criptografado)
+Face
+SDK/serviço biométrico (liveness + template)
+Auth
+OAuth2/OIDC + RBAC
+Pontos críticos de engenharia:
+
+liveness (anti-spoof) na face;
+sync offline idempotente;
+evidência jurídica da ficha (carimbo de tempo + trilha);
+isolamento multi-tenant.
+8. Critérios de sucesso do produto
+Entrega média < 30–60s por colaborador.
+0 papel no fluxo padrão.
+100% das entregas com evidência autenticada.
+Alertas de vencimento com ≥ X dias de antecedência.
+Relatório de auditoria exportável em < 1 min.
+Operação offline sem perda de registro.
+9. Diferencial competitivo da “solução completa”
+Em uma frase:
+o fluxo simples do OnSafety + a validade jurídica e NR-6 do SGG + o planejamento/offline do EntregaEPI + o pipeline gestor→RM do Prisma + a liberação por função da Nexus.
+
+Isso raramente aparece junto nas soluções modelo; é o núcleo do posicionamento.
+
+10. Próximo passo (escolha)
+Posso detalhar em seguida, ainda só em documentação:
+
+PRD completo (personas, RF/RNF, aceites)
+Backlog priorizado (épicos → user stories → MVP)
+Wireframes / mapa de telas (admin + app)
+Arquitetura técnica (diagramas, APIs, sync offline)
+Diga qual desses quatro você quer primeiro — e se já tem preferência de stack (web-only, mobile, Senior/Totvs etc.). Quando quiser que eu comece a implementar no projeto, use o modo Agent.

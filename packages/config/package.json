@@ -1,0 +1,10 @@
+{
+  "name": "@gestao-epi/config",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Configuracoes compartilhadas TypeScript e ESLint",
+  "files": [
+    "tsconfig/*.json",
+    "eslint/*.mjs"
+  ]
+}
