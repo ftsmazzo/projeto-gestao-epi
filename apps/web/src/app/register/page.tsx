@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AppShell } from '../../components/AppShell';
 import { registerAccount } from '../../lib/auth';
 
 export default function RegisterPage() {
@@ -36,74 +37,102 @@ export default function RegisterPage() {
   }
 
   return (
-    <main>
-      <section className="panel">
-        <p className="eyebrow">Onboarding</p>
-        <h1>Registrar organizacao</h1>
-        <p>
-          Cria a empresa usuaria (tenant) e o usuario dono. Cliente atendido e
-          cotas por cliente ficam para subetapas futuras.
-        </p>
+    <AppShell
+      headerActions={
+        <Link className="btn btn-secondary" href="/login">
+          Entrar
+        </Link>
+      }
+    >
+      <div className="auth-layout">
+        <section
+          className="auth-panel auth-panel--wide"
+          aria-labelledby="register-title"
+        >
+          <p className="page-kicker">Onboarding</p>
+          <h1 id="register-title" className="page-title">
+            Registrar organizacao
+          </h1>
+          <p className="page-lead">
+            Cria a empresa usuaria (tenant) e o usuario dono. Clientes atendidos
+            e cotas por cliente entram nas proximas etapas.
+          </p>
 
-        <form className="form" onSubmit={onSubmit}>
-          <label>
-            Seu nome
-            <input
-              required
-              minLength={2}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <label>
-            Email
-            <input
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
-          <label>
-            Senha
-            <input
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
-          <label>
-            Nome da organizacao (tenant)
-            <input
-              required
-              minLength={2}
-              value={organizationName}
-              onChange={(e) => setOrganizationName(e.target.value)}
-            />
-          </label>
-          <label>
-            Franquia total de vidas contratadas
-            <input
-              type="number"
-              min={0}
-              value={contractedLifeQuota}
-              onChange={(e) => setContractedLifeQuota(e.target.value)}
-            />
-          </label>
-          {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={loading}>
-            {loading ? 'Registrando...' : 'Criar conta'}
-          </button>
-        </form>
+          <form className="form" onSubmit={onSubmit} noValidate>
+            <div className="field">
+              <label htmlFor="register-name">Seu nome</label>
+              <input
+                id="register-name"
+                required
+                minLength={2}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="register-email">Email</label>
+              <input
+                id="register-email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="register-password">Senha</label>
+              <input
+                id="register-password"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <p className="field-hint">Minimo de 8 caracteres.</p>
+            </div>
+            <div className="field">
+              <label htmlFor="register-org">Nome da organizacao (tenant)</label>
+              <input
+                id="register-org"
+                required
+                minLength={2}
+                value={organizationName}
+                onChange={(e) => setOrganizationName(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="register-quota">
+                Franquia total de vidas contratadas
+              </label>
+              <input
+                id="register-quota"
+                type="number"
+                min={0}
+                value={contractedLifeQuota}
+                onChange={(e) => setContractedLifeQuota(e.target.value)}
+              />
+              <p className="field-hint">
+                Valor total do contrato. Distribuicao por cliente vem depois.
+              </p>
+            </div>
+            {error ? (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <button className="btn btn-primary btn-block" type="submit" disabled={loading}>
+              {loading ? 'Registrando...' : 'Criar conta'}
+            </button>
+          </form>
 
-        <p className="muted-link">
-          Ja tem conta? <Link href="/login">Entrar</Link>
-        </p>
-      </section>
-    </main>
+          <p className="form-footer">
+            Ja tem conta? <Link href="/login">Entrar</Link>
+          </p>
+        </section>
+      </div>
+    </AppShell>
   );
 }

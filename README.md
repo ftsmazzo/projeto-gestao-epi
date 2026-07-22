@@ -15,12 +15,13 @@ Construir uma aplicacao completa para gestao digital de entrega de Equipamentos 
 
 ## Estado atual
 
-Fase: **Epico 01 / Subetapa 01.4** — preparacao de deploy no EasyPanel.
+Fase: **Epico 01 / Subetapa 01.5** — base visual, responsividade e usabilidade inicial.
 
 Ja existe:
 
 - monorepo npm workspaces;
-- `apps/web` (Next.js) com login, registro e dashboard;
+- `apps/web` (Next.js) com login, registro e dashboard em visual tecnico-premium;
+- tokens CSS (azul eletrico, grafite, prata) e contraste de botoes corrigido;
 - `apps/api` (NestJS) com `GET /health`, auth JWT e Prisma;
 - modelos `User`, `Organization` (tenant), `Membership` e `AuditLog`;
 - Dockerfiles de API e Web + `.dockerignore`;

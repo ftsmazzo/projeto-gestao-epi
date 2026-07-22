@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { AppShell } from '../../components/AppShell';
 import { loginAccount } from '../../lib/auth';
 
 export default function LoginPage() {
@@ -27,44 +28,63 @@ export default function LoginPage() {
   }
 
   return (
-    <main>
-      <section className="panel">
-        <p className="eyebrow">Acesso</p>
-        <h1>Entrar</h1>
-        <p>Use o email e a senha do usuario dono da organizacao.</p>
+    <AppShell
+      headerActions={
+        <Link className="btn btn-secondary" href="/register">
+          Criar organizacao
+        </Link>
+      }
+    >
+      <div className="auth-layout">
+        <section className="auth-panel" aria-labelledby="login-title">
+          <p className="page-kicker">Acesso</p>
+          <h1 id="login-title" className="page-title">
+            Entrar no Web Admin
+          </h1>
+          <p className="page-lead">
+            Use o email e a senha do usuario dono da organizacao.
+          </p>
 
-        <form className="form" onSubmit={onSubmit}>
-          <label>
-            Email
-            <input
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
-          <label>
-            Senha
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              minLength={8}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
-          {error ? <p className="error">{error}</p> : null}
-          <button type="submit" disabled={loading}>
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
+          <form className="form" onSubmit={onSubmit} noValidate>
+            <div className="field">
+              <label htmlFor="login-email">Email</label>
+              <input
+                id="login-email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="login-password">Senha</label>
+              <input
+                id="login-password"
+                type="password"
+                autoComplete="current-password"
+                required
+                minLength={8}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            {error ? (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            ) : null}
+            <button className="btn btn-primary btn-block" type="submit" disabled={loading}>
+              {loading ? 'Entrando...' : 'Entrar'}
+            </button>
+          </form>
 
-        <p className="muted-link">
-          Ainda nao tem conta? <Link href="/register">Registrar organizacao</Link>
-        </p>
-      </section>
-    </main>
+          <p className="form-footer">
+            Ainda nao tem conta?{' '}
+            <Link href="/register">Registrar organizacao</Link>
+          </p>
+        </section>
+      </div>
+    </AppShell>
   );
 }
