@@ -7,6 +7,7 @@ import { apiFetch } from './auth';
 export type OperationalUnitInput = {
   name: string;
   code?: string | null;
+  cnpj?: string | null;
   addressLine?: string | null;
   city?: string | null;
   state?: string | null;

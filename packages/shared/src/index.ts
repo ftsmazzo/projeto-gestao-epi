@@ -64,6 +64,7 @@ export interface OperationalUnit {
   servedClientId: string;
   name: string;
   code: string | null;
+  cnpj: string | null;
   status: OperationalUnitStatus;
   addressLine: string | null;
   city: string | null;

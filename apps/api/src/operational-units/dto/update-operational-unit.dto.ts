@@ -5,6 +5,7 @@ import {
   Matches,
   MaxLength,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class UpdateOperationalUnitDto {
@@ -19,6 +20,13 @@ export class UpdateOperationalUnitDto {
   @MinLength(1)
   @MaxLength(50)
   code?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null && value !== '')
+  @IsString()
+  @MinLength(14)
+  @MaxLength(18)
+  cnpj?: string | null;
 
   @IsOptional()
   @IsString()

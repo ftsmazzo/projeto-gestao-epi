@@ -21,6 +21,12 @@ export class CreateOperationalUnitDto {
 
   @IsOptional()
   @IsString()
+  @MinLength(14)
+  @MaxLength(18)
+  cnpj?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(300)
   addressLine?: string;
 

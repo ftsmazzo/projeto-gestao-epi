@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { RequireAuth } from '../../../components/RequireAuth';
-import { formatCnpj } from '../../../lib/cnpj';
+import { formatCnpj, formatCnpjInput, normalizeCnpj } from '../../../lib/cnpj';
 import { formatCpf, formatCpfInput, stripCpf } from '../../../lib/cpf';
 import {
   createOperationalUnit,
@@ -33,6 +33,7 @@ type Panel = 'units' | 'workers';
 type UnitFormState = {
   name: string;
   code: string;
+  cnpj: string;
   addressLine: string;
   city: string;
   state: string;
@@ -53,6 +54,7 @@ type WorkerFormState = {
 const emptyUnitForm: UnitFormState = {
   name: '',
   code: '',
+  cnpj: '',
   addressLine: '',
   city: '',
   state: '',
@@ -155,6 +157,7 @@ function ClienteDetalheContent() {
     setUnitForm({
       name: unit.name,
       code: unit.code ?? '',
+      cnpj: unit.cnpj ? formatCnpj(unit.cnpj) : '',
       addressLine: unit.addressLine ?? '',
       city: unit.city ?? '',
       state: unit.state ?? '',
@@ -213,6 +216,7 @@ function ClienteDetalheContent() {
     const payload = {
       name: unitForm.name.trim(),
       code: unitForm.code.trim() || null,
+      cnpj: normalizeCnpj(unitForm.cnpj) || null,
       addressLine: unitForm.addressLine.trim() || null,
       city: unitForm.city.trim() || null,
       state: unitForm.state.trim() || null,
@@ -224,6 +228,7 @@ function ClienteDetalheContent() {
         await createOperationalUnit(clientId, {
           name: payload.name,
           code: payload.code ?? undefined,
+          cnpj: payload.cnpj ?? undefined,
           addressLine: payload.addressLine ?? undefined,
           city: payload.city ?? undefined,
           state: payload.state ?? undefined,
@@ -860,6 +865,27 @@ function ClienteDetalheContent() {
                     />
                   </div>
                   <div className="field field--span-2">
+                    <label htmlFor="unit-cnpj">
+                      CNPJ da unidade (opcional)
+                    </label>
+                    <input
+                      id="unit-cnpj"
+                      autoComplete="off"
+                      placeholder="00.000.000/0000-00"
+                      value={unitForm.cnpj}
+                      onChange={(e) =>
+                        setUnitForm((prev) => ({
+                          ...prev,
+                          cnpj: formatCnpjInput(e.target.value),
+                        }))
+                      }
+                    />
+                    <p className="field-hint">
+                      Use quando a unidade for uma filial formal com CNPJ
+                      proprio. Para setor/obra/local sem CNPJ, deixe em branco.
+                    </p>
+                  </div>
+                  <div className="field field--span-2">
                     <label htmlFor="unit-address">Endereco (opcional)</label>
                     <input
                       id="unit-address"
@@ -988,6 +1014,7 @@ function ClienteDetalheContent() {
                     <tr>
                       <th scope="col">Unidade</th>
                       <th scope="col">Codigo</th>
+                      <th scope="col">CNPJ</th>
                       <th scope="col">Local</th>
                       <th scope="col">Status</th>
                       <th scope="col">Acoes</th>
@@ -1003,6 +1030,9 @@ function ClienteDetalheContent() {
                           ) : null}
                         </td>
                         <td className="mono">{unit.code || '—'}</td>
+                        <td className="mono">
+                          {unit.cnpj ? formatCnpj(unit.cnpj) : '—'}
+                        </td>
                         <td>{locationLabel(unit)}</td>
                         <td>
                           <span

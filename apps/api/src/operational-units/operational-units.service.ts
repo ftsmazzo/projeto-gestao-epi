@@ -1,10 +1,12 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { OperationalUnitStatus, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { cnpjAuditMeta, validateCnpj } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateOperationalUnitDto } from './dto/create-operational-unit.dto';
 import type { UpdateOperationalUnitDto } from './dto/update-operational-unit.dto';
@@ -44,8 +46,12 @@ export class OperationalUnitsService {
     await this.assertServedClient(organizationId, servedClientId);
 
     const code = this.normalizeOptionalCode(dto.code);
+    const cnpj = this.normalizeOptionalCnpj(dto.cnpj);
     if (code) {
       await this.assertUniqueCode(servedClientId, code);
+    }
+    if (cnpj) {
+      await this.assertUniqueCnpj(organizationId, cnpj);
     }
 
     try {
@@ -55,6 +61,7 @@ export class OperationalUnitsService {
           servedClientId,
           name: dto.name.trim(),
           code,
+          cnpj,
           addressLine: this.normalizeOptionalText(dto.addressLine),
           city: this.normalizeOptionalText(dto.city),
           state: this.normalizeState(dto.state),
@@ -74,6 +81,7 @@ export class OperationalUnitsService {
           name: unit.name,
           code: unit.code,
           status: unit.status,
+          ...cnpjAuditMeta(unit.cnpj),
         },
       });
 
@@ -96,9 +104,16 @@ export class OperationalUnitsService {
       dto.code === undefined
         ? existing.code
         : this.normalizeOptionalCode(dto.code);
+    const nextCnpj =
+      dto.cnpj === undefined
+        ? existing.cnpj
+        : this.normalizeOptionalCnpj(dto.cnpj);
 
     if (nextCode && nextCode !== existing.code) {
       await this.assertUniqueCode(existing.servedClientId, nextCode, id);
+    }
+    if (nextCnpj && nextCnpj !== existing.cnpj) {
+      await this.assertUniqueCnpj(organizationId, nextCnpj, id);
     }
 
     try {
@@ -107,6 +122,7 @@ export class OperationalUnitsService {
         data: {
           name: dto.name?.trim(),
           code: dto.code === undefined ? undefined : nextCode,
+          cnpj: dto.cnpj === undefined ? undefined : nextCnpj,
           addressLine:
             dto.addressLine === undefined
               ? undefined
@@ -138,12 +154,14 @@ export class OperationalUnitsService {
             code: existing.code,
             city: existing.city,
             state: existing.state,
+            ...cnpjAuditMeta(existing.cnpj),
           },
           after: {
             name: unit.name,
             code: unit.code,
             city: unit.city,
             state: unit.state,
+            ...cnpjAuditMeta(unit.cnpj),
           },
         },
       });
@@ -219,6 +237,41 @@ export class OperationalUnitsService {
     }
   }
 
+  private async assertUniqueCnpj(
+    organizationId: string,
+    cnpj: string,
+    excludeId?: string,
+  ) {
+    const existing = await this.prisma.operationalUnit.findFirst({
+      where: {
+        organizationId,
+        cnpj,
+        ...(excludeId ? { NOT: { id: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'Ja existe uma unidade operacional com este CNPJ nesta organizacao.',
+      );
+    }
+  }
+
+  private normalizeOptionalCnpj(value?: string | null): string | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const result = validateCnpj(trimmed);
+    if (!result.ok) {
+      throw new BadRequestException(result.message);
+    }
+    return result.normalized;
+  }
+
   private normalizeOptionalCode(value?: string | null): string | null {
     if (value === undefined || value === null) {
       return null;
@@ -245,6 +298,14 @@ export class OperationalUnitsService {
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === 'P2002'
     ) {
+      const target = Array.isArray(error.meta?.target)
+        ? (error.meta?.target as string[]).join(',')
+        : String(error.meta?.target ?? '');
+      if (target.includes('cnpj')) {
+        throw new ConflictException(
+          'Ja existe uma unidade operacional com este CNPJ nesta organizacao.',
+        );
+      }
       throw new ConflictException(
         'Ja existe uma unidade com este codigo neste cliente atendido.',
       );

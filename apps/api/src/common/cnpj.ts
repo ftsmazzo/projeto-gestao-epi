@@ -115,3 +115,18 @@ export function cnpjValidationMessage(value: string): string | null {
   const result = validateCnpj(value);
   return result.ok ? null : result.message;
 }
+
+/** Metadados seguros para auditoria — nunca inclui CNPJ completo. */
+export function cnpjAuditMeta(cnpj: string | null | undefined): {
+  hasCnpj: boolean;
+  cnpjLast4: string | null;
+} {
+  if (!cnpj) {
+    return { hasCnpj: false, cnpjLast4: null };
+  }
+  const normalized = normalizeCnpj(cnpj);
+  return {
+    hasCnpj: normalized.length > 0,
+    cnpjLast4: normalized.length >= 4 ? normalized.slice(-4) : null,
+  };
+}
