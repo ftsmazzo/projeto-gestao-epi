@@ -8,6 +8,7 @@ import { ServedClientsModule } from './served-clients/served-clients.module';
 import { OperationalUnitsModule } from './operational-units/operational-units.module';
 import { WorkersModule } from './workers/workers.module';
 import { EpisModule } from './epis/epis.module';
+import { CaepiModule } from './caepi/caepi.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { EpisModule } from './epis/epis.module';
     OperationalUnitsModule,
     WorkersModule,
     EpisModule,
+    CaepiModule,
     HealthModule,
   ],
 })

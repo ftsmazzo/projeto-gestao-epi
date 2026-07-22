@@ -242,6 +242,66 @@ model EpiVariant {
   @@index([isActive])
 }
 
+enum CaCertificateStatus {
+  VALIDO
+  VENCIDO
+  CANCELADO
+  SUSPENSO
+  DESCONHECIDO
+}
+
+enum CaCertificateSource {
+  CAEPI_OFICIAL
+}
+
+/// Certificado de Aprovacao da base oficial CAEPI (global, nao por tenant).
+model CaCertificate {
+  id                   String              @id @default(cuid())
+  /// Numero do CA normalizado, sem espacos. Unico globalmente.
+  caNumber             String              @unique
+  expiresAt            DateTime?
+  status               CaCertificateStatus @default(DESCONHECIDO)
+  processNumber        String?
+  manufacturerCnpj     String?
+  manufacturerName     String?
+  nature               String?
+  equipmentName        String?
+  equipmentDescription String?
+  brand                String?
+  reference            String?
+  color                String?
+  approvedFor          String?
+  restriction          String?
+  analysisNotes        String?
+  source               CaCertificateSource @default(CAEPI_OFICIAL)
+  sourceImportedAt     DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  norms CaCertificateNorm[]
+
+  @@index([status])
+  @@index([manufacturerCnpj])
+  @@index([expiresAt])
+}
+
+/// Norma/laudo associado a um CA (um CA pode ter varias linhas na base CAEPI).
+model CaCertificateNorm {
+  id              String   @id @default(cuid())
+  certificateId   String
+  laboratoryCnpj  String?
+  laboratoryName  String?
+  reportNumber    String?
+  standard        String?
+  createdAt       DateTime @default(now())
+
+  certificate CaCertificate @relation(fields: [certificateId], references: [id], onDelete: Cascade)
+
+  @@unique([certificateId, laboratoryCnpj, reportNumber, standard])
+  @@index([certificateId])
+  @@index([standard])
+}
+
 model AuditLog {
   id             String   @id @default(cuid())
   organizationId String?

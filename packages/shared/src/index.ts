@@ -156,3 +156,61 @@ export interface EpiItem {
   createdAt: string;
   updatedAt: string;
 }
+
+export type CaCertificateStatus =
+  | 'VALIDO'
+  | 'VENCIDO'
+  | 'CANCELADO'
+  | 'SUSPENSO'
+  | 'DESCONHECIDO';
+
+export type CaCertificateSource = 'CAEPI_OFICIAL';
+
+export interface CaCertificateNorm {
+  id: string;
+  certificateId: string;
+  laboratoryCnpj: string | null;
+  laboratoryName: string | null;
+  reportNumber: string | null;
+  standard: string | null;
+  createdAt: string;
+}
+
+export interface CaCertificate {
+  id: string;
+  caNumber: string;
+  expiresAt: string | null;
+  status: CaCertificateStatus;
+  processNumber: string | null;
+  manufacturerCnpj: string | null;
+  manufacturerName: string | null;
+  nature: string | null;
+  equipmentName: string | null;
+  equipmentDescription: string | null;
+  brand: string | null;
+  reference: string | null;
+  color: string | null;
+  approvedFor: string | null;
+  restriction: string | null;
+  analysisNotes: string | null;
+  source: CaCertificateSource;
+  sourceImportedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  norms: CaCertificateNorm[];
+}
+
+export interface CaCertificateLookupResponse {
+  found: boolean;
+  certificate: CaCertificate | null;
+  message: string | null;
+}
+
+export interface CaepiImportResult {
+  rowsRead: number;
+  certificatesCreated: number;
+  certificatesUpdated: number;
+  normsCreated: number;
+  rowsIgnored: number;
+  errors: Array<{ row: number; message: string }>;
+}
