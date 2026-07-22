@@ -192,17 +192,36 @@ a:hover {
 
 .page-title {
   margin: 0 0 0.55rem;
+  font-family: var(--font-sans);
   font-size: clamp(1.55rem, 3vw, 2rem);
+  font-weight: 700;
   line-height: 1.15;
   color: var(--color-ink);
   letter-spacing: -0.02em;
 }
 
+.page-title--sm {
+  font-size: 1.2rem;
+}
+
+.page-title--on-dark {
+  color: #fff;
+}
+
 .page-lead {
   margin: 0;
+  font-family: var(--font-sans);
   color: var(--color-muted);
   line-height: 1.55;
   font-size: 0.98rem;
+}
+
+.page-lead--on-dark {
+  color: #c7cfde;
+}
+
+.page-kicker--on-dark {
+  color: #8eb6ff;
 }
 
 .hero {
@@ -228,7 +247,9 @@ a:hover {
 
 .hero-title {
   margin: 0;
+  font-family: var(--font-sans);
   font-size: clamp(2rem, 4.4vw, 3.1rem);
+  font-weight: 700;
   line-height: 1.08;
   letter-spacing: -0.03em;
   color: var(--color-graphite);
@@ -334,6 +355,20 @@ a.btn-secondary {
   background: var(--color-surface);
   border-color: var(--color-border-strong);
   color: var(--color-ink);
+}
+
+.surface--graphite .btn-secondary,
+.surface--graphite a.btn-secondary {
+  background: transparent;
+  border-color: #6d7690;
+  color: #edf1f8;
+}
+
+.surface--graphite .btn-secondary:hover:not(:disabled),
+.surface--graphite a.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #9aa3b5;
+  color: #fff;
 }
 
 .btn-secondary:hover:not(:disabled),
@@ -471,6 +506,10 @@ a.btn-danger:hover {
     grid-template-columns: 1.4fr 1fr;
     align-items: start;
   }
+
+  .dashboard-grid--ops {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .surface {
@@ -479,6 +518,255 @@ a.btn-danger:hover {
   border-radius: var(--radius-lg);
   padding: clamp(1.1rem, 2.5vw, 1.5rem);
   box-shadow: var(--shadow-sm);
+}
+
+.surface--graphite {
+  background: var(--color-graphite);
+  border-color: #2f3648;
+  color: #edf1f8;
+}
+
+.ops-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.ops-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem var(--space-page);
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.96);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+.ops-topbar-left,
+.ops-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.ops-user {
+  display: none;
+  text-align: right;
+  line-height: 1.2;
+}
+
+.ops-user-name {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.ops-user-org {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.ops-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr;
+  position: relative;
+}
+
+.ops-sidebar {
+  position: fixed;
+  inset: 3.6rem auto 0 0;
+  width: min(17.5rem, 86vw);
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  padding: 1rem 0.85rem 1.25rem;
+  transform: translateX(-105%);
+  transition: transform 0.18s ease;
+  z-index: 25;
+  overflow-y: auto;
+}
+
+.ops-sidebar.is-open {
+  transform: translateX(0);
+}
+
+.ops-backdrop {
+  position: fixed;
+  inset: 3.6rem 0 0 0;
+  border: 0;
+  background: rgba(18, 21, 28, 0.35);
+  z-index: 24;
+}
+
+.ops-nav-label {
+  margin: 0.35rem 0.55rem 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.ops-nav {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.ops-nav-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.7rem 0.7rem;
+  border-radius: var(--radius-sm);
+  color: var(--color-ink-secondary);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.ops-nav-link:hover {
+  background: var(--color-accent-muted);
+  color: var(--color-accent-hover);
+}
+
+.ops-nav-link.is-active {
+  background: var(--color-accent-muted);
+  color: var(--color-accent-active);
+}
+
+.ops-nav-badge {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  background: var(--color-surface-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.18rem 0.45rem;
+}
+
+.ops-sidebar-note {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.ops-main {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-page);
+}
+
+.module-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.module-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.empty-state {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.empty-inline {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.upcoming-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.4rem;
+  color: var(--color-ink-secondary);
+  font-size: 0.92rem;
+}
+
+.upcoming-list--on-dark {
+  color: #c7cfde;
+}
+
+.upcoming-list--on-dark li::marker {
+  color: var(--color-accent);
+}
+
+.module-link-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.module-link-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.15rem;
+  border-bottom: 1px solid var(--color-border);
+  text-decoration: none;
+  color: inherit;
+}
+
+.module-link-item:hover {
+  color: inherit;
+}
+
+.module-link-item strong {
+  display: block;
+  color: var(--color-ink);
+  font-size: 0.95rem;
+}
+
+.module-link-item .field-hint {
+  display: block;
+  margin-top: 0.2rem;
+}
+
+@media (min-width: 960px) {
+  .ops-menu-toggle {
+    display: none;
+  }
+
+  .ops-user {
+    display: block;
+  }
+
+  .ops-body {
+    grid-template-columns: 16.5rem 1fr;
+  }
+
+  .ops-sidebar {
+    position: sticky;
+    top: 3.6rem;
+    inset: auto;
+    width: auto;
+    height: calc(100vh - 3.6rem);
+    transform: none;
+  }
+
+  .ops-backdrop {
+    display: none;
+  }
 }
 
 .meta-list {
@@ -513,6 +801,7 @@ a.btn-danger:hover {
 
 .meta-list dd {
   margin: 0;
+  font-family: var(--font-sans);
   font-weight: 600;
   color: var(--color-ink);
   word-break: break-word;
@@ -520,8 +809,10 @@ a.btn-danger:hover {
 
 .quota-value {
   font-family: var(--font-mono);
-  font-size: 1.35rem;
+  font-size: 1.6rem;
+  font-weight: 600;
   color: var(--color-graphite);
+  margin: 0.35rem 0 0.25rem;
 }
 
 .header-actions {
@@ -541,5 +832,9 @@ a.btn-danger:hover {
 
   .btn-row .btn {
     flex: 1 1 100%;
+  }
+
+  .module-header .btn {
+    width: 100%;
   }
 }

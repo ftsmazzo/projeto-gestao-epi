@@ -1,114 +1,130 @@
 'use client';
 
-import type { AuthUser } from '@gestao-epi/shared';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { AppShell } from '../../components/AppShell';
-import { clearAccessToken, fetchMe, getAccessToken } from '../../lib/auth';
+import { OPS_NAV } from '../../lib/nav';
+import { RequireAuth } from '../../components/RequireAuth';
 
 export default function DashboardPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const token = getAccessToken();
-    if (!token) {
-      router.replace('/login');
-      return;
-    }
-
-    void fetchMe()
-      .then(setUser)
-      .catch((err: unknown) => {
-        clearAccessToken();
-        setError(err instanceof Error ? err.message : 'Sessao invalida');
-        router.replace('/login');
-      });
-  }, [router]);
-
-  function logout() {
-    clearAccessToken();
-    router.push('/login');
-  }
-
-  if (!user) {
-    return (
-      <AppShell brandHref="/dashboard">
-        <section className="surface" aria-live="polite">
-          <p className="page-kicker">Dashboard</p>
-          <h1 className="page-title">Carregando sessao...</h1>
-          {error ? (
-            <p className="error" role="alert">
-              {error}
-            </p>
-          ) : (
-            <p className="page-lead">Validando autenticacao e organizacao.</p>
-          )}
-        </section>
-      </AppShell>
-    );
-  }
-
   return (
-    <AppShell
-      brandHref="/dashboard"
-      headerActions={
-        <button type="button" className="btn btn-danger" onClick={logout}>
-          Sair
-        </button>
-      }
-    >
-      <div className="dashboard-grid">
-        <section className="surface" aria-labelledby="dash-title">
-          <p className="page-kicker">Area autenticada</p>
-          <h1 id="dash-title" className="page-title">
-            Ola, {user.name}
-          </h1>
-          <p className="page-lead">
-            Sessao ativa na organizacao tenant{' '}
-            <strong>{user.organization.name}</strong>. Cadastros operacionais
-            entram nas proximas etapas.
-          </p>
-
-          <dl className="meta-list">
+    <RequireAuth>
+      {(user) => (
+        <div className="module-page">
+          <header className="module-header">
             <div>
-              <dt>Email</dt>
-              <dd>{user.email}</dd>
+              <p className="page-kicker">Dashboard</p>
+              <h1 className="page-title">Ola, {user.name}</h1>
+              <p className="page-lead">
+                Painel da empresa usuaria{' '}
+                <strong>{user.organization.name}</strong>. Use o menu para
+                navegar pelos modulos; a maioria ainda esta em preparacao.
+              </p>
             </div>
-            <div>
-              <dt>Papel</dt>
-              <dd>{user.membershipRole}</dd>
-            </div>
-            <div>
-              <dt>Slug da organizacao</dt>
-              <dd>{user.organization.slug}</dd>
-            </div>
-          </dl>
-
-          <div className="btn-row">
-            <Link className="btn btn-secondary" href="/">
-              Ir para a home
+            <Link className="btn btn-primary" href="/clientes">
+              Abrir clientes atendidos
             </Link>
-          </div>
-        </section>
+          </header>
 
-        <aside className="surface" aria-label="Franquia de vidas">
-          <p className="page-kicker">Contrato</p>
-          <h2 className="page-title" style={{ fontSize: '1.25rem' }}>
-            Franquia de vidas
-          </h2>
-          <p className="page-lead">
-            Total contratado para a empresa usuaria. Cotas por cliente
-            atendido ainda nao estao ativas.
-          </p>
-          <p className="quota-value" aria-label="Vidas contratadas">
-            {user.organization.contractedLifeQuota}
-          </p>
-          <p className="field-hint">vidas contratadas</p>
-        </aside>
-      </div>
-    </AppShell>
+          <div className="dashboard-grid dashboard-grid--ops">
+            <section className="surface" aria-labelledby="org-summary">
+              <p className="page-kicker">Organizacao</p>
+              <h2 id="org-summary" className="page-title page-title--sm">
+                Resumo do tenant
+              </h2>
+              <dl className="meta-list">
+                <div>
+                  <dt>Email</dt>
+                  <dd>{user.email}</dd>
+                </div>
+                <div>
+                  <dt>Papel</dt>
+                  <dd>{user.membershipRole}</dd>
+                </div>
+                <div>
+                  <dt>Slug</dt>
+                  <dd>{user.organization.slug}</dd>
+                </div>
+              </dl>
+            </section>
+
+            <section className="surface" aria-labelledby="life-quota">
+              <p className="page-kicker">Franquia</p>
+              <h2 id="life-quota" className="page-title page-title--sm">
+                Vidas contratadas
+              </h2>
+              <p className="quota-value">
+                {user.organization.contractedLifeQuota}
+              </p>
+              <p className="field-hint">
+                Franquia total do contrato. Cotas por cliente ainda nao foram
+                alocadas.
+              </p>
+            </section>
+
+            <section className="surface" aria-labelledby="client-quotas">
+              <p className="page-kicker">Cotas</p>
+              <h2 id="client-quotas" className="page-title page-title--sm">
+                Cotas por cliente
+              </h2>
+              <div className="empty-inline">
+                <p className="page-lead">
+                  Nenhum cliente atendido cadastrado. A distribuicao de vidas
+                  por CNPJ entra na proxima etapa de cadastros.
+                </p>
+                <Link className="btn btn-secondary" href="/clientes">
+                  Ver modulo de clientes
+                </Link>
+              </div>
+            </section>
+
+            <section className="surface" aria-labelledby="next-modules">
+              <p className="page-kicker">Roteiro</p>
+              <h2 id="next-modules" className="page-title page-title--sm">
+                Proximos modulos
+              </h2>
+              <ul className="module-link-list">
+                {OPS_NAV.filter((item) => item.href !== '/dashboard').map(
+                  (item) => (
+                    <li key={item.href}>
+                      <Link href={item.href} className="module-link-item">
+                        <span>
+                          <strong>{item.label}</strong>
+                          <span className="field-hint">{item.description}</span>
+                        </span>
+                        <span className="ops-nav-badge">
+                          {item.status === 'ready' ? 'Ativo' : 'Em breve'}
+                        </span>
+                      </Link>
+                    </li>
+                  ),
+                )}
+              </ul>
+            </section>
+
+            <section
+              className="surface surface--graphite"
+              aria-labelledby="actions"
+            >
+              <p className="page-kicker page-kicker--on-dark">Acoes</p>
+              <h2 id="actions" className="page-title page-title--sm page-title--on-dark">
+                O que ja e possivel
+              </h2>
+              <ul className="upcoming-list upcoming-list--on-dark">
+                <li>Autenticacao e isolamento por organizacao</li>
+                <li>Consulta da franquia total de vidas</li>
+                <li>Navegacao pelos modulos futuros</li>
+              </ul>
+              <div className="btn-row">
+                <Link className="btn btn-primary" href="/configuracoes">
+                  Ir para configuracoes
+                </Link>
+                <Link className="btn btn-secondary" href="/portal-cliente">
+                  Ver portal do cliente
+                </Link>
+              </div>
+            </section>
+          </div>
+        </div>
+      )}
+    </RequireAuth>
   );
 }

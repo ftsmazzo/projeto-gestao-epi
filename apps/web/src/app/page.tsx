@@ -1,8 +1,21 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { APP_NAME } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { AppShell } from '../components/AppShell';
+import { getAccessToken } from '../lib/auth';
 
 export default function HomePage() {
+  const router = useRouter();
+
+  useEffect(() => {
+    if (getAccessToken()) {
+      router.replace('/dashboard');
+    }
+  }, [router]);
+
   return (
     <AppShell
       headerActions={
@@ -21,9 +34,8 @@ export default function HomePage() {
           <p className="page-kicker">Web Admin</p>
           <h1 className="hero-title">{APP_NAME}</h1>
           <p className="hero-lead">
-            Plataforma operacional para entregar, rastrear e auditar EPIs com
-            ficha eletronica, controle de vidas e isolamento por empresa
-            usuaria.
+            Controle operacional de entrega de EPI para a empresa usuaria:
+            clientes atendidos, vidas, estoque, documentos e relatorios.
           </p>
           <div className="btn-row">
             <Link className="btn btn-primary" href="/register">
@@ -39,13 +51,13 @@ export default function HomePage() {
           </div>
         </div>
 
-        <aside className="hero-aside" aria-label="Proximos passos">
-          <h2>Base pronta para operacao</h2>
+        <aside className="hero-aside" aria-label="Escopo atual">
+          <h2>Escopo operacional</h2>
           <ul>
-            <li>Empresa usuaria (tenant) isolada por organizacao</li>
-            <li>Login seguro com sessao JWT</li>
-            <li>Franquia total de vidas preparada no cadastro</li>
-            <li>Cadastros, estoque e entrega nas proximas etapas</li>
+            <li>Tenant = empresa que assina o software</li>
+            <li>Clientes atendidos com cotas de vidas</li>
+            <li>Portal do cliente em etapa futura</li>
+            <li>Cadastros e entrega nas proximas subetapas</li>
           </ul>
         </aside>
       </section>
