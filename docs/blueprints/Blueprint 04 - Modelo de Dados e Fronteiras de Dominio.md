@@ -10,12 +10,15 @@ Este documento ainda nao e schema definitivo. Ele orienta a primeira modelagem e
 
 ### Organizacao e tenancy
 
-Responsavel por separar dados de empresas/clientes.
+Responsavel por separar dados da empresa usuaria do software (tenant) e sua estrutura comercial/operacional.
 
 Entidades:
 
-- `Organization`;
-- `Unit`;
+- `Organization` (tenant / empresa usuaria que assina o software);
+- `ServedClient` (cliente atendido pela empresa usuaria, normalmente com CNPJ);
+- `LifeFranchise` ou campos de franquia na `Organization` (vidas contratadas);
+- `ClientLifeQuota` (cota de vidas alocada a um cliente atendido);
+- `Unit` (unidade operacional: filial, obra, almoxarifado);
 - `Area`;
 - `CostCenter`;
 - `Role`;
@@ -24,9 +27,12 @@ Entidades:
 
 Regras:
 
-- toda entidade operacional deve pertencer a uma organizacao;
-- unidade e area devem ser preservadas nos eventos historicos;
-- usuario nao pode acessar dados de outra organizacao sem permissao explicita.
+- `Organization`, `ServedClient` e `Unit` sao entidades distintas e nao devem ser colapsadas;
+- toda entidade operacional deve pertencer a uma organizacao (tenant);
+- cliente atendido pertence ao tenant e recebe cota de vidas da franquia total;
+- unidade e area sao estrutura operacional e devem ser preservadas nos eventos historicos;
+- usuario nao pode acessar dados de outra organizacao sem permissao explicita;
+- o sistema deve controlar vidas contratadas, alocadas, usadas e disponiveis.
 
 ### Trabalhadores
 
@@ -43,6 +49,9 @@ Entidades:
 
 Regras:
 
+- trabalhador deve estar vinculado a um cliente atendido (`ServedClient`);
+- vida = trabalhador ativo vinculado a um cliente atendido;
+- trabalhador ativo consome cota do cliente e franquia do tenant;
 - trabalhador pode estar ativo, afastado, inativo, desligado ou terceiro;
 - dados de tamanho/numeracao devem apoiar entrega correta;
 - alteracao de area nao deve alterar entregas antigas;
@@ -186,6 +195,11 @@ Regras:
 
 - `WorkerCreated`;
 - `WorkerAreaChanged`;
+- `WorkerActivated`;
+- `WorkerDeactivated`;
+- `ServedClientCreated`;
+- `LifeQuotaAllocated`;
+- `LifeQuotaExceeded`;
 - `EpiCreated`;
 - `StockReceived`;
 - `StockReserved`;
@@ -207,12 +221,17 @@ Regras:
 - Biometria nao deve ficar espalhada no dominio de entrega; deve ser modulo/adaptador.
 - Relatorio nao deve virar fonte de verdade; fonte de verdade sao eventos, estoque e ficha.
 - App offline nao deve escrever direto no banco sem camada de sincronizacao idempotente.
+- Tenant (`Organization`), cliente atendido (`ServedClient`) e unidade operacional (`Unit`) nao sao a mesma entidade.
+- Franquia total de vidas pertence ao tenant; cotas sao distribuicao dessa franquia entre clientes atendidos.
+- Vida nao e sinônimo de usuario autenticado; vida e trabalhador ativo do cliente atendido.
 
 ## 5. Modelo minimo para MVP
 
 Para a primeira versao funcional, priorizar:
 
 - `Organization`;
+- `ServedClient`;
+- controle de franquia/cotas de vidas (contratadas, alocadas, usadas, disponiveis);
 - `User`;
 - `Membership`;
 - `Unit`;
@@ -238,4 +257,6 @@ Para a primeira versao funcional, priorizar:
 - Se estoque sera obrigatorio para toda entrega no MVP.
 - Se ficha sera materializada em tabela propria ou derivada de eventos.
 - Se assinatura PDF tera qualificacao ICP-Brasil ou apenas evidencia eletronica operacional na fase inicial.
+- Em que subetapa entra o bloqueio automatico ao exceder cota/franquia versus alerta apenas.
+- Se unidade operacional pode atender mais de um cliente atendido ou fica sempre 1:1 operacionalmente.
 

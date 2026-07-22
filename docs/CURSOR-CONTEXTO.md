@@ -16,6 +16,19 @@ O produto deve unir:
 - relatorios para auditoria;
 - integracoes futuras com ERP, HCM e eSocial.
 
+### Modelo comercial estrutural
+
+A empresa usuaria do software (tenant) assina o produto com uma franquia total de vidas e distribui cotas dessa franquia entre seus clientes atendidos.
+
+Separacao obrigatoria de conceitos:
+
+- tenant/empresa usuaria: quem contrata o software;
+- cliente atendido: cliente da empresa usuaria, normalmente com CNPJ;
+- unidade operacional: estrutura operacional (filial/obra/almoxarifado), distinta do cliente atendido;
+- vida: trabalhador ativo vinculado a um cliente atendido.
+
+O sistema deve controlar vidas contratadas, alocadas, usadas e disponiveis. Nao tratar tenant, cliente atendido e unidade como a mesma entidade.
+
 ## 2. Benchmark consolidado
 
 As referencias analisadas indicam estes aprendizados:
@@ -64,6 +77,8 @@ Estas premissas podem ser ajustadas antes do primeiro bootstrap:
 - Nao permitir vazamento entre empresas/tenants.
 - Nao concluir entrega sem evidencia configurada.
 - Nao misturar app offline, biometria real e integracao ERP no bootstrap.
+- Nao colapsar tenant, cliente atendido e unidade operacional na mesma entidade.
+- Controlar franquia e cotas de vidas (contratadas, alocadas, usadas, disponiveis).
 - Criar migrations apenas quando schema mudar.
 - Preservar healthcheck e scripts de validacao.
 
@@ -79,15 +94,17 @@ Estas premissas podem ser ajustadas antes do primeiro bootstrap:
 
 ## 7. Fluxo principal futuro
 
-1. Empresa cadastra unidades, areas, cargos e usuarios.
-2. Trabalhadores sao cadastrados/importados.
-3. EPIs sao cadastrados com CA, validade, vida util e variacoes.
-4. Estoque recebe entradas por lote/local.
-5. Operador inicia entrega.
-6. Sistema valida trabalhador, regra de EPI, estoque e prazo.
-7. Trabalhador confirma por assinatura, senha ou biometria.
-8. Sistema gera ficha eletronica, baixa estoque e registra auditoria.
-9. Relatorios mostram entregas, pendencias, vencimentos e estoque.
+1. Empresa usuaria (tenant) recebe franquia total de vidas e cadastra usuarios.
+2. Empresa cadastra clientes atendidos e distribui cotas de vidas.
+3. Empresa cadastra unidades, areas, cargos e vincula a estrutura operacional.
+4. Trabalhadores sao cadastrados/importados vinculados a um cliente atendido; trabalhador ativo consome vida/cota.
+5. EPIs sao cadastrados com CA, validade, vida util e variacoes.
+6. Estoque recebe entradas por lote/local.
+7. Operador inicia entrega.
+8. Sistema valida trabalhador, cota/vida, regra de EPI, estoque e prazo.
+9. Trabalhador confirma por assinatura, senha ou biometria.
+10. Sistema gera ficha eletronica, baixa estoque e registra auditoria.
+11. Relatorios mostram entregas, pendencias, vencimentos, estoque e uso de franquia/cotas.
 
 ## 8. Formato esperado de resposta do Cursor
 

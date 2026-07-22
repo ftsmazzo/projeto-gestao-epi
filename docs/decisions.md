@@ -2,7 +2,7 @@
 
 ## Status
 
-Documento vivo. As decisoes abaixo sao premissas para iniciar planejamento e podem ser alteradas antes do primeiro prompt de codigo.
+Documento vivo. As decisoes abaixo sao premissas de produto e dominio. Novas decisoes estruturais devem ser registradas aqui antes de impactar auth, tenancy ou cadastros.
 
 ## D01 - Produto como SaaS multiempresa
 
@@ -69,4 +69,34 @@ E alinhado ao padrao operacional do usuario e simplifica API, web, banco e servi
 
 Impacto:
 Dockerfiles, variaveis, healthchecks e migrations devem ser pensados desde cedo.
+
+## D07 - Franquia total de vidas e cotas por cliente atendido
+
+Decisao:
+A empresa usuaria do software (tenant) contrata uma franquia total de vidas e distribui cotas dessa franquia entre seus clientes atendidos. Tenant, cliente atendido e unidade operacional sao entidades distintas.
+
+Definicoes:
+
+- **Empresa usuaria / tenant / Organization**: quem assina o software e e a fronteira principal de tenancy.
+- **Cliente atendido**: cliente da empresa usuaria, normalmente identificado por CNPJ; nao e o tenant.
+- **Unidade operacional**: unidade/filial/obra da estrutura operacional; nao substitui cliente atendido.
+- **Vida**: trabalhador ativo vinculado a um cliente atendido.
+
+Controle obrigatorio de cotas:
+
+- vidas contratadas (franquia total do tenant);
+- vidas alocadas (soma das cotas distribuidas aos clientes atendidos);
+- vidas usadas (trabalhadores ativos contabilizados);
+- vidas disponiveis (contratadas menos usadas, ou conforme regra operacional definida na implementacao).
+
+Motivo:
+O modelo comercial e operacional nao e apenas multiempresa simples. A empresa usuaria presta servico a varios clientes e precisa limitar capacidade por franquia e por cota.
+
+Impacto:
+
+- Auth/tenancy devem modelar `Organization` como assinante, nao como cliente atendido.
+- Cadastros devem prever `ServedClient` (ou equivalente) separado de `Unit`/`Area`.
+- Trabalhador ativo deve consumir cota do cliente atendido e da franquia do tenant.
+- Relatorios e painel administrativo devem expor contratadas, alocadas, usadas e disponiveis.
+- Implementacao de cotas pode entrar depois do bootstrap, mas o modelo de dados nao deve colapsar essas entidades.
 

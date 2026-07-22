@@ -115,6 +115,9 @@ Copie `.env.example` para `.env` e ajuste se necessario. Nao coloque segredos re
 - Estoque sera modulo proprio inicialmente, com integracao ERP posterior.
 - EasyPanel sera considerado deploy preferencial quando a stack for confirmada.
 - Banco/Prisma entram em subetapas posteriores; nao fazem parte deste bootstrap.
+- Empresa usuaria (tenant) contrata franquia total de vidas e distribui cotas entre clientes atendidos.
+- Tenant, cliente atendido e unidade operacional sao entidades distintas; vida = trabalhador ativo do cliente atendido.
+- O sistema deve controlar vidas contratadas, alocadas, usadas e disponiveis. Ver `docs/decisions.md` (D07).
 
 ## Regra de execucao
 
