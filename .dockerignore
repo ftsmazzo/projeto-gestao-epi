@@ -1,0 +1,36 @@
+# Git / IDE
+.git
+.github
+.cursor
+.vscode
+.idea
+
+# Dependencies / builds
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/.turbo
+**/*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Docs / misc not needed in image
+docs
+agent-transcripts
+*.md
+!apps/**/README.md
+
+# Logs / OS
+**/*.log
+**/npm-debug.log*
+.DS_Store
+Thumbs.db
+tmp
+temp

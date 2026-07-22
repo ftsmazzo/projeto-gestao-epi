@@ -15,6 +15,7 @@ Para iniciar o projeto no Cursor:
 - `README.md`
 - `docs/CURSOR-CONTEXTO.md`
 - `docs/decisions.md`
+- `docs/deploy/EASYPANEL.md`
 - `docs/referencias/Documento-Cursor-Analise-Links-EPI.txt`
 
 ## Blueprints

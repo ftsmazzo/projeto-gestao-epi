@@ -15,7 +15,7 @@ Construir uma aplicacao completa para gestao digital de entrega de Equipamentos 
 
 ## Estado atual
 
-Fase: **Epico 01 / Subetapa 01.3** — autenticacao e tenancy inicial.
+Fase: **Epico 01 / Subetapa 01.4** — preparacao de deploy no EasyPanel.
 
 Ja existe:
 
@@ -23,8 +23,9 @@ Ja existe:
 - `apps/web` (Next.js) com login, registro e dashboard;
 - `apps/api` (NestJS) com `GET /health`, auth JWT e Prisma;
 - modelos `User`, `Organization` (tenant), `Membership` e `AuditLog`;
-- campo `contractedLifeQuota` na organizacao (franquia total, preparacao);
-- migrations Prisma para PostgreSQL.
+- Dockerfiles de API e Web + `.dockerignore`;
+- guia `docs/deploy/EASYPANEL.md`;
+- CORS configuravel via `CORS_ORIGIN`.
 
 Ainda **nao** ha clientes atendidos, cotas por cliente, trabalhadores, EPIs, estoque, entrega ou biometria.
 
@@ -33,6 +34,7 @@ Ainda **nao** ha clientes atendidos, cotas por cliente, trabalhadores, EPIs, est
 - `docs/CURSOR-CONTEXTO.md`: contexto que o Cursor deve ler antes de qualquer implementacao.
 - `docs/blueprints/`: Blueprints funcionais, tecnicos e operacionais.
 - `docs/prompts/`: prompts prontos para iniciar a execucao em subetapas.
+- `docs/deploy/EASYPANEL.md`: passo a passo de deploy (Postgres, API, Web).
 - `docs/referencias/`: documento colado/analisado pelo Cursor a partir dos links de benchmark.
 - `docs/decisions.md`: decisoes estruturais (inclui D07 franquia/cotas).
 
@@ -40,12 +42,13 @@ Ainda **nao** ha clientes atendidos, cotas por cliente, trabalhadores, EPIs, est
 
 ```text
 apps/
-  api/          # NestJS - API HTTP + Prisma
-  web/          # Next.js - Web admin
+  api/          # NestJS - API HTTP + Prisma (+ Dockerfile)
+  web/          # Next.js - Web admin (+ Dockerfile)
 packages/
   shared/       # Tipos e constantes compartilhados
   config/       # tsconfig / eslint base
-docs/           # Documentacao do produto
+docs/
+  deploy/       # Guias de deploy (EasyPanel)
 ```
 
 ## Pre-requisitos
@@ -53,6 +56,7 @@ docs/           # Documentacao do produto
 - Node.js 20+
 - npm 10+ (workspaces)
 - PostgreSQL acessivel via `DATABASE_URL` (EasyPanel ou local)
+- Docker (opcional, para build local das imagens)
 
 ## Comandos locais
 
@@ -66,7 +70,7 @@ Configurar ambiente:
 
 ```bash
 cp .env.example .env
-# edite DATABASE_URL e JWT_SECRET
+# edite DATABASE_URL, JWT_SECRET e CORS_ORIGIN
 ```
 
 Aplicar migrations:
@@ -101,20 +105,14 @@ Validar healthcheck:
 curl http://localhost:3001/health
 ```
 
-Auth basico:
+### Build Docker (se Docker estiver disponivel)
 
 ```bash
-curl -X POST http://localhost:3001/auth/register ^
-  -H "Content-Type: application/json" ^
-  -d "{\"name\":\"Admin\",\"email\":\"admin@empresa.com\",\"password\":\"senha-segura\",\"organizationName\":\"Empresa Demo\",\"contractedLifeQuota\":100}"
-
-curl -X POST http://localhost:3001/auth/login ^
-  -H "Content-Type: application/json" ^
-  -d "{\"email\":\"admin@empresa.com\",\"password\":\"senha-segura\"}"
-
-curl http://localhost:3001/auth/me ^
-  -H "Authorization: Bearer SEU_TOKEN"
+docker build -f apps/api/Dockerfile -t gestao-epi-api .
+docker build -f apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_URL=http://localhost:3001 -t gestao-epi-web .
 ```
+
+Detalhes de producao: `docs/deploy/EASYPANEL.md`.
 
 ## Variaveis de ambiente
 
@@ -127,6 +125,7 @@ Copie `.env.example` para `.env` e ajuste. Nao coloque segredos reais no reposit
 | `DATABASE_URL` | — | PostgreSQL (obrigatorio) |
 | `JWT_SECRET` | — | Segredo do JWT (obrigatorio) |
 | `JWT_EXPIRES_IN` | `7d` | Expiracao do token |
+| `CORS_ORIGIN` | `*` / reflect | Origens permitidas do Web (virgula para varias) |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:3001` | URL da API para o web |
 | `PORT` | `3000` | Porta do Next.js |
 
