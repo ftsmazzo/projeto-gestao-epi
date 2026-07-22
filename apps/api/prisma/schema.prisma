@@ -23,6 +23,11 @@ enum OperationalUnitStatus {
   INACTIVE
 }
 
+enum WorkerStatus {
+  ACTIVE
+  INACTIVE
+}
+
 /// Empresa usuaria do software (tenant). Nao e cliente atendido nem unidade operacional.
 model Organization {
   id                  String   @id @default(cuid())
@@ -37,6 +42,7 @@ model Organization {
   auditLogs         AuditLog[]
   servedClients     ServedClient[]
   operationalUnits  OperationalUnit[]
+  workers           Worker[]
 }
 
 model User {
@@ -82,6 +88,7 @@ model ServedClient {
 
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   operationalUnits OperationalUnit[]
+  workers          Worker[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -90,25 +97,57 @@ model ServedClient {
 
 /// Unidade operacional do cliente atendido (filial, obra, planta, local de entrega).
 model OperationalUnit {
-  id             String                 @id @default(cuid())
+  id             String                @id @default(cuid())
   organizationId String
   servedClientId String
   name           String
   code           String?
-  status         OperationalUnitStatus  @default(ACTIVE)
+  status         OperationalUnitStatus @default(ACTIVE)
   addressLine    String?
   city           String?
   state          String?
   notes          String?
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   servedClient ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  workers      Worker[]
 
   @@unique([servedClientId, code])
   @@index([organizationId])
   @@index([servedClientId])
+  @@index([status])
+}
+
+/// Trabalhador (vida) vinculado a um cliente atendido e opcionalmente a uma unidade.
+model Worker {
+  id                 String       @id @default(cuid())
+  organizationId     String
+  servedClientId     String
+  operationalUnitId  String?
+  name               String
+  /// CPF apenas digitos (11), opcional.
+  cpf                String?
+  /// Matricula/codigo interno, unico por cliente quando informado.
+  registration       String?
+  role               String?
+  department         String?
+  status             WorkerStatus @default(ACTIVE)
+  admissionDate      DateTime?
+  notes              String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient    ServedClient     @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  operationalUnit OperationalUnit? @relation(fields: [operationalUnitId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, cpf])
+  @@unique([servedClientId, registration])
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([operationalUnitId])
   @@index([status])
 }
 

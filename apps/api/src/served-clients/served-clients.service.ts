@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ServedClientStatus } from '@prisma/client';
+import { Prisma, ServedClientStatus, WorkerStatus } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { isValidCnpj, stripCnpj } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
@@ -44,7 +44,7 @@ export class ServedClientsService {
       throw new NotFoundException('Organizacao nao encontrada.');
     }
 
-    const [aggregate, activeClients] = await Promise.all([
+    const [aggregate, activeClients, used] = await Promise.all([
       this.prisma.servedClient.aggregate({
         where: { organizationId },
         _sum: { allocatedLifeQuota: true },
@@ -53,11 +53,13 @@ export class ServedClientsService {
       this.prisma.servedClient.count({
         where: { organizationId, status: ServedClientStatus.ACTIVE },
       }),
+      this.prisma.worker.count({
+        where: { organizationId, status: WorkerStatus.ACTIVE },
+      }),
     ]);
 
     const contracted = organization.contractedLifeQuota;
     const allocated = aggregate._sum.allocatedLifeQuota ?? 0;
-    const used = 0;
     const available = Math.max(0, contracted - allocated);
 
     return {

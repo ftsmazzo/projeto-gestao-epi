@@ -89,7 +89,8 @@ function DashboardContent({
           <p className="quota-value">{summary?.contracted ?? '—'}</p>
           <p className="field-hint">
             Franquia total do contrato. Alocadas: {summary?.allocated ?? '—'} ·
-            Disponiveis: {summary?.available ?? '—'}.
+            Usadas: {summary?.used ?? '—'} · Disponiveis:{' '}
+            {summary?.available ?? '—'}.
           </p>
           {quotaError ? (
             <p className="error" role="alert">
@@ -115,7 +116,7 @@ function DashboardContent({
               </div>
               <div>
                 <dt>Vidas usadas</dt>
-                <dd>{summary.used} (trabalhadores ainda nao cadastrados)</dd>
+                <dd>{summary.used} trabalhadores ativos</dd>
               </div>
             </dl>
           ) : (
@@ -167,8 +168,8 @@ function DashboardContent({
           </h2>
           <ul className="upcoming-list upcoming-list--on-dark">
             <li>Autenticacao e isolamento por organizacao</li>
-            <li>Cadastro de clientes atendidos com CNPJ</li>
-            <li>Distribuicao de cotas dentro da franquia</li>
+                <li>Cadastro de clientes, unidades e trabalhadores</li>
+                <li>Controle de cotas e vidas usadas</li>
           </ul>
           <div className="btn-row">
             <Link className="btn btn-primary" href="/clientes">

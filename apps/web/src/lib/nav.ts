@@ -25,7 +25,7 @@ export const OPS_NAV: OpsNavItem[] = [
     href: '/trabalhadores',
     label: 'Trabalhadores',
     status: 'soon',
-    description: 'Vidas ativas vinculadas a cada cliente atendido.',
+    description: 'Acesso global em breve; cadastro ja disponivel no detalhe do cliente.',
   },
   {
     href: '/epis',

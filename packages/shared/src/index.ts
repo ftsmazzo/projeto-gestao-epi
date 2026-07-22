@@ -72,3 +72,30 @@ export interface OperationalUnit {
   createdAt: string;
   updatedAt: string;
 }
+
+export type WorkerStatus = 'ACTIVE' | 'INACTIVE';
+
+export interface Worker {
+  id: string;
+  organizationId: string;
+  servedClientId: string;
+  operationalUnitId: string | null;
+  name: string;
+  cpf: string | null;
+  registration: string | null;
+  role: string | null;
+  department: string | null;
+  status: WorkerStatus;
+  admissionDate: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ClientLifeSummary {
+  allocated: number;
+  used: number;
+  available: number;
+  activeWorkers: number;
+  totalWorkers: number;
+}
