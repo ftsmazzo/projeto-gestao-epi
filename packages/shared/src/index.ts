@@ -31,3 +31,27 @@ export interface AuthResponse {
   accessToken: string;
   user: AuthUser;
 }
+
+export type ServedClientStatus = 'ACTIVE' | 'INACTIVE';
+
+export interface ServedClient {
+  id: string;
+  organizationId: string;
+  legalName: string;
+  tradeName: string | null;
+  cnpj: string;
+  status: ServedClientStatus;
+  allocatedLifeQuota: number;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuotaSummary {
+  contracted: number;
+  allocated: number;
+  available: number;
+  used: number;
+  activeClients: number;
+  totalClients: number;
+}

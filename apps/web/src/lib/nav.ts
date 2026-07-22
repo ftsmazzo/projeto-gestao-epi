@@ -18,7 +18,7 @@ export const OPS_NAV: OpsNavItem[] = [
   {
     href: '/clientes',
     label: 'Clientes atendidos',
-    status: 'soon',
+    status: 'ready',
     description: 'CNPJ, cotas de vidas e isolamento por cliente.',
   },
   {

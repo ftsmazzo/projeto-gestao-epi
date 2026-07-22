@@ -13,6 +13,11 @@ enum MembershipRole {
   MEMBER
 }
 
+enum ServedClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
 /// Empresa usuaria do software (tenant). Nao e cliente atendido nem unidade operacional.
 model Organization {
   id                  String   @id @default(cuid())
@@ -23,8 +28,9 @@ model Organization {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  memberships Membership[]
-  auditLogs   AuditLog[]
+  memberships   Membership[]
+  auditLogs     AuditLog[]
+  servedClients ServedClient[]
 }
 
 model User {
@@ -52,6 +58,27 @@ model Membership {
 
   @@unique([userId, organizationId])
   @@index([organizationId])
+}
+
+/// Cliente atendido pelo tenant. Distinto de Organization e de Unit operacional.
+model ServedClient {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  legalName          String
+  tradeName          String?
+  /// CNPJ apenas digitos (14).
+  cnpj               String
+  status             ServedClientStatus @default(ACTIVE)
+  allocatedLifeQuota Int                @default(0)
+  notes              String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, cnpj])
+  @@index([organizationId])
+  @@index([status])
 }
 
 model AuditLog {
