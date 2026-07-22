@@ -1,6 +1,7 @@
 'use client';
 
 import type { QuotaSummary, ServedClient } from '@gestao-epi/shared';
+import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
 import { formatCnpj, formatCnpjInput, stripCnpj } from '../../lib/cnpj';
@@ -406,6 +407,12 @@ function ClientesContent() {
                     <td className="mono">{client.allocatedLifeQuota}</td>
                     <td>
                       <div className="table-actions">
+                        <Link
+                          className="btn btn-primary btn-compact"
+                          href={`/clientes/${client.id}`}
+                        >
+                          Abrir
+                        </Link>
                         <button
                           type="button"
                           className="btn btn-secondary btn-compact"

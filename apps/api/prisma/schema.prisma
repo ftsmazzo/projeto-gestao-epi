@@ -18,6 +18,11 @@ enum ServedClientStatus {
   INACTIVE
 }
 
+enum OperationalUnitStatus {
+  ACTIVE
+  INACTIVE
+}
+
 /// Empresa usuaria do software (tenant). Nao e cliente atendido nem unidade operacional.
 model Organization {
   id                  String   @id @default(cuid())
@@ -28,9 +33,10 @@ model Organization {
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 
-  memberships   Membership[]
-  auditLogs     AuditLog[]
-  servedClients ServedClient[]
+  memberships       Membership[]
+  auditLogs         AuditLog[]
+  servedClients     ServedClient[]
+  operationalUnits  OperationalUnit[]
 }
 
 model User {
@@ -60,7 +66,7 @@ model Membership {
   @@index([organizationId])
 }
 
-/// Cliente atendido pelo tenant. Distinto de Organization e de Unit operacional.
+/// Cliente atendido pelo tenant. Distinto de Organization e de OperationalUnit.
 model ServedClient {
   id                 String             @id @default(cuid())
   organizationId     String
@@ -74,10 +80,35 @@ model ServedClient {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  operationalUnits OperationalUnit[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
+  @@index([status])
+}
+
+/// Unidade operacional do cliente atendido (filial, obra, planta, local de entrega).
+model OperationalUnit {
+  id             String                 @id @default(cuid())
+  organizationId String
+  servedClientId String
+  name           String
+  code           String?
+  status         OperationalUnitStatus  @default(ACTIVE)
+  addressLine    String?
+  city           String?
+  state          String?
+  notes          String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+
+  @@unique([servedClientId, code])
+  @@index([organizationId])
+  @@index([servedClientId])
   @@index([status])
 }
 

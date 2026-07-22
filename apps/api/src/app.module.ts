@@ -5,6 +5,7 @@ import { AuditModule } from './audit/audit.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ServedClientsModule } from './served-clients/served-clients.module';
+import { OperationalUnitsModule } from './operational-units/operational-units.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ServedClientsModule } from './served-clients/served-clients.module';
     AuditModule,
     AuthModule,
     ServedClientsModule,
+    OperationalUnitsModule,
     HealthModule,
   ],
 })

@@ -55,3 +55,20 @@ export interface QuotaSummary {
   activeClients: number;
   totalClients: number;
 }
+
+export type OperationalUnitStatus = 'ACTIVE' | 'INACTIVE';
+
+export interface OperationalUnit {
+  id: string;
+  organizationId: string;
+  servedClientId: string;
+  name: string;
+  code: string | null;
+  status: OperationalUnitStatus;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
