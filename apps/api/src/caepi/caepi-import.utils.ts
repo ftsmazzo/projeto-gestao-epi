@@ -1,3 +1,5 @@
+import ExcelJS from 'exceljs';
+
 /** Normaliza cabecalho CAEPI para chave estavel (sem acento/espaco). */
 export function normalizeHeaderKey(value: string): string {
   return value
@@ -25,6 +27,23 @@ export function normalizeUniqueKey(value?: string | null): string {
   return normalizeOptionalText(value) ?? '';
 }
 
+export function formatDateBrUtc(date: Date): string {
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const year = String(date.getUTCFullYear());
+  return `${day}/${month}/${year}`;
+}
+
+/** Converte serial Excel (dias desde 1899-12-30) para Date UTC. */
+export function excelSerialToDate(serial: number): Date | null {
+  if (!Number.isFinite(serial)) {
+    return null;
+  }
+  const utc = Date.UTC(1899, 11, 30) + Math.round(serial * 86400000);
+  const date = new Date(utc);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 export function parseCaepiDate(value?: string | null): Date | null {
   const raw = normalizeOptionalText(value);
   if (!raw) {
@@ -49,6 +68,22 @@ export function parseCaepiDate(value?: string | null): Date | null {
 
   const iso = new Date(raw);
   return Number.isNaN(iso.getTime()) ? null : iso;
+}
+
+export function parseCaepiDateValue(value: unknown): Date | null {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === 'number') {
+    if (value > 20000 && value < 80000) {
+      return excelSerialToDate(value);
+    }
+    return null;
+  }
+  return parseCaepiDate(String(value));
 }
 
 export function detectDelimiter(headerLine: string): string {
@@ -96,7 +131,10 @@ export function parseCsvContent(content: string): {
   headers: string[];
   rows: string[][];
 } {
-  const normalized = content.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const normalized = content
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
   const lines = normalized
     .split('\n')
     .map((line) => line.trimEnd())
@@ -108,8 +146,165 @@ export function parseCsvContent(content: string): {
 
   const delimiter = detectDelimiter(lines[0]);
   const headers = parseDelimitedLine(lines[0], delimiter);
-  const rows = lines.slice(1).map((line) => parseDelimitedLine(line, delimiter));
+  const rows = lines
+    .slice(1)
+    .map((line) => parseDelimitedLine(line, delimiter));
   return { headers, rows };
+}
+
+export function excelCellToPlainText(
+  value: ExcelJS.CellValue,
+  formattedText?: string,
+): string {
+  if (value === null || value === undefined || value === '') {
+    return '';
+  }
+
+  if (value instanceof Date) {
+    return formatDateBrUtc(value);
+  }
+
+  if (typeof value === 'number') {
+    const formatted = normalizeOptionalText(formattedText);
+    if (formatted) {
+      return formatted;
+    }
+    if (Number.isInteger(value)) {
+      return String(Math.trunc(value));
+    }
+    return String(value);
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'TRUE' : 'FALSE';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'object') {
+    if ('richText' in value && Array.isArray(value.richText)) {
+      return value.richText.map((part) => part.text ?? '').join('');
+    }
+    if ('text' in value && typeof value.text === 'string') {
+      return value.text;
+    }
+    if ('result' in value) {
+      return excelCellToPlainText(
+        value.result as ExcelJS.CellValue,
+        formattedText,
+      );
+    }
+    if ('formula' in value || 'sharedFormula' in value) {
+      return normalizeOptionalText(formattedText) ?? '';
+    }
+  }
+
+  return normalizeOptionalText(formattedText) ?? '';
+}
+
+export function isBlankRow(cells: string[]): boolean {
+  return cells.every((cell) => !cell || !cell.trim());
+}
+
+export type CaepiParsedTable = {
+  headers: string[];
+  rows: string[][];
+  sheetName?: string;
+};
+
+export async function parseXlsxContent(
+  buffer: Buffer,
+): Promise<CaepiParsedTable> {
+  const workbook = new ExcelJS.Workbook();
+  // exceljs tipa `load` como Buffer legado; cast evita conflito com Buffer Node moderno.
+  await workbook.xlsx.load(buffer as never);
+
+  const preferred =
+    workbook.getWorksheet('tgg_export_caepi') ?? workbook.worksheets[0];
+  if (!preferred) {
+    throw new Error('Planilha XLSX sem abas legiveis.');
+  }
+
+  const rows: string[][] = [];
+  let headers: string[] | null = null;
+  let headerColumnCount = 0;
+
+  preferred.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    const values: string[] = [];
+    const maxCol = Math.max(row.cellCount, headerColumnCount);
+    for (let col = 1; col <= maxCol; col += 1) {
+      const cell = row.getCell(col);
+      values.push(excelCellToPlainText(cell.value, cell.text));
+    }
+
+    if (!headers) {
+      headers = values.map((value) => value.trim());
+      headerColumnCount = headers.length;
+      if (headers.every((h) => !h)) {
+        throw new Error(`Cabecalho vazio na aba "${preferred.name}".`);
+      }
+      return;
+    }
+
+    while (values.length < headerColumnCount) {
+      values.push('');
+    }
+
+    if (isBlankRow(values)) {
+      return;
+    }
+
+    rows.push(values.slice(0, headerColumnCount));
+    void rowNumber;
+  });
+
+  if (!headers) {
+    throw new Error(`Aba "${preferred.name}" sem cabecalho.`);
+  }
+
+  return {
+    headers,
+    rows,
+    sheetName: preferred.name,
+  };
+}
+
+export function detectImportFormat(
+  originalName?: string,
+): 'csv' | 'xlsx' | 'unknown' {
+  const name = (originalName || '').toLowerCase();
+  if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+    return 'xlsx';
+  }
+  if (
+    name.endsWith('.csv') ||
+    name.endsWith('.txt') ||
+    name.endsWith('.tsv')
+  ) {
+    return 'csv';
+  }
+  return 'unknown';
+}
+
+export async function parseCaepiFile(
+  buffer: Buffer,
+  originalName?: string,
+): Promise<CaepiParsedTable> {
+  const format = detectImportFormat(originalName);
+  if (format === 'xlsx') {
+    return parseXlsxContent(buffer);
+  }
+  if (format === 'csv') {
+    return parseCsvContent(buffer.toString('utf8'));
+  }
+
+  // Sem extensao: tenta XLSX (zip) e cai para CSV.
+  if (buffer.length >= 2 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
+    return parseXlsxContent(buffer);
+  }
+  return parseCsvContent(buffer.toString('utf8'));
 }
 
 /** Mapa de cabecalhos oficiais CAEPI -> campos internos. */
@@ -141,3 +336,5 @@ export const CAEPI_HEADER_ALIASES: Record<string, string[]> = {
   reportNumber: ['NR_LAUDO', 'NUMERO_LAUDO'],
   standard: ['NORMA'],
 };
+
+export const CAEPI_IMPORT_MAX_ERRORS = 100;

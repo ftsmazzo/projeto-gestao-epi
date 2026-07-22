@@ -36,7 +36,7 @@ export class CaepiController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 80 * 1024 * 1024 },
+      limits: { fileSize: 120 * 1024 * 1024 },
     }),
   )
   importFile(
@@ -45,24 +45,22 @@ export class CaepiController {
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException(
-        'Envie o arquivo CAEPI no campo multipart "file" (CSV ou TXT).',
+        'Envie o arquivo CAEPI no campo multipart "file" (CSV, TXT ou XLSX).',
       );
     }
 
     const name = (file.originalname || '').toLowerCase();
-    if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+    const allowed =
+      !name ||
+      name.endsWith('.csv') ||
+      name.endsWith('.txt') ||
+      name.endsWith('.tsv') ||
+      name.endsWith('.xlsx') ||
+      name.endsWith('.xls');
+
+    if (!allowed) {
       throw new BadRequestException(
-        'Nesta etapa, importe CSV/TXT. Exporte a planilha CAEPI para CSV e tente novamente.',
-      );
-    }
-    if (
-      name &&
-      !name.endsWith('.csv') &&
-      !name.endsWith('.txt') &&
-      !name.endsWith('.tsv')
-    ) {
-      throw new BadRequestException(
-        'Formato nao suportado. Use arquivo .csv ou .txt da base CAEPI.',
+        'Formato nao suportado. Use arquivo .csv, .txt ou .xlsx da base CAEPI.',
       );
     }
 

@@ -211,6 +211,8 @@ export interface CaepiImportResult {
   certificatesCreated: number;
   certificatesUpdated: number;
   normsCreated: number;
-  rowsIgnored: number;
+  rowsSkipped: number;
   errors: Array<{ row: number; message: string }>;
+  startedAt: string;
+  finishedAt: string;
 }

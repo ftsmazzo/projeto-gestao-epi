@@ -13,12 +13,14 @@ import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   CAEPI_HEADER_ALIASES,
+  CAEPI_IMPORT_MAX_ERRORS,
+  isBlankRow,
   normalizeCaNumber,
   normalizeHeaderKey,
   normalizeOptionalText,
   normalizeUniqueKey,
-  parseCaepiDate,
-  parseCsvContent,
+  parseCaepiDateValue,
+  parseCaepiFile,
 } from './caepi-import.utils';
 
 export type CaepiImportError = {
@@ -31,8 +33,10 @@ export type CaepiImportResult = {
   certificatesCreated: number;
   certificatesUpdated: number;
   normsCreated: number;
-  rowsIgnored: number;
+  rowsSkipped: number;
   errors: CaepiImportError[];
+  startedAt: string;
+  finishedAt: string;
 };
 
 type MappedRow = {
@@ -56,6 +60,16 @@ type MappedRow = {
   reportNumber: string;
   standard: string;
 };
+
+type CertificateDraft = Omit<
+  MappedRow,
+  'laboratoryCnpj' | 'laboratoryName' | 'reportNumber' | 'standard'
+>;
+
+type NormDraft = Pick<
+  MappedRow,
+  'laboratoryCnpj' | 'laboratoryName' | 'reportNumber' | 'standard'
+>;
 
 const REQUIRED_FIELDS = ['caNumber'] as const;
 
@@ -118,53 +132,74 @@ export class CaepiService {
   ): Promise<CaepiImportResult> {
     this.assertCanImport(options.membershipRole);
 
-    const content = buffer.toString('utf8');
-    let parsed: { headers: string[]; rows: string[][] };
+    const startedAt = new Date();
+    let parsed;
     try {
-      parsed = parseCsvContent(content);
+      parsed = await parseCaepiFile(buffer, options.originalName);
     } catch (error) {
       throw new BadRequestException(
         error instanceof Error ? error.message : 'Arquivo invalido.',
       );
     }
 
-    const columnIndex = this.resolveColumnIndex(parsed.headers);
-    const importedAt = new Date();
+    let columnIndex: Map<string, number>;
+    try {
+      columnIndex = this.resolveColumnIndex(parsed.headers);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error
+          ? error.message
+          : 'Cabecalho invalido na planilha CAEPI.',
+      );
+    }
+
     const result: CaepiImportResult = {
-      rowsRead: parsed.rows.length,
+      rowsRead: 0,
       certificatesCreated: 0,
       certificatesUpdated: 0,
       normsCreated: 0,
-      rowsIgnored: 0,
+      rowsSkipped: 0,
       errors: [],
+      startedAt: startedAt.toISOString(),
+      finishedAt: startedAt.toISOString(),
     };
 
     const grouped = new Map<
       string,
-      { certificate: Omit<MappedRow, 'laboratoryCnpj' | 'laboratoryName' | 'reportNumber' | 'standard'>; norms: Array<Pick<MappedRow, 'laboratoryCnpj' | 'laboratoryName' | 'reportNumber' | 'standard'>> }
+      { certificate: CertificateDraft; norms: NormDraft[] }
     >();
+
+    const pushError = (row: number, message: string) => {
+      result.rowsSkipped += 1;
+      if (result.errors.length < CAEPI_IMPORT_MAX_ERRORS) {
+        result.errors.push({ row, message });
+      }
+    };
 
     parsed.rows.forEach((cells, index) => {
       const rowNumber = index + 2;
+      result.rowsRead += 1;
+
+      if (isBlankRow(cells)) {
+        pushError(rowNumber, 'Linha vazia ignorada.');
+        return;
+      }
+
       try {
         const mapped = this.mapRow(cells, columnIndex);
         if (!mapped.caNumber) {
-          result.rowsIgnored += 1;
-          result.errors.push({
-            row: rowNumber,
-            message: 'Linha sem NR Registro CA.',
-          });
+          pushError(rowNumber, 'Linha sem NR Registro CA.');
           return;
         }
 
-        const existing = grouped.get(mapped.caNumber);
-        const norm = {
+        const norm: NormDraft = {
           laboratoryCnpj: mapped.laboratoryCnpj,
           laboratoryName: mapped.laboratoryName,
           reportNumber: mapped.reportNumber,
           standard: mapped.standard,
         };
 
+        const existing = grouped.get(mapped.caNumber);
         if (!existing) {
           grouped.set(mapped.caNumber, {
             certificate: {
@@ -191,12 +226,10 @@ export class CaepiService {
 
         existing.norms.push(norm);
       } catch (error) {
-        result.rowsIgnored += 1;
-        result.errors.push({
-          row: rowNumber,
-          message:
-            error instanceof Error ? error.message : 'Linha invalida.',
-        });
+        pushError(
+          rowNumber,
+          error instanceof Error ? error.message : 'Linha invalida.',
+        );
       }
     });
 
@@ -204,7 +237,7 @@ export class CaepiService {
       const upserted = await this.upsertCertificateGroup(
         group.certificate,
         group.norms,
-        importedAt,
+        startedAt,
       );
       if (upserted.created) {
         result.certificatesCreated += 1;
@@ -214,6 +247,9 @@ export class CaepiService {
       result.normsCreated += upserted.normsCreated;
     }
 
+    const finishedAt = new Date();
+    result.finishedAt = finishedAt.toISOString();
+
     await this.audit.log({
       action: 'caepi.imported',
       organizationId: options.organizationId,
@@ -221,8 +257,9 @@ export class CaepiService {
       entityType: 'CaCertificate',
       metadata: {
         originalName: options.originalName ?? null,
+        sheetName: parsed.sheetName ?? null,
         ...result,
-        errors: result.errors.slice(0, 50),
+        errorsTruncated: result.errors.length >= CAEPI_IMPORT_MAX_ERRORS,
       },
     });
 
@@ -270,7 +307,7 @@ export class CaepiService {
     const caNumberRaw = get('caNumber');
     const caNumber = caNumberRaw ? normalizeCaNumber(caNumberRaw) : '';
     const expiresRaw = get('expiresAt');
-    const expiresAt = expiresRaw ? parseCaepiDate(expiresRaw) : null;
+    const expiresAt = expiresRaw ? parseCaepiDateValue(expiresRaw) : null;
     if (expiresRaw && !expiresAt) {
       throw new Error(`Data de validade invalida: ${expiresRaw}`);
     }
@@ -329,29 +366,8 @@ export class CaepiService {
   }
 
   private async upsertCertificateGroup(
-    certificate: {
-      caNumber: string;
-      expiresAt: Date | null;
-      status: CaCertificateStatus;
-      processNumber: string | null;
-      manufacturerCnpj: string | null;
-      manufacturerName: string | null;
-      nature: string | null;
-      equipmentName: string | null;
-      equipmentDescription: string | null;
-      brand: string | null;
-      reference: string | null;
-      color: string | null;
-      approvedFor: string | null;
-      restriction: string | null;
-      analysisNotes: string | null;
-    },
-    norms: Array<{
-      laboratoryCnpj: string;
-      laboratoryName: string | null;
-      reportNumber: string;
-      standard: string;
-    }>,
+    certificate: CertificateDraft,
+    norms: NormDraft[],
     importedAt: Date,
   ) {
     const data: Prisma.CaCertificateUncheckedCreateInput = {
@@ -387,7 +403,7 @@ export class CaepiService {
       : await this.prisma.caCertificate.create({ data });
 
     let normsCreated = 0;
-    const uniqueNorms = new Map<string, (typeof norms)[number]>();
+    const uniqueNorms = new Map<string, NormDraft>();
     for (const norm of norms) {
       const key = `${norm.laboratoryCnpj}|${norm.reportNumber}|${norm.standard}`;
       if (!uniqueNorms.has(key)) {
