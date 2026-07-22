@@ -1,7 +1,6 @@
-import { IsEnum } from 'class-validator';
-import { EpiItemStatus } from '@prisma/client';
+import { IsBoolean } from 'class-validator';
 
 export class UpdateEpiItemStatusDto {
-  @IsEnum(EpiItemStatus)
-  status!: EpiItemStatus;
+  @IsBoolean()
+  isActive!: boolean;
 }

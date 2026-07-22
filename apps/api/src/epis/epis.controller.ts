@@ -54,7 +54,7 @@ export class EpisController {
       user.organizationId,
       user.sub,
       id,
-      dto.status,
+      dto.isActive,
     );
   }
 }

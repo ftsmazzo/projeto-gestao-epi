@@ -101,21 +101,58 @@ export interface ClientLifeSummary {
   totalWorkers: number;
 }
 
-export type EpiItemStatus = 'ACTIVE' | 'INACTIVE';
+export type EpiUnitOfMeasure = 'UNIDADE' | 'PAR' | 'CAIXA' | 'KIT';
+
+export type EpiUsefulLifeUnit = 'DIAS' | 'MESES' | 'ANOS';
+
+export type EpiCategory =
+  | 'AUDITIVA'
+  | 'RESPIRATORIA'
+  | 'QUEDA'
+  | 'MAOS'
+  | 'OLHOS'
+  | 'CABECA'
+  | 'PES'
+  | 'TRONCO'
+  | 'OUTROS';
+
+export interface EpiVariant {
+  id: string;
+  organizationId: string;
+  epiItemId: string;
+  size: string | null;
+  color: string | null;
+  model: string | null;
+  side: string | null;
+  notes: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface EpiItem {
   id: string;
   organizationId: string;
   name: string;
   description: string | null;
-  caNumber: string | null;
-  caExpirationDate: string | null;
-  category: string | null;
-  manufacturer: string | null;
-  defaultValidityDays: number | null;
+  isActive: boolean;
   requiresCa: boolean;
-  status: EpiItemStatus;
-  notes: string | null;
+  caNumber: string | null;
+  caExpiresAt: string | null;
+  unitOfMeasure: EpiUnitOfMeasure;
+  usefulLifeValue: number | null;
+  usefulLifeUnit: EpiUsefulLifeUnit | null;
+  category: EpiCategory | null;
+  externalCode: string | null;
+  manufacturerName: string | null;
+  reference: string | null;
+  color: string | null;
+  approvedFor: string | null;
+  restriction: string | null;
+  technicalNotes: string | null;
+  nrr: number | null;
+  nrrsf: number | null;
+  variants: EpiVariant[];
   createdAt: string;
   updatedAt: string;
 }

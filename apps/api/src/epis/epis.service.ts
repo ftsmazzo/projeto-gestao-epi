@@ -4,11 +4,25 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EpiItemStatus, Prisma } from '@prisma/client';
+import {
+  EpiCategory,
+  EpiUnitOfMeasure,
+  EpiUsefulLifeUnit,
+  Prisma,
+} from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
-import type { CreateEpiItemDto } from './dto/create-epi-item.dto';
+import type {
+  CreateEpiItemDto,
+  EpiVariantInputDto,
+} from './dto/create-epi-item.dto';
 import type { UpdateEpiItemDto } from './dto/update-epi-item.dto';
+
+const itemInclude = {
+  variants: {
+    orderBy: [{ isActive: 'desc' as const }, { size: 'asc' as const }],
+  },
+};
 
 @Injectable()
 export class EpisService {
@@ -20,13 +34,15 @@ export class EpisService {
   list(organizationId: string) {
     return this.prisma.epiItem.findMany({
       where: { organizationId },
-      orderBy: [{ status: 'asc' }, { name: 'asc' }],
+      include: itemInclude,
+      orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
     });
   }
 
   async getById(organizationId: string, id: string) {
     const item = await this.prisma.epiItem.findFirst({
       where: { id, organizationId },
+      include: itemInclude,
     });
     if (!item) {
       throw new NotFoundException('EPI nao encontrado.');
@@ -39,14 +55,30 @@ export class EpisService {
     const caNumber = this.normalizeOptionalCaNumber(dto.caNumber);
     this.assertCaRequirement(requiresCa, caNumber);
 
-    const defaultValidityDays = this.normalizeOptionalPositiveInt(
-      dto.defaultValidityDays,
+    const usefulLifeValue = this.normalizeOptionalNonNegativeInt(
+      dto.usefulLifeValue,
+      'Vida util',
     );
-    const caExpirationDate = this.parseOptionalDate(dto.caExpirationDate);
+    const usefulLifeUnit = this.resolveUsefulLifeUnit(
+      usefulLifeValue,
+      dto.usefulLifeUnit,
+    );
+    const caExpiresAt = this.parseOptionalDate(dto.caExpiresAt);
+    const category = dto.category ?? null;
+    const nrr =
+      category === EpiCategory.AUDITIVA
+        ? this.normalizeOptionalFloat(dto.nrr, 'NRR')
+        : null;
+    const nrrsf =
+      category === EpiCategory.AUDITIVA
+        ? this.normalizeOptionalFloat(dto.nrrsf, 'NRRsf')
+        : null;
 
     if (caNumber) {
       await this.assertUniqueCaNumber(organizationId, caNumber);
     }
+
+    const variants = this.normalizeVariants(dto.variants);
 
     try {
       const item = await this.prisma.epiItem.create({
@@ -54,14 +86,35 @@ export class EpisService {
           organizationId,
           name: dto.name.trim(),
           description: this.normalizeOptionalText(dto.description),
-          caNumber,
-          caExpirationDate,
-          category: this.normalizeOptionalText(dto.category),
-          manufacturer: this.normalizeOptionalText(dto.manufacturer),
-          defaultValidityDays,
           requiresCa,
-          notes: this.normalizeOptionalText(dto.notes),
+          caNumber,
+          caExpiresAt,
+          unitOfMeasure: dto.unitOfMeasure ?? EpiUnitOfMeasure.UNIDADE,
+          usefulLifeValue,
+          usefulLifeUnit,
+          category,
+          externalCode: this.normalizeOptionalText(dto.externalCode),
+          manufacturerName: this.normalizeOptionalText(dto.manufacturerName),
+          reference: this.normalizeOptionalText(dto.reference),
+          color: this.normalizeOptionalText(dto.color),
+          approvedFor: this.normalizeOptionalText(dto.approvedFor),
+          restriction: this.normalizeOptionalText(dto.restriction),
+          technicalNotes: this.normalizeOptionalText(dto.technicalNotes),
+          nrr,
+          nrrsf,
+          variants: {
+            create: variants.map((variant) => ({
+              organizationId,
+              size: variant.size,
+              color: variant.color,
+              model: variant.model,
+              side: variant.side,
+              notes: variant.notes,
+              isActive: variant.isActive ?? true,
+            })),
+          },
         },
+        include: itemInclude,
       });
 
       await this.audit.log({
@@ -74,8 +127,10 @@ export class EpisService {
           name: item.name,
           caNumber: item.caNumber,
           requiresCa: item.requiresCa,
-          status: item.status,
+          isActive: item.isActive,
           category: item.category,
+          unitOfMeasure: item.unitOfMeasure,
+          variantCount: item.variants.length,
         },
       });
 
@@ -105,38 +160,88 @@ export class EpisService {
       await this.assertUniqueCaNumber(organizationId, nextCaNumber, id);
     }
 
+    const nextCategory =
+      dto.category === undefined ? existing.category : dto.category;
+    const rawNrr =
+      dto.nrr === undefined
+        ? existing.nrr
+        : this.normalizeOptionalFloat(dto.nrr, 'NRR');
+    const rawNrrsf =
+      dto.nrrsf === undefined
+        ? existing.nrrsf
+        : this.normalizeOptionalFloat(dto.nrrsf, 'NRRsf');
+    const nextNrr =
+      nextCategory === EpiCategory.AUDITIVA ? rawNrr : null;
+    const nextNrrsf =
+      nextCategory === EpiCategory.AUDITIVA ? rawNrrsf : null;
+
+    const usefulLifeValue =
+      dto.usefulLifeValue === undefined
+        ? undefined
+        : this.normalizeOptionalNonNegativeInt(dto.usefulLifeValue, 'Vida util');
+
     try {
-      const item = await this.prisma.epiItem.update({
-        where: { id },
-        data: {
-          name: dto.name?.trim(),
-          description:
-            dto.description === undefined
-              ? undefined
-              : this.normalizeOptionalText(dto.description),
-          caNumber: dto.caNumber === undefined ? undefined : nextCaNumber,
-          caExpirationDate:
-            dto.caExpirationDate === undefined
-              ? undefined
-              : this.parseOptionalDate(dto.caExpirationDate),
-          category:
-            dto.category === undefined
-              ? undefined
-              : this.normalizeOptionalText(dto.category),
-          manufacturer:
-            dto.manufacturer === undefined
-              ? undefined
-              : this.normalizeOptionalText(dto.manufacturer),
-          defaultValidityDays:
-            dto.defaultValidityDays === undefined
-              ? undefined
-              : this.normalizeOptionalPositiveInt(dto.defaultValidityDays),
-          requiresCa: dto.requiresCa,
-          notes:
-            dto.notes === undefined
-              ? undefined
-              : this.normalizeOptionalText(dto.notes),
-        },
+      const item = await this.prisma.$transaction(async (tx) => {
+        if (dto.variants !== undefined) {
+          await this.syncVariants(tx, organizationId, id, dto.variants);
+        }
+
+        return tx.epiItem.update({
+          where: { id },
+          data: {
+            name: dto.name?.trim(),
+            description:
+              dto.description === undefined
+                ? undefined
+                : this.normalizeOptionalText(dto.description),
+            requiresCa: dto.requiresCa,
+            caNumber: dto.caNumber === undefined ? undefined : nextCaNumber,
+            caExpiresAt:
+              dto.caExpiresAt === undefined
+                ? undefined
+                : this.parseOptionalDate(dto.caExpiresAt),
+            unitOfMeasure: dto.unitOfMeasure,
+            usefulLifeValue,
+            usefulLifeUnit:
+              dto.usefulLifeUnit === undefined
+                ? usefulLifeValue === null
+                  ? null
+                  : undefined
+                : dto.usefulLifeUnit,
+            category: dto.category === undefined ? undefined : dto.category,
+            externalCode:
+              dto.externalCode === undefined
+                ? undefined
+                : this.normalizeOptionalText(dto.externalCode),
+            manufacturerName:
+              dto.manufacturerName === undefined
+                ? undefined
+                : this.normalizeOptionalText(dto.manufacturerName),
+            reference:
+              dto.reference === undefined
+                ? undefined
+                : this.normalizeOptionalText(dto.reference),
+            color:
+              dto.color === undefined
+                ? undefined
+                : this.normalizeOptionalText(dto.color),
+            approvedFor:
+              dto.approvedFor === undefined
+                ? undefined
+                : this.normalizeOptionalText(dto.approvedFor),
+            restriction:
+              dto.restriction === undefined
+                ? undefined
+                : this.normalizeOptionalText(dto.restriction),
+            technicalNotes:
+              dto.technicalNotes === undefined
+                ? undefined
+                : this.normalizeOptionalText(dto.technicalNotes),
+            nrr: nextNrr,
+            nrrsf: nextNrrsf,
+          },
+          include: itemInclude,
+        });
       });
 
       await this.audit.log({
@@ -151,14 +256,16 @@ export class EpisService {
             caNumber: existing.caNumber,
             requiresCa: existing.requiresCa,
             category: existing.category,
-            status: existing.status,
+            isActive: existing.isActive,
+            variantCount: existing.variants.length,
           },
           after: {
             name: item.name,
             caNumber: item.caNumber,
             requiresCa: item.requiresCa,
             category: item.category,
-            status: item.status,
+            isActive: item.isActive,
+            variantCount: item.variants.length,
           },
         },
       });
@@ -174,16 +281,17 @@ export class EpisService {
     organizationId: string,
     userId: string,
     id: string,
-    status: EpiItemStatus,
+    isActive: boolean,
   ) {
     const existing = await this.getById(organizationId, id);
-    if (existing.status === status) {
+    if (existing.isActive === isActive) {
       return existing;
     }
 
     const item = await this.prisma.epiItem.update({
       where: { id },
-      data: { status },
+      data: { isActive },
+      include: itemInclude,
     });
 
     await this.audit.log({
@@ -193,13 +301,105 @@ export class EpisService {
       entityType: 'EpiItem',
       entityId: item.id,
       metadata: {
-        from: existing.status,
-        to: item.status,
+        from: existing.isActive,
+        to: item.isActive,
         caNumber: item.caNumber,
       },
     });
 
     return item;
+  }
+
+  private async syncVariants(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    epiItemId: string,
+    inputs: EpiVariantInputDto[],
+  ) {
+    const normalized = this.normalizeVariants(inputs);
+    const existing = await tx.epiVariant.findMany({
+      where: { organizationId, epiItemId },
+      select: { id: true },
+    });
+    const keepIds = new Set(
+      normalized.map((v) => v.id).filter((id): id is string => Boolean(id)),
+    );
+
+    const toDelete = existing.filter((row) => !keepIds.has(row.id));
+    if (toDelete.length > 0) {
+      await tx.epiVariant.deleteMany({
+        where: {
+          organizationId,
+          epiItemId,
+          id: { in: toDelete.map((row) => row.id) },
+        },
+      });
+    }
+
+    for (const variant of normalized) {
+      if (variant.id) {
+        const owned = existing.some((row) => row.id === variant.id);
+        if (!owned) {
+          throw new BadRequestException(
+            'Variacao invalida para este EPI neste tenant.',
+          );
+        }
+        await tx.epiVariant.update({
+          where: { id: variant.id },
+          data: {
+            size: variant.size,
+            color: variant.color,
+            model: variant.model,
+            side: variant.side,
+            notes: variant.notes,
+            isActive: variant.isActive ?? true,
+          },
+        });
+      } else {
+        await tx.epiVariant.create({
+          data: {
+            organizationId,
+            epiItemId,
+            size: variant.size,
+            color: variant.color,
+            model: variant.model,
+            side: variant.side,
+            notes: variant.notes,
+            isActive: variant.isActive ?? true,
+          },
+        });
+      }
+    }
+  }
+
+  private normalizeVariants(inputs?: EpiVariantInputDto[]) {
+    if (!inputs || inputs.length === 0) {
+      return [];
+    }
+
+    return inputs.map((input) => {
+      const size = this.normalizeOptionalText(input.size);
+      const color = this.normalizeOptionalText(input.color);
+      const model = this.normalizeOptionalText(input.model);
+      const side = this.normalizeOptionalText(input.side);
+      const notes = this.normalizeOptionalText(input.notes);
+
+      if (!size && !color && !model && !side && !notes) {
+        throw new BadRequestException(
+          'Cada variacao precisa de ao menos tamanho, cor, modelo, lado ou observacao.',
+        );
+      }
+
+      return {
+        id: input.id?.trim() || undefined,
+        size,
+        color,
+        model,
+        side,
+        notes,
+        isActive: input.isActive ?? true,
+      };
+    });
   }
 
   private assertCaRequirement(
@@ -211,6 +411,16 @@ export class EpisService {
         'Este EPI exige CA. Informe o numero do Certificado de Aprovacao.',
       );
     }
+  }
+
+  private resolveUsefulLifeUnit(
+    value: number | null,
+    unit?: EpiUsefulLifeUnit | null,
+  ): EpiUsefulLifeUnit | null {
+    if (value == null) {
+      return null;
+    }
+    return unit ?? EpiUsefulLifeUnit.DIAS;
   }
 
   private normalizeOptionalCaNumber(value?: string | null): string | null {
@@ -229,16 +439,30 @@ export class EpisService {
     return trimmed.length > 0 ? trimmed : null;
   }
 
-  private normalizeOptionalPositiveInt(
+  private normalizeOptionalNonNegativeInt(
     value?: number | null,
+    label = 'Valor',
   ): number | null {
     if (value === undefined || value === null) {
       return null;
     }
-    if (!Number.isInteger(value) || value <= 0) {
+    if (!Number.isInteger(value) || value < 0) {
       throw new BadRequestException(
-        'Validade padrao de uso deve ser um inteiro positivo (em dias).',
+        `${label} deve ser um inteiro maior ou igual a zero.`,
       );
+    }
+    return value;
+  }
+
+  private normalizeOptionalFloat(
+    value?: number | null,
+    label = 'Valor',
+  ): number | null {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      throw new BadRequestException(`${label} invalido.`);
     }
     return value;
   }

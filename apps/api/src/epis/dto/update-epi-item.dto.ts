@@ -1,14 +1,25 @@
+import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsBoolean,
   IsDateString,
+  IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
-  IsPositive,
   IsString,
   MaxLength,
+  Min,
   MinLength,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
+import {
+  EpiCategory,
+  EpiUnitOfMeasure,
+  EpiUsefulLifeUnit,
+} from '@prisma/client';
+import { EpiVariantInputDto } from './create-epi-item.dto';
 
 export class UpdateEpiItemDto {
   @IsOptional()
@@ -23,6 +34,10 @@ export class UpdateEpiItemDto {
   description?: string | null;
 
   @IsOptional()
+  @IsBoolean()
+  requiresCa?: boolean;
+
+  @IsOptional()
   @ValidateIf((_, value) => value !== null && value !== '')
   @IsString()
   @MinLength(1)
@@ -32,30 +47,76 @@ export class UpdateEpiItemDto {
   @IsOptional()
   @ValidateIf((_, value) => value !== null && value !== '')
   @IsDateString()
-  caExpirationDate?: string | null;
+  caExpiresAt?: string | null;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  category?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(120)
-  manufacturer?: string | null;
+  @IsEnum(EpiUnitOfMeasure)
+  unitOfMeasure?: EpiUnitOfMeasure;
 
   @IsOptional()
   @ValidateIf((_, value) => value !== null)
   @IsInt()
-  @IsPositive()
-  defaultValidityDays?: number | null;
+  @Min(0)
+  usefulLifeValue?: number | null;
 
   @IsOptional()
-  @IsBoolean()
-  requiresCa?: boolean;
+  @ValidateIf((_, value) => value !== null)
+  @IsEnum(EpiUsefulLifeUnit)
+  usefulLifeUnit?: EpiUsefulLifeUnit | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsEnum(EpiCategory)
+  category?: EpiCategory | null;
 
   @IsOptional()
   @IsString()
-  @MaxLength(1000)
-  notes?: string | null;
+  @MaxLength(80)
+  externalCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  manufacturerName?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  reference?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  color?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  approvedFor?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  restriction?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  technicalNotes?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsNumber()
+  nrr?: number | null;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsNumber()
+  nrrsf?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EpiVariantInputDto)
+  variants?: EpiVariantInputDto[];
 }

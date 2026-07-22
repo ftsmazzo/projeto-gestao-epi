@@ -28,9 +28,29 @@ enum WorkerStatus {
   INACTIVE
 }
 
-enum EpiItemStatus {
-  ACTIVE
-  INACTIVE
+enum EpiUnitOfMeasure {
+  UNIDADE
+  PAR
+  CAIXA
+  KIT
+}
+
+enum EpiUsefulLifeUnit {
+  DIAS
+  MESES
+  ANOS
+}
+
+enum EpiCategory {
+  AUDITIVA
+  RESPIRATORIA
+  QUEDA
+  MAOS
+  OLHOS
+  CABECA
+  PES
+  TRONCO
+  OUTROS
 }
 
 /// Empresa usuaria do software (tenant). Nao e cliente atendido nem unidade operacional.
@@ -49,6 +69,7 @@ model Organization {
   operationalUnits  OperationalUnit[]
   workers           Worker[]
   epiItems          EpiItem[]
+  epiVariants       EpiVariant[]
 }
 
 model User {
@@ -162,29 +183,63 @@ model Worker {
 
 /// Item do catalogo mestre de EPI do tenant (ainda sem estoque/entrega).
 model EpiItem {
-  id                   String        @id @default(cuid())
-  organizationId       String
-  name                 String
-  description          String?
+  id               String             @id @default(cuid())
+  organizationId   String
+  name             String
+  description      String?
+  isActive         Boolean            @default(true)
+  requiresCa       Boolean            @default(true)
   /// Numero do CA normalizado (sem espacos). Unico por tenant quando informado.
-  caNumber             String?
-  caExpirationDate     DateTime?
-  category             String?
-  manufacturer         String?
-  /// Validade padrao de uso em dias (vida util operacional sugerida).
-  defaultValidityDays  Int?
-  requiresCa           Boolean       @default(true)
-  status               EpiItemStatus @default(ACTIVE)
-  notes                String?
-  createdAt            DateTime      @default(now())
-  updatedAt            DateTime      @updatedAt
+  caNumber         String?
+  caExpiresAt      DateTime?
+  unitOfMeasure    EpiUnitOfMeasure   @default(UNIDADE)
+  usefulLifeValue  Int?
+  usefulLifeUnit   EpiUsefulLifeUnit?
+  category         EpiCategory?
+  externalCode     String?
+  manufacturerName String?
+  reference        String?
+  color            String?
+  approvedFor      String?
+  restriction      String?
+  technicalNotes   String?
+  /// NRR (protecao auditiva), opcional.
+  nrr              Float?
+  /// NRRsf (protecao auditiva), opcional.
+  nrrsf            Float?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  variants     EpiVariant[]
 
   @@unique([organizationId, caNumber])
   @@index([organizationId])
-  @@index([status])
+  @@index([isActive])
   @@index([category])
+  @@index([externalCode])
+}
+
+/// Variacao/grade de um item do catalogo (tamanho, cor, modelo, lado).
+model EpiVariant {
+  id             String   @id @default(cuid())
+  organizationId String
+  epiItemId      String
+  size           String?
+  color          String?
+  model          String?
+  side           String?
+  notes          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  epiItem      EpiItem      @relation(fields: [epiItemId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([epiItemId])
+  @@index([isActive])
 }
 
 model AuditLog {
