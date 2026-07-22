@@ -15,18 +15,18 @@ Construir uma aplicacao completa para gestao digital de entrega de Equipamentos 
 
 ## Estado atual
 
-Fase: **Epico 01 / Subetapa 01.2** — bootstrap tecnico do monorepo.
+Fase: **Epico 01 / Subetapa 01.3** — autenticacao e tenancy inicial.
 
-Ja existe fundacao de codigo com:
+Ja existe:
 
 - monorepo npm workspaces;
-- `apps/web` (Next.js + React + TypeScript);
-- `apps/api` (NestJS + TypeScript);
-- `packages/shared` e `packages/config`;
-- endpoint `GET /health`;
-- tela inicial do web admin.
+- `apps/web` (Next.js) com login, registro e dashboard;
+- `apps/api` (NestJS) com `GET /health`, auth JWT e Prisma;
+- modelos `User`, `Organization` (tenant), `Membership` e `AuditLog`;
+- campo `contractedLifeQuota` na organizacao (franquia total, preparacao);
+- migrations Prisma para PostgreSQL.
 
-Ainda **nao** ha autenticacao, banco, Prisma, regras de negocio, biometria ou integracoes.
+Ainda **nao** ha clientes atendidos, cotas por cliente, trabalhadores, EPIs, estoque, entrega ou biometria.
 
 ## Documentos principais
 
@@ -34,12 +34,13 @@ Ainda **nao** ha autenticacao, banco, Prisma, regras de negocio, biometria ou in
 - `docs/blueprints/`: Blueprints funcionais, tecnicos e operacionais.
 - `docs/prompts/`: prompts prontos para iniciar a execucao em subetapas.
 - `docs/referencias/`: documento colado/analisado pelo Cursor a partir dos links de benchmark.
+- `docs/decisions.md`: decisoes estruturais (inclui D07 franquia/cotas).
 
 ## Estrutura do monorepo
 
 ```text
 apps/
-  api/          # NestJS - API HTTP
+  api/          # NestJS - API HTTP + Prisma
   web/          # Next.js - Web admin
 packages/
   shared/       # Tipos e constantes compartilhados
@@ -51,6 +52,7 @@ docs/           # Documentacao do produto
 
 - Node.js 20+
 - npm 10+ (workspaces)
+- PostgreSQL acessivel via `DATABASE_URL` (EasyPanel ou local)
 
 ## Comandos locais
 
@@ -60,21 +62,24 @@ Instalar dependencias (na raiz):
 npm install
 ```
 
-Typecheck:
+Configurar ambiente:
+
+```bash
+cp .env.example .env
+# edite DATABASE_URL e JWT_SECRET
+```
+
+Aplicar migrations:
+
+```bash
+npm run db:migrate
+```
+
+Typecheck / lint / build:
 
 ```bash
 npm run typecheck
-```
-
-Lint:
-
-```bash
 npm run lint
-```
-
-Build de todos os workspaces:
-
-```bash
 npm run build
 ```
 
@@ -96,14 +101,32 @@ Validar healthcheck:
 curl http://localhost:3001/health
 ```
 
+Auth basico:
+
+```bash
+curl -X POST http://localhost:3001/auth/register ^
+  -H "Content-Type: application/json" ^
+  -d "{\"name\":\"Admin\",\"email\":\"admin@empresa.com\",\"password\":\"senha-segura\",\"organizationName\":\"Empresa Demo\",\"contractedLifeQuota\":100}"
+
+curl -X POST http://localhost:3001/auth/login ^
+  -H "Content-Type: application/json" ^
+  -d "{\"email\":\"admin@empresa.com\",\"password\":\"senha-segura\"}"
+
+curl http://localhost:3001/auth/me ^
+  -H "Authorization: Bearer SEU_TOKEN"
+```
+
 ## Variaveis de ambiente
 
-Copie `.env.example` para `.env` e ajuste se necessario. Nao coloque segredos reais no repositorio.
+Copie `.env.example` para `.env` e ajuste. Nao coloque segredos reais no repositorio.
 
 | Variavel | Padrao | Uso |
 | --- | --- | --- |
 | `API_PORT` | `3001` | Porta da API |
 | `API_HOST` | `0.0.0.0` | Host da API |
+| `DATABASE_URL` | — | PostgreSQL (obrigatorio) |
+| `JWT_SECRET` | — | Segredo do JWT (obrigatorio) |
+| `JWT_EXPIRES_IN` | `7d` | Expiracao do token |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:3001` | URL da API para o web |
 | `PORT` | `3000` | Porta do Next.js |
 
@@ -114,10 +137,10 @@ Copie `.env.example` para `.env` e ajuste se necessario. Nao coloque segredos re
 - Biometria facial deve ser planejada por adapter/SDK externo, nao por algoritmo proprio no MVP.
 - Estoque sera modulo proprio inicialmente, com integracao ERP posterior.
 - EasyPanel sera considerado deploy preferencial quando a stack for confirmada.
-- Banco/Prisma entram em subetapas posteriores; nao fazem parte deste bootstrap.
 - Empresa usuaria (tenant) contrata franquia total de vidas e distribui cotas entre clientes atendidos.
 - Tenant, cliente atendido e unidade operacional sao entidades distintas; vida = trabalhador ativo do cliente atendido.
 - O sistema deve controlar vidas contratadas, alocadas, usadas e disponiveis. Ver `docs/decisions.md` (D07).
+- Nesta etapa, apenas a franquia total (`contractedLifeQuota`) foi preparada em `Organization`.
 
 ## Regra de execucao
 

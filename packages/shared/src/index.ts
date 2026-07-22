@@ -9,3 +9,25 @@ export interface HealthResponse {
   service: string;
   timestamp: string;
 }
+
+export type MembershipRole = 'OWNER' | 'ADMIN' | 'MEMBER';
+
+export interface AuthOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  contractedLifeQuota: number;
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  membershipRole: MembershipRole;
+  organization: AuthOrganization;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  user: AuthUser;
+}

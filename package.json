@@ -15,7 +15,10 @@
     "typecheck": "npm run typecheck -w @gestao-epi/shared && npm run typecheck -w @gestao-epi/api && npm run typecheck -w @gestao-epi/web",
     "lint": "npm run lint -w @gestao-epi/shared && npm run lint -w @gestao-epi/api && npm run lint -w @gestao-epi/web",
     "start:api": "npm run start -w @gestao-epi/api",
-    "start:web": "npm run start -w @gestao-epi/web"
+    "start:web": "npm run start -w @gestao-epi/web",
+    "db:generate": "npm run prisma:generate -w @gestao-epi/api",
+    "db:migrate": "npm run prisma:migrate -w @gestao-epi/api",
+    "db:migrate:dev": "npm run prisma:migrate:dev -w @gestao-epi/api"
   },
   "engines": {
     "node": ">=20"
