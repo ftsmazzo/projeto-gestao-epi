@@ -1,4 +1,4 @@
-import type { CaCertificate, EpiCategory } from '@gestao-epi/shared';
+import type { CaCertificate, EpiCategory, EpiUnitOfMeasure } from '@gestao-epi/shared';
 
 export function normalizeCaLookupInput(value: string) {
   return value.trim().replace(/\s+/g, '');
@@ -31,7 +31,8 @@ export function suggestCategoryFromEquipment(
   if (
     text.includes('OCULOS') ||
     text.includes('VISEIRA') ||
-    text.includes('OCULAR')
+    text.includes('OCULAR') ||
+    text.includes('PROTETOR FACIAL')
   ) {
     return 'OLHOS';
   }
@@ -52,7 +53,34 @@ export function suggestCategoryFromEquipment(
   ) {
     return 'QUEDA';
   }
+  if (
+    text.includes('MACACAO') ||
+    text.includes('AVENTAL') ||
+    text.includes('VESTIMENTA')
+  ) {
+    return 'TRONCO';
+  }
   return 'OUTROS';
+}
+
+export function suggestUnitFromEquipment(
+  equipmentName: string | null | undefined,
+): EpiUnitOfMeasure {
+  const text = (equipmentName ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+
+  if (
+    text.includes('LUVA') ||
+    text.includes('CALCADO') ||
+    text.includes('BOTINA') ||
+    text.includes('BOTA') ||
+    text.includes('PROTETOR AUDITIVO')
+  ) {
+    return 'PAR';
+  }
+  return 'UNIDADE';
 }
 
 export function toDateInputValue(value: string | null | undefined) {
@@ -86,6 +114,12 @@ export function buildTechnicalNotesFromCertificate(
   if (certificate.analysisNotes?.trim()) {
     parts.push(certificate.analysisNotes.trim());
   }
+  if (certificate.approvedFor?.trim()) {
+    parts.push(`Aprovado para: ${certificate.approvedFor.trim()}`);
+  }
+  if (certificate.restriction?.trim()) {
+    parts.push(`Restricao: ${certificate.restriction.trim()}`);
+  }
   if (certificate.norms?.length) {
     const norms = certificate.norms
       .map((norm) => {
@@ -104,9 +138,134 @@ export function buildTechnicalNotesFromCertificate(
   return parts.join('\n\n');
 }
 
+/** Opcoes padrao de tamanho (vestuario, calcado e luvas). */
+export const EPI_SIZE_OPTIONS = [
+  'Unico',
+  'PP',
+  'P',
+  'M',
+  'G',
+  'GG',
+  'XG',
+  'XXG',
+  '34',
+  '35',
+  '36',
+  '37',
+  '38',
+  '39',
+  '40',
+  '41',
+  '42',
+  '43',
+  '44',
+  '45',
+  '46',
+  '47',
+  '48',
+  '6',
+  '7',
+  '8',
+  '9',
+  '10',
+  '11',
+] as const;
+
+export const EPI_SIDE_OPTIONS = ['Esquerdo', 'Direito', 'Par'] as const;
+
+export const EPI_COLOR_OPTIONS = [
+  'Preto',
+  'Branco',
+  'Branca',
+  'Azul',
+  'Verde',
+  'Amarelo',
+  'Vermelho',
+  'Cinza',
+  'Laranja',
+  'Marrom',
+  'Incolor',
+  'Transparente',
+] as const;
+
+/** Normaliza cor CAEPI para casar com opcoes do seletor quando possivel. */
+export function normalizeColorOption(raw: string | null | undefined): string {
+  const value = (raw ?? '').trim().replace(/\.$/, '');
+  if (!value) return '';
+  const found = EPI_COLOR_OPTIONS.find(
+    (option) => option.toLowerCase() === value.toLowerCase(),
+  );
+  return found ?? value;
+}
+
+export function mergeSelectOptions(
+  base: readonly string[],
+  ...extras: Array<string | null | undefined>
+): string[] {
+  const result = [...base];
+  const seen = new Set(base.map((item) => item.toLowerCase()));
+  for (const extra of extras) {
+    const value = (extra ?? '').trim();
+    if (!value) continue;
+    if (seen.has(value.toLowerCase())) continue;
+    seen.add(value.toLowerCase());
+    result.push(value);
+  }
+  return result;
+}
+
+/**
+ * Extrai tamanhos citados na descricao/referencia (ex.: "P/M/G", "tamanhos 38 a 42").
+ */
+export function extractSuggestedSizes(
+  ...texts: Array<string | null | undefined>
+): string[] {
+  const blob = texts.filter(Boolean).join(' ');
+  if (!blob) return [];
+
+  const found = new Set<string>();
+  const upper = blob.toUpperCase();
+
+  for (const size of ['PP', 'P', 'M', 'G', 'GG', 'XG', 'XXG']) {
+    const pattern = new RegExp(`(?:^|[^A-Z0-9])${size}(?:[^A-Z0-9]|$)`);
+    if (pattern.test(upper)) {
+      found.add(size);
+    }
+  }
+
+  const ranges = blob.matchAll(/\b(\d{2})\s*(?:a|ate|-|–|—)\s*(\d{2})\b/gi);
+  for (const match of ranges) {
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    if (start >= 34 && end <= 48 && start <= end) {
+      for (let n = start; n <= end; n += 1) {
+        found.add(String(n));
+      }
+    }
+  }
+
+  const singles = blob.matchAll(/\b(3[4-9]|4[0-8])\b/g);
+  for (const match of singles) {
+    found.add(match[1]);
+  }
+
+  return [...found];
+}
+
+export type CaepiVariantSeed = {
+  size: string;
+  color: string;
+  model: string;
+  side: string;
+  notes: string;
+  isActive: boolean;
+};
+
 export type CaepiFormPatch = {
+  name: string;
   caNumber: string;
   caExpiresAt: string;
+  requiresCa: true;
   manufacturerName: string;
   reference: string;
   color: string;
@@ -115,21 +274,58 @@ export type CaepiFormPatch = {
   technicalNotes: string;
   description?: string;
   category: EpiCategory;
+  unitOfMeasure: EpiUnitOfMeasure;
+  variantSeeds: CaepiVariantSeed[];
 };
 
 export function buildCaepiFormPatch(
   certificate: CaCertificate,
 ): CaepiFormPatch {
+  const color = normalizeColorOption(certificate.color);
+  const model = (certificate.reference ?? certificate.brand ?? '').trim();
+  const sizes = extractSuggestedSizes(
+    certificate.equipmentDescription,
+    certificate.reference,
+    certificate.equipmentName,
+  );
+
+  const variantSeeds: CaepiVariantSeed[] = [];
+  if (sizes.length > 0) {
+    for (const size of sizes.slice(0, 12)) {
+      variantSeeds.push({
+        size,
+        color,
+        model,
+        side: '',
+        notes: '',
+        isActive: true,
+      });
+    }
+  } else if (color || model) {
+    variantSeeds.push({
+      size: '',
+      color,
+      model,
+      side: '',
+      notes: '',
+      isActive: true,
+    });
+  }
+
   return {
+    name: (certificate.equipmentName ?? '').trim(),
     caNumber: certificate.caNumber,
     caExpiresAt: toDateInputValue(certificate.expiresAt),
+    requiresCa: true,
     manufacturerName: certificate.manufacturerName ?? '',
     reference: certificate.reference ?? '',
-    color: certificate.color ?? '',
+    color,
     approvedFor: certificate.approvedFor ?? '',
     restriction: certificate.restriction ?? '',
     technicalNotes: buildTechnicalNotesFromCertificate(certificate),
     description: certificate.equipmentDescription?.trim() || undefined,
     category: suggestCategoryFromEquipment(certificate.equipmentName),
+    unitOfMeasure: suggestUnitFromEquipment(certificate.equipmentName),
+    variantSeeds,
   };
 }

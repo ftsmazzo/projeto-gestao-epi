@@ -21,7 +21,11 @@ import { RequireAuth } from '../../components/RequireAuth';
 import {
   buildCaepiFormPatch,
   caStatusClassName,
+  EPI_COLOR_OPTIONS,
+  EPI_SIDE_OPTIONS,
+  EPI_SIZE_OPTIONS,
   formatCaStatusLabel,
+  mergeSelectOptions,
   normalizeCaLookupInput,
 } from '../../lib/caepi-assist';
 import { lookupCaCertificate, searchCaCertificates } from '../../lib/caepi';
@@ -415,22 +419,14 @@ function EpisContent() {
     await openCaPreview(form.caNumber);
   }
 
-  async function onSelectSuggestion(item: CaCertificateSearchItem) {
-    setCaSuggestOpen(false);
-    setCaSuggestSource(null);
-    setForm((prev) => ({
-      ...prev,
-      caNumber: item.caNumber,
-    }));
-    await openCaPreview(item.caNumber);
-  }
+  function applyCertificateToForm(
+    certificate: NonNullable<typeof caPreview>,
+    options?: { replaceName?: boolean; seedVariants?: boolean },
+  ) {
+    const patch = buildCaepiFormPatch(certificate);
+    const replaceName = options?.replaceName ?? false;
+    const seedVariants = options?.seedVariants ?? true;
 
-  function onApplyCaPreview() {
-    if (!caPreview) {
-      return;
-    }
-
-    const patch = buildCaepiFormPatch(caPreview);
     const currentDescription = form.description.trim();
     const officialDescription = patch.description?.trim() || '';
 
@@ -443,29 +439,102 @@ function EpisContent() {
           'A descricao atual sera substituida pela descricao oficial do equipamento. Continuar?',
         );
         if (!confirmed) {
-          return;
+          return false;
         }
         nextDescription = officialDescription;
       }
     }
 
-    setForm((prev) => ({
-      ...prev,
-      caNumber: patch.caNumber,
-      caExpiresAt: patch.caExpiresAt,
-      manufacturerName: patch.manufacturerName,
-      reference: patch.reference,
-      color: patch.color,
-      approvedFor: patch.approvedFor,
-      restriction: patch.restriction,
-      technicalNotes: patch.technicalNotes,
-      category: patch.category,
-      description: nextDescription,
-    }));
+    setForm((prev) => {
+      const nextName =
+        replaceName || !prev.name.trim()
+          ? patch.name || prev.name
+          : prev.name;
+
+      let nextVariants = prev.variants;
+      if (seedVariants && patch.variantSeeds.length > 0) {
+        const hasMeaningfulVariant = prev.variants.some(
+          (variant) =>
+            variant.size.trim() ||
+            variant.color.trim() ||
+            variant.model.trim() ||
+            variant.side.trim() ||
+            variant.notes.trim(),
+        );
+        if (!hasMeaningfulVariant) {
+          nextVariants = patch.variantSeeds.map((seed) => ({
+            key: `new-${Math.random().toString(36).slice(2, 9)}`,
+            ...seed,
+          }));
+        }
+      }
+
+      return {
+        ...prev,
+        name: nextName,
+        requiresCa: true,
+        caNumber: patch.caNumber,
+        caExpiresAt: patch.caExpiresAt,
+        manufacturerName: patch.manufacturerName,
+        reference: patch.reference,
+        color: patch.color,
+        approvedFor: patch.approvedFor,
+        restriction: patch.restriction,
+        technicalNotes: patch.technicalNotes,
+        category: patch.category,
+        unitOfMeasure: patch.unitOfMeasure,
+        description: nextDescription,
+        variants: nextVariants,
+      };
+    });
 
     setCaAppliedBanner(
-      `Dados do CA ${caPreview.caNumber} aplicados a partir da base local CAEPI. Revise e salve o cadastro.`,
+      `Dados do CA ${certificate.caNumber} aplicados a partir da base local CAEPI. Revise e salve o cadastro.`,
     );
+    return true;
+  }
+
+  async function onSelectSuggestion(item: CaCertificateSearchItem) {
+    setCaSuggestOpen(false);
+    setCaSuggestSource(null);
+    setCaLookupError(null);
+    setCaLookupMessage(null);
+    setCaAppliedBanner(null);
+    setCaLookupLoading(true);
+
+    try {
+      const result = await lookupCaCertificate(item.caNumber);
+      if (!result.found || !result.certificate) {
+        setCaLookupMessage(
+          result.message ??
+            `CA ${item.caNumber} nao encontrado na base CAEPI local.`,
+        );
+        setForm((prev) => ({ ...prev, caNumber: item.caNumber }));
+        return;
+      }
+
+      setCaPreview(result.certificate);
+      applyCertificateToForm(result.certificate, {
+        replaceName: true,
+        seedVariants: true,
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Falha ao consultar o CA.';
+      setCaLookupError(`Erro de API/rede: ${message}`);
+    } finally {
+      setCaLookupLoading(false);
+    }
+  }
+
+  function onApplyCaPreview() {
+    if (!caPreview) {
+      return;
+    }
+    applyCertificateToForm(caPreview, {
+      replaceName: !form.name.trim(),
+      seedVariants: true,
+    });
   }
 
   function updateVariant(
@@ -674,8 +743,9 @@ function EpisContent() {
                     }}
                   />
                   <p className="field-hint">
-                    Digite ao menos 3 caracteres para sugerir CAs da base local
-                    (equipamento, fabricante ou referencia).
+                    Digite ao menos 3 caracteres para sugerir CAs. Ao escolher
+                    uma sugestao, os campos do cadastro sao preenchidos
+                    automaticamente.
                   </p>
                   {caSuggestOpen &&
                   caSuggestSource === 'name' &&
@@ -903,8 +973,9 @@ function EpisContent() {
                 <div>
                   <p className="page-kicker">Base local CAEPI</p>
                   <p className="field-hint">
-                    Digite o CA ou o nome do equipamento (min. 3 caracteres) para
-                    ver sugestoes. Use o botao para consulta exata do numero.
+                    Digite o CA (min. 3 caracteres) para sugestoes ou use o botao
+                    para consulta exata. A previa aparece e voce aplica os dados
+                    ao cadastro.
                   </p>
                 </div>
                 <button
@@ -1089,13 +1160,22 @@ function EpisContent() {
                 </div>
                 <div className="field">
                   <label htmlFor="epi-color">Cor</label>
-                  <input
+                  <select
                     id="epi-color"
                     value={form.color}
                     onChange={(e) =>
                       setForm((prev) => ({ ...prev, color: e.target.value }))
                     }
-                  />
+                  >
+                    <option value="">Sem cor</option>
+                    {mergeSelectOptions(EPI_COLOR_OPTIONS, form.color).map(
+                      (option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ),
+                    )}
+                  </select>
                 </div>
                 <div className="field field--span-2">
                   <label htmlFor="epi-approved">Aprovado para</label>
@@ -1224,7 +1304,7 @@ function EpisContent() {
                       <div className="form-grid">
                         <div className="field">
                           <label htmlFor={`v-size-${variant.key}`}>Tamanho</label>
-                          <input
+                          <select
                             id={`v-size-${variant.key}`}
                             value={variant.size}
                             onChange={(e) =>
@@ -1232,11 +1312,21 @@ function EpisContent() {
                                 size: e.target.value,
                               })
                             }
-                          />
+                          >
+                            <option value="">Sem tamanho</option>
+                            {mergeSelectOptions(
+                              EPI_SIZE_OPTIONS,
+                              variant.size,
+                            ).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div className="field">
                           <label htmlFor={`v-color-${variant.key}`}>Cor</label>
-                          <input
+                          <select
                             id={`v-color-${variant.key}`}
                             value={variant.color}
                             onChange={(e) =>
@@ -1244,11 +1334,22 @@ function EpisContent() {
                                 color: e.target.value,
                               })
                             }
-                          />
+                          >
+                            <option value="">Sem cor</option>
+                            {mergeSelectOptions(
+                              EPI_COLOR_OPTIONS,
+                              variant.color,
+                              form.color,
+                            ).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div className="field">
                           <label htmlFor={`v-model-${variant.key}`}>Modelo</label>
-                          <input
+                          <select
                             id={`v-model-${variant.key}`}
                             value={variant.model}
                             onChange={(e) =>
@@ -1256,20 +1357,40 @@ function EpisContent() {
                                 model: e.target.value,
                               })
                             }
-                          />
+                          >
+                            <option value="">Sem modelo</option>
+                            {mergeSelectOptions(
+                              form.reference ? [form.reference] : [],
+                              variant.model,
+                              form.reference,
+                            ).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div className="field">
                           <label htmlFor={`v-side-${variant.key}`}>Lado</label>
-                          <input
+                          <select
                             id={`v-side-${variant.key}`}
-                            placeholder="Esq. / Dir."
                             value={variant.side}
                             onChange={(e) =>
                               updateVariant(variant.key, {
                                 side: e.target.value,
                               })
                             }
-                          />
+                          >
+                            <option value="">Sem lado</option>
+                            {mergeSelectOptions(
+                              EPI_SIDE_OPTIONS,
+                              variant.side,
+                            ).map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div className="field field--span-2">
                           <label htmlFor={`v-notes-${variant.key}`}>
