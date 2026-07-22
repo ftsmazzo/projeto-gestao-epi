@@ -204,14 +204,45 @@ export interface CaCertificateLookupResponse {
   found: boolean;
   certificate: CaCertificate | null;
   message: string | null;
+  /** Total de certificados na base local no momento da consulta. */
+  baseCertificateCount?: number;
+  /** Indica base vazia ou provavelmente incompleta (amostra pequena). */
+  baseIncomplete?: boolean;
+}
+
+export interface CaCertificateSearchItem {
+  caNumber: string;
+  status: CaCertificateStatus;
+  expiresAt: string | null;
+  equipmentName: string | null;
+  manufacturerName: string | null;
+  reference: string | null;
+  color: string | null;
+  sourceImportedAt: string | null;
+}
+
+export interface CaCertificateSearchResponse {
+  query: string;
+  items: CaCertificateSearchItem[];
+  baseCertificateCount: number;
+  baseIncomplete: boolean;
+  message: string | null;
 }
 
 export interface CaepiImportResult {
+  /** Nome do arquivo enviado na importacao. */
+  fileName: string | null;
+  /** Aba XLSX lida, quando aplicavel. */
+  sheetName: string | null;
   rowsRead: number;
   certificatesCreated: number;
   certificatesUpdated: number;
   normsCreated: number;
   rowsSkipped: number;
+  /** Total de certificados no banco apos a importacao. */
+  certificatesTotalAfter: number;
+  /** Total de normas/laudos no banco apos a importacao. */
+  normsTotalAfter: number;
   errors: Array<{ row: number; message: string }>;
   startedAt: string;
   finishedAt: string;

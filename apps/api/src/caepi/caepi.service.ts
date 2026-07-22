@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import {
   CaCertificateSource,
@@ -29,11 +30,15 @@ export type CaepiImportError = {
 };
 
 export type CaepiImportResult = {
+  fileName: string | null;
+  sheetName: string | null;
   rowsRead: number;
   certificatesCreated: number;
   certificatesUpdated: number;
   normsCreated: number;
   rowsSkipped: number;
+  certificatesTotalAfter: number;
+  normsTotalAfter: number;
   errors: CaepiImportError[];
   startedAt: string;
   finishedAt: string;
@@ -72,9 +77,15 @@ type NormDraft = Pick<
 >;
 
 const REQUIRED_FIELDS = ['caNumber'] as const;
+/** Abaixo disso consideramos a base vazia/incompleta para mensagens operacionais. */
+export const CAEPI_BASE_INCOMPLETE_THRESHOLD = 1000;
+const SEARCH_CANDIDATE_CAP = 120;
+const UPSERT_BATCH_SIZE = 40;
 
 @Injectable()
 export class CaepiService {
+  private readonly logger = new Logger(CaepiService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -91,26 +102,56 @@ export class CaepiService {
     }
   }
 
+  async getBaseCounts() {
+    const [certificates, norms] = await Promise.all([
+      this.prisma.caCertificate.count(),
+      this.prisma.caCertificateNorm.count(),
+    ]);
+    return {
+      certificates,
+      norms,
+      incomplete: certificates < CAEPI_BASE_INCOMPLETE_THRESHOLD,
+    };
+  }
+
+  private incompleteBaseMessage(count: number) {
+    if (count === 0) {
+      return 'Base CAEPI local ainda nao importada ou incompleta. Importe a base oficial antes de consultar CAs reais.';
+    }
+    if (count < CAEPI_BASE_INCOMPLETE_THRESHOLD) {
+      return `Base CAEPI local ainda nao importada ou incompleta (${count} certificado(s)). Importe a base oficial antes de consultar CAs reais.`;
+    }
+    return null;
+  }
+
   async findByCaNumber(caNumberRaw: string) {
     const caNumber = normalizeCaNumber(caNumberRaw);
     if (!caNumber) {
       throw new BadRequestException('Informe um numero de CA valido.');
     }
 
-    const certificate = await this.prisma.caCertificate.findUnique({
-      where: { caNumber },
-      include: {
-        norms: {
-          orderBy: [{ standard: 'asc' }, { reportNumber: 'asc' }],
+    const [certificate, base] = await Promise.all([
+      this.prisma.caCertificate.findUnique({
+        where: { caNumber },
+        include: {
+          norms: {
+            orderBy: [{ standard: 'asc' }, { reportNumber: 'asc' }],
+          },
         },
-      },
-    });
+      }),
+      this.getBaseCounts(),
+    ]);
 
     if (!certificate) {
+      const incompleteMsg = this.incompleteBaseMessage(base.certificates);
       return {
         found: false as const,
         certificate: null,
-        message: `CA ${caNumber} nao encontrado na base CAEPI local.`,
+        message:
+          incompleteMsg ??
+          `CA ${caNumber} nao encontrado na base CAEPI local.`,
+        baseCertificateCount: base.certificates,
+        baseIncomplete: base.incomplete,
       };
     }
 
@@ -118,6 +159,111 @@ export class CaepiService {
       found: true as const,
       certificate,
       message: null,
+      baseCertificateCount: base.certificates,
+      baseIncomplete: base.incomplete,
+    };
+  }
+
+  async searchCertificates(qRaw: string, limitRaw?: number) {
+    const qTrimmed = (qRaw ?? '').trim();
+    const qCa = normalizeCaNumber(qTrimmed);
+    const limit = Math.min(
+      Math.max(Number.isFinite(limitRaw) ? Number(limitRaw) : 10, 1),
+      20,
+    );
+
+    const base = await this.getBaseCounts();
+
+    if (qTrimmed.length < 3) {
+      return {
+        query: qTrimmed,
+        items: [],
+        baseCertificateCount: base.certificates,
+        baseIncomplete: base.incomplete,
+        message:
+          'Informe ao menos 3 caracteres para buscar na base CAEPI local.',
+      };
+    }
+
+    const incompleteMsg = this.incompleteBaseMessage(base.certificates);
+    if (base.certificates === 0) {
+      return {
+        query: qTrimmed,
+        items: [],
+        baseCertificateCount: 0,
+        baseIncomplete: true,
+        message: incompleteMsg,
+      };
+    }
+
+    const textTerm = qTrimmed;
+    const candidates = await this.prisma.caCertificate.findMany({
+      where: {
+        OR: [
+          { caNumber: { contains: qCa, mode: 'insensitive' } },
+          { equipmentName: { contains: textTerm, mode: 'insensitive' } },
+          { manufacturerName: { contains: textTerm, mode: 'insensitive' } },
+          { reference: { contains: textTerm, mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        caNumber: true,
+        status: true,
+        expiresAt: true,
+        equipmentName: true,
+        manufacturerName: true,
+        reference: true,
+        color: true,
+        sourceImportedAt: true,
+      },
+      take: SEARCH_CANDIDATE_CAP,
+    });
+
+    const qCaLower = qCa.toLowerCase();
+    const ranked = [...candidates].sort((a, b) => {
+      const aExact = a.caNumber.toLowerCase() === qCaLower ? 0 : 1;
+      const bExact = b.caNumber.toLowerCase() === qCaLower ? 0 : 1;
+      if (aExact !== bExact) return aExact - bExact;
+
+      const aPrefix = a.caNumber.toLowerCase().startsWith(qCaLower) ? 0 : 1;
+      const bPrefix = b.caNumber.toLowerCase().startsWith(qCaLower) ? 0 : 1;
+      if (aPrefix !== bPrefix) return aPrefix - bPrefix;
+
+      const aValid = a.status === CaCertificateStatus.VALIDO ? 0 : 1;
+      const bValid = b.status === CaCertificateStatus.VALIDO ? 0 : 1;
+      if (aValid !== bValid) return aValid - bValid;
+
+      const aExp = a.expiresAt?.getTime() ?? 0;
+      const bExp = b.expiresAt?.getTime() ?? 0;
+      return bExp - aExp;
+    });
+
+    const items = ranked.slice(0, limit).map((item) => ({
+      caNumber: item.caNumber,
+      status: item.status,
+      expiresAt: item.expiresAt,
+      equipmentName: item.equipmentName,
+      manufacturerName: item.manufacturerName,
+      reference: item.reference,
+      color: item.color,
+      sourceImportedAt: item.sourceImportedAt,
+    }));
+
+    let message: string | null = null;
+    if (items.length === 0) {
+      message =
+        incompleteMsg ??
+        `Nenhum certificado encontrado para "${qTrimmed}" na base CAEPI local.`;
+    } else if (incompleteMsg) {
+      message = incompleteMsg;
+    }
+
+    return {
+      query: qTrimmed,
+      items,
+      baseCertificateCount: base.certificates,
+      baseIncomplete: base.incomplete,
+      message,
     };
   }
 
@@ -133,6 +279,11 @@ export class CaepiService {
     this.assertCanImport(options.membershipRole);
 
     const startedAt = new Date();
+    const fileName = options.originalName?.trim() || null;
+    this.logger.log(
+      `CAEPI import iniciado: file="${fileName ?? '(sem nome)'}" bytes=${buffer.length}`,
+    );
+
     let parsed;
     try {
       parsed = await parseCaepiFile(buffer, options.originalName);
@@ -141,6 +292,10 @@ export class CaepiService {
         error instanceof Error ? error.message : 'Arquivo invalido.',
       );
     }
+
+    this.logger.log(
+      `CAEPI arquivo lido: sheet="${parsed.sheetName ?? 'csv'}" dataRows=${parsed.rows.length}`,
+    );
 
     let columnIndex: Map<string, number>;
     try {
@@ -154,11 +309,15 @@ export class CaepiService {
     }
 
     const result: CaepiImportResult = {
+      fileName,
+      sheetName: parsed.sheetName ?? null,
       rowsRead: 0,
       certificatesCreated: 0,
       certificatesUpdated: 0,
       normsCreated: 0,
       rowsSkipped: 0,
+      certificatesTotalAfter: 0,
+      normsTotalAfter: 0,
       errors: [],
       startedAt: startedAt.toISOString(),
       finishedAt: startedAt.toISOString(),
@@ -233,22 +392,48 @@ export class CaepiService {
       }
     });
 
-    for (const [, group] of grouped) {
-      const upserted = await this.upsertCertificateGroup(
-        group.certificate,
-        group.norms,
-        startedAt,
+    const groups = [...grouped.values()];
+    this.logger.log(
+      `CAEPI agrupado: uniqueCertificates=${groups.length} rowsRead=${result.rowsRead} skipped=${result.rowsSkipped}`,
+    );
+
+    for (let i = 0; i < groups.length; i += UPSERT_BATCH_SIZE) {
+      const batch = groups.slice(i, i + UPSERT_BATCH_SIZE);
+      const batchResults = await Promise.all(
+        batch.map((group) =>
+          this.upsertCertificateGroup(
+            group.certificate,
+            group.norms,
+            startedAt,
+          ),
+        ),
       );
-      if (upserted.created) {
-        result.certificatesCreated += 1;
-      } else {
-        result.certificatesUpdated += 1;
+      for (const upserted of batchResults) {
+        if (upserted.created) {
+          result.certificatesCreated += 1;
+        } else {
+          result.certificatesUpdated += 1;
+        }
+        result.normsCreated += upserted.normsCreated;
       }
-      result.normsCreated += upserted.normsCreated;
+
+      if ((i + UPSERT_BATCH_SIZE) % 400 === 0 || i + UPSERT_BATCH_SIZE >= groups.length) {
+        this.logger.log(
+          `CAEPI upsert progresso: ${Math.min(i + UPSERT_BATCH_SIZE, groups.length)}/${groups.length}`,
+        );
+      }
     }
+
+    const totals = await this.getBaseCounts();
+    result.certificatesTotalAfter = totals.certificates;
+    result.normsTotalAfter = totals.norms;
 
     const finishedAt = new Date();
     result.finishedAt = finishedAt.toISOString();
+
+    this.logger.log(
+      `CAEPI import concluido: file="${fileName}" rowsRead=${result.rowsRead} created=${result.certificatesCreated} updated=${result.certificatesUpdated} normsCreated=${result.normsCreated} totalCerts=${result.certificatesTotalAfter} totalNorms=${result.normsTotalAfter}`,
+    );
 
     await this.audit.log({
       action: 'caepi.imported',
@@ -256,8 +441,6 @@ export class CaepiService {
       userId: options.userId,
       entityType: 'CaCertificate',
       metadata: {
-        originalName: options.originalName ?? null,
-        sheetName: parsed.sheetName ?? null,
         ...result,
         errorsTruncated: result.errors.length >= CAEPI_IMPORT_MAX_ERRORS,
       },

@@ -63,16 +63,20 @@ export function toDateInputValue(value: string | null | undefined) {
 export function formatCaStatusLabel(status: CaCertificate['status']) {
   switch (status) {
     case 'VALIDO':
-      return 'Valido';
+      return 'VALIDO';
     case 'VENCIDO':
-      return 'Vencido';
+      return 'VENCIDO';
     case 'CANCELADO':
-      return 'Cancelado';
+      return 'CANCELADO';
     case 'SUSPENSO':
-      return 'Suspenso';
+      return 'SUSPENSO';
     default:
-      return 'Desconhecido';
+      return 'DESCONHECIDO';
   }
+}
+
+export function caStatusClassName(status: CaCertificate['status'] | string) {
+  return `caepi-status caepi-status--${String(status).toLowerCase()}`;
 }
 
 export function buildTechnicalNotesFromCertificate(

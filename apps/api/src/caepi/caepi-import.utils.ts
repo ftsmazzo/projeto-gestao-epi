@@ -231,9 +231,12 @@ export async function parseXlsxContent(
   let headers: string[] | null = null;
   let headerColumnCount = 0;
 
-  preferred.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+  // Percorre todas as linhas da aba (rowCount), garantindo bases oficiais grandes.
+  const lastRow = Math.max(preferred.rowCount || 0, preferred.actualRowCount || 0);
+  for (let rowNumber = 1; rowNumber <= lastRow; rowNumber += 1) {
+    const row = preferred.getRow(rowNumber);
     const values: string[] = [];
-    const maxCol = Math.max(row.cellCount, headerColumnCount);
+    const maxCol = Math.max(row.cellCount || 0, headerColumnCount);
     for (let col = 1; col <= maxCol; col += 1) {
       const cell = row.getCell(col);
       values.push(excelCellToPlainText(cell.value, cell.text));
@@ -243,9 +246,12 @@ export async function parseXlsxContent(
       headers = values.map((value) => value.trim());
       headerColumnCount = headers.length;
       if (headers.every((h) => !h)) {
-        throw new Error(`Cabecalho vazio na aba "${preferred.name}".`);
+        // Linha inicial vazia: continua procurando cabecalho.
+        headers = null;
+        headerColumnCount = 0;
+        continue;
       }
-      return;
+      continue;
     }
 
     while (values.length < headerColumnCount) {
@@ -253,12 +259,11 @@ export async function parseXlsxContent(
     }
 
     if (isBlankRow(values)) {
-      return;
+      continue;
     }
 
     rows.push(values.slice(0, headerColumnCount));
-    void rowNumber;
-  });
+  }
 
   if (!headers) {
     throw new Error(`Aba "${preferred.name}" sem cabecalho.`);

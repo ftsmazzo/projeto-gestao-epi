@@ -283,6 +283,9 @@ model CaCertificate {
   @@index([status])
   @@index([manufacturerCnpj])
   @@index([expiresAt])
+  @@index([equipmentName])
+  @@index([manufacturerName])
+  @@index([reference])
 }
 
 /// Norma/laudo associado a um CA (um CA pode ter varias linhas na base CAEPI).

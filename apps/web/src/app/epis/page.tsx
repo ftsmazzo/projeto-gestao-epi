@@ -2,19 +2,28 @@
 
 import type {
   CaCertificate,
+  CaCertificateSearchItem,
   EpiCategory,
   EpiItem,
   EpiUnitOfMeasure,
   EpiUsefulLifeUnit,
 } from '@gestao-epi/shared';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
 import {
   buildCaepiFormPatch,
+  caStatusClassName,
   formatCaStatusLabel,
   normalizeCaLookupInput,
 } from '../../lib/caepi-assist';
-import { lookupCaCertificate } from '../../lib/caepi';
+import { lookupCaCertificate, searchCaCertificates } from '../../lib/caepi';
 import {
   createEpiItem,
   EpiVariantInput,
@@ -22,6 +31,9 @@ import {
   updateEpiItem,
   updateEpiItemStatus,
 } from '../../lib/epis';
+
+const CAEPI_SEARCH_DEBOUNCE_MS = 350;
+const CAEPI_SEARCH_MIN_CHARS = 3;
 
 type FormMode = 'closed' | 'create' | 'edit';
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -165,6 +177,17 @@ function EpisContent() {
   const [caLookupMessage, setCaLookupMessage] = useState<string | null>(null);
   const [caPreview, setCaPreview] = useState<CaCertificate | null>(null);
   const [caAppliedBanner, setCaAppliedBanner] = useState<string | null>(null);
+  const [caSuggestions, setCaSuggestions] = useState<CaCertificateSearchItem[]>(
+    [],
+  );
+  const [caSuggestLoading, setCaSuggestLoading] = useState(false);
+  const [caSuggestOpen, setCaSuggestOpen] = useState(false);
+  const [caSuggestQuery, setCaSuggestQuery] = useState('');
+  const [caSuggestSource, setCaSuggestSource] = useState<'name' | 'ca' | null>(
+    null,
+  );
+  const caSuggestSeq = useRef(0);
+  const caSuggestBoxRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -185,6 +208,71 @@ function EpisContent() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    function onDocClick(event: MouseEvent) {
+      if (!caSuggestBoxRef.current) return;
+      if (!caSuggestBoxRef.current.contains(event.target as Node)) {
+        setCaSuggestOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  useEffect(() => {
+    if (mode === 'closed') {
+      setCaSuggestions([]);
+      setCaSuggestOpen(false);
+      setCaSuggestQuery('');
+      return;
+    }
+
+    const term = caSuggestQuery.trim();
+    if (term.length < CAEPI_SEARCH_MIN_CHARS) {
+      setCaSuggestions([]);
+      setCaSuggestLoading(false);
+      return;
+    }
+
+    const seq = ++caSuggestSeq.current;
+    setCaSuggestLoading(true);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const result = await searchCaCertificates(term, 10);
+          if (seq !== caSuggestSeq.current) return;
+          setCaSuggestions(result.items);
+          setCaSuggestOpen(true);
+          if (result.baseIncomplete && result.message) {
+            setCaLookupMessage(result.message);
+          } else if (result.items.length === 0 && result.message) {
+            setCaLookupMessage(result.message);
+          } else if (!result.baseIncomplete) {
+            setCaLookupMessage(null);
+          }
+        } catch (err) {
+          if (seq !== caSuggestSeq.current) return;
+          setCaSuggestions([]);
+          const message =
+            err instanceof Error
+              ? err.message
+              : 'Falha de rede ao buscar sugestoes CAEPI.';
+          setCaLookupError(
+            /nao autoriz|unauthorized|401|403/i.test(message)
+              ? 'Sessao expirada ou sem permissao. Entre novamente e tente a consulta.'
+              : `Erro de API/rede na busca CAEPI: ${message}`,
+          );
+        } finally {
+          if (seq === caSuggestSeq.current) {
+            setCaSuggestLoading(false);
+          }
+        }
+      })();
+    }, CAEPI_SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [caSuggestQuery, mode]);
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -207,15 +295,23 @@ function EpisContent() {
     });
   }, [items, search, statusFilter, categoryFilter]);
 
+  function clearCaAssistState() {
+    setCaPreview(null);
+    setCaLookupError(null);
+    setCaLookupMessage(null);
+    setCaAppliedBanner(null);
+    setCaSuggestions([]);
+    setCaSuggestOpen(false);
+    setCaSuggestQuery('');
+    setCaSuggestSource(null);
+  }
+
   function openCreate() {
     setMode('create');
     setEditingId(null);
     setForm(emptyForm);
     setFormError(null);
-    setCaPreview(null);
-    setCaLookupError(null);
-    setCaLookupMessage(null);
-    setCaAppliedBanner(null);
+    clearCaAssistState();
   }
 
   function openEdit(item: EpiItem) {
@@ -253,10 +349,7 @@ function EpisContent() {
       })),
     });
     setFormError(null);
-    setCaPreview(null);
-    setCaLookupError(null);
-    setCaLookupMessage(null);
-    setCaAppliedBanner(null);
+    clearCaAssistState();
   }
 
   function closeForm() {
@@ -264,18 +357,16 @@ function EpisContent() {
     setEditingId(null);
     setForm(emptyForm);
     setFormError(null);
-    setCaPreview(null);
-    setCaLookupError(null);
-    setCaLookupMessage(null);
-    setCaAppliedBanner(null);
+    clearCaAssistState();
   }
 
-  async function onLookupCa() {
-    const caNumber = normalizeCaLookupInput(form.caNumber);
+  async function openCaPreview(caNumberRaw: string) {
+    const caNumber = normalizeCaLookupInput(caNumberRaw);
     setCaLookupError(null);
     setCaLookupMessage(null);
     setCaPreview(null);
     setCaAppliedBanner(null);
+    setCaSuggestOpen(false);
 
     if (!caNumber) {
       setCaLookupError('Informe o numero do CA para consultar a base local.');
@@ -286,10 +377,17 @@ function EpisContent() {
     try {
       const result = await lookupCaCertificate(caNumber);
       if (!result.found || !result.certificate) {
-        setCaLookupMessage(
-          result.message ??
-            'CA nao encontrado na base CAEPI local. Importe a base ou preencha manualmente.',
-        );
+        if (result.baseIncomplete) {
+          setCaLookupMessage(
+            result.message ??
+              'Base CAEPI local ainda nao importada ou incompleta. Importe a base oficial antes de consultar CAs reais.',
+          );
+        } else {
+          setCaLookupMessage(
+            result.message ??
+              `CA ${caNumber} nao encontrado na base CAEPI local.`,
+          );
+        }
         return;
       }
       setCaPreview(result.certificate);
@@ -305,11 +403,25 @@ function EpisContent() {
           'Sessao expirada ou sem permissao. Entre novamente e tente a consulta.',
         );
       } else {
-        setCaLookupError(message);
+        setCaLookupError(`Erro de API/rede: ${message}`);
       }
     } finally {
       setCaLookupLoading(false);
     }
+  }
+
+  async function onLookupCa() {
+    await openCaPreview(form.caNumber);
+  }
+
+  async function onSelectSuggestion(item: CaCertificateSearchItem) {
+    setCaSuggestOpen(false);
+    setCaSuggestSource(null);
+    setForm((prev) => ({
+      ...prev,
+      caNumber: item.caNumber,
+    }));
+    await openCaPreview(item.caNumber);
   }
 
   function onApplyCaPreview() {
@@ -534,17 +646,81 @@ function EpisContent() {
                 <p>Identificacao basica do equipamento no catalogo.</p>
               </div>
               <div className="form-grid">
-                <div className="field field--span-2">
-                  <label htmlFor="epi-name">Nome</label>
+                <div className="field field--span-2 caepi-suggest-wrap" ref={caSuggestBoxRef}>
+                  <label htmlFor="epi-name">Nome / equipamento</label>
                   <input
                     id="epi-name"
                     required
                     minLength={2}
+                    autoComplete="off"
                     value={form.name}
-                    onChange={(e) =>
-                      setForm((prev) => ({ ...prev, name: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setCaLookupError(null);
+                      setForm((prev) => ({ ...prev, name: value }));
+                      setCaSuggestSource('name');
+                      setCaSuggestQuery(value);
+                      setCaSuggestOpen(value.trim().length >= CAEPI_SEARCH_MIN_CHARS);
+                    }}
+                    onFocus={() => {
+                      setCaSuggestSource('name');
+                      if (
+                        form.name.trim().length >= CAEPI_SEARCH_MIN_CHARS &&
+                        caSuggestions.length > 0
+                      ) {
+                        setCaSuggestOpen(true);
+                      }
+                    }}
                   />
+                  <p className="field-hint">
+                    Digite ao menos 3 caracteres para sugerir CAs da base local
+                    (equipamento, fabricante ou referencia).
+                  </p>
+                  {caSuggestOpen &&
+                  caSuggestSource === 'name' &&
+                  (caSuggestLoading || caSuggestions.length > 0) &&
+                  caSuggestQuery.trim().length >= CAEPI_SEARCH_MIN_CHARS ? (
+                    <ul className="caepi-suggest-list" role="listbox">
+                      {caSuggestLoading ? (
+                        <li className="caepi-suggest-item caepi-suggest-item--muted">
+                          Buscando sugestoes...
+                        </li>
+                      ) : (
+                        caSuggestions.map((item) => (
+                          <li key={item.caNumber}>
+                            <button
+                              type="button"
+                              className="caepi-suggest-item"
+                              onClick={() => void onSelectSuggestion(item)}
+                            >
+                              <span className="caepi-suggest-item__ca">
+                                CA {item.caNumber}
+                              </span>
+                              <span
+                                className={caStatusClassName(item.status)}
+                              >
+                                {formatCaStatusLabel(item.status)}
+                              </span>
+                              <span className="caepi-suggest-item__meta">
+                                {item.equipmentName || 'Equipamento nao informado'}
+                              </span>
+                              <span className="caepi-suggest-item__meta">
+                                {item.manufacturerName || 'Fabricante nao informado'}
+                              </span>
+                              {item.reference ? (
+                                <span className="caepi-suggest-item__meta">
+                                  Ref. {item.reference}
+                                </span>
+                              ) : null}
+                              <span className="caepi-suggest-item__meta">
+                                Validade {formatDateBr(item.expiresAt)}
+                              </span>
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  ) : null}
                 </div>
                 <div className="field">
                   <label htmlFor="epi-category">Categoria</label>
@@ -627,7 +803,7 @@ function EpisContent() {
                     </span>
                   </label>
                 </div>
-                <div className="field">
+                <div className="field caepi-suggest-wrap">
                   <label htmlFor="epi-ca">
                     Numero do CA{form.requiresCa ? '' : ' (opcional)'}
                   </label>
@@ -635,19 +811,77 @@ function EpisContent() {
                     id="epi-ca"
                     autoComplete="off"
                     required={form.requiresCa}
-                    placeholder="Ex.: 12345"
+                    placeholder="Ex.: 53388"
                     value={form.caNumber}
                     onChange={(e) => {
+                      const value = normalizeCaInput(e.target.value);
                       setCaPreview(null);
                       setCaLookupMessage(null);
                       setCaLookupError(null);
                       setCaAppliedBanner(null);
                       setForm((prev) => ({
                         ...prev,
-                        caNumber: normalizeCaInput(e.target.value),
+                        caNumber: value,
                       }));
+                      setCaSuggestSource('ca');
+                      setCaSuggestQuery(value);
+                      setCaSuggestOpen(
+                        value.trim().length >= CAEPI_SEARCH_MIN_CHARS,
+                      );
+                    }}
+                    onFocus={() => {
+                      setCaSuggestSource('ca');
+                      if (
+                        form.caNumber.trim().length >= CAEPI_SEARCH_MIN_CHARS &&
+                        caSuggestions.length > 0
+                      ) {
+                        setCaSuggestOpen(true);
+                      }
                     }}
                   />
+                  {caSuggestOpen &&
+                  caSuggestSource === 'ca' &&
+                  (caSuggestLoading || caSuggestions.length > 0) &&
+                  caSuggestQuery.trim().length >= CAEPI_SEARCH_MIN_CHARS ? (
+                    <ul className="caepi-suggest-list" role="listbox">
+                      {caSuggestLoading ? (
+                        <li className="caepi-suggest-item caepi-suggest-item--muted">
+                          Buscando sugestoes...
+                        </li>
+                      ) : (
+                        caSuggestions.map((item) => (
+                          <li key={`ca-${item.caNumber}`}>
+                            <button
+                              type="button"
+                              className="caepi-suggest-item"
+                              onClick={() => void onSelectSuggestion(item)}
+                            >
+                              <span className="caepi-suggest-item__ca">
+                                CA {item.caNumber}
+                              </span>
+                              <span className={caStatusClassName(item.status)}>
+                                {formatCaStatusLabel(item.status)}
+                              </span>
+                              <span className="caepi-suggest-item__meta">
+                                {item.equipmentName || '—'}
+                              </span>
+                              <span className="caepi-suggest-item__meta">
+                                {item.manufacturerName || '—'}
+                              </span>
+                              {item.reference ? (
+                                <span className="caepi-suggest-item__meta">
+                                  Ref. {item.reference}
+                                </span>
+                              ) : null}
+                              <span className="caepi-suggest-item__meta">
+                                Validade {formatDateBr(item.expiresAt)}
+                              </span>
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  ) : null}
                 </div>
                 <div className="field">
                   <label htmlFor="epi-ca-exp">Validade do CA</label>
@@ -668,8 +902,8 @@ function EpisContent() {
                 <div>
                   <p className="page-kicker">Base local CAEPI</p>
                   <p className="field-hint">
-                    Busca os dados oficiais ja importados no sistema. Nao consulta
-                    a internet nem o MeuCA.
+                    Digite o CA ou o nome do equipamento (min. 3 caracteres) para
+                    ver sugestoes. Use o botao para consulta exata do numero.
                   </p>
                 </div>
                 <button
@@ -716,9 +950,7 @@ function EpisContent() {
                           : ''}
                       </p>
                     </div>
-                    <span
-                      className={`caepi-status caepi-status--${caPreview.status.toLowerCase()}`}
-                    >
+                    <span className={caStatusClassName(caPreview.status)}>
                       {formatCaStatusLabel(caPreview.status)}
                     </span>
                   </div>

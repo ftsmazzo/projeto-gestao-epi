@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -26,6 +27,19 @@ type UploadedCaepiFile = {
 @UseGuards(JwtAuthGuard)
 export class CaepiController {
   constructor(private readonly caepi: CaepiService) {}
+
+  /**
+   * Busca dinamica — deve ficar ANTES de certificates/:caNumber
+   * para o Nest nao interpretar "search" como numero de CA.
+   */
+  @Get('certificates/search')
+  search(
+    @Query('q') q?: string,
+    @Query('limit') limitRaw?: string,
+  ) {
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    return this.caepi.searchCertificates(q ?? '', limit);
+  }
 
   @Get('certificates/:caNumber')
   findByCaNumber(@Param('caNumber') caNumber: string) {
