@@ -3,6 +3,10 @@
 # Build context: raiz do monorepo
 # EasyPanel / local:
 #   docker build -f apps/api/Dockerfile -t gestao-epi-api .
+#
+# Nota: usamos `npm ci --ignore-scripts` para nao disparar o postinstall
+# da raiz (build do @gestao-epi/shared) antes do source estar copiado.
+# O shared e o Prisma Client sao gerados explicitamente no stage de build.
 
 FROM node:22-bookworm-slim AS base
 WORKDIR /app
@@ -17,7 +21,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 COPY packages/config/package.json packages/config/
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 FROM deps AS build
 COPY packages/config packages/config
@@ -36,13 +40,14 @@ COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 COPY packages/config/package.json packages/config/
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --ignore-scripts
 
 COPY --from=build /app/packages/shared/dist packages/shared/dist
 COPY --from=build /app/packages/shared/package.json packages/shared/package.json
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/prisma apps/api/prisma
 COPY --from=build /app/apps/api/package.json apps/api/package.json
+# Prisma Client gerado no build (postinstall/scripts foram ignorados no npm ci)
 COPY --from=build /app/node_modules/.prisma node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma node_modules/@prisma
 

@@ -41,6 +41,8 @@ docker build -f apps/api/Dockerfile -t gestao-epi-api .
 docker build -f apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_URL=https://SEU-DOMINIO-API -t gestao-epi-web .
 ```
 
+Os Dockerfiles usam `npm ci --ignore-scripts` e so buildam `@gestao-epi/shared` (e a API/Web) **depois** de copiar o source. Isso evita falha do `postinstall` da raiz, que tenta buildar o shared cedo demais.
+
 No EasyPanel, configure o build a partir do GitHub `ftsmazzo/projeto-gestao-epi`, branch `main`, com Dockerfile relativo acima e contexto na raiz.
 
 ## 3. Servico PostgreSQL
@@ -110,18 +112,23 @@ node dist/main.js
 
 Aplique as migrations **depois** do primeiro deploy da API (ou em job/one-off) e **sempre** apos migrations novas no repositorio.
 
-No shell/terminal do container da API (a partir de `/app`):
+A imagem da API ja inclui o Prisma Client gerado no build. O comando de migrate nao depende do `postinstall` da raiz.
+
+No shell/terminal do container da API, a partir de `/app` (workdir do monorepo no stage runner antes do `WORKDIR apps/api`; se o shell abrir em `/app/apps/api`, suba um nivel ou use o equivalente abaixo):
 
 ```bash
+# se o shell estiver em /app/apps/api:
+cd /app
 npm run db:migrate
 ```
 
-Equivalente direto:
+Equivalente direto (com `DATABASE_URL` ja configurada no servico):
 
 ```bash
+cd /app
 npm run prisma:migrate -w @gestao-epi/api
-# ou, dentro de apps/api:
-npx prisma migrate deploy
+# ou:
+cd /app/apps/api && npx prisma migrate deploy
 ```
 
 Isso executa `prisma migrate deploy` (seguro para producao). Nao use `prisma migrate dev` em producao.

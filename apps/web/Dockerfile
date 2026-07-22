@@ -3,6 +3,10 @@
 # Build context: raiz do monorepo
 # EasyPanel / local:
 #   docker build -f apps/web/Dockerfile --build-arg NEXT_PUBLIC_API_URL=https://api.exemplo.com -t gestao-epi-web .
+#
+# Nota: usamos `npm ci --ignore-scripts` para nao disparar o postinstall
+# da raiz (build do @gestao-epi/shared) antes do source estar copiado.
+# O shared e buildado explicitamente no stage de build.
 
 FROM node:22-bookworm-slim AS base
 WORKDIR /app
@@ -14,7 +18,7 @@ COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
 COPY packages/config/package.json packages/config/
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 FROM deps AS build
 ARG NEXT_PUBLIC_API_URL=http://localhost:3001
