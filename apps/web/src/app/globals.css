@@ -1392,3 +1392,44 @@ a.btn-danger:hover {
     grid-template-columns: 1fr;
   }
 }
+
+.caepi-admin-summary .meta-list {
+  margin-bottom: 1rem;
+}
+
+.caepi-admin-url {
+  word-break: break-all;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+}
+
+.caepi-admin-error {
+  max-width: 16rem;
+  font-size: 0.82rem;
+  color: var(--color-danger);
+}
+
+.caepi-run-status {
+  display: inline-flex;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.caepi-run-status--pending,
+.caepi-run-status--running {
+  background: #fff3cd;
+  color: #8a5a00;
+}
+
+.caepi-run-status--success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.caepi-run-status--failed {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+

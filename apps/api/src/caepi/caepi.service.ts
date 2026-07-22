@@ -116,10 +116,10 @@ export class CaepiService {
 
   private incompleteBaseMessage(count: number) {
     if (count === 0) {
-      return 'Base CAEPI local ainda nao importada ou incompleta. Importe a base oficial antes de consultar CAs reais.';
+      return 'Base CAEPI local ainda nao importada ou incompleta. Acesse a tela Base CAEPI para atualizar a base oficial.';
     }
     if (count < CAEPI_BASE_INCOMPLETE_THRESHOLD) {
-      return `Base CAEPI local ainda nao importada ou incompleta (${count} certificado(s)). Importe a base oficial antes de consultar CAs reais.`;
+      return `Base CAEPI local ainda nao importada ou incompleta (${count} certificado(s)). Acesse a tela Base CAEPI para atualizar a base oficial.`;
     }
     return null;
   }
@@ -270,13 +270,19 @@ export class CaepiService {
   async importFromBuffer(
     buffer: Buffer,
     options: {
-      organizationId: string;
-      userId: string;
+      organizationId: string | null;
+      userId: string | null;
       membershipRole: string;
       originalName?: string;
+      skipRoleCheck?: boolean;
+      runId?: string;
+      triggeredBy?: string;
+      sourceUrl?: string | null;
     },
   ): Promise<CaepiImportResult> {
-    this.assertCanImport(options.membershipRole);
+    if (!options.skipRoleCheck) {
+      this.assertCanImport(options.membershipRole);
+    }
 
     const startedAt = new Date();
     const fileName = options.originalName?.trim() || null;
@@ -440,8 +446,12 @@ export class CaepiService {
       organizationId: options.organizationId,
       userId: options.userId,
       entityType: 'CaCertificate',
+      entityId: options.runId ?? null,
       metadata: {
         ...result,
+        runId: options.runId ?? null,
+        triggeredBy: options.triggeredBy ?? null,
+        sourceUrl: options.sourceUrl ?? null,
         errorsTruncated: result.errors.length >= CAEPI_IMPORT_MAX_ERRORS,
       },
     });

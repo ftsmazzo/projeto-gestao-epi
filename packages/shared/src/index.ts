@@ -247,3 +247,51 @@ export interface CaepiImportResult {
   startedAt: string;
   finishedAt: string;
 }
+
+export type CaepiImportRunStatus =
+  | 'PENDING'
+  | 'RUNNING'
+  | 'SUCCESS'
+  | 'FAILED';
+
+export type CaepiImportTriggeredBy = 'MANUAL' | 'SCHEDULED' | 'UPLOAD';
+
+export interface CaepiImportRun {
+  id: string;
+  status: CaepiImportRunStatus;
+  triggeredBy: CaepiImportTriggeredBy;
+  sourceUrl: string | null;
+  fileName: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  rowsRead: number | null;
+  certificatesCreated: number | null;
+  certificatesUpdated: number | null;
+  normsCreated: number | null;
+  rowsSkipped: number | null;
+  certificatesTotalAfter: number | null;
+  normsTotalAfter: number | null;
+  errorMessage: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CaepiStatusResponse {
+  certificatesTotal: number;
+  normsTotal: number;
+  baseIncomplete: boolean;
+  incompleteThreshold: number;
+  sourceUrlConfigured: boolean;
+  sourceUrl: string | null;
+  autoSyncEnabled: boolean;
+  syncCron: string;
+  lastImport: CaepiImportRun | null;
+  activeRun: CaepiImportRun | null;
+  operationalMessage: string | null;
+}
+
+export interface CaepiSyncStartResponse {
+  runId: string;
+  status: CaepiImportRunStatus;
+}

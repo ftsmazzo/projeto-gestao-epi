@@ -14,6 +14,7 @@ import { memoryStorage } from 'multer';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtPayload } from '../auth/types/jwt-payload';
+import { CaepiSyncService } from './caepi-sync.service';
 import { CaepiService } from './caepi.service';
 
 type UploadedCaepiFile = {
@@ -26,7 +27,41 @@ type UploadedCaepiFile = {
 @Controller('caepi')
 @UseGuards(JwtAuthGuard)
 export class CaepiController {
-  constructor(private readonly caepi: CaepiService) {}
+  constructor(
+    private readonly caepi: CaepiService,
+    private readonly sync: CaepiSyncService,
+  ) {}
+
+  @Get('status')
+  getStatus(@CurrentUser() user: JwtPayload) {
+    this.sync.assertCanManage(user.membershipRole);
+    return this.sync.getStatus();
+  }
+
+  @Get('import-runs')
+  listImportRuns(
+    @CurrentUser() user: JwtPayload,
+    @Query('limit') limitRaw?: string,
+  ) {
+    this.sync.assertCanManage(user.membershipRole);
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    return this.sync.listImportRuns(limit);
+  }
+
+  @Get('import-runs/:id')
+  getImportRun(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    this.sync.assertCanManage(user.membershipRole);
+    return this.sync.getImportRun(id);
+  }
+
+  @Post('sync')
+  startSync(@CurrentUser() user: JwtPayload) {
+    return this.sync.startManualSync({
+      organizationId: user.organizationId,
+      userId: user.sub,
+      membershipRole: user.membershipRole,
+    });
+  }
 
   /**
    * Busca dinamica — deve ficar ANTES de certificates/:caNumber
@@ -46,6 +81,7 @@ export class CaepiController {
     return this.caepi.findByCaNumber(caNumber);
   }
 
+  /** Fallback administrativo: upload manual de arquivo CAEPI. */
   @Post('import')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -59,7 +95,7 @@ export class CaepiController {
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException(
-        'Envie o arquivo CAEPI no campo multipart "file" (CSV, TXT ou XLSX).',
+        'Envie o arquivo CAEPI no campo multipart "file" (CSV, TXT, XLSX ou ZIP).',
       );
     }
 
@@ -70,18 +106,20 @@ export class CaepiController {
       name.endsWith('.txt') ||
       name.endsWith('.tsv') ||
       name.endsWith('.xlsx') ||
-      name.endsWith('.xls');
+      name.endsWith('.xls') ||
+      name.endsWith('.zip');
 
     if (!allowed) {
       throw new BadRequestException(
-        'Formato nao suportado. Use arquivo .csv, .txt ou .xlsx da base CAEPI.',
+        'Formato nao suportado. Use arquivo .csv, .txt, .xlsx ou .zip da base CAEPI.',
       );
     }
 
-    return this.caepi.importFromBuffer(file.buffer, {
+    return this.sync.startUploadImport({
       organizationId: user.organizationId,
       userId: user.sub,
       membershipRole: user.membershipRole,
+      buffer: file.buffer,
       originalName: file.originalname,
     });
   }

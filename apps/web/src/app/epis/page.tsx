@@ -16,6 +16,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import Link from 'next/link';
 import { RequireAuth } from '../../components/RequireAuth';
 import {
   buildCaepiFormPatch,
@@ -380,7 +381,7 @@ function EpisContent() {
         if (result.baseIncomplete) {
           setCaLookupMessage(
             result.message ??
-              'Base CAEPI local ainda nao importada ou incompleta. Importe a base oficial antes de consultar CAs reais.',
+              'Base CAEPI local ainda nao importada ou incompleta. Acesse a tela Base CAEPI para atualizar a base oficial.',
           );
         } else {
           setCaLookupMessage(
@@ -923,7 +924,12 @@ function EpisContent() {
               ) : null}
               {caLookupMessage ? (
                 <p className="caepi-message" role="status">
-                  {caLookupMessage}
+                  {caLookupMessage}{' '}
+                  {/base caepi|incompleta|nao importada/i.test(
+                    caLookupMessage,
+                  ) ? (
+                    <Link href="/caepi">Abrir Base CAEPI</Link>
+                  ) : null}
                 </p>
               ) : null}
               {caAppliedBanner ? (

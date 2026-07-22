@@ -80,8 +80,9 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  memberships Membership[]
-  auditLogs   AuditLog[]
+  memberships     Membership[]
+  auditLogs       AuditLog[]
+  caepiImportRuns CaepiImportRun[]
 }
 
 model Membership {
@@ -254,6 +255,19 @@ enum CaCertificateSource {
   CAEPI_OFICIAL
 }
 
+enum CaepiImportRunStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+enum CaepiImportTriggeredBy {
+  MANUAL
+  SCHEDULED
+  UPLOAD
+}
+
 /// Certificado de Aprovacao da base oficial CAEPI (global, nao por tenant).
 model CaCertificate {
   id                   String              @id @default(cuid())
@@ -303,6 +317,35 @@ model CaCertificateNorm {
   @@unique([certificateId, laboratoryCnpj, reportNumber, standard])
   @@index([certificateId])
   @@index([standard])
+}
+
+/// Historico de execucoes de importacao/sincronizacao da base CAEPI.
+model CaepiImportRun {
+  id                     String                  @id @default(cuid())
+  status                 CaepiImportRunStatus    @default(PENDING)
+  triggeredBy            CaepiImportTriggeredBy
+  sourceUrl              String?
+  fileName               String?
+  startedAt              DateTime?
+  finishedAt             DateTime?
+  rowsRead               Int?
+  certificatesCreated    Int?
+  certificatesUpdated    Int?
+  normsCreated           Int?
+  rowsSkipped            Int?
+  certificatesTotalAfter Int?
+  normsTotalAfter        Int?
+  errorMessage           String?
+  createdByUserId        String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  createdByUser User? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([triggeredBy])
+  @@index([createdAt])
+  @@index([startedAt])
 }
 
 model AuditLog {
