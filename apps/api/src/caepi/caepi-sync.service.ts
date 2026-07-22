@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -13,8 +12,9 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-  assertCaepiSourceUrlConfigured,
+  CAEPI_ALL_SOURCES_FAILED_MESSAGE,
   readCaepiRuntimeConfig,
+  resolveCaepiSourceCandidates,
 } from './caepi-config';
 import { CaepiDownloadService } from './caepi-download.service';
 import {
@@ -50,6 +50,7 @@ export class CaepiSyncService {
 
   async getStatus() {
     const config = this.getRuntimeConfig();
+    const candidates = resolveCaepiSourceCandidates();
     const [base, lastRun, running] = await Promise.all([
       this.caepi.getBaseCounts(),
       this.prisma.caepiImportRun.findFirst({
@@ -70,8 +71,11 @@ export class CaepiSyncService {
       normsTotal: base.norms,
       baseIncomplete: base.incomplete,
       incompleteThreshold: CAEPI_BASE_INCOMPLETE_THRESHOLD,
-      sourceUrlConfigured: Boolean(config.sourceUrl),
-      sourceUrl: config.sourceUrl,
+      /** Mantido por compatibilidade: true se ha override tecnico. */
+      sourceUrlConfigured: Boolean(config.sourceUrlOverride),
+      sourceOverrideConfigured: Boolean(config.sourceUrlOverride),
+      sourceUrl: lastRun?.sourceUrl ?? candidates[0] ?? null,
+      usesOfficialDefaults: !config.sourceUrlOverride,
       autoSyncEnabled: config.autoSyncEnabled,
       syncCron: config.syncCron,
       lastImport: lastRun,
@@ -79,24 +83,16 @@ export class CaepiSyncService {
       operationalMessage: this.buildOperationalMessage(
         base.certificates,
         base.incomplete,
-        config.sourceUrl,
       ),
     };
   }
 
-  private buildOperationalMessage(
-    certificates: number,
-    incomplete: boolean,
-    sourceUrl: string | null,
-  ) {
-    if (!sourceUrl) {
-      return 'CAEPI_SOURCE_URL nao configurada. Defina a URL oficial baixavel no ambiente da API para atualizar a base.';
-    }
+  private buildOperationalMessage(certificates: number, incomplete: boolean) {
     if (certificates === 0) {
-      return 'Base CAEPI local vazia. Acione "Atualizar base CAEPI agora" para baixar a base oficial.';
+      return 'Base CAEPI local vazia. Clique em "Atualizar base CAEPI agora" para baixar a base oficial.';
     }
     if (incomplete) {
-      return `Base CAEPI local incompleta (${certificates} certificado(s)). Atualize pela tela Base CAEPI.`;
+      return `Base CAEPI local incompleta (${certificates} certificado(s)). Clique em "Atualizar base CAEPI agora".`;
     }
     return null;
   }
@@ -126,18 +122,8 @@ export class CaepiSyncService {
     membershipRole: string;
   }) {
     this.assertCanManage(options.membershipRole);
-    const config = this.getRuntimeConfig();
-    try {
-      assertCaepiSourceUrlConfigured(config.sourceUrl);
-    } catch (error) {
-      throw new BadRequestException(
-        error instanceof Error ? error.message : 'CAEPI_SOURCE_URL invalida.',
-      );
-    }
-
     return this.enqueueSync({
       triggeredBy: CaepiImportTriggeredBy.MANUAL,
-      sourceUrl: config.sourceUrl!,
       createdByUserId: options.userId,
       organizationId: options.organizationId,
     });
@@ -149,17 +135,10 @@ export class CaepiSyncService {
       this.logger.debug('CAEPI auto sync desabilitado.');
       return null;
     }
-    if (!config.sourceUrl) {
-      this.logger.warn(
-        'CAEPI_AUTO_SYNC_ENABLED=true, mas CAEPI_SOURCE_URL nao esta configurada.',
-      );
-      return null;
-    }
 
     try {
       return await this.enqueueSync({
         triggeredBy: CaepiImportTriggeredBy.SCHEDULED,
-        sourceUrl: config.sourceUrl,
         createdByUserId: null,
         organizationId: null,
       });
@@ -208,7 +187,6 @@ export class CaepiSyncService {
 
   private async enqueueSync(options: {
     triggeredBy: CaepiImportTriggeredBy;
-    sourceUrl: string;
     createdByUserId: string | null;
     organizationId: string | null;
   }) {
@@ -216,15 +194,15 @@ export class CaepiSyncService {
     try {
       await this.assertNoActiveRunInDb();
 
+      const candidates = resolveCaepiSourceCandidates();
       const run = await this.createRun({
         triggeredBy: options.triggeredBy,
-        sourceUrl: options.sourceUrl,
+        sourceUrl: candidates[0] ?? null,
         fileName: null,
         createdByUserId: options.createdByUserId,
       });
 
       void this.executeRemoteSync(run.id, {
-        sourceUrl: options.sourceUrl,
         organizationId: options.organizationId,
         userId: options.createdByUserId,
         triggeredBy: options.triggeredBy,
@@ -287,7 +265,6 @@ export class CaepiSyncService {
   private async executeRemoteSync(
     runId: string,
     options: {
-      sourceUrl: string;
       organizationId: string | null;
       userId: string | null;
       triggeredBy: CaepiImportTriggeredBy;
@@ -312,13 +289,14 @@ export class CaepiSyncService {
         },
       });
 
-      const downloaded = await this.download.downloadOfficialBase(
-        options.sourceUrl,
-      );
+      const downloaded = await this.download.downloadOfficialBase();
 
       await this.prisma.caepiImportRun.update({
         where: { id: runId },
-        data: { fileName: downloaded.fileName },
+        data: {
+          fileName: downloaded.fileName,
+          sourceUrl: downloaded.sourceUrl,
+        },
       });
 
       const result = await this.caepi.importFromBuffer(downloaded.buffer, {
@@ -329,7 +307,7 @@ export class CaepiSyncService {
         skipRoleCheck: true,
         runId,
         triggeredBy: options.triggeredBy,
-        sourceUrl: options.sourceUrl,
+        sourceUrl: downloaded.sourceUrl,
       });
 
       await this.prisma.caepiImportRun.update({
@@ -337,6 +315,7 @@ export class CaepiSyncService {
         data: {
           status: CaepiImportRunStatus.SUCCESS,
           finishedAt: new Date(),
+          sourceUrl: downloaded.sourceUrl,
           fileName: result.fileName,
           rowsRead: result.rowsRead,
           certificatesCreated: result.certificatesCreated,
@@ -345,21 +324,46 @@ export class CaepiSyncService {
           rowsSkipped: result.rowsSkipped,
           certificatesTotalAfter: result.certificatesTotalAfter,
           normsTotalAfter: result.normsTotalAfter,
-          errorMessage: null,
+          errorMessage:
+            downloaded.attemptErrors.length > 0
+              ? `Fontes anteriores falharam antes do sucesso: ${downloaded.attemptErrors
+                  .slice(0, 5)
+                  .join(' | ')}`.slice(0, 2000)
+              : null,
         },
       });
 
       this.logger.log(
-        `Sync CAEPI ${runId} SUCCESS certs=${result.certificatesTotalAfter}`,
+        `Sync CAEPI ${runId} SUCCESS fonte=${downloaded.sourceUrl} certs=${result.certificatesTotalAfter}`,
       );
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Falha desconhecida no sync CAEPI.';
+      const message = this.toUserFacingSyncError(error);
       this.logger.error(`Sync CAEPI ${runId} FAILED: ${message}`);
       await this.failRun(runId, message);
     } finally {
       this.releaseProcessLock();
     }
+  }
+
+  private toUserFacingSyncError(error: unknown): string {
+    const raw =
+      error instanceof Error ? error.message : 'Falha desconhecida no sync CAEPI.';
+    if (
+      raw.includes(CAEPI_ALL_SOURCES_FAILED_MESSAGE) ||
+      /fonte oficial|falha ao baixar|ftp|econnrefused|enotfound|timeout|404|403/i.test(
+        raw,
+      )
+    ) {
+      const detail = raw
+        .replace(CAEPI_ALL_SOURCES_FAILED_MESSAGE, '')
+        .replace(/^Detalhes:\s*/i, '')
+        .trim()
+        .slice(0, 1200);
+      return detail
+        ? `${CAEPI_ALL_SOURCES_FAILED_MESSAGE} ${detail}`
+        : CAEPI_ALL_SOURCES_FAILED_MESSAGE;
+    }
+    return raw.slice(0, 2000);
   }
 
   private async executeUpload(

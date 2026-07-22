@@ -116,10 +116,10 @@ export class CaepiService {
 
   private incompleteBaseMessage(count: number) {
     if (count === 0) {
-      return 'Base CAEPI local ainda nao importada ou incompleta. Acesse a tela Base CAEPI para atualizar a base oficial.';
+      return 'Base CAEPI local ainda nao importada ou incompleta. Atualize a base oficial CAEPI pelo painel Base CAEPI.';
     }
     if (count < CAEPI_BASE_INCOMPLETE_THRESHOLD) {
-      return `Base CAEPI local ainda nao importada ou incompleta (${count} certificado(s)). Acesse a tela Base CAEPI para atualizar a base oficial.`;
+      return `Base CAEPI local ainda nao importada ou incompleta (${count} certificado(s)). Atualize a base oficial CAEPI pelo painel Base CAEPI.`;
     }
     return null;
   }

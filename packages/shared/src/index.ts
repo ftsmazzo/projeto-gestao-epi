@@ -282,7 +282,10 @@ export interface CaepiStatusResponse {
   normsTotal: number;
   baseIncomplete: boolean;
   incompleteThreshold: number;
+  /** @deprecated Use sourceOverrideConfigured. Indica override tecnico. */
   sourceUrlConfigured: boolean;
+  sourceOverrideConfigured: boolean;
+  usesOfficialDefaults: boolean;
   sourceUrl: string | null;
   autoSyncEnabled: boolean;
   syncCron: string;

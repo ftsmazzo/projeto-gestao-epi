@@ -141,7 +141,8 @@ function CaepiAdminContent({ user }: { user: AuthUser }) {
               );
             } else {
               setActionError(
-                run.errorMessage ?? 'A atualizacao CAEPI falhou.',
+                run.errorMessage ??
+                  'Nao foi possivel acessar a fonte oficial CAEPI. Verifique a conexao do servidor ou ajuste a URL tecnica nas variaveis de ambiente.',
               );
             }
             const nextStatus = await getCaepiStatus();
@@ -175,13 +176,6 @@ function CaepiAdminContent({ user }: { user: AuthUser }) {
   async function onSyncNow() {
     setActionError(null);
     setActionMessage(null);
-    if (!status?.sourceUrlConfigured) {
-      setActionError(
-        'CAEPI_SOURCE_URL nao configurada no ambiente da API. Defina a URL oficial baixavel e reinicie o servico.',
-      );
-      return;
-    }
-
     setSyncing(true);
     try {
       const started = await startCaepiSync();
@@ -253,8 +247,9 @@ function CaepiAdminContent({ user }: { user: AuthUser }) {
           <p className="page-kicker">Administracao</p>
           <h1 className="page-title">Base CAEPI</h1>
           <p className="page-lead">
-            Atualize e monitore a base oficial de Certificados de Aprovacao
-            usada no cadastro assistido de EPIs.
+            O sistema usa a fonte oficial CAEPI do Ministerio do Trabalho.
+            Atualize a base local com um clique — sem configurar URL, FTP ou
+            arquivos externos.
           </p>
         </div>
         <div className="btn-row">
@@ -330,11 +325,17 @@ function CaepiAdminContent({ user }: { user: AuthUser }) {
                 </dd>
               </div>
               <div>
-                <dt>Origem configurada</dt>
+                <dt>Origem da base</dt>
+                <dd>
+                  {status.usesOfficialDefaults
+                    ? 'Fontes oficiais do Ministerio do Trabalho (padrao)'
+                    : 'Override tecnico (CAEPI_SOURCE_URL)'}
+                </dd>
+              </div>
+              <div>
+                <dt>Ultima fonte usada</dt>
                 <dd className="caepi-admin-url">
-                  {status.sourceUrlConfigured
-                    ? status.sourceUrl
-                    : 'Nao configurada (CAEPI_SOURCE_URL)'}
+                  {status.lastImport?.sourceUrl || status.sourceUrl || '—'}
                 </dd>
               </div>
               <div>

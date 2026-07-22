@@ -3,14 +3,21 @@ import AdmZip from 'adm-zip';
 import { Client as FtpClient } from 'basic-ftp';
 import { basename } from 'path';
 import { Writable } from 'stream';
-import { assertCaepiSourceUrlConfigured } from './caepi-config';
+import {
+  CAEPI_ALL_SOURCES_FAILED_MESSAGE,
+  resolveCaepiSourceCandidates,
+} from './caepi-config';
 
 export type DownloadedCaepiFile = {
   buffer: Buffer;
   fileName: string;
   sourceUrl: string;
   contentType: string | null;
+  /** Erros amigaveis das fontes tentadas antes da bem-sucedida (se houver). */
+  attemptErrors: string[];
 };
+
+type DownloadedCaepiPayload = Omit<DownloadedCaepiFile, 'attemptErrors'>;
 
 const TEXT_EXT = ['.txt', '.csv', '.tsv'];
 const SHEET_EXT = ['.xlsx', '.xls'];
@@ -21,18 +28,56 @@ export class CaepiDownloadService {
   private readonly logger = new Logger(CaepiDownloadService.name);
 
   async downloadOfficialBase(
-    sourceUrlRaw: string | null,
+    sourceUrlRaw?: string | null,
   ): Promise<DownloadedCaepiFile> {
-    const sourceUrl = assertCaepiSourceUrlConfigured(sourceUrlRaw);
-    this.logger.log(`Baixando base CAEPI de ${sourceUrl}`);
+    const candidates = sourceUrlRaw?.trim()
+      ? [sourceUrlRaw.trim()]
+      : resolveCaepiSourceCandidates();
 
+    if (candidates.length === 0) {
+      throw new Error(CAEPI_ALL_SOURCES_FAILED_MESSAGE);
+    }
+
+    const attemptErrors: string[] = [];
+
+    for (const sourceUrl of candidates) {
+      this.logger.log(`Tentando fonte CAEPI: ${sourceUrl}`);
+      try {
+        const downloaded = await this.downloadSingleSource(sourceUrl);
+        return {
+          ...downloaded,
+          attemptErrors,
+        };
+      } catch (error) {
+        const message = this.toFriendlyAttemptError(sourceUrl, error);
+        this.logger.warn(message);
+        attemptErrors.push(message);
+      }
+    }
+
+    const detail = attemptErrors.slice(0, 5).join(' | ');
+    throw new Error(
+      `${CAEPI_ALL_SOURCES_FAILED_MESSAGE}${detail ? ` Detalhes: ${detail}` : ''}`,
+    );
+  }
+
+  private toFriendlyAttemptError(sourceUrl: string, error: unknown): string {
+    const raw =
+      error instanceof Error ? error.message : 'Falha desconhecida no download.';
+    const clean = raw.replace(/\s+/g, ' ').trim().slice(0, 240);
+    return `${sourceUrl}: ${clean}`;
+  }
+
+  private async downloadSingleSource(
+    sourceUrl: string,
+  ): Promise<DownloadedCaepiPayload> {
     const url = new URL(sourceUrl);
     if (url.protocol === 'ftp:') {
       return this.downloadViaFtp(sourceUrl, url);
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') {
       throw new Error(
-        `Protocolo nao suportado em CAEPI_SOURCE_URL: ${url.protocol}. Use http(s) ou ftp.`,
+        `Protocolo nao suportado (${url.protocol}). Use http(s) ou ftp.`,
       );
     }
 
@@ -46,14 +91,14 @@ export class CaepiDownloadService {
 
     if (!response.ok) {
       throw new Error(
-        `Falha ao baixar base CAEPI (${response.status} ${response.statusText}). Verifique CAEPI_SOURCE_URL.`,
+        `Falha ao baixar (${response.status} ${response.statusText}).`,
       );
     }
 
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     if (!buffer.length) {
-      throw new Error('Download CAEPI retornou arquivo vazio.');
+      throw new Error('Download retornou arquivo vazio.');
     }
 
     const contentType = response.headers.get('content-type');
@@ -83,7 +128,7 @@ export class CaepiDownloadService {
   private async downloadViaFtp(
     sourceUrl: string,
     url: URL,
-  ): Promise<DownloadedCaepiFile> {
+  ): Promise<DownloadedCaepiPayload> {
     const client = new FtpClient(60_000);
     try {
       await client.access({
@@ -153,8 +198,8 @@ export class CaepiDownloadService {
   }
 
   private normalizeDownloadedFile(
-    file: DownloadedCaepiFile,
-  ): DownloadedCaepiFile {
+    file: DownloadedCaepiPayload,
+  ): DownloadedCaepiPayload {
     const lower = file.fileName.toLowerCase();
     const isZip =
       ARCHIVE_EXT.some((ext) => lower.endsWith(ext)) ||
@@ -171,13 +216,13 @@ export class CaepiDownloadService {
     return this.extractFromZip(file);
   }
 
-  private extractFromZip(file: DownloadedCaepiFile): DownloadedCaepiFile {
+  private extractFromZip(file: DownloadedCaepiPayload): DownloadedCaepiPayload {
     let zip: AdmZip;
     try {
       zip = new AdmZip(file.buffer);
     } catch {
       throw new Error(
-        'Arquivo ZIP CAEPI invalido ou corrompido. Verifique CAEPI_SOURCE_URL.',
+        'Arquivo ZIP CAEPI invalido ou corrompido.',
       );
     }
 

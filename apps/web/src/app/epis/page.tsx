@@ -381,7 +381,7 @@ function EpisContent() {
         if (result.baseIncomplete) {
           setCaLookupMessage(
             result.message ??
-              'Base CAEPI local ainda nao importada ou incompleta. Acesse a tela Base CAEPI para atualizar a base oficial.',
+              'Base CAEPI local ainda nao importada ou incompleta. Atualize a base oficial CAEPI pelo painel Base CAEPI.',
           );
         } else {
           setCaLookupMessage(
@@ -928,7 +928,7 @@ function EpisContent() {
                   {/base caepi|incompleta|nao importada/i.test(
                     caLookupMessage,
                   ) ? (
-                    <Link href="/caepi">Abrir Base CAEPI</Link>
+                    <Link href="/caepi">Atualizar no painel Base CAEPI</Link>
                   ) : null}
                 </p>
               ) : null}
