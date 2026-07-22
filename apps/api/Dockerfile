@@ -7,6 +7,7 @@
 # Nota: usamos `npm ci --ignore-scripts` para nao disparar o postinstall
 # da raiz (build do @gestao-epi/shared) antes do source estar copiado.
 # O shared e o Prisma Client sao gerados explicitamente no stage de build.
+# O entrypoint aplica `prisma migrate deploy` antes de subir a API.
 
 FROM node:22-bookworm-slim AS base
 WORKDIR /app
@@ -51,11 +52,15 @@ COPY --from=build /app/apps/api/package.json apps/api/package.json
 COPY --from=build /app/node_modules/.prisma node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma node_modules/@prisma
 
+COPY apps/api/docker-entrypoint.sh /app/apps/api/docker-entrypoint.sh
+RUN chmod +x /app/apps/api/docker-entrypoint.sh
+
 WORKDIR /app/apps/api
 EXPOSE 3001
 
 # Healthcheck EasyPanel/Docker: GET /health
-HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+# start-period maior para cobrir migrate no boot
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.API_PORT||3001)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "dist/main.js"]
+ENTRYPOINT ["./docker-entrypoint.sh"]

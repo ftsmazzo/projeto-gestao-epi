@@ -100,44 +100,53 @@ Nunca versionar segredos reais. Use o painel de secrets/env do EasyPanel.
 
 ### Comando de start
 
-Padrao do Dockerfile:
+Padrao do Dockerfile (entrypoint):
 
 ```bash
-node dist/main.js
+./docker-entrypoint.sh
 ```
+
+O entrypoint:
+
+1. executa `npx prisma migrate deploy` (cria/atualiza tabelas como `User`, `Organization`, etc.);
+2. sobe a API com `node dist/main.js`.
 
 (workdir efetivo no container: `/app/apps/api`)
 
-### Migrations em producao
-
-Aplique as migrations **depois** do primeiro deploy da API (ou em job/one-off) e **sempre** apos migrations novas no repositorio.
-
-A imagem da API ja inclui o Prisma Client gerado no build. O comando de migrate nao depende do `postinstall` da raiz.
-
-No shell/terminal do container da API, a partir de `/app` (workdir do monorepo no stage runner antes do `WORKDIR apps/api`; se o shell abrir em `/app/apps/api`, suba um nivel ou use o equivalente abaixo):
+Se o EasyPanel sobrescrever o comando de start, use o entrypoint acima ou, no minimo:
 
 ```bash
-# se o shell estiver em /app/apps/api:
+npx prisma migrate deploy && node dist/main.js
+```
+
+Sem o migrate, o registro de organizacao falha com `P2021` (`table public.User does not exist`).
+
+### Migrations em producao
+
+A imagem aplica migrations **automaticamente no boot**. Em geral nao e preciso rodar migrate manual apos o deploy.
+
+Se precisar forcar manualmente (com `DATABASE_URL` no servico):
+
+```bash
+# shell do container, normalmente em /app/apps/api:
+npx prisma migrate deploy
+```
+
+Ou a partir de `/app`:
+
+```bash
 cd /app
 npm run db:migrate
 ```
 
-Equivalente direto (com `DATABASE_URL` ja configurada no servico):
-
-```bash
-cd /app
-npm run prisma:migrate -w @gestao-epi/api
-# ou:
-cd /app/apps/api && npx prisma migrate deploy
-```
-
 Isso executa `prisma migrate deploy` (seguro para producao). Nao use `prisma migrate dev` em producao.
 
-Checklist pos-migration:
+Checklist pos-deploy:
 
-1. `GET /health` responde ok.
-2. `POST /auth/register` ou login funciona.
-3. `GET /auth/me` com Bearer token funciona.
+1. Nos logs da API, confirmar a linha de apply de migrations e depois `API listening`.
+2. `GET /health` responde ok.
+3. `POST /auth/register` ou login funciona.
+4. `GET /auth/me` com Bearer token funciona.
 
 ### Rollback operacional (API)
 
@@ -184,13 +193,12 @@ Se o browser bloquear chamadas a API, revise `CORS_ORIGIN` na API e confirme que
 
 1. Postgres online.
 2. Criar app `gestao-epi-api` com Dockerfile da API + envs.
-3. Deploy da API.
-4. Rodar `npm run db:migrate` no container da API.
-5. Testar `https://API/health`.
-6. Criar app `gestao-epi-web` com build-arg/env `NEXT_PUBLIC_API_URL`.
-7. Deploy da Web.
-8. Ajustar `CORS_ORIGIN` da API para a URL da Web e redeployar a API se necessario.
-9. Testar registro/login/dashboard de ponta a ponta.
+3. Deploy da API (o entrypoint aplica migrations no boot).
+4. Nos logs, confirmar migrate + `API listening`; testar `https://API/health`.
+5. Criar app `gestao-epi-web` com build-arg/env `NEXT_PUBLIC_API_URL`.
+6. Deploy da Web.
+7. Ajustar `CORS_ORIGIN` da API para a URL da Web e redeployar a API se necessario.
+8. Testar registro/login/dashboard de ponta a ponta.
 
 ## 7. O que esta fora desta preparacao
 
