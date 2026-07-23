@@ -23,7 +23,9 @@ import { RequireAuth } from '../../components/RequireAuth';
 import {
   buildCaepiFormPatch,
   caStatusClassName,
+  clampEpiField,
   EPI_COLOR_OPTIONS,
+  EPI_FORM_FIELD_LIMITS,
   EPI_SIDE_OPTIONS,
   EPI_SIZE_OPTIONS,
   formatCaStatusLabel,
@@ -677,11 +679,16 @@ function EpisContent() {
 
     const variants: EpiVariantInput[] = [];
     for (const variant of form.variants) {
-      const size = variant.size.trim() || null;
-      const color = variant.color.trim() || null;
-      const model = variant.model.trim() || null;
-      const side = variant.side.trim() || null;
-      const notes = variant.notes.trim() || null;
+      const size =
+        clampEpiField(variant.size, EPI_FORM_FIELD_LIMITS.size) || null;
+      const color =
+        clampEpiField(variant.color, EPI_FORM_FIELD_LIMITS.color) || null;
+      const model =
+        clampEpiField(variant.model, EPI_FORM_FIELD_LIMITS.model) || null;
+      const side =
+        clampEpiField(variant.side, EPI_FORM_FIELD_LIMITS.side) || null;
+      const notes =
+        clampEpiField(variant.notes, EPI_FORM_FIELD_LIMITS.notes) || null;
       if (!size && !color && !model && !side && !notes) {
         setFormError(
           'Remova variacoes vazias ou preencha tamanho, cor, modelo, lado ou observacao.',
@@ -701,22 +708,40 @@ function EpisContent() {
 
     const isAuditory = form.category === 'AUDITIVA';
     const payload = {
-      name: form.name.trim(),
-      description: form.description.trim() || null,
+      name: clampEpiField(form.name, EPI_FORM_FIELD_LIMITS.name),
+      description:
+        clampEpiField(form.description, EPI_FORM_FIELD_LIMITS.description) ||
+        null,
       requiresCa: form.requiresCa,
-      caNumber: caNumber || null,
+      caNumber:
+        clampEpiField(caNumber, EPI_FORM_FIELD_LIMITS.caNumber) || null,
       caExpiresAt: form.caExpiresAt || null,
       unitOfMeasure: form.unitOfMeasure,
       usefulLifeValue,
       usefulLifeUnit: usefulLifeValue == null ? null : form.usefulLifeUnit,
       category: form.category || null,
-      externalCode: form.externalCode.trim() || null,
-      manufacturerName: form.manufacturerName.trim() || null,
-      reference: form.reference.trim() || null,
-      color: form.color.trim() || null,
-      approvedFor: form.approvedFor.trim() || null,
-      restriction: form.restriction.trim() || null,
-      technicalNotes: form.technicalNotes.trim() || null,
+      externalCode:
+        clampEpiField(form.externalCode, EPI_FORM_FIELD_LIMITS.externalCode) ||
+        null,
+      manufacturerName:
+        clampEpiField(
+          form.manufacturerName,
+          EPI_FORM_FIELD_LIMITS.manufacturerName,
+        ) || null,
+      reference:
+        clampEpiField(form.reference, EPI_FORM_FIELD_LIMITS.reference) || null,
+      color: clampEpiField(form.color, EPI_FORM_FIELD_LIMITS.color) || null,
+      approvedFor:
+        clampEpiField(form.approvedFor, EPI_FORM_FIELD_LIMITS.approvedFor) ||
+        null,
+      restriction:
+        clampEpiField(form.restriction, EPI_FORM_FIELD_LIMITS.restriction) ||
+        null,
+      technicalNotes:
+        clampEpiField(
+          form.technicalNotes,
+          EPI_FORM_FIELD_LIMITS.technicalNotes,
+        ) || null,
       nrr: isAuditory ? nrr : null,
       nrrsf: isAuditory ? nrrsf : null,
       variants,

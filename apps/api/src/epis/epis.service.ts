@@ -96,10 +96,10 @@ export class EpisService {
           externalCode: this.normalizeOptionalText(dto.externalCode),
           manufacturerName: this.normalizeOptionalText(dto.manufacturerName),
           reference: this.normalizeOptionalText(dto.reference),
-          color: this.normalizeOptionalText(dto.color),
-          approvedFor: this.normalizeOptionalText(dto.approvedFor),
-          restriction: this.normalizeOptionalText(dto.restriction),
-          technicalNotes: this.normalizeOptionalText(dto.technicalNotes),
+          color: this.normalizeOptionalText(dto.color, 80),
+          approvedFor: this.normalizeOptionalText(dto.approvedFor, 500),
+          restriction: this.normalizeOptionalText(dto.restriction, 500),
+          technicalNotes: this.normalizeOptionalText(dto.technicalNotes, 2000),
           nrr,
           nrrsf,
           variants: {
@@ -224,19 +224,19 @@ export class EpisService {
             color:
               dto.color === undefined
                 ? undefined
-                : this.normalizeOptionalText(dto.color),
+                : this.normalizeOptionalText(dto.color, 80),
             approvedFor:
               dto.approvedFor === undefined
                 ? undefined
-                : this.normalizeOptionalText(dto.approvedFor),
+                : this.normalizeOptionalText(dto.approvedFor, 500),
             restriction:
               dto.restriction === undefined
                 ? undefined
-                : this.normalizeOptionalText(dto.restriction),
+                : this.normalizeOptionalText(dto.restriction, 500),
             technicalNotes:
               dto.technicalNotes === undefined
                 ? undefined
-                : this.normalizeOptionalText(dto.technicalNotes),
+                : this.normalizeOptionalText(dto.technicalNotes, 2000),
             nrr: nextNrr,
             nrrsf: nextNrrsf,
           },
@@ -378,11 +378,11 @@ export class EpisService {
     }
 
     return inputs.map((input) => {
-      const size = this.normalizeOptionalText(input.size);
-      const color = this.normalizeOptionalText(input.color);
-      const model = this.normalizeOptionalText(input.model);
-      const side = this.normalizeOptionalText(input.side);
-      const notes = this.normalizeOptionalText(input.notes);
+      const size = this.normalizeOptionalText(input.size, 80);
+      const color = this.normalizeOptionalText(input.color, 80);
+      const model = this.normalizeOptionalText(input.model, 120);
+      const side = this.normalizeOptionalText(input.side, 40);
+      const notes = this.normalizeOptionalText(input.notes, 500);
 
       if (!size && !color && !model && !side && !notes) {
         throw new BadRequestException(
@@ -431,12 +431,21 @@ export class EpisService {
     return normalized.length > 0 ? normalized : null;
   }
 
-  private normalizeOptionalText(value?: string | null): string | null {
+  private normalizeOptionalText(
+    value?: string | null,
+    maxLength?: number,
+  ): string | null {
     if (value === undefined || value === null) {
       return null;
     }
     const trimmed = value.trim();
-    return trimmed.length > 0 ? trimmed : null;
+    if (!trimmed) {
+      return null;
+    }
+    if (maxLength != null && trimmed.length > maxLength) {
+      return trimmed.slice(0, maxLength).trimEnd();
+    }
+    return trimmed;
   }
 
   private normalizeOptionalNonNegativeInt(

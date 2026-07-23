@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
@@ -21,6 +21,15 @@ import {
 } from '@prisma/client';
 import { EpiVariantInputDto } from './create-epi-item.dto';
 
+function Truncate(max: number) {
+  return Transform(({ value }: { value: unknown }) => {
+    if (value == null || typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    return trimmed.length > max ? trimmed.slice(0, max).trimEnd() : trimmed;
+  });
+}
+
 export class UpdateEpiItemDto {
   @IsOptional()
   @IsString()
@@ -29,6 +38,7 @@ export class UpdateEpiItemDto {
   name?: string;
 
   @IsOptional()
+  @Truncate(1000)
   @IsString()
   @MaxLength(1000)
   description?: string | null;
@@ -70,36 +80,43 @@ export class UpdateEpiItemDto {
   category?: EpiCategory | null;
 
   @IsOptional()
+  @Truncate(80)
   @IsString()
   @MaxLength(80)
   externalCode?: string | null;
 
   @IsOptional()
+  @Truncate(200)
   @IsString()
   @MaxLength(200)
   manufacturerName?: string | null;
 
   @IsOptional()
+  @Truncate(120)
   @IsString()
   @MaxLength(120)
   reference?: string | null;
 
   @IsOptional()
+  @Truncate(80)
   @IsString()
   @MaxLength(80)
   color?: string | null;
 
   @IsOptional()
+  @Truncate(500)
   @IsString()
   @MaxLength(500)
   approvedFor?: string | null;
 
   @IsOptional()
+  @Truncate(500)
   @IsString()
   @MaxLength(500)
   restriction?: string | null;
 
   @IsOptional()
+  @Truncate(2000)
   @IsString()
   @MaxLength(2000)
   technicalNotes?: string | null;
