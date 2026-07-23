@@ -1027,7 +1027,7 @@ function FunctionTable({
           <tr>
             <th scope="col">Incluir</th>
             <th scope="col">Funcao</th>
-            <th scope="col">Setor</th>
+            <th scope="col">Setor associado</th>
             <th scope="col">Origem</th>
           </tr>
         </thead>
@@ -1039,18 +1039,27 @@ function FunctionTable({
                   type="checkbox"
                   checked={item.included}
                   onChange={() => onToggle(item.tempId)}
+                  aria-label={`Incluir ${item.name}`}
                 />
               </td>
               <td>
                 <input
                   value={item.name}
                   onChange={(e) => onRename(item.tempId, e.target.value)}
+                  aria-label={`Nome da funcao ${item.name}`}
                 />
+                {item.sectorName ? (
+                  <p className="table-sub">Setor: {item.sectorName}</p>
+                ) : (
+                  <p className="table-sub">Setor nao associado</p>
+                )}
               </td>
               <td>
                 <input
                   value={item.sectorName ?? ''}
                   onChange={(e) => onSector(item.tempId, e.target.value)}
+                  placeholder="Ex.: PRODUCAO"
+                  aria-label={`Setor de ${item.name}`}
                 />
               </td>
               <td>{qualityBadge(item)}</td>

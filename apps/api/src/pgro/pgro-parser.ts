@@ -116,7 +116,7 @@ const BR_UFS = new Set([
 ]);
 
 const JUNK_NAME_RE =
-  /(descricao da atividade|descricao do ambiente|funcao descricao|executar outras tarefas|de acordo com a gravidade|a funcao e as caracteristicas|notifique o superior|de sua natureza|caracterizacao do ghe|aprho do ghe|medida de controle|potencial de risco|agente nocivo|quando necessario|conforme|metodolog)/i;
+  /(descricao da atividade|descricao do ambiente|funcao descricao|executar outras tarefas|de acordo com a gravidade|a funcao e as caracteristicas|notifique o superior|de sua natureza|caracterizacao do ghe|aprho do ghe|medida de controle|potencial de risco|agente nocivo|quando necessario|conforme|metodolog|responsaveis em|esta sob as responsabilidades)/i;
 
 const STOP_WORDS = new Set([
   'es',
@@ -140,37 +140,86 @@ const STOP_WORDS = new Set([
   'com',
   'por',
   'ao',
-  'à',
   'seu',
   'sua',
+  'i',
+  'ii',
+  'iii',
+  'iv',
 ]);
+
+const JOB_HINT_RE =
+  /\b(auxiliar|assistente|encarregado|operador|motorista|vendedor|tecnico|técnico|analista|supervisor|coordenador|gerente|servente|faxineir|limpeza|mecanico|mecânico|eletricista|soldador|pedreiro|pintor|almoxarife|recepcionista|secretario|secretário)\b/i;
+
+const ACTIVITY_START_RE =
+  /\b(executar|realizar|classificar|operar|controlar|efetuar|desenvolver|auxiliar nas|responsaveis em|esta sob as responsabilidades)\b/i;
+
+const SECTOR_HINT_RE =
+  /^(produc|classific|administr|vendas|transporte|apoio|torref|manutenc|qualidade|logistica|expedicao|almoxarif)/i;
 
 export function normalizeTextKey(value: string): string {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/[()]/g, ' ')
+    .replace(/,/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** Normaliza nome de função para dedupe: espaços, caixa e variação I,II,III. */
+export function normalizeFunctionKey(value: string): string {
+  return normalizeTextKey(value)
+    .replace(/\bi\s*,?\s*ii\s*,?\s*iii\b/g, 'i ii iii')
+    .replace(/\bi\s*,?\s*ii\b/g, 'i ii')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeSectorKey(value: string): string {
+  return normalizeTextKey(value);
 }
 
 function cleanLine(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
-function titleCaseJob(value: string): string {
-  return cleanLine(value)
-    .split(' ')
-    .map((word) => {
-      if (/^[IVXLCDM]+$/i.test(word)) return word.toUpperCase();
-      if (word.length <= 2) return word.toLowerCase();
-      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-    })
-    .join(' ')
-    .replace(/\bDe\b/g, 'de')
-    .replace(/\bDa\b/g, 'da')
-    .replace(/\bDo\b/g, 'do')
-    .replace(/\bE\b/g, 'e');
+/**
+ * Normaliza exibição de função SEM expandir I,II,III em cargos distintos.
+ * Ex.: "AUXILIAR DE PRODUÇÃO I,II,III" → "AUXILIAR DE PRODUÇÃO (I, II, III)"
+ */
+export function normalizeFunctionDisplayName(value: string): string {
+  let name = cleanLine(value).replace(/\s+/g, ' ').trim();
+
+  // Preferir numerais longos primeiro (III antes de I) para não fragmentar.
+  const romanList =
+    /\(?\s*((?:III|II|IV|V|I)(?:\s*,\s*(?:III|II|IV|V|I))+)\s*\)?/i;
+  const match = name.match(romanList);
+  if (match) {
+    const parts = match[1]
+      .split(/\s*,\s*/)
+      .map((n) => n.toUpperCase().trim())
+      .filter(Boolean);
+    const wrapped = `(${parts.join(', ')})`;
+    name = `${name.slice(0, match.index).trim()} ${wrapped}`.trim();
+  }
+
+  return name.toUpperCase().replace(/\s+/g, ' ').trim();
+}
+
+function uniqueBySectorAndFunction(
+  items: PgroExtractedFunction[],
+): PgroExtractedFunction[] {
+  const seen = new Set<string>();
+  const out: PgroExtractedFunction[] = [];
+  for (const item of items) {
+    const key = `${normalizeSectorKey(item.sectorName ?? '')}::${normalizeFunctionKey(item.name)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
 }
 
 function uniqueByName<T extends { name: string }>(items: T[]): T[] {
@@ -211,10 +260,7 @@ function fieldUntilStop(
   return null;
 }
 
-function extractCompany(
-  text: string,
-  warnings: string[],
-): PgroCompanyData {
+function extractCompany(text: string, warnings: string[]): PgroCompanyData {
   const cnpj = extractCnpj(text);
   const legalName =
     fieldUntilStop(
@@ -261,11 +307,9 @@ function extractCompany(
       ['Estado', 'UF', 'CEP', 'CNAE', 'Grau'],
     );
     if (cityOnly) {
-      const stripped = cityOnly
-        .replace(/\bEstado\b.*$/i, '')
-        .replace(/\bUF\b.*$/i, '')
-        .trim();
-      city = cleanLine(stripped);
+      city = cleanLine(
+        cityOnly.replace(/\bEstado\b.*$/i, '').replace(/\bUF\b.*$/i, ''),
+      );
     }
     const ufMatch = text.match(/\b(?:Estado|UF)\s*[:\-]?\s*([A-Za-z]{2})\b/i);
     if (ufMatch) state = ufMatch[1].toUpperCase();
@@ -293,14 +337,10 @@ function extractCompany(
   const cnaeMatch = text.match(
     /CNAE\s*[:\-]?\s*(\d{2}\.?\d{2}-?\d(?:-\d{2})?|\d{4,7}(?:-\d{1,2})?)/i,
   );
-  if (cnaeMatch) {
-    cnae = cleanLine(cnaeMatch[1]);
-  }
+  if (cnaeMatch) cnae = cleanLine(cnaeMatch[1]);
 
   let riskGrade: string | null = null;
-  const riskMatch = text.match(
-    /Grau\s+de\s+[Rr]isco\s*[:\-]?\s*([1-4])\b/,
-  );
+  const riskMatch = text.match(/Grau\s+de\s+[Rr]isco\s*[:\-]?\s*([1-4])\b/);
   if (riskMatch) riskGrade = riskMatch[1];
 
   let employeeCount: number | null = null;
@@ -329,7 +369,12 @@ function isJunkName(value: string): boolean {
   if (STOP_WORDS.has(key)) return true;
   if (JUNK_NAME_RE.test(key)) return true;
   if (key.split(' ').length === 1 && key.length <= 3) return true;
+  if (/^(?:i|ii|iii|iv|v)(?:\s*,\s*(?:i|ii|iii|iv|v))*$/i.test(key)) return true;
   return false;
+}
+
+function looksLikeJobTitle(name: string): boolean {
+  return JOB_HINT_RE.test(name) || /\([IVX,\s]+\)/i.test(name) || /\b[IVX]+\b/i.test(name);
 }
 
 function isValidSectorName(name: string): boolean {
@@ -341,10 +386,14 @@ function isValidSectorName(name: string): boolean {
   if (/\d{3,}/.test(cleaned)) return false;
   if (/[.!?]/.test(cleaned)) return false;
   if (
-    /\b(executar|realizar|atividade|ambiente|conforme|quando|outras|tarefas)\b/i.test(
+    /\b(executar|realizar|atividade|ambiente|conforme|quando|outras|tarefas|responsaveis|responsabilidades)\b/i.test(
       cleaned,
     )
   ) {
+    return false;
+  }
+  // Cabeçalho que é nome de função não vira setor
+  if (looksLikeJobTitle(cleaned) && !SECTOR_HINT_RE.test(normalizeTextKey(cleaned))) {
     return false;
   }
   return true;
@@ -358,21 +407,18 @@ function isValidFunctionName(name: string): boolean {
   if (words.length > 8) return false;
   if (/[.!?]$/.test(cleaned)) return false;
   if (
-    /\b(executar|realizar|outras tarefas|de acordo|gravidade|natureza|notifique|superior|imediat|caracteristicas|descricao|riscos?|medidas?|aprho|protetor auricular|respirador|botina de|oculos de|óculos de|luva de|cinta lombar|avental de)\b/i.test(
+    /\b(executar|realizar|outras tarefas|de acordo|gravidade|natureza|notifique|superior|imediat|caracteristicas|descricao|riscos?|medidas?|aprho|protetor auricular|respirador|botina de|oculos de|óculos de|luva de|cinta lombar|avental de|responsaveis em|esta sob as responsabilidades)\b/i.test(
       cleaned,
     )
   ) {
     return false;
   }
-  // Listas "A, B, C" de riscos/EPIs nao sao cargos
   if ((cleaned.match(/,/g) ?? []).length >= 2 && !/[IVX]+/i.test(cleaned)) {
     return false;
   }
   if (/[:;]/.test(cleaned)) return false;
-  // Prefer titles with letters, optionally roman numerals
   if (!/[A-Za-zÀ-ÿ]{3,}/.test(cleaned)) return false;
 
-  // Rejeitar se for apenas nome de risco conhecido
   const key = normalizeTextKey(cleaned);
   for (const seed of DEFAULT_OCCUPATIONAL_RISK_SEEDS) {
     if (normalizeTextKey(seed.name) === key) return false;
@@ -381,97 +427,59 @@ function isValidFunctionName(name: string): boolean {
   for (const seed of DEFAULT_EPI_NEED_SEEDS) {
     if (normalizeTextKey(seed.name) === key) return false;
   }
+  if (!looksLikeJobTitle(cleaned) && words.length <= 2 && !/[IVX]/i.test(cleaned)) {
+    return false;
+  }
   return true;
 }
 
-/** Expande "Auxiliar de Produção I,II,III" e separa por / e quebras. */
+/**
+ * Normaliza/separa funções SEM expandir I,II,III em cargos distintos.
+ */
 export function expandFunctionNames(raw: string): string[] {
   const chunks = raw
     .split(/\n|;|\|/)
-    .flatMap((part) => part.split('/'))
+    .flatMap((part) => (part.includes('/') ? part.split('/') : [part]))
     .map((part) => cleanLine(part.replace(/^[-•*]\s*/, '')))
     .filter(Boolean);
 
   const out: string[] = [];
   for (const chunk of chunks) {
-    const romanList = chunk.match(
-      /^(.+?)\s+((?:[IVX]+)(?:\s*,\s*[IVX]+)+)$/i,
-    );
-    if (romanList) {
-      const base = cleanLine(romanList[1]);
-      const numerals = romanList[2].split(/\s*,\s*/).map((n) => n.toUpperCase());
-      for (const num of numerals) {
-        out.push(titleCaseJob(`${base} ${num}`));
-      }
-      continue;
-    }
-
-    // "Auxiliar de Produção I, II e III"
-    const romanAnd = chunk.match(
-      /^(.+?)\s+((?:[IVX]+)(?:\s*,\s*[IVX]+)*(?:\s+e\s+[IVX]+)?)$/i,
-    );
-    if (romanAnd && /[IVX]+/i.test(romanAnd[2]) && romanAnd[2].includes(',')) {
-      const base = cleanLine(romanAnd[1]);
-      const numerals = romanAnd[2]
-        .replace(/\s+e\s+/i, ',')
-        .split(/\s*,\s*/)
-        .map((n) => n.toUpperCase())
-        .filter(Boolean);
-      for (const num of numerals) {
-        out.push(titleCaseJob(`${base} ${num}`));
-      }
-      continue;
-    }
-
-    out.push(titleCaseJob(chunk));
+    const normalized = normalizeFunctionDisplayName(chunk);
+    if (isValidFunctionName(normalized)) out.push(normalized);
   }
-
-  return [...new Set(out.map((n) => cleanLine(n)).filter(isValidFunctionName))];
+  return [...new Set(out)];
 }
+
+type SectorFunctionPair = {
+  sectorName: string | null;
+  functionName: string;
+  activity: string | null;
+  environment: string | null;
+  rawText: string;
+};
 
 type GheBlock = {
   gheNumber: string;
   gheName: string;
-  sectorName: string | null;
-  functionNames: string[];
-  activity: string | null;
-  environment: string | null;
-  raw: string;
+  headerLabel: string;
+  pairs: SectorFunctionPair[];
   body: string;
 };
 
 function extractGheBlocks(text: string): GheBlock[] {
   const blocks: GheBlock[] = [];
   const headerRe =
-    /Caracteriza[cç][aã]o\s+do\s+GHE\s*(\d+)\s*[–\-:]\s*([^\n]{2,80})/gi;
-  const headers: Array<{
-    index: number;
-    number: string;
-    name: string;
-    full: string;
-  }> = [];
+    /Caracteriza[cç][aã]o\s+do\s+GHE\s*(\d+)\s*[–\-:]\s*([^\n]{2,200})/gi;
+  const headers: Array<{ index: number; number: string; label: string }> = [];
 
   let match: RegExpExecArray | null;
   while ((match = headerRe.exec(text)) != null) {
     headers.push({
       index: match.index,
       number: match[1].padStart(2, '0'),
-      name: cleanLine(match[2]),
-      full: match[0],
+      label: cleanLine(match[2]),
     });
-  }
-
-  // Fallback: plain "GHE 01 – NOME" near characterization
-  if (headers.length === 0) {
-    const altRe = /\bGHE\s*(\d+)\s*[–\-:]\s*([A-ZÀ-Ÿ0-9 /-]{3,60})/g;
-    while ((match = altRe.exec(text)) != null) {
-      headers.push({
-        index: match.index,
-        number: match[1].padStart(2, '0'),
-        name: cleanLine(match[2]),
-        full: match[0],
-      });
-    }
   }
 
   for (let i = 0; i < headers.length; i += 1) {
@@ -489,15 +497,12 @@ function extractGheBlocks(text: string): GheBlock[] {
     const body =
       aprhoCut > 0 ? slice.slice(0, aprhoCut) : slice.slice(0, 2500);
 
-    const parsed = parseGheCharacterizationTable(body, header.name);
+    const pairs = extractSectorFunctionPairsFromGheBody(body, header.label);
     blocks.push({
       gheNumber: header.number,
-      gheName: `GHE ${header.number} – ${header.name}`,
-      sectorName: parsed.sectorName,
-      functionNames: parsed.functionNames,
-      activity: parsed.activity,
-      environment: parsed.environment,
-      raw: body.slice(0, 800),
+      gheName: `GHE ${header.number} – ${header.label}`,
+      headerLabel: header.label,
+      pairs,
       body,
     });
   }
@@ -505,125 +510,154 @@ function extractGheBlocks(text: string): GheBlock[] {
   return blocks;
 }
 
-function parseGheCharacterizationTable(
+/**
+ * Extrai pares setor→função dentro de um bloco de caracterização.
+ * Suporta múltiplas linhas lógicas e herança de setor.
+ */
+function extractSectorFunctionPairsFromGheBody(
   body: string,
-  headerSectorHint: string,
-): {
-  sectorName: string | null;
-  functionNames: string[];
-  activity: string | null;
-  environment: string | null;
-} {
+  headerLabel: string,
+): SectorFunctionPair[] {
+  const pairs: SectorFunctionPair[] = [];
   const lines = body
-    .split('\n')
-    .map((line) => cleanLine(line))
-    .filter(Boolean);
+    .split(/\n/)
+    .map((l) => cleanLine(l))
+    .filter(Boolean)
+    .filter(
+      (line) =>
+        !/^Caracteriza/i.test(line) &&
+        !/^APRHO\b/i.test(line) &&
+        !/^Setor\s+Cargo/i.test(line) &&
+        !/^Cargo\/?Fun[cç][aã]o\s+Descri/i.test(line),
+    );
 
-  // Remove header/label noise
-  const contentLines = lines.filter(
-    (line) =>
-      !/^Caracteriza/i.test(line) &&
-      !/^Setor$/i.test(line) &&
-      !/^Cargo\/?Fun[cç][aã]o$/i.test(line) &&
-      !/^Descri[cç][aã]o da Atividade$/i.test(line) &&
-      !/^Descri[cç][aã]o do Ambiente$/i.test(line) &&
-      !/^Setor\s+Cargo/i.test(line) &&
-      !/^APRHO\b/i.test(line) &&
-      !/^Riscos?\b/i.test(line) &&
-      !/^Medidas?\b/i.test(line),
-  );
+  let currentSector: string | null = null;
+  let sawTableFunction = false;
 
-  let sectorName: string | null = null;
-  const functionCandidates: string[] = [];
-  let activity: string | null = null;
-  let environment: string | null = null;
-  let pastJobs = false;
+  for (const line of lines) {
+    if (ACTIVITY_START_RE.test(line) && line.length > 35) break;
+    if (/^Descri[cç][aã]o\s+da\s+Atividade\b/i.test(line)) break;
+    if (/^Descri[cç][aã]o\s+do\s+Ambiente\b/i.test(line)) break;
 
-  // Pattern: first short UPPER/title sector line after labels
-  for (const line of contentLines) {
-    if (/^APRHO\b/i.test(line)) break;
-
-    if (
-      /\b(executar|realizar|auxiliar nas|operar|controlar|efetuar|desenvolver|classificar)\b/i.test(
-        line,
-      ) &&
-      line.length > 35
-    ) {
-      pastJobs = true;
-      if (!activity) activity = line.slice(0, 500);
+    // "Setor: PRODUÇÃO" ou "Setor PRODUÇÃO"
+    const sectorLabel = line.match(/^(?:Setor)\s*[:\-–]?\s*(.+)$/i);
+    if (sectorLabel) {
+      const candidate = cleanLine(sectorLabel[1]).toUpperCase();
+      if (isValidSectorName(candidate)) currentSector = candidate;
       continue;
     }
 
-    if (
-      pastJobs &&
-      /\b(ambiente|galpao|galpão|area|área|sala|piso|iluminacao|iluminação|escritorio|escritório)\b/i.test(
-        line,
-      )
-    ) {
-      if (!environment) environment = line.slice(0, 500);
-      continue;
-    }
-
-    if (pastJobs) continue;
-
-    if (!sectorName && isValidSectorName(line) && line.length <= 30) {
-      const letters = line.replace(/[^A-Za-zÀ-ÿ]/g, '');
-      const upperRatio =
-        (letters.match(/[A-ZÀ-Ÿ]/g) ?? []).length / Math.max(1, letters.length);
-      if (upperRatio >= 0.6 || /^[A-ZÀ-Ÿ0-9 /-]{3,30}$/.test(line)) {
-        sectorName = line.toUpperCase();
-        continue;
+    // "Função: ..." / "Cargo: ..." / "Cargo/Função: ..."
+    const functionLabel = line.match(
+      /^(?:Cargo\/?Fun[cç][aã]o|Cargo|Fun[cç][aã]o)\s*[:\-–]?\s*(.+)$/i,
+    );
+    if (functionLabel) {
+      const names = expandFunctionNames(functionLabel[1]);
+      if (names.length > 0) {
+        sawTableFunction = true;
+        for (const fn of names) {
+          pairs.push({
+            sectorName: currentSector,
+            functionName: fn,
+            activity: null,
+            environment: null,
+            rawText: line,
+          });
+        }
       }
+      continue;
     }
 
+    // Linha só com setor (ALL CAPS, curto, sem cara de cargo)
     if (
-      isValidFunctionName(line) &&
-      !/ambiente|atividade/i.test(line) &&
-      line.length <= 70 &&
-      line.split(/\s+/).length <= 7
+      isValidSectorName(line) &&
+      line === line.toUpperCase() &&
+      line.length <= 30 &&
+      !looksLikeJobTitle(line)
     ) {
-      functionCandidates.push(...expandFunctionNames(line));
+      currentSector = line.toUpperCase();
+      continue;
+    }
+
+    // Linha só com função — herda setor atual
+    if (isValidFunctionName(line) && looksLikeJobTitle(line)) {
+      const names = expandFunctionNames(line);
+      if (names.length > 0) {
+        sawTableFunction = true;
+        for (const fn of names) {
+          pairs.push({
+            sectorName: currentSector,
+            functionName: fn,
+            activity: null,
+            environment: null,
+            rawText: line,
+          });
+        }
+      }
+      continue;
     }
   }
 
-  // Compact Word table dump: "PRODUÇÃO Encarregado de Produção Executar..."
-  if (functionCandidates.length === 0) {
-    const compact = cleanLine(body.replace(/\n/g, ' '));
-    const afterLabels = compact.replace(
-      /^.*?Setor\s+Cargo\/?Fun[cç][aã]o\s+Descri[cç][aã]o da Atividade\s+Descri[cç][aã]o do Ambiente\s*/i,
-      '',
-    );
-    const sectorMatch = afterLabels.match(
-      /^([A-ZÀ-Ÿ0-9][A-ZÀ-Ÿ0-9 /-]{1,28})\s+(.+)$/,
-    );
-    if (sectorMatch && isValidSectorName(sectorMatch[1])) {
-      sectorName = sectorMatch[1].toUpperCase();
-      // Take job titles before long activity verbs
-      const rest = sectorMatch[2];
-      const beforeActivity = rest.split(
-        /\s(?=Executar|Realizar|Auxiliar nas|Operar|Controlar|Efetuar|Desenvolver)/i,
-      )[0];
-      functionCandidates.push(...expandFunctionNames(beforeActivity));
+  // Fallback: cabeçalho do GHE como função só se a tabela não trouxe funções
+  if (!sawTableFunction && headerLabel) {
+    const headerFns = expandFunctionNames(headerLabel);
+    if (headerFns.length > 0 && headerFns.every(looksLikeJobTitle)) {
+      for (const fn of headerFns) {
+        pairs.push({
+          sectorName: currentSector,
+          functionName: fn,
+          activity: null,
+          environment: null,
+          rawText: headerLabel,
+        });
+      }
+    } else if (
+      isValidSectorName(headerLabel) &&
+      !looksLikeJobTitle(headerLabel) &&
+      !currentSector
+    ) {
+      currentSector = headerLabel.toUpperCase();
     }
   }
 
-  if (!sectorName && isValidSectorName(headerSectorHint)) {
-    sectorName = headerSectorHint.toUpperCase();
-  }
-
-  // Also pull slash-separated titles from any short line containing /
-  for (const line of contentLines) {
-    if (line.includes('/') && line.length <= 120) {
-      functionCandidates.push(...expandFunctionNames(line));
+  // Aplicar setor herdado/cabeçalho nas funções sem setor
+  if (currentSector) {
+    for (const pair of pairs) {
+      if (!pair.sectorName) pair.sectorName = currentSector;
     }
   }
 
-  return {
-    sectorName,
-    functionNames: [...new Set(functionCandidates.filter(isValidFunctionName))],
-    activity,
-    environment,
-  };
+  // GHE 06: cabeçalho = função, tabela = setor, sem linha de função
+  if (
+    pairs.length === 0 &&
+    currentSector &&
+    looksLikeJobTitle(headerLabel) &&
+    isValidFunctionName(normalizeFunctionDisplayName(headerLabel))
+  ) {
+    for (const fn of expandFunctionNames(headerLabel)) {
+      pairs.push({
+        sectorName: currentSector,
+        functionName: fn,
+        activity: null,
+        environment: null,
+        rawText: headerLabel,
+      });
+    }
+  }
+
+  // Se tabela trouxe funções, não duplicar a partir do cabeçalho
+  // (já coberto por sawTableFunction)
+
+  const seen = new Set<string>();
+  const deduped: SectorFunctionPair[] = [];
+  for (const pair of pairs) {
+    if (!pair.functionName) continue;
+    const key = `${normalizeSectorKey(pair.sectorName ?? '')}::${normalizeFunctionKey(pair.functionName)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(pair);
+  }
+  return deduped;
 }
 
 function extractRisksFromBlocks(
@@ -642,7 +676,6 @@ function extractRisksFromBlocks(
     const textKey = normalizeTextKey(scopeText);
     for (const seed of DEFAULT_OCCUPATIONAL_RISK_SEEDS) {
       const aliases = [seed.name, ...seed.aliases].map(normalizeTextKey);
-      // Require meaningful alias hit; avoid ultra-short false positives
       const hit = aliases.some(
         (alias) => alias.length >= 4 && textKey.includes(alias),
       );
@@ -658,7 +691,7 @@ function extractRisksFromBlocks(
         functionNames: [...functionNames],
         rawText: seed.name,
         included: true,
-        confidence: extractionSource === 'GHE' ? 'high' : 'high',
+        confidence: 'high',
         extractionSource,
         gheName,
       });
@@ -667,17 +700,15 @@ function extractRisksFromBlocks(
 
   if (blocks.length > 0) {
     for (const block of blocks) {
-      // Prefer APRHO section for that GHE if present in full text
       const aprhoRe = new RegExp(
         `APRHO\\s+do\\s+GHE\\s*0*${Number(block.gheNumber)}[\\s\\S]{0,4000}`,
         'i',
       );
       const aprho = fullText.match(aprhoRe)?.[0] ?? block.body;
+      const fnNames = block.pairs.map((p) => p.functionName);
       pushSeedHits(
         aprho,
-        block.functionNames.length > 0
-          ? block.functionNames
-          : allFunctionNames,
+        fnNames.length > 0 ? fnNames : allFunctionNames,
         block.gheName,
         'GHE',
       );
@@ -686,7 +717,6 @@ function extractRisksFromBlocks(
     pushSeedHits(fullText, allFunctionNames, null, 'KEYWORD');
   }
 
-  // Merge same risk names, union function names
   const byName = new Map<string, PgroExtractedRisk>();
   for (const risk of risks) {
     const key = normalizeTextKey(risk.name);
@@ -731,7 +761,10 @@ function extractEpiNeedsFromBlocks(
       );
       if (!hit) continue;
       const key = `${normalizeTextKey(seed.name)}::${gheName ?? 'global'}`;
-      if (seen.has(normalizeTextKey(seed.name)) && extractionSource === 'GLOBAL') {
+      if (
+        seen.has(normalizeTextKey(seed.name)) &&
+        extractionSource === 'GLOBAL'
+      ) {
         continue;
       }
       if (seen.has(key)) continue;
@@ -754,7 +787,7 @@ function extractEpiNeedsFromBlocks(
         createNew: true,
         functionNames: associated ? [...functionNames] : [...allFunctionNames],
         riskNames: [...riskNames],
-        included: true,
+        included: associated,
         confidence: associated ? 'high' : 'low',
         extractionSource,
         gheName,
@@ -771,9 +804,9 @@ function extractEpiNeedsFromBlocks(
       const aprho = fullText.match(aprhoRe)?.[0] ?? block.body;
       scan(
         aprho,
-        block.functionNames,
+        block.pairs.map((p) => p.functionName),
         block.gheName,
-        block.functionNames.length > 0 ? 'GHE' : 'GLOBAL',
+        block.pairs.length > 0 ? 'GHE' : 'GLOBAL',
       );
     }
   } else {
@@ -792,7 +825,11 @@ function extractEpiNeedsFromBlocks(
       ...new Set([...existing.functionNames, ...item.functionNames]),
     ];
     if (existing.confidence === 'low' && item.confidence === 'high') {
-      byName.set(key, { ...item, functionNames: existing.functionNames });
+      byName.set(key, {
+        ...item,
+        functionNames: existing.functionNames,
+        included: item.included,
+      });
     }
   }
   return [...byName.values()];
@@ -855,33 +892,32 @@ export function parsePgroText(rawText: string): PgroParseResult {
   const functionItems: PgroExtractedFunction[] = [];
 
   for (const block of gheBlocks) {
-    if (block.sectorName && isValidSectorName(block.sectorName)) {
-      sectorItems.push({
-        tempId: randomUUID(),
-        name: block.sectorName.toUpperCase(),
-        rawText: block.sectorName,
-        included: true,
-        confidence: 'high',
-        source: 'GHE',
-        gheName: block.gheName,
-      });
-    } else if (block.sectorName) {
-      ignoredCandidates.push(`Setor ignorado: ${block.sectorName}`);
-    }
+    for (const pair of block.pairs) {
+      if (pair.sectorName && isValidSectorName(pair.sectorName)) {
+        sectorItems.push({
+          tempId: randomUUID(),
+          name: pair.sectorName.toUpperCase(),
+          rawText: pair.sectorName,
+          included: true,
+          confidence: 'high',
+          source: 'GHE',
+          gheName: block.gheName,
+        });
+      }
 
-    for (const name of block.functionNames) {
-      if (!isValidFunctionName(name)) {
-        ignoredCandidates.push(`Funcao ignorada: ${name}`);
+      if (!isValidFunctionName(pair.functionName)) {
+        ignoredCandidates.push(`Funcao ignorada: ${pair.functionName}`);
         continue;
       }
+
       functionItems.push({
         tempId: randomUUID(),
-        name,
-        sectorName: block.sectorName,
-        activityDescription: block.activity,
-        environmentDescription: block.environment,
+        name: pair.functionName,
+        sectorName: pair.sectorName,
+        activityDescription: pair.activity,
+        environmentDescription: pair.environment,
         gheName: block.gheName,
-        rawText: block.raw,
+        rawText: pair.rawText,
         included: true,
         confidence: 'high',
         source: 'GHE',
@@ -889,10 +925,8 @@ export function parsePgroText(rawText: string): PgroParseResult {
     }
   }
 
-  // Do NOT scan whole document for Setor:/Função: labels — that produced junk.
-
   const sectors = uniqueByName(sectorItems);
-  const functions = uniqueByName(functionItems);
+  const functions = uniqueBySectorAndFunction(functionItems);
 
   if (sectors.length === 0) {
     warnings.push('Nenhum setor valido identificado nos blocos de GHE.');
