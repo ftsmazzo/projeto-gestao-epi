@@ -42,8 +42,8 @@ export const OPS_NAV: OpsNavItem[] = [
   {
     href: '/estoque',
     label: 'Estoque',
-    status: 'soon',
-    description: 'Saldos, lotes e movimentacoes.',
+    status: 'ready',
+    description: 'Locais, saldos e movimentacoes manuais.',
   },
   {
     href: '/entregas',

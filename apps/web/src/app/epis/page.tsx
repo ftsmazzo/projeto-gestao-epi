@@ -42,6 +42,7 @@ import {
   updateEpiItem,
   updateEpiItemStatus,
 } from '../../lib/epis';
+import { listStockTotalsByEpi } from '../../lib/stock';
 
 const CAEPI_SEARCH_DEBOUNCE_MS = 350;
 const CAEPI_SEARCH_MIN_CHARS = 3;
@@ -211,12 +212,24 @@ function EpisContent() {
   const [importResultMessage, setImportResultMessage] = useState<string | null>(
     null,
   );
+  const [stockTotalsByEpi, setStockTotalsByEpi] = useState<
+    Record<string, number>
+  >({});
 
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
-      setItems(await listEpiItems());
+      const [list, totals] = await Promise.all([
+        listEpiItems(),
+        listStockTotalsByEpi().catch(() => []),
+      ]);
+      setItems(list);
+      const map: Record<string, number> = {};
+      for (const row of totals) {
+        map[row.epiItemId] = row.totalQuantity;
+      }
+      setStockTotalsByEpi(map);
     } catch (err) {
       setError(
         err instanceof Error
@@ -1943,6 +1956,7 @@ function EpisContent() {
                   <th scope="col">Unidade</th>
                   <th scope="col">CA</th>
                   <th scope="col">Validade CA</th>
+                  <th scope="col">Estoque</th>
                   <th scope="col">Fabricante</th>
                   <th scope="col">Status</th>
                   <th scope="col">Acoes</th>
@@ -1970,6 +1984,9 @@ function EpisContent() {
                       {item.caNumber ? item.caNumber : 'Sem CA'}
                     </td>
                     <td>{formatDateBr(item.caExpiresAt)}</td>
+                    <td className="mono">
+                      {stockTotalsByEpi[item.id] ?? 0}
+                    </td>
                     <td>{item.manufacturerName || '—'}</td>
                     <td>
                       <span

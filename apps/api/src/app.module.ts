@@ -10,6 +10,7 @@ import { OperationalUnitsModule } from './operational-units/operational-units.mo
 import { WorkersModule } from './workers/workers.module';
 import { EpisModule } from './epis/epis.module';
 import { CaepiModule } from './caepi/caepi.module';
+import { StockModule } from './stock/stock.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { CaepiModule } from './caepi/caepi.module';
     WorkersModule,
     EpisModule,
     CaepiModule,
+    StockModule,
     HealthModule,
   ],
 })

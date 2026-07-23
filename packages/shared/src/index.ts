@@ -383,3 +383,99 @@ export interface EpiImportConfirmResponse {
   failed: number;
   errors: Array<{ rowNumber: number; message: string }>;
 }
+
+export type EpiStockMovementType = 'ENTRADA' | 'SAIDA_MANUAL' | 'AJUSTE';
+
+export type StockBalanceStatus = 'OK' | 'BAIXO' | 'ZERADO';
+
+export interface StockLocation {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EpiStockBalance {
+  id: string;
+  organizationId: string;
+  epiItemId: string;
+  epiVariantId: string | null;
+  stockLocationId: string;
+  quantity: number;
+  minQuantity: number | null;
+  createdAt: string;
+  updatedAt: string;
+  status: StockBalanceStatus;
+  epiItem?: {
+    id: string;
+    name: string;
+    category: EpiCategory | null;
+    caNumber: string | null;
+    unitOfMeasure: EpiUnitOfMeasure;
+    isActive: boolean;
+  };
+  epiVariant?: {
+    id: string;
+    size: string | null;
+    color: string | null;
+    model: string | null;
+    side: string | null;
+  } | null;
+  stockLocation?: {
+    id: string;
+    name: string;
+    isActive: boolean;
+  };
+}
+
+export interface EpiStockMovement {
+  id: string;
+  organizationId: string;
+  epiItemId: string;
+  epiVariantId: string | null;
+  stockLocationId: string;
+  type: EpiStockMovementType;
+  quantity: number;
+  previousQuantity: number;
+  newQuantity: number;
+  reason: string | null;
+  notes: string | null;
+  createdByUserId: string;
+  createdAt: string;
+  epiItem?: {
+    id: string;
+    name: string;
+  };
+  epiVariant?: {
+    id: string;
+    size: string | null;
+    color: string | null;
+    model: string | null;
+  } | null;
+  stockLocation?: {
+    id: string;
+    name: string;
+  };
+  createdByUser?: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface StockSummary {
+  locationsActive: number;
+  locationsTotal: number;
+  balanceLines: number;
+  totalUnits: number;
+  lowStockCount: number;
+  zeroStockCount: number;
+}
+
+export interface EpiStockTotal {
+  epiItemId: string;
+  totalQuantity: number;
+}
+

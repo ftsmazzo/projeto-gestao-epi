@@ -70,6 +70,9 @@ model Organization {
   workers           Worker[]
   epiItems          EpiItem[]
   epiVariants       EpiVariant[]
+  stockLocations    StockLocation[]
+  epiStockBalances  EpiStockBalance[]
+  epiStockMovements EpiStockMovement[]
 }
 
 model User {
@@ -83,6 +86,7 @@ model User {
   memberships     Membership[]
   auditLogs       AuditLog[]
   caepiImportRuns CaepiImportRun[]
+  epiStockMovements EpiStockMovement[]
 }
 
 model Membership {
@@ -213,6 +217,8 @@ model EpiItem {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   variants     EpiVariant[]
+  stockBalances EpiStockBalance[]
+  stockMovements EpiStockMovement[]
 
   @@unique([organizationId, caNumber])
   @@index([organizationId])
@@ -237,10 +243,89 @@ model EpiVariant {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   epiItem      EpiItem      @relation(fields: [epiItemId], references: [id], onDelete: Cascade)
+  stockBalances EpiStockBalance[]
+  stockMovements EpiStockMovement[]
 
   @@index([organizationId])
   @@index([epiItemId])
   @@index([isActive])
+}
+
+enum EpiStockMovementType {
+  ENTRADA
+  SAIDA_MANUAL
+  AJUSTE
+}
+
+/// Local fisico/logico de armazenamento de EPI no tenant.
+model StockLocation {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  description    String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  balances     EpiStockBalance[]
+  movements    EpiStockMovement[]
+
+  @@index([organizationId])
+  @@index([isActive])
+}
+
+/// Saldo atual de um EPI (e variacao opcional) em um local.
+model EpiStockBalance {
+  id              String   @id @default(cuid())
+  organizationId  String
+  epiItemId       String
+  epiVariantId    String?
+  stockLocationId String
+  quantity        Int      @default(0)
+  minQuantity     Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  epiItem       EpiItem       @relation(fields: [epiItemId], references: [id], onDelete: Cascade)
+  epiVariant    EpiVariant?   @relation(fields: [epiVariantId], references: [id], onDelete: Cascade)
+  stockLocation StockLocation @relation(fields: [stockLocationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([epiItemId])
+  @@index([epiVariantId])
+  @@index([stockLocationId])
+}
+
+/// Movimentacao manual de estoque (entrada, saida manual ou ajuste).
+model EpiStockMovement {
+  id               String               @id @default(cuid())
+  organizationId   String
+  epiItemId        String
+  epiVariantId     String?
+  stockLocationId  String
+  type             EpiStockMovementType
+  /// ENTRADA/SAIDA_MANUAL: quantidade movimentada. AJUSTE: quantidade final desejada.
+  quantity         Int
+  previousQuantity Int
+  newQuantity      Int
+  reason           String?
+  notes            String?
+  createdByUserId  String
+  createdAt        DateTime             @default(now())
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  epiItem       EpiItem       @relation(fields: [epiItemId], references: [id], onDelete: Cascade)
+  epiVariant    EpiVariant?   @relation(fields: [epiVariantId], references: [id], onDelete: SetNull)
+  stockLocation StockLocation @relation(fields: [stockLocationId], references: [id], onDelete: Restrict)
+  createdByUser User          @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([epiItemId])
+  @@index([stockLocationId])
+  @@index([type])
+  @@index([createdAt])
 }
 
 enum CaCertificateStatus {
