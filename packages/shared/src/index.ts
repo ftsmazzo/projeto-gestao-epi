@@ -643,3 +643,139 @@ export interface OccupationalRiskDefaultsResult {
   created: OccupationalRisk[];
 }
 
+export type PgroImportStatus = 'PENDING' | 'PARSED' | 'CONFIRMED' | 'FAILED';
+
+export interface PgroCompanyData {
+  legalName: string | null;
+  tradeName: string | null;
+  cnpj: string | null;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  cnae: string | null;
+  riskGrade: string | null;
+  employeeCount: number | null;
+  rawText: string | null;
+}
+
+export interface PgroExtractedSector {
+  tempId: string;
+  name: string;
+  rawText: string;
+  included: boolean;
+}
+
+export interface PgroExtractedFunction {
+  tempId: string;
+  name: string;
+  sectorName: string | null;
+  activityDescription: string | null;
+  environmentDescription: string | null;
+  gheName: string | null;
+  rawText: string;
+  included: boolean;
+}
+
+export interface PgroExtractedRisk {
+  tempId: string;
+  name: string;
+  category: OccupationalRiskCategory;
+  exposure: string | null;
+  source: string | null;
+  possibleDamage: string | null;
+  riskLevel: string | null;
+  functionNames: string[];
+  rawText: string;
+  included: boolean;
+}
+
+export interface PgroExtractedEpiNeed {
+  tempId: string;
+  extractedText: string;
+  suggestedName: string;
+  matchedEpiNeedId: string | null;
+  matchedEpiNeedName: string | null;
+  createNew: boolean;
+  functionNames: string[];
+  riskNames: string[];
+  included: boolean;
+}
+
+export interface PgroImportConfirmSummary {
+  servedClientId: string;
+  createdClient: boolean;
+  sectorsCreated: number;
+  sectorsExisting: number;
+  functionsCreated: number;
+  functionsExisting: number;
+  risksCreated: number;
+  risksExisting: number;
+  riskLinksCreated: number;
+  epiNeedsCreated: number;
+  epiNeedsExisting: number;
+  epiRequirementsCreated: number;
+  epiRequirementsExisting: number;
+}
+
+export interface PgroImportRun {
+  id: string;
+  organizationId: string;
+  servedClientId: string | null;
+  status: PgroImportStatus;
+  fileName: string;
+  startedAt: string;
+  finishedAt: string | null;
+  company: PgroCompanyData | null;
+  sectors: PgroExtractedSector[];
+  functions: PgroExtractedFunction[];
+  risks: PgroExtractedRisk[];
+  epiNeeds: PgroExtractedEpiNeed[];
+  warnings: string[];
+  confirmSummary?: PgroImportConfirmSummary | null;
+  errorMessage: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PgroImportConfirmResult extends PgroImportRun {
+  summary: PgroImportConfirmSummary;
+  confirmWarnings: string[];
+}
+
+export interface ConfirmPgroImportPayload {
+  servedClientId?: string | null;
+  company: {
+    legalName?: string | null;
+    tradeName?: string | null;
+    cnpj?: string | null;
+    allocatedLifeQuota?: number;
+  };
+  sectors: Array<{ tempId: string; name: string; included: boolean }>;
+  functions: Array<{
+    tempId: string;
+    name: string;
+    sectorName?: string | null;
+    activityDescription?: string | null;
+    environmentDescription?: string | null;
+    included: boolean;
+  }>;
+  risks: Array<{
+    tempId: string;
+    name: string;
+    category: OccupationalRiskCategory;
+    functionNames?: string[];
+    included: boolean;
+  }>;
+  epiNeeds: Array<{
+    tempId: string;
+    suggestedName: string;
+    matchedEpiNeedId?: string | null;
+    createNew: boolean;
+    functionNames?: string[];
+    riskNames?: string[];
+    included: boolean;
+  }>;
+}
+
+

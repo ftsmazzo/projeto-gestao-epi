@@ -404,6 +404,12 @@ function EstruturaContent({ clientId }: { clientId: string }) {
           >
             Detalhe do cliente
           </Link>
+          <Link
+            className="btn btn-secondary"
+            href={`/clientes/importar-pgro?clientId=${clientId}`}
+          >
+            Importar PGRO para este cliente
+          </Link>
           <button
             type="button"
             className="btn btn-secondary"

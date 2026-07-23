@@ -13,6 +13,7 @@ import { CaepiModule } from './caepi/caepi.module';
 import { StockModule } from './stock/stock.module';
 import { EpiNeedsModule } from './epi-needs/epi-needs.module';
 import { ClientStructureModule } from './client-structure/client-structure.module';
+import { PgroModule } from './pgro/pgro.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { ClientStructureModule } from './client-structure/client-structure.modul
     StockModule,
     EpiNeedsModule,
     ClientStructureModule,
+    PgroModule,
     HealthModule,
   ],
 })

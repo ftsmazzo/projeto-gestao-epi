@@ -222,6 +222,9 @@ function ClientesContent() {
           >
             Importar CSV (em breve)
           </button>
+          <Link className="btn btn-secondary" href="/clientes/importar-pgro">
+            Importar PGRO
+          </Link>
           <button
             type="button"
             className="btn btn-primary"

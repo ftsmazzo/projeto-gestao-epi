@@ -80,6 +80,7 @@ model Organization {
   occupationalRisks OccupationalRisk[]
   jobFunctionRisks  JobFunctionRisk[]
   jobFunctionEpiRequirements JobFunctionEpiRequirement[]
+  pgroImportRuns    PgroImportRun[]
 }
 
 model User {
@@ -94,6 +95,7 @@ model User {
   auditLogs       AuditLog[]
   caepiImportRuns CaepiImportRun[]
   epiStockMovements EpiStockMovement[]
+  pgroImportRuns  PgroImportRun[]
 }
 
 model Membership {
@@ -130,6 +132,7 @@ model ServedClient {
   workers          Worker[]
   sectors          ClientSector[]
   jobFunctions     ClientJobFunction[]
+  pgroImportRuns   PgroImportRun[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -629,6 +632,44 @@ model CaepiImportRun {
   @@index([triggeredBy])
   @@index([createdAt])
   @@index([startedAt])
+}
+
+enum PgroImportStatus {
+  PENDING
+  PARSED
+  CONFIRMED
+  FAILED
+}
+
+/// Execucao de importacao assistida de PGRO/PGR (preview + confirmacao humana).
+model PgroImportRun {
+  id                 String           @id @default(cuid())
+  organizationId     String
+  servedClientId     String?
+  status             PgroImportStatus @default(PENDING)
+  fileName           String
+  startedAt          DateTime         @default(now())
+  finishedAt         DateTime?
+  companyData        Json?
+  extractedSectors   Json?
+  extractedFunctions Json?
+  extractedRisks     Json?
+  extractedEpiNeeds  Json?
+  warnings           Json?
+  confirmSummary     Json?
+  errorMessage       String?
+  createdByUserId    String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient? @relation(fields: [servedClientId], references: [id], onDelete: SetNull)
+  createdByUser User? @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model AuditLog {
