@@ -48,10 +48,16 @@ export interface ServedClient {
 }
 
 export interface QuotaSummary {
+  /** Franquia total contratada pelo tenant. */
   contracted: number;
+  /** Soma das cotas das empresas/clientes ativos (consomem a franquia). */
   allocated: number;
+  /** Contratadas menos alocadas em ativos. */
   available: number;
+  /** Trabalhadores ativos em clientes ativos. */
   used: number;
+  /** Soma das cotas de clientes inativos (liberadas da franquia). */
+  inactiveAllocated: number;
   activeClients: number;
   totalClients: number;
 }

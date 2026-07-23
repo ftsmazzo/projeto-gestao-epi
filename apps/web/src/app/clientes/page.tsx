@@ -75,7 +75,11 @@ function ClientesContent() {
     if (!summary) return 0;
     if (mode === 'edit' && editingId) {
       const current = clients.find((item) => item.id === editingId);
-      return summary.available + (current?.allocatedLifeQuota ?? 0);
+      // Cliente inativo nao consome franquia; a cota so volta a contar ao reativar.
+      if (current?.status === 'ACTIVE') {
+        return summary.available + (current.allocatedLifeQuota ?? 0);
+      }
+      return summary.available;
     }
     return summary.available;
   }, [summary, mode, editingId, clients]);
@@ -150,11 +154,19 @@ function ClientesContent() {
 
   async function toggleStatus(client: ServedClient) {
     setError(null);
-    try {
-      await updateServedClientStatus(
-        client.id,
-        client.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
+    const nextStatus = client.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+
+    if (nextStatus === 'INACTIVE') {
+      const confirmed = window.confirm(
+        'A empresa sera inativada e sua cota deixara de consumir a franquia.',
       );
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    try {
+      await updateServedClientStatus(client.id, nextStatus);
       await load();
     } catch (err) {
       setError(
@@ -198,8 +210,14 @@ function ClientesContent() {
             <strong className="quota-summary-value">{summary.contracted}</strong>
           </div>
           <div className="quota-summary-item">
-            <span className="quota-summary-label">Alocadas</span>
+            <span className="quota-summary-label">Alocadas (ativas)</span>
             <strong className="quota-summary-value">{summary.allocated}</strong>
+          </div>
+          <div className="quota-summary-item">
+            <span className="quota-summary-label">Liberadas (inativas)</span>
+            <strong className="quota-summary-value">
+              {summary.inactiveAllocated}
+            </strong>
           </div>
           <div className="quota-summary-item">
             <span className="quota-summary-label">Disponiveis</span>
@@ -410,7 +428,12 @@ function ClientesContent() {
                         {statusLabel(client.status)}
                       </span>
                     </td>
-                    <td className="mono">{client.allocatedLifeQuota}</td>
+                    <td className="mono">
+                      {client.allocatedLifeQuota}
+                      {client.status === 'INACTIVE' ? (
+                        <span className="table-sub">nao consome franquia</span>
+                      ) : null}
+                    </td>
                     <td>
                       <div className="table-actions">
                         <Link

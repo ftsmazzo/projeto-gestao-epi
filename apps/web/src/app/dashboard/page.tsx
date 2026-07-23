@@ -88,9 +88,10 @@ function DashboardContent({
           </h2>
           <p className="quota-value">{summary?.contracted ?? '—'}</p>
           <p className="field-hint">
-            Franquia total do contrato. Alocadas: {summary?.allocated ?? '—'} ·
-            Usadas: {summary?.used ?? '—'} · Disponiveis:{' '}
-            {summary?.available ?? '—'}.
+            Franquia total do contrato. Alocadas em ativos:{' '}
+            {summary?.allocated ?? '—'} · Liberadas (inativas):{' '}
+            {summary?.inactiveAllocated ?? '—'} · Usadas:{' '}
+            {summary?.used ?? '—'} · Disponiveis: {summary?.available ?? '—'}.
           </p>
           {quotaError ? (
             <p className="error" role="alert">
@@ -113,6 +114,18 @@ function DashboardContent({
               <div>
                 <dt>Total de clientes</dt>
                 <dd>{summary.totalClients}</dd>
+              </div>
+              <div>
+                <dt>Vidas alocadas (ativas)</dt>
+                <dd>{summary.allocated}</dd>
+              </div>
+              <div>
+                <dt>Vidas liberadas (inativas)</dt>
+                <dd>{summary.inactiveAllocated}</dd>
+              </div>
+              <div>
+                <dt>Saldo disponivel</dt>
+                <dd>{summary.available}</dd>
               </div>
               <div>
                 <dt>Vidas usadas</dt>

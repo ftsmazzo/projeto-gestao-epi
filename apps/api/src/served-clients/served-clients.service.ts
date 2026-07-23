@@ -11,6 +11,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateServedClientDto } from './dto/create-served-client.dto';
 import type { UpdateServedClientDto } from './dto/update-served-client.dto';
 
+const REACTIVATE_QUOTA_ERROR =
+  'Nao ha vidas disponiveis suficientes para reativar esta empresa.';
+
 @Injectable()
 export class ServedClientsService {
   constructor(
@@ -44,22 +47,32 @@ export class ServedClientsService {
       throw new NotFoundException('Organizacao nao encontrada.');
     }
 
-    const [aggregate, activeClients, used] = await Promise.all([
-      this.prisma.servedClient.aggregate({
-        where: { organizationId },
-        _sum: { allocatedLifeQuota: true },
-        _count: { _all: true },
-      }),
-      this.prisma.servedClient.count({
-        where: { organizationId, status: ServedClientStatus.ACTIVE },
-      }),
-      this.prisma.worker.count({
-        where: { organizationId, status: WorkerStatus.ACTIVE },
-      }),
-    ]);
+    const [activeAggregate, inactiveAggregate, totalClients, used] =
+      await Promise.all([
+        this.prisma.servedClient.aggregate({
+          where: { organizationId, status: ServedClientStatus.ACTIVE },
+          _sum: { allocatedLifeQuota: true },
+          _count: { _all: true },
+        }),
+        this.prisma.servedClient.aggregate({
+          where: { organizationId, status: ServedClientStatus.INACTIVE },
+          _sum: { allocatedLifeQuota: true },
+        }),
+        this.prisma.servedClient.count({
+          where: { organizationId },
+        }),
+        this.prisma.worker.count({
+          where: {
+            organizationId,
+            status: WorkerStatus.ACTIVE,
+            servedClient: { status: ServedClientStatus.ACTIVE },
+          },
+        }),
+      ]);
 
     const contracted = organization.contractedLifeQuota;
-    const allocated = aggregate._sum.allocatedLifeQuota ?? 0;
+    const allocated = activeAggregate._sum.allocatedLifeQuota ?? 0;
+    const inactiveAllocated = inactiveAggregate._sum.allocatedLifeQuota ?? 0;
     const available = Math.max(0, contracted - allocated);
 
     return {
@@ -67,8 +80,9 @@ export class ServedClientsService {
       allocated,
       available,
       used,
-      activeClients,
-      totalClients: aggregate._count._all,
+      inactiveAllocated,
+      activeClients: activeAggregate._count._all,
+      totalClients,
     };
   }
 
@@ -78,7 +92,14 @@ export class ServedClientsService {
     dto: CreateServedClientDto,
   ) {
     const cnpj = this.normalizeAndValidateCnpj(dto.cnpj);
-    await this.assertQuotaFits(organizationId, dto.allocatedLifeQuota);
+    const status = dto.status ?? ServedClientStatus.ACTIVE;
+
+    if (status === ServedClientStatus.ACTIVE) {
+      await this.assertQuotaFits(organizationId, dto.allocatedLifeQuota);
+    } else if (dto.allocatedLifeQuota < 0) {
+      throw new BadRequestException('A cota alocada nao pode ser negativa.');
+    }
+
     await this.assertUniqueCnpj(organizationId, cnpj);
 
     try {
@@ -89,7 +110,7 @@ export class ServedClientsService {
           tradeName: dto.tradeName?.trim() || null,
           cnpj,
           allocatedLifeQuota: dto.allocatedLifeQuota,
-          status: dto.status ?? ServedClientStatus.ACTIVE,
+          status,
           notes: dto.notes?.trim() || null,
         },
       });
@@ -130,12 +151,32 @@ export class ServedClientsService {
       await this.assertUniqueCnpj(organizationId, cnpj, id);
     }
 
-    if (dto.allocatedLifeQuota !== undefined) {
-      await this.assertQuotaFits(
+    const nextStatus = dto.status ?? existing.status;
+    const nextQuota =
+      dto.allocatedLifeQuota !== undefined
+        ? dto.allocatedLifeQuota
+        : existing.allocatedLifeQuota;
+    const willBeActive = nextStatus === ServedClientStatus.ACTIVE;
+    const becomingActive =
+      existing.status !== ServedClientStatus.ACTIVE && willBeActive;
+
+    if (becomingActive) {
+      await this.assertCanConsumeQuota(
         organizationId,
-        dto.allocatedLifeQuota,
+        nextQuota,
         id,
+        REACTIVATE_QUOTA_ERROR,
       );
+    } else if (willBeActive && dto.allocatedLifeQuota !== undefined) {
+      await this.assertQuotaFits(organizationId, nextQuota, id);
+    } else if (
+      dto.allocatedLifeQuota !== undefined &&
+      dto.allocatedLifeQuota < 0
+    ) {
+      throw new BadRequestException('A cota alocada nao pode ser negativa.');
+    }
+
+    if (dto.allocatedLifeQuota !== undefined) {
       await this.assertQuotaNotBelowActiveWorkers(
         organizationId,
         id,
@@ -200,6 +241,15 @@ export class ServedClientsService {
       return existing;
     }
 
+    if (status === ServedClientStatus.ACTIVE) {
+      await this.assertCanConsumeQuota(
+        organizationId,
+        existing.allocatedLifeQuota,
+        id,
+        REACTIVATE_QUOTA_ERROR,
+      );
+    }
+
     const client = await this.prisma.servedClient.update({
       where: { id },
       data: { status },
@@ -214,6 +264,9 @@ export class ServedClientsService {
       metadata: {
         from: existing.status,
         to: client.status,
+        allocatedLifeQuota: client.allocatedLifeQuota,
+        quotaReleased: status === ServedClientStatus.INACTIVE,
+        quotaConsumed: status === ServedClientStatus.ACTIVE,
       },
     });
 
@@ -248,6 +301,9 @@ export class ServedClientsService {
     }
   }
 
+  /**
+   * Soma apenas cotas de clientes ACTIVE (empresas inativas nao consomem franquia).
+   */
   private async assertQuotaFits(
     organizationId: string,
     nextQuota: number,
@@ -268,6 +324,7 @@ export class ServedClientsService {
     const aggregate = await this.prisma.servedClient.aggregate({
       where: {
         organizationId,
+        status: ServedClientStatus.ACTIVE,
         ...(excludeId ? { NOT: { id: excludeId } } : {}),
       },
       _sum: { allocatedLifeQuota: true },
@@ -284,6 +341,44 @@ export class ServedClientsService {
       throw new BadRequestException(
         `A soma das cotas ultrapassa a franquia contratada (${organization.contractedLifeQuota} vidas). Disponivel para este cliente: ${available}.`,
       );
+    }
+  }
+
+  private async assertCanConsumeQuota(
+    organizationId: string,
+    nextQuota: number,
+    excludeId: string,
+    errorMessage: string,
+  ) {
+    if (nextQuota < 0) {
+      throw new BadRequestException('A cota alocada nao pode ser negativa.');
+    }
+
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { contractedLifeQuota: true },
+    });
+    if (!organization) {
+      throw new NotFoundException('Organizacao nao encontrada.');
+    }
+
+    const aggregate = await this.prisma.servedClient.aggregate({
+      where: {
+        organizationId,
+        status: ServedClientStatus.ACTIVE,
+        NOT: { id: excludeId },
+      },
+      _sum: { allocatedLifeQuota: true },
+    });
+
+    const otherAllocated = aggregate._sum.allocatedLifeQuota ?? 0;
+    const available = Math.max(
+      0,
+      organization.contractedLifeQuota - otherAllocated,
+    );
+
+    if (nextQuota > available) {
+      throw new BadRequestException(errorMessage);
     }
   }
 
