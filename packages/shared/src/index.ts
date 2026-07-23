@@ -535,3 +535,90 @@ export interface EpiNeedMatchResult {
   unmatchedNames?: string[];
 }
 
+export type OccupationalRiskCategory =
+  | 'FISICO'
+  | 'QUIMICO'
+  | 'BIOLOGICO'
+  | 'ERGONOMICO'
+  | 'MECANICO'
+  | 'ACIDENTE'
+  | 'PSICOSSOCIAL'
+  | 'OUTROS';
+
+export type RiskLevel =
+  | 'MUITO_BAIXO'
+  | 'BAIXO'
+  | 'MODERADO'
+  | 'ALTO'
+  | 'MUITO_ALTO';
+
+export interface ClientSector {
+  id: string;
+  organizationId: string;
+  servedClientId: string;
+  operationalUnitId: string | null;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  operationalUnit?: {
+    id: string;
+    name: string;
+    status: OperationalUnitStatus;
+  } | null;
+  _count?: { jobFunctions: number };
+}
+
+export interface OccupationalRisk {
+  id: string;
+  organizationId: string;
+  name: string;
+  category: OccupationalRiskCategory;
+  description: string | null;
+  aliases: string[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JobFunctionRiskLink {
+  id: string;
+  organizationId: string;
+  jobFunctionId: string;
+  riskId: string;
+  exposure: string | null;
+  source: string | null;
+  possibleDamage: string | null;
+  riskLevel: RiskLevel | null;
+  notes: string | null;
+  createdAt: string;
+  risk: OccupationalRisk;
+}
+
+export interface ClientJobFunction {
+  id: string;
+  organizationId: string;
+  servedClientId: string;
+  sectorId: string;
+  name: string;
+  description: string | null;
+  environmentDescription: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  sector?: {
+    id: string;
+    name: string;
+    isActive: boolean;
+  };
+  risks?: JobFunctionRiskLink[];
+  _count?: { risks: number };
+}
+
+export interface OccupationalRiskDefaultsResult {
+  createdCount: number;
+  skippedCount: number;
+  created: OccupationalRisk[];
+}
+

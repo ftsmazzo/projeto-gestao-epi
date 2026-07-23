@@ -442,6 +442,12 @@ function ClientesContent() {
                         >
                           Abrir
                         </Link>
+                        <Link
+                          className="btn btn-secondary btn-compact"
+                          href={`/clientes/${client.id}/estrutura`}
+                        >
+                          Estrutura
+                        </Link>
                         <button
                           type="button"
                           className="btn btn-secondary btn-compact"

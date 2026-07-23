@@ -75,6 +75,10 @@ model Organization {
   epiStockMovements EpiStockMovement[]
   epiNeeds          EpiNeed[]
   epiItemNeeds      EpiItemNeed[]
+  clientSectors     ClientSector[]
+  clientJobFunctions ClientJobFunction[]
+  occupationalRisks OccupationalRisk[]
+  jobFunctionRisks  JobFunctionRisk[]
 }
 
 model User {
@@ -123,6 +127,8 @@ model ServedClient {
   organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   operationalUnits OperationalUnit[]
   workers          Worker[]
+  sectors          ClientSector[]
+  jobFunctions     ClientJobFunction[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -149,12 +155,122 @@ model OperationalUnit {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   servedClient ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
   workers      Worker[]
+  sectors      ClientSector[]
 
   @@unique([servedClientId, code])
   @@unique([organizationId, cnpj])
   @@index([organizationId])
   @@index([servedClientId])
   @@index([status])
+}
+
+enum OccupationalRiskCategory {
+  FISICO
+  QUIMICO
+  BIOLOGICO
+  ERGONOMICO
+  MECANICO
+  ACIDENTE
+  PSICOSSOCIAL
+  OUTROS
+}
+
+enum RiskLevel {
+  MUITO_BAIXO
+  BAIXO
+  MODERADO
+  ALTO
+  MUITO_ALTO
+}
+
+/// Setor organizacional do cliente atendido (opcionalmente ligado a uma unidade).
+model ClientSector {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  servedClientId     String
+  operationalUnitId  String?
+  name               String
+  description        String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient    ServedClient     @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  operationalUnit OperationalUnit? @relation(fields: [operationalUnitId], references: [id], onDelete: SetNull)
+  jobFunctions    ClientJobFunction[]
+
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([operationalUnitId])
+  @@index([isActive])
+}
+
+/// Funcao/cargo do cliente, vinculada a um setor.
+model ClientJobFunction {
+  id                     String   @id @default(cuid())
+  organizationId         String
+  servedClientId         String
+  sectorId               String
+  name                   String
+  description            String?
+  environmentDescription String?
+  isActive               Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient      @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  sector       ClientSector      @relation(fields: [sectorId], references: [id], onDelete: Restrict)
+  risks        JobFunctionRisk[]
+
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([sectorId])
+  @@index([isActive])
+}
+
+/// Catalogo de riscos ocupacionais do tenant (reutilizavel entre clientes).
+model OccupationalRisk {
+  id             String                    @id @default(cuid())
+  organizationId String
+  name           String
+  category       OccupationalRiskCategory
+  description    String?
+  aliases        Json?
+  isActive       Boolean                   @default(true)
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobLinks     JobFunctionRisk[]
+
+  @@index([organizationId])
+  @@index([category])
+  @@index([isActive])
+}
+
+/// Vinculo entre funcao do cliente e risco ocupacional.
+model JobFunctionRisk {
+  id               String     @id @default(cuid())
+  organizationId   String
+  jobFunctionId    String
+  riskId           String
+  exposure         String?
+  source           String?
+  possibleDamage   String?
+  riskLevel        RiskLevel?
+  notes            String?
+  createdAt        DateTime   @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobFunction  ClientJobFunction @relation(fields: [jobFunctionId], references: [id], onDelete: Cascade)
+  risk         OccupationalRisk @relation(fields: [riskId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, jobFunctionId, riskId])
+  @@index([organizationId])
+  @@index([jobFunctionId])
+  @@index([riskId])
 }
 
 /// Trabalhador (vida) vinculado a um cliente atendido e opcionalmente a uma unidade.
