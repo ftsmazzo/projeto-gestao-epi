@@ -99,6 +99,11 @@ export class PgroService {
       ? PgroImportStatus.PARSED
       : PgroImportStatus.FAILED;
 
+    const allWarnings = [
+      ...parseResult.warnings,
+      ...parseResult.ignoredCandidates.map((item) => `Ignorado: ${item}`),
+    ];
+
     const run = await this.prisma.pgroImportRun.create({
       data: {
         organizationId,
@@ -112,7 +117,7 @@ export class PgroService {
         extractedFunctions: parseResult.functions as Prisma.InputJsonValue,
         extractedRisks: parseResult.risks as Prisma.InputJsonValue,
         extractedEpiNeeds: epiNeeds as Prisma.InputJsonValue,
-        warnings: parseResult.warnings as Prisma.InputJsonValue,
+        warnings: allWarnings as Prisma.InputJsonValue,
         errorMessage: parseResult.textExtractable
           ? null
           : parseResult.warnings[0] ??

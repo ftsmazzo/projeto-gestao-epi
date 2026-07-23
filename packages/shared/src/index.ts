@@ -663,6 +663,9 @@ export interface PgroExtractedSector {
   name: string;
   rawText: string;
   included: boolean;
+  confidence?: 'high' | 'low';
+  source?: 'GHE' | 'KEYWORD' | 'GLOBAL';
+  gheName?: string | null;
 }
 
 export interface PgroExtractedFunction {
@@ -674,6 +677,8 @@ export interface PgroExtractedFunction {
   gheName: string | null;
   rawText: string;
   included: boolean;
+  confidence?: 'high' | 'low';
+  source?: 'GHE' | 'KEYWORD' | 'GLOBAL';
 }
 
 export interface PgroExtractedRisk {
@@ -687,6 +692,9 @@ export interface PgroExtractedRisk {
   functionNames: string[];
   rawText: string;
   included: boolean;
+  confidence?: 'high' | 'low';
+  extractionSource?: 'GHE' | 'KEYWORD' | 'GLOBAL';
+  gheName?: string | null;
 }
 
 export interface PgroExtractedEpiNeed {
@@ -699,6 +707,9 @@ export interface PgroExtractedEpiNeed {
   functionNames: string[];
   riskNames: string[];
   included: boolean;
+  confidence?: 'high' | 'low';
+  extractionSource?: 'GHE' | 'KEYWORD' | 'GLOBAL';
+  gheName?: string | null;
 }
 
 export interface PgroImportConfirmSummary {

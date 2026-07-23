@@ -50,6 +50,31 @@ const RISK_CATEGORIES: { value: OccupationalRiskCategory; label: string }[] = [
   { value: 'OUTROS', label: 'Outros' },
 ];
 
+function qualityBadge(item: {
+  confidence?: 'high' | 'low';
+  source?: string;
+  extractionSource?: string;
+  gheName?: string | null;
+}) {
+  const source = item.source ?? item.extractionSource;
+  const confidence = item.confidence ?? 'high';
+  return (
+    <span className="epi-need-picker">
+      {source === 'GHE' ? (
+        <span className="status-pill status-pill--active">GHE</span>
+      ) : (
+        <span className="status-pill status-pill--info">Sugestao</span>
+      )}
+      {confidence === 'low' ? (
+        <span className="status-pill status-pill--warn">Baixa confianca</span>
+      ) : null}
+      {item.gheName ? (
+        <span className="table-sub">{item.gheName}</span>
+      ) : null}
+    </span>
+  );
+}
+
 function emptyCompany(): PgroCompanyData {
   return {
     legalName: null,
@@ -95,6 +120,32 @@ function PgroImportContent() {
       .catch(() => setCatalogNeeds([]));
   }, []);
 
+  const extractionWarnings = useMemo(
+    () => warnings.filter((w) => !w.startsWith('Ignorado:')),
+    [warnings],
+  );
+  const ignoredWarnings = useMemo(
+    () => warnings.filter((w) => w.startsWith('Ignorado:')),
+    [warnings],
+  );
+
+  const highSectors = useMemo(
+    () => sectors.filter((s) => (s.confidence ?? 'high') === 'high'),
+    [sectors],
+  );
+  const lowSectors = useMemo(
+    () => sectors.filter((s) => s.confidence === 'low'),
+    [sectors],
+  );
+  const highFunctions = useMemo(
+    () => functions.filter((f) => (f.confidence ?? 'high') === 'high'),
+    [functions],
+  );
+  const lowFunctions = useMemo(
+    () => functions.filter((f) => f.confidence === 'low'),
+    [functions],
+  );
+
   const includedCounts = useMemo(
     () => ({
       sectors: sectors.filter((s) => s.included).length,
@@ -111,10 +162,25 @@ function PgroImportContent() {
     setServedClientId(run.servedClientId ?? presetClientId);
     setCompany(run.company ?? emptyCompany());
     setWarnings(run.warnings ?? []);
-    setSectors(run.sectors ?? []);
-    setFunctions(run.functions ?? []);
+    setSectors(
+      (run.sectors ?? []).map((item) => ({
+        ...item,
+        included: item.confidence === 'low' ? false : item.included !== false,
+      })),
+    );
+    setFunctions(
+      (run.functions ?? []).map((item) => ({
+        ...item,
+        included: item.confidence === 'low' ? false : item.included !== false,
+      })),
+    );
     setRisks(run.risks ?? []);
-    setEpiNeeds(run.epiNeeds ?? []);
+    setEpiNeeds(
+      (run.epiNeeds ?? []).map((item) => ({
+        ...item,
+        included: item.confidence === 'low' ? false : item.included !== false,
+      })),
+    );
     if (run.status === 'FAILED') {
       setError(
         run.errorMessage ??
@@ -278,14 +344,26 @@ function PgroImportContent() {
         </p>
       ) : null}
 
-      {warnings.length > 0 && step !== 'upload' ? (
+      {extractionWarnings.length > 0 && step !== 'upload' ? (
         <section className="surface" aria-label="Avisos">
           <p className="page-kicker">Avisos da extracao</p>
           <ul>
-            {warnings.map((warning) => (
+            {extractionWarnings.map((warning) => (
               <li key={warning}>{warning}</li>
             ))}
           </ul>
+          {ignoredWarnings.length > 0 ? (
+            <details style={{ marginTop: '0.75rem' }}>
+              <summary>
+                {ignoredWarnings.length} item(ns) ignorados por baixa confianca
+              </summary>
+              <ul>
+                {ignoredWarnings.slice(0, 30).map((warning) => (
+                  <li key={warning}>{warning.replace(/^Ignorado:\s*/, '')}</li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
         </section>
       ) : null}
 
@@ -437,7 +515,8 @@ function PgroImportContent() {
         <ReviewList
           title="Setores encontrados"
           empty="Nenhum setor extraido. Voce pode seguir e criar depois na estrutura."
-          items={sectors}
+          items={highSectors}
+          lowItems={lowSectors}
           onToggle={(tempId) =>
             setSectors((prev) =>
               prev.map((item) =>
@@ -454,7 +533,6 @@ function PgroImportContent() {
               ),
             )
           }
-          renderMeta={(item) => item.rawText}
           onPrev={goPrev}
           onNext={goNext}
         />
@@ -466,71 +544,69 @@ function PgroImportContent() {
           {functions.length === 0 ? (
             <p className="page-lead">Nenhuma funcao extraida com confianca.</p>
           ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Incluir</th>
-                    <th scope="col">Funcao</th>
-                    <th scope="col">Setor</th>
-                    <th scope="col">GHE</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {functions.map((item) => (
-                    <tr key={item.tempId}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={item.included}
-                          onChange={() =>
-                            setFunctions((prev) =>
-                              prev.map((row) =>
-                                row.tempId === item.tempId
-                                  ? { ...row, included: !row.included }
-                                  : row,
-                              ),
-                            )
-                          }
-                        />
-                      </td>
-                      <td>
-                        <input
-                          value={item.name}
-                          onChange={(e) =>
-                            setFunctions((prev) =>
-                              prev.map((row) =>
-                                row.tempId === item.tempId
-                                  ? { ...row, name: e.target.value }
-                                  : row,
-                              ),
-                            )
-                          }
-                        />
-                      </td>
-                      <td>
-                        <input
-                          value={item.sectorName ?? ''}
-                          onChange={(e) =>
-                            setFunctions((prev) =>
-                              prev.map((row) =>
-                                row.tempId === item.tempId
-                                  ? {
-                                      ...row,
-                                      sectorName: e.target.value || null,
-                                    }
-                                  : row,
-                              ),
-                            )
-                          }
-                        />
-                      </td>
-                      <td>{item.gheName ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <FunctionTable
+                items={highFunctions}
+                onToggle={(tempId) =>
+                  setFunctions((prev) =>
+                    prev.map((row) =>
+                      row.tempId === tempId
+                        ? { ...row, included: !row.included }
+                        : row,
+                    ),
+                  )
+                }
+                onRename={(tempId, name) =>
+                  setFunctions((prev) =>
+                    prev.map((row) =>
+                      row.tempId === tempId ? { ...row, name } : row,
+                    ),
+                  )
+                }
+                onSector={(tempId, sectorName) =>
+                  setFunctions((prev) =>
+                    prev.map((row) =>
+                      row.tempId === tempId
+                        ? { ...row, sectorName: sectorName || null }
+                        : row,
+                    ),
+                  )
+                }
+              />
+              {lowFunctions.length > 0 ? (
+                <div style={{ marginTop: '1rem' }}>
+                  <p className="page-kicker">Revisar / ignorar (baixa confianca)</p>
+                  <FunctionTable
+                    items={lowFunctions}
+                    onToggle={(tempId) =>
+                      setFunctions((prev) =>
+                        prev.map((row) =>
+                          row.tempId === tempId
+                            ? { ...row, included: !row.included }
+                            : row,
+                        ),
+                      )
+                    }
+                    onRename={(tempId, name) =>
+                      setFunctions((prev) =>
+                        prev.map((row) =>
+                          row.tempId === tempId ? { ...row, name } : row,
+                        ),
+                      )
+                    }
+                    onSector={(tempId, sectorName) =>
+                      setFunctions((prev) =>
+                        prev.map((row) =>
+                          row.tempId === tempId
+                            ? { ...row, sectorName: sectorName || null }
+                            : row,
+                        ),
+                      )
+                    }
+                  />
+                </div>
+              ) : null}
+            </>
           )}
           <div className="btn-row">
             <button type="button" className="btn btn-secondary" onClick={goPrev}>
@@ -813,60 +889,82 @@ function ReviewList({
   title,
   empty,
   items,
+  lowItems = [],
   onToggle,
   onRename,
-  renderMeta,
   onPrev,
   onNext,
 }: {
   title: string;
   empty: string;
   items: PgroExtractedSector[];
+  lowItems?: PgroExtractedSector[];
   onToggle: (tempId: string) => void;
   onRename: (tempId: string, name: string) => void;
-  renderMeta: (item: PgroExtractedSector) => string;
   onPrev: () => void;
   onNext: () => void;
 }) {
+  function renderRows(rows: PgroExtractedSector[]) {
+    return rows.map((item) => (
+      <tr key={item.tempId}>
+        <td>
+          <input
+            type="checkbox"
+            checked={item.included}
+            onChange={() => onToggle(item.tempId)}
+          />
+        </td>
+        <td>
+          <input
+            value={item.name}
+            onChange={(e) => onRename(item.tempId, e.target.value)}
+          />
+          {qualityBadge(item)}
+        </td>
+        <td>
+          <span className="table-sub">{item.rawText}</span>
+        </td>
+      </tr>
+    ));
+  }
+
   return (
     <section className="surface">
       <h2 className="page-title page-title--sm">{title}</h2>
-      {items.length === 0 ? (
+      {items.length === 0 && lowItems.length === 0 ? (
         <p className="page-lead">{empty}</p>
       ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th scope="col">Incluir</th>
-                <th scope="col">Nome</th>
-                <th scope="col">Original</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.tempId}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={item.included}
-                      onChange={() => onToggle(item.tempId)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      value={item.name}
-                      onChange={(e) => onRename(item.tempId, e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <span className="table-sub">{renderMeta(item)}</span>
-                  </td>
+        <>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">Incluir</th>
+                  <th scope="col">Nome</th>
+                  <th scope="col">Original</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>{renderRows(items)}</tbody>
+            </table>
+          </div>
+          {lowItems.length > 0 ? (
+            <div style={{ marginTop: '1rem' }}>
+              <p className="page-kicker">Revisar / ignorar (baixa confianca)</p>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Incluir</th>
+                      <th scope="col">Nome</th>
+                      <th scope="col">Original</th>
+                    </tr>
+                  </thead>
+                  <tbody>{renderRows(lowItems)}</tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </>
       )}
       <div className="btn-row">
         <button type="button" className="btn btn-secondary" onClick={onPrev}>
@@ -877,6 +975,60 @@ function ReviewList({
         </button>
       </div>
     </section>
+  );
+}
+
+function FunctionTable({
+  items,
+  onToggle,
+  onRename,
+  onSector,
+}: {
+  items: PgroExtractedFunction[];
+  onToggle: (tempId: string) => void;
+  onRename: (tempId: string, name: string) => void;
+  onSector: (tempId: string, sectorName: string) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <div className="table-wrap">
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Incluir</th>
+            <th scope="col">Funcao</th>
+            <th scope="col">Setor</th>
+            <th scope="col">Origem</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.tempId}>
+              <td>
+                <input
+                  type="checkbox"
+                  checked={item.included}
+                  onChange={() => onToggle(item.tempId)}
+                />
+              </td>
+              <td>
+                <input
+                  value={item.name}
+                  onChange={(e) => onRename(item.tempId, e.target.value)}
+                />
+              </td>
+              <td>
+                <input
+                  value={item.sectorName ?? ''}
+                  onChange={(e) => onSector(item.tempId, e.target.value)}
+                />
+              </td>
+              <td>{qualityBadge(item)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
