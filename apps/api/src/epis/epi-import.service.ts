@@ -15,6 +15,7 @@ import type {
   EpiImportRowMatchBy,
 } from '@gestao-epi/shared';
 import { AuditService } from '../audit/audit.service';
+import { EpiNeedsService } from '../epi-needs/epi-needs.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   buildTechnicalNotesFromCaepi,
@@ -66,6 +67,7 @@ export class EpiImportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly epiNeeds: EpiNeedsService,
   ) {}
 
   async preview(
@@ -682,6 +684,15 @@ export class EpiImportService {
         },
       });
 
+      await this.epiNeeds.autoLinkClearMatch(organizationId, userId, item.id, {
+        name: payload.name,
+        description: payload.description ?? undefined,
+        category: payload.category ?? undefined,
+        reference: payload.reference ?? undefined,
+        color: payload.color ?? undefined,
+        technicalNotes: payload.technicalNotes ?? undefined,
+      });
+
       return { action: 'update', variantsCreated };
     }
 
@@ -747,6 +758,15 @@ export class EpiImportService {
         externalCode: item.externalCode,
         hasVariant: Boolean(payload.variant),
       },
+    });
+
+    await this.epiNeeds.autoLinkClearMatch(organizationId, userId, item.id, {
+      name: payload.name,
+      description: payload.description ?? undefined,
+      category: payload.category ?? undefined,
+      reference: payload.reference ?? undefined,
+      color: payload.color ?? undefined,
+      technicalNotes: payload.technicalNotes ?? undefined,
     });
 
     return {

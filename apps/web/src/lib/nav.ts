@@ -34,6 +34,12 @@ export const OPS_NAV: OpsNavItem[] = [
     description: 'Catalogo mestre com CA, validade e status.',
   },
   {
+    href: '/epi-needs',
+    label: 'Necessidades de EPI',
+    status: 'ready',
+    description: 'O que o trabalhador precisa vs EPI real em estoque.',
+  },
+  {
     href: '/caepi',
     label: 'Base CAEPI',
     status: 'ready',

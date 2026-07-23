@@ -6,6 +6,7 @@ import type {
   EpiCategory,
   EpiImportPreviewResponse,
   EpiItem,
+  EpiNeed,
   EpiUnitOfMeasure,
   EpiUsefulLifeUnit,
 } from '@gestao-epi/shared';
@@ -30,6 +31,12 @@ import {
   normalizeCaLookupInput,
 } from '../../lib/caepi-assist';
 import { lookupCaCertificate, searchCaCertificates } from '../../lib/caepi';
+import {
+  listEpiNeeds,
+  listNeedsByEpiItem,
+  matchEpiNeeds,
+  syncNeedsForEpiItem,
+} from '../../lib/epi-needs';
 import {
   confirmEpiCsvImport,
   createEpiItem,
@@ -215,14 +222,18 @@ function EpisContent() {
   const [stockTotalsByEpi, setStockTotalsByEpi] = useState<
     Record<string, number>
   >({});
+  const [availableNeeds, setAvailableNeeds] = useState<EpiNeed[]>([]);
+  const [selectedNeedIds, setSelectedNeedIds] = useState<string[]>([]);
+  const [suggestedNeedIds, setSuggestedNeedIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
-      const [list, totals] = await Promise.all([
+      const [list, totals, needs] = await Promise.all([
         listEpiItems(),
         listStockTotalsByEpi().catch(() => []),
+        listEpiNeeds({ status: 'active' }).catch(() => []),
       ]);
       setItems(list);
       const map: Record<string, number> = {};
@@ -230,6 +241,7 @@ function EpisContent() {
         map[row.epiItemId] = row.totalQuantity;
       }
       setStockTotalsByEpi(map);
+      setAvailableNeeds(needs);
     } catch (err) {
       setError(
         err instanceof Error
@@ -244,6 +256,33 @@ function EpisContent() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (mode === 'closed') return;
+    const timer = window.setTimeout(() => {
+      void matchEpiNeeds({
+        name: form.name,
+        description: form.description,
+        category: form.category || undefined,
+        reference: form.reference,
+        color: form.color,
+        technicalNotes: form.technicalNotes,
+      })
+        .then((result) => {
+          setSuggestedNeedIds(result.suggestions.map((item) => item.id));
+        })
+        .catch(() => setSuggestedNeedIds([]));
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [
+    mode,
+    form.name,
+    form.description,
+    form.category,
+    form.reference,
+    form.color,
+    form.technicalNotes,
+  ]);
 
   useEffect(() => {
     function onDocClick(event: MouseEvent) {
@@ -349,6 +388,8 @@ function EpisContent() {
     setEditingId(null);
     setForm(emptyForm);
     setFormError(null);
+    setSelectedNeedIds([]);
+    setSuggestedNeedIds([]);
     clearCaAssistState();
   }
 
@@ -387,7 +428,13 @@ function EpisContent() {
       })),
     });
     setFormError(null);
+    setSuggestedNeedIds([]);
     clearCaAssistState();
+    void listNeedsByEpiItem(item.id)
+      .then((links) => {
+        setSelectedNeedIds(links.map((link) => link.epiNeedId));
+      })
+      .catch(() => setSelectedNeedIds([]));
   }
 
   function closeForm() {
@@ -395,6 +442,8 @@ function EpisContent() {
     setEditingId(null);
     setForm(emptyForm);
     setFormError(null);
+    setSelectedNeedIds([]);
+    setSuggestedNeedIds([]);
     clearCaAssistState();
   }
 
@@ -675,10 +724,15 @@ function EpisContent() {
 
     setSaving(true);
     try {
+      let savedId = editingId;
       if (mode === 'create') {
-        await createEpiItem(payload);
+        const created = await createEpiItem(payload);
+        savedId = created.id;
       } else if (mode === 'edit' && editingId) {
         await updateEpiItem(editingId, payload);
+      }
+      if (savedId) {
+        await syncNeedsForEpiItem(savedId, selectedNeedIds).catch(() => null);
       }
       closeForm();
       await load();
@@ -1465,6 +1519,71 @@ function EpisContent() {
                       Descartar previa
                     </button>
                   </div>
+                </div>
+              ) : null}
+            </section>
+
+            <section className="epi-form-section" aria-labelledby="sec-needs">
+              <div className="epi-form-section__head">
+                <h3 id="sec-needs">Necessidades atendidas</h3>
+                <p>
+                  Vincule este EPI real as necessidades operacionais. Sugestoes
+                  aparecem com base no nome/descricao — confirme antes de salvar.{' '}
+                  <Link href="/epi-needs">Gerenciar necessidades</Link>
+                </p>
+              </div>
+              {availableNeeds.length === 0 ? (
+                <p className="field-hint">
+                  Nenhuma necessidade ativa. Gere sugestoes iniciais em{' '}
+                  <Link href="/epi-needs">Necessidades de EPI</Link>.
+                </p>
+              ) : (
+                <div className="epi-need-picker">
+                  {availableNeeds.map((need) => {
+                    const checked = selectedNeedIds.includes(need.id);
+                    const suggested = suggestedNeedIds.includes(need.id);
+                    return (
+                      <label
+                        key={need.id}
+                        className={`epi-need-chip${
+                          suggested ? ' epi-need-chip--suggested' : ''
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            setSelectedNeedIds((prev) =>
+                              e.target.checked
+                                ? [...prev, need.id]
+                                : prev.filter((id) => id !== need.id),
+                            );
+                          }}
+                        />
+                        <span>
+                          {need.name}
+                          {suggested && !checked ? (
+                            <em> (sugerida)</em>
+                          ) : null}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {suggestedNeedIds.length > 0 ? (
+                <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-compact"
+                    onClick={() => {
+                      setSelectedNeedIds((prev) => [
+                        ...new Set([...prev, ...suggestedNeedIds]),
+                      ]);
+                    }}
+                  >
+                    Aceitar sugestoes
+                  </button>
                 </div>
               ) : null}
             </section>

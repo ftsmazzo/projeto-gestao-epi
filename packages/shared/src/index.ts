@@ -479,3 +479,59 @@ export interface EpiStockTotal {
   totalQuantity: number;
 }
 
+export type EpiNeedStockStatus = 'UNLINKED' | 'WITH_STOCK' | 'NO_STOCK';
+
+export interface EpiNeed {
+  id: string;
+  organizationId: string;
+  name: string;
+  category: EpiCategory | null;
+  description: string | null;
+  aliases: string[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  linkedItemsCount?: number;
+  totalStockQuantity?: number;
+  stockStatus?: EpiNeedStockStatus;
+}
+
+export interface EpiItemNeedLink {
+  id: string;
+  organizationId: string;
+  epiItemId: string;
+  epiNeedId: string;
+  isPrimary: boolean;
+  notes: string | null;
+  createdAt: string;
+  stockQuantity?: number;
+  epiItem?: {
+    id: string;
+    name: string;
+    caNumber: string | null;
+    category: EpiCategory | null;
+    isActive: boolean;
+    manufacturerName?: string | null;
+  };
+  epiNeed?: EpiNeed;
+}
+
+export interface EpiNeedDetail extends EpiNeed {
+  items: EpiItemNeedLink[];
+}
+
+export interface EpiNeedDefaultsResult {
+  createdCount: number;
+  skippedCount: number;
+  created: EpiNeed[];
+}
+
+export interface EpiNeedMatchResult {
+  suggestions: Array<{
+    id: string;
+    name: string;
+    category: EpiCategory | null;
+  }>;
+  unmatchedNames?: string[];
+}
+

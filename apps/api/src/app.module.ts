@@ -11,6 +11,7 @@ import { WorkersModule } from './workers/workers.module';
 import { EpisModule } from './epis/epis.module';
 import { CaepiModule } from './caepi/caepi.module';
 import { StockModule } from './stock/stock.module';
+import { EpiNeedsModule } from './epi-needs/epi-needs.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { StockModule } from './stock/stock.module';
     EpisModule,
     CaepiModule,
     StockModule,
+    EpiNeedsModule,
     HealthModule,
   ],
 })
