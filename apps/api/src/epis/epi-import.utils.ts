@@ -481,6 +481,49 @@ export function buildTechnicalNotesFromCaepi(parts: {
   return chunks.length ? chunks.join('\n\n') : null;
 }
 
+/** Limites alinhados aos DTOs de EPI/importacao. */
+export const EPI_IMPORT_FIELD_LIMITS = {
+  name: 200,
+  description: 1000,
+  caNumber: 40,
+  externalCode: 80,
+  manufacturerName: 200,
+  reference: 120,
+  color: 80,
+  approvedFor: 500,
+  restriction: 500,
+  technicalNotes: 2000,
+  size: 80,
+  model: 120,
+  side: 40,
+  variantNotes: 500,
+} as const;
+
+/**
+ * Corta texto ao limite do campo. Retorna aviso quando houve truncamento
+ * (comum em descricoes oficiais CAEPI longas).
+ */
+export function clampImportText(
+  value: string | null | undefined,
+  maxLength: number,
+  label: string,
+): { value: string | null; warning: string | null } {
+  if (value == null) {
+    return { value: null, warning: null };
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { value: null, warning: null };
+  }
+  if (trimmed.length <= maxLength) {
+    return { value: trimmed, warning: null };
+  }
+  return {
+    value: trimmed.slice(0, maxLength).trimEnd(),
+    warning: `${label} truncada para ${maxLength} caracteres (texto original com ${trimmed.length}).`,
+  };
+}
+
 export const EPI_CSV_TEMPLATE = `nome,ca,exige_ca,unidade,vida_util,unidade_vida_util,categoria,codigo_externo,tamanho,modelo
 Protetor Auditivo Exemplo,45666,sim,PAR,6,MESES,AUDITIVA,EPI-AUD-001,Unico,PTS 350
 Luva de Seguranca,,nao,PAR,90,DIAS,MAOS,EPI-MAO-010,M,Nitrilo

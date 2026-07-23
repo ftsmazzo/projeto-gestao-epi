@@ -18,6 +18,8 @@ import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   buildTechnicalNotesFromCaepi,
+  clampImportText,
+  EPI_IMPORT_FIELD_LIMITS,
   mapCategory,
   mapCsvRecord,
   mapUnitOfMeasure,
@@ -441,8 +443,110 @@ export class EpiImportService {
     const model = normalizeOptionalText(input.mapped.model);
     const side = normalizeOptionalText(input.mapped.side);
     const variantNotes = normalizeOptionalText(input.mapped.variantNotes);
+
+    const clampedName = clampImportText(
+      name,
+      EPI_IMPORT_FIELD_LIMITS.name,
+      'Nome',
+    );
+    const clampedDescription = clampImportText(
+      description,
+      EPI_IMPORT_FIELD_LIMITS.description,
+      'Descricao',
+    );
+    const clampedManufacturer = clampImportText(
+      manufacturerName,
+      EPI_IMPORT_FIELD_LIMITS.manufacturerName,
+      'Fabricante',
+    );
+    const clampedReference = clampImportText(
+      reference,
+      EPI_IMPORT_FIELD_LIMITS.reference,
+      'Referencia',
+    );
+    const clampedColor = clampImportText(
+      color,
+      EPI_IMPORT_FIELD_LIMITS.color,
+      'Cor',
+    );
+    const clampedApprovedFor = clampImportText(
+      approvedFor,
+      EPI_IMPORT_FIELD_LIMITS.approvedFor,
+      'Aprovado para',
+    );
+    const clampedRestriction = clampImportText(
+      restriction,
+      EPI_IMPORT_FIELD_LIMITS.restriction,
+      'Restricao',
+    );
+    const clampedTechnicalNotes = clampImportText(
+      technicalNotes,
+      EPI_IMPORT_FIELD_LIMITS.technicalNotes,
+      'Observacoes tecnicas',
+    );
+    const clampedExternalCode = clampImportText(
+      externalCode,
+      EPI_IMPORT_FIELD_LIMITS.externalCode,
+      'Codigo externo',
+    );
+    const clampedSize = clampImportText(
+      size,
+      EPI_IMPORT_FIELD_LIMITS.size,
+      'Tamanho',
+    );
+    const clampedModel = clampImportText(
+      model,
+      EPI_IMPORT_FIELD_LIMITS.model,
+      'Modelo',
+    );
+    const clampedSide = clampImportText(
+      side,
+      EPI_IMPORT_FIELD_LIMITS.side,
+      'Lado',
+    );
+    const clampedVariantNotes = clampImportText(
+      variantNotes,
+      EPI_IMPORT_FIELD_LIMITS.variantNotes,
+      'Observacao da variacao',
+    );
+
+    for (const clamped of [
+      clampedName,
+      clampedDescription,
+      clampedManufacturer,
+      clampedReference,
+      clampedColor,
+      clampedApprovedFor,
+      clampedRestriction,
+      clampedTechnicalNotes,
+      clampedExternalCode,
+      clampedSize,
+      clampedModel,
+      clampedSide,
+      clampedVariantNotes,
+    ]) {
+      if (clamped.warning) {
+        warnings.push(clamped.warning);
+      }
+    }
+
+    name = clampedName.value ?? '';
+    description = clampedDescription.value;
+    manufacturerName = clampedManufacturer.value;
+    reference = clampedReference.value;
+    color = clampedColor.value;
+    approvedFor = clampedApprovedFor.value;
+    restriction = clampedRestriction.value;
+    technicalNotes = clampedTechnicalNotes.value;
+    const finalExternalCode = clampedExternalCode.value;
+    const finalSize = clampedSize.value;
+    const finalModel = clampedModel.value;
+    const finalSide = clampedSide.value;
+    const finalVariantNotes = clampedVariantNotes.value;
     const variantColor = color;
-    const hasVariant = Boolean(size || model || variantColor || side || variantNotes);
+    const hasVariant = Boolean(
+      finalSize || finalModel || variantColor || finalSide || finalVariantNotes,
+    );
 
     const ok = errors.length === 0;
     const payload: EpiImportNormalizedPayload | null = ok
@@ -456,7 +560,7 @@ export class EpiImportService {
           usefulLifeValue,
           usefulLifeUnit,
           category,
-          externalCode,
+          externalCode: finalExternalCode,
           manufacturerName,
           reference,
           color,
@@ -477,11 +581,11 @@ export class EpiImportService {
               : null,
           variant: hasVariant
             ? {
-                size,
+                size: finalSize,
                 color: variantColor,
-                model,
-                side,
-                notes: variantNotes,
+                model: finalModel,
+                side: finalSide,
+                notes: finalVariantNotes,
               }
             : null,
         }
