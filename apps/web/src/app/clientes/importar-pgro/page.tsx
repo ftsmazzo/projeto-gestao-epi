@@ -487,6 +487,36 @@ function PgroImportContent() {
                 }
               />
             </div>
+            <div className="field">
+              <label htmlFor="riskGrade">Grau de risco</label>
+              <input
+                id="riskGrade"
+                value={company.riskGrade ?? ''}
+                onChange={(e) =>
+                  setCompany((prev) => ({
+                    ...prev,
+                    riskGrade: e.target.value || null,
+                  }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="employeeCount">Nº funcionarios</label>
+              <input
+                id="employeeCount"
+                type="number"
+                min={0}
+                value={company.employeeCount ?? ''}
+                onChange={(e) =>
+                  setCompany((prev) => ({
+                    ...prev,
+                    employeeCount: e.target.value
+                      ? Number(e.target.value)
+                      : null,
+                  }))
+                }
+              />
+            </div>
             {!servedClientId ? (
               <div className="field">
                 <label htmlFor="quota">Cota de vidas (novo cliente)</label>
