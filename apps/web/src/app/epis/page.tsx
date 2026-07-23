@@ -182,15 +182,17 @@ function EpisContent() {
   const [caLookupMessage, setCaLookupMessage] = useState<string | null>(null);
   const [caPreview, setCaPreview] = useState<CaCertificate | null>(null);
   const [caAppliedBanner, setCaAppliedBanner] = useState<string | null>(null);
+  const [nameAppliedBanner, setNameAppliedBanner] = useState<string | null>(
+    null,
+  );
+  const [nameAssistError, setNameAssistError] = useState<string | null>(null);
+  const [caLookupInput, setCaLookupInput] = useState('');
   const [caSuggestions, setCaSuggestions] = useState<CaCertificateSearchItem[]>(
     [],
   );
   const [caSuggestLoading, setCaSuggestLoading] = useState(false);
   const [caSuggestOpen, setCaSuggestOpen] = useState(false);
   const [caSuggestQuery, setCaSuggestQuery] = useState('');
-  const [caSuggestSource, setCaSuggestSource] = useState<'name' | 'ca' | null>(
-    null,
-  );
   const caSuggestSeq = useRef(0);
   const caSuggestBoxRef = useRef<HTMLDivElement | null>(null);
 
@@ -305,10 +307,12 @@ function EpisContent() {
     setCaLookupError(null);
     setCaLookupMessage(null);
     setCaAppliedBanner(null);
+    setNameAppliedBanner(null);
+    setNameAssistError(null);
+    setCaLookupInput('');
     setCaSuggestions([]);
     setCaSuggestOpen(false);
     setCaSuggestQuery('');
-    setCaSuggestSource(null);
   }
 
   function openCreate() {
@@ -371,7 +375,8 @@ function EpisContent() {
     setCaLookupMessage(null);
     setCaPreview(null);
     setCaAppliedBanner(null);
-    setCaSuggestOpen(false);
+    setNameAppliedBanner(null);
+    setNameAssistError(null);
 
     if (!caNumber) {
       setCaLookupError('Informe o numero do CA para consultar a base local.');
@@ -396,10 +401,7 @@ function EpisContent() {
         return;
       }
       setCaPreview(result.certificate);
-      setForm((prev) => ({
-        ...prev,
-        caNumber: result.certificate!.caNumber,
-      }));
+      setCaLookupInput(result.certificate.caNumber);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Falha ao consultar o CA.';
@@ -416,7 +418,7 @@ function EpisContent() {
   }
 
   async function onLookupCa() {
-    await openCaPreview(form.caNumber);
+    await openCaPreview(caLookupInput);
   }
 
   function applyCertificateToForm(
@@ -488,40 +490,43 @@ function EpisContent() {
       };
     });
 
-    setCaAppliedBanner(
-      `Dados do CA ${certificate.caNumber} aplicados a partir da base local CAEPI. Revise e salve o cadastro.`,
-    );
     return true;
   }
 
-  async function onSelectSuggestion(item: CaCertificateSearchItem) {
+  /** Fluxo por nome: preenche o formulario sem abrir previa CAEPI. */
+  async function onSelectNameSuggestion(item: CaCertificateSearchItem) {
     setCaSuggestOpen(false);
-    setCaSuggestSource(null);
+    setCaPreview(null);
+    setCaAppliedBanner(null);
     setCaLookupError(null);
     setCaLookupMessage(null);
-    setCaAppliedBanner(null);
+    setNameAppliedBanner(null);
+    setNameAssistError(null);
     setCaLookupLoading(true);
 
     try {
       const result = await lookupCaCertificate(item.caNumber);
       if (!result.found || !result.certificate) {
-        setCaLookupMessage(
+        setNameAssistError(
           result.message ??
             `CA ${item.caNumber} nao encontrado na base CAEPI local.`,
         );
-        setForm((prev) => ({ ...prev, caNumber: item.caNumber }));
         return;
       }
 
-      setCaPreview(result.certificate);
-      applyCertificateToForm(result.certificate, {
+      const applied = applyCertificateToForm(result.certificate, {
         replaceName: true,
         seedVariants: true,
       });
+      if (applied) {
+        setNameAppliedBanner(
+          `Dados do CA ${result.certificate.caNumber} preenchidos pela busca por nome. Revise e salve o cadastro.`,
+        );
+      }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Falha ao consultar o CA.';
-      setCaLookupError(`Erro de API/rede: ${message}`);
+      setNameAssistError(`Erro de API/rede: ${message}`);
     } finally {
       setCaLookupLoading(false);
     }
@@ -531,10 +536,17 @@ function EpisContent() {
     if (!caPreview) {
       return;
     }
-    applyCertificateToForm(caPreview, {
+    const applied = applyCertificateToForm(caPreview, {
       replaceName: !form.name.trim(),
       seedVariants: true,
     });
+    if (applied) {
+      setCaAppliedBanner(
+        `Dados do CA ${caPreview.caNumber} aplicados a partir da busca por CA. Revise e salve o cadastro.`,
+      );
+      setNameAppliedBanner(null);
+      setCaPreview(null);
+    }
   }
 
   function updateVariant(
@@ -726,14 +738,15 @@ function EpisContent() {
                     value={form.name}
                     onChange={(e) => {
                       const value = e.target.value;
-                      setCaLookupError(null);
                       setForm((prev) => ({ ...prev, name: value }));
-                      setCaSuggestSource('name');
+                      setNameAppliedBanner(null);
+                      setNameAssistError(null);
                       setCaSuggestQuery(value);
-                      setCaSuggestOpen(value.trim().length >= CAEPI_SEARCH_MIN_CHARS);
+                      setCaSuggestOpen(
+                        value.trim().length >= CAEPI_SEARCH_MIN_CHARS,
+                      );
                     }}
                     onFocus={() => {
-                      setCaSuggestSource('name');
                       if (
                         form.name.trim().length >= CAEPI_SEARCH_MIN_CHARS &&
                         caSuggestions.length > 0
@@ -745,10 +758,19 @@ function EpisContent() {
                   <p className="field-hint">
                     Digite ao menos 3 caracteres para sugerir CAs. Ao escolher
                     uma sugestao, os campos do cadastro sao preenchidos
-                    automaticamente.
+                    automaticamente (sem abrir previa).
                   </p>
+                  {nameAssistError ? (
+                    <p className="error" role="alert">
+                      {nameAssistError}
+                    </p>
+                  ) : null}
+                  {nameAppliedBanner ? (
+                    <p className="caepi-applied" role="status">
+                      {nameAppliedBanner}
+                    </p>
+                  ) : null}
                   {caSuggestOpen &&
-                  caSuggestSource === 'name' &&
                   (caSuggestLoading || caSuggestions.length > 0) &&
                   caSuggestQuery.trim().length >= CAEPI_SEARCH_MIN_CHARS ? (
                     <ul className="caepi-suggest-list" role="listbox">
@@ -762,7 +784,7 @@ function EpisContent() {
                             <button
                               type="button"
                               className="caepi-suggest-item"
-                              onClick={() => void onSelectSuggestion(item)}
+                              onClick={() => void onSelectNameSuggestion(item)}
                             >
                               <span className="caepi-suggest-item__ca">
                                 CA {item.caNumber}
@@ -848,8 +870,8 @@ function EpisContent() {
               <div className="epi-form-section__head">
                 <h3 id="sec-ca">CA e conformidade</h3>
                 <p>
-                  Consulte a base local CAEPI para preencher dados oficiais.
-                  A consulta e opcional e nao salva o EPI automaticamente.
+                  Informe o CA do cadastro. Para preencher pela base oficial,
+                  use o bloco de busca por CA abaixo.
                 </p>
               </div>
               <div className="form-grid">
@@ -874,7 +896,7 @@ function EpisContent() {
                     </span>
                   </label>
                 </div>
-                <div className="field caepi-suggest-wrap">
+                <div className="field">
                   <label htmlFor="epi-ca">
                     Numero do CA{form.requiresCa ? '' : ' (opcional)'}
                   </label>
@@ -886,73 +908,12 @@ function EpisContent() {
                     value={form.caNumber}
                     onChange={(e) => {
                       const value = normalizeCaInput(e.target.value);
-                      setCaPreview(null);
-                      setCaLookupMessage(null);
-                      setCaLookupError(null);
-                      setCaAppliedBanner(null);
                       setForm((prev) => ({
                         ...prev,
                         caNumber: value,
                       }));
-                      setCaSuggestSource('ca');
-                      setCaSuggestQuery(value);
-                      setCaSuggestOpen(
-                        value.trim().length >= CAEPI_SEARCH_MIN_CHARS,
-                      );
-                    }}
-                    onFocus={() => {
-                      setCaSuggestSource('ca');
-                      if (
-                        form.caNumber.trim().length >= CAEPI_SEARCH_MIN_CHARS &&
-                        caSuggestions.length > 0
-                      ) {
-                        setCaSuggestOpen(true);
-                      }
                     }}
                   />
-                  {caSuggestOpen &&
-                  caSuggestSource === 'ca' &&
-                  (caSuggestLoading || caSuggestions.length > 0) &&
-                  caSuggestQuery.trim().length >= CAEPI_SEARCH_MIN_CHARS ? (
-                    <ul className="caepi-suggest-list" role="listbox">
-                      {caSuggestLoading ? (
-                        <li className="caepi-suggest-item caepi-suggest-item--muted">
-                          Buscando sugestoes...
-                        </li>
-                      ) : (
-                        caSuggestions.map((item) => (
-                          <li key={`ca-${item.caNumber}`}>
-                            <button
-                              type="button"
-                              className="caepi-suggest-item"
-                              onClick={() => void onSelectSuggestion(item)}
-                            >
-                              <span className="caepi-suggest-item__ca">
-                                CA {item.caNumber}
-                              </span>
-                              <span className={caStatusClassName(item.status)}>
-                                {formatCaStatusLabel(item.status)}
-                              </span>
-                              <span className="caepi-suggest-item__meta">
-                                {item.equipmentName || '—'}
-                              </span>
-                              <span className="caepi-suggest-item__meta">
-                                {item.manufacturerName || '—'}
-                              </span>
-                              {item.reference ? (
-                                <span className="caepi-suggest-item__meta">
-                                  Ref. {item.reference}
-                                </span>
-                              ) : null}
-                              <span className="caepi-suggest-item__meta">
-                                Validade {formatDateBr(item.expiresAt)}
-                              </span>
-                            </button>
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                  ) : null}
                 </div>
                 <div className="field">
                   <label htmlFor="epi-ca-exp">Validade do CA</label>
@@ -969,24 +930,51 @@ function EpisContent() {
                   />
                 </div>
               </div>
-              <aside className="caepi-slot" aria-label="Consulta CAEPI">
-                <div>
-                  <p className="page-kicker">Base local CAEPI</p>
-                  <p className="field-hint">
-                    Digite o CA (min. 3 caracteres) para sugestoes ou use o botao
-                    para consulta exata. A previa aparece e voce aplica os dados
-                    ao cadastro.
-                  </p>
+            </section>
+
+            <section className="epi-form-section" aria-labelledby="sec-ca-lookup">
+              <div className="epi-form-section__head">
+                <h3 id="sec-ca-lookup">Busca por CA</h3>
+                <p>
+                  Use quando voce sabe o numero do CA. A previa aparece e so
+                  inclui dados ao confirmar.
+                </p>
+              </div>
+
+              <div className="caepi-slot caepi-slot--lookup">
+                <div className="field" style={{ flex: '1 1 14rem', margin: 0 }}>
+                  <label htmlFor="epi-ca-lookup">
+                    Consultar CA na base local
+                  </label>
+                  <input
+                    id="epi-ca-lookup"
+                    autoComplete="off"
+                    placeholder="Digite o numero do CA"
+                    value={caLookupInput}
+                    onChange={(e) => {
+                      setCaLookupInput(normalizeCaInput(e.target.value));
+                      setCaPreview(null);
+                      setCaLookupError(null);
+                      setCaLookupMessage(null);
+                      setCaAppliedBanner(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        void onLookupCa();
+                      }
+                    }}
+                  />
                 </div>
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  disabled={caLookupLoading || !form.caNumber.trim()}
+                  disabled={caLookupLoading || !caLookupInput.trim()}
                   onClick={() => void onLookupCa()}
                 >
                   {caLookupLoading ? 'Buscando...' : 'Buscar dados do CA'}
                 </button>
-              </aside>
+              </div>
 
               {caLookupError ? (
                 <p className="error" role="alert">
@@ -1041,7 +1029,8 @@ function EpisContent() {
                   caPreview.status === 'CANCELADO' ||
                   caPreview.status === 'SUSPENSO' ? (
                     <p className="caepi-alert caepi-alert--warn" role="alert">
-                      Atencao: este CA esta {formatCaStatusLabel(caPreview.status).toLowerCase()}.
+                      Atencao: este CA esta{' '}
+                      {formatCaStatusLabel(caPreview.status).toLowerCase()}.
                       Voce ainda pode aplicar os dados e decidir se salva o
                       cadastro.
                     </p>
@@ -1109,12 +1098,15 @@ function EpisContent() {
                       className="btn btn-primary"
                       onClick={onApplyCaPreview}
                     >
-                      Aplicar dados ao cadastro
+                      Incluir dados no cadastro
                     </button>
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      onClick={() => setCaPreview(null)}
+                      onClick={() => {
+                        setCaPreview(null);
+                        setCaAppliedBanner(null);
+                      }}
                     >
                       Descartar previa
                     </button>
@@ -1127,8 +1119,8 @@ function EpisContent() {
               <div className="epi-form-section__head">
                 <h3 id="sec-official">Dados oficiais do produto</h3>
                 <p>
-                  Campos alinhados aos dados oficiais do CA. Use a busca CAEPI
-                  para preencher e revise antes de salvar.
+                  Campos alinhados aos dados oficiais do CA. Preencha pela busca
+                  por nome ou pela busca por CA e revise antes de salvar.
                 </p>
               </div>
               <div className="form-grid">

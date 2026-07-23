@@ -1113,6 +1113,11 @@ a.btn-danger:hover {
   background: #edf4ff;
 }
 
+.caepi-slot--lookup {
+  align-items: flex-end;
+  margin-bottom: 0.75rem;
+}
+
 .caepi-message,
 .caepi-applied {
   margin: 0;
