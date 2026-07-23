@@ -304,3 +304,82 @@ export interface CaepiSyncStartResponse {
   runId: string;
   status: CaepiImportRunStatus;
 }
+
+/** Payload normalizado de uma linha de importacao CSV de EPIs. */
+export interface EpiImportVariantDraft {
+  size: string | null;
+  color: string | null;
+  model: string | null;
+  side: string | null;
+  notes: string | null;
+}
+
+export interface EpiImportNormalizedPayload {
+  name: string;
+  description: string | null;
+  requiresCa: boolean;
+  caNumber: string | null;
+  caExpiresAt: string | null;
+  unitOfMeasure: EpiUnitOfMeasure;
+  usefulLifeValue: number | null;
+  usefulLifeUnit: EpiUsefulLifeUnit | null;
+  category: EpiCategory | null;
+  externalCode: string | null;
+  manufacturerName: string | null;
+  reference: string | null;
+  color: string | null;
+  approvedFor: string | null;
+  restriction: string | null;
+  technicalNotes: string | null;
+  nrr: number | null;
+  nrrsf: number | null;
+  variant: EpiImportVariantDraft | null;
+}
+
+export type EpiImportRowMatchBy = 'externalCode' | 'caNumber';
+
+export type EpiImportRowAction = 'create' | 'update';
+
+export interface EpiImportPreviewRow {
+  rowNumber: number;
+  /** Linha apta a gravacao (sem erros bloqueantes). */
+  ok: boolean;
+  errors: string[];
+  warnings: string[];
+  enrichedFromCaepi: boolean;
+  caNotFound: boolean;
+  caStatus: CaCertificateStatus | null;
+  action: EpiImportRowAction | null;
+  matchBy: EpiImportRowMatchBy | null;
+  existingEpiId: string | null;
+  payload: EpiImportNormalizedPayload | null;
+}
+
+export interface EpiImportPreviewTotals {
+  rowsRead: number;
+  valid: number;
+  withErrors: number;
+  withWarnings: number;
+  enrichedFromCaepi: number;
+  caNotFound: number;
+  conflicts: number;
+}
+
+export interface EpiImportPreviewResponse {
+  unknownColumns: string[];
+  rows: EpiImportPreviewRow[];
+  totals: EpiImportPreviewTotals;
+}
+
+export interface EpiImportConfirmRowInput {
+  rowNumber: number;
+  payload: EpiImportNormalizedPayload;
+}
+
+export interface EpiImportConfirmResponse {
+  created: number;
+  updated: number;
+  variantsCreated: number;
+  failed: number;
+  errors: Array<{ rowNumber: number; message: string }>;
+}

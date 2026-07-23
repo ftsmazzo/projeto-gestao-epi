@@ -1049,6 +1049,32 @@ a.btn-danger:hover {
   color: var(--color-muted);
 }
 
+.status-pill--warn {
+  background: #fff4d6;
+  color: #8a5a00;
+}
+
+.status-pill--info {
+  background: #e8f1ff;
+  color: #1f4b99;
+}
+
+.epi-import-panel {
+  margin-bottom: 1.25rem;
+}
+
+.epi-import-guide {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.epi-import-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 .empty-unit-slot {
   display: grid;
   gap: 0.55rem;

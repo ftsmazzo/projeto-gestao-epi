@@ -4,6 +4,7 @@ import type {
   CaCertificate,
   CaCertificateSearchItem,
   EpiCategory,
+  EpiImportPreviewResponse,
   EpiItem,
   EpiUnitOfMeasure,
   EpiUsefulLifeUnit,
@@ -30,9 +31,14 @@ import {
 } from '../../lib/caepi-assist';
 import { lookupCaCertificate, searchCaCertificates } from '../../lib/caepi';
 import {
+  confirmEpiCsvImport,
   createEpiItem,
+  downloadCsvText,
+  EPI_CSV_TEMPLATE_LOCAL,
   EpiVariantInput,
+  getEpiCsvTemplate,
   listEpiItems,
+  previewEpiCsvImport,
   updateEpiItem,
   updateEpiItemStatus,
 } from '../../lib/epis';
@@ -195,6 +201,16 @@ function EpisContent() {
   const [caSuggestQuery, setCaSuggestQuery] = useState('');
   const caSuggestSeq = useRef(0);
   const caSuggestBoxRef = useRef<HTMLDivElement | null>(null);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importFileName, setImportFileName] = useState<string | null>(null);
+  const [importPreview, setImportPreview] =
+    useState<EpiImportPreviewResponse | null>(null);
+  const [importResultMessage, setImportResultMessage] = useState<string | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     setError(null);
@@ -676,6 +692,108 @@ function EpisContent() {
     }
   }
 
+  function openImportPanel() {
+    setImportOpen(true);
+    setImportError(null);
+    setImportResultMessage(null);
+    setImportPreview(null);
+    setImportFileName(null);
+    if (importFileRef.current) {
+      importFileRef.current.value = '';
+    }
+  }
+
+  function closeImportPanel() {
+    setImportOpen(false);
+    setImportError(null);
+    setImportBusy(false);
+    setImportPreview(null);
+    setImportFileName(null);
+  }
+
+  async function onDownloadCsvTemplate() {
+    try {
+      const template = await getEpiCsvTemplate();
+      downloadCsvText(template.fileName, template.csvText);
+    } catch {
+      downloadCsvText('modelo-importacao-epis.csv', EPI_CSV_TEMPLATE_LOCAL);
+    }
+  }
+
+  async function onImportFileSelected(file: File | null) {
+    if (!file) return;
+    setImportError(null);
+    setImportResultMessage(null);
+    setImportBusy(true);
+    setImportFileName(file.name);
+    try {
+      const csvText = await file.text();
+      const preview = await previewEpiCsvImport(csvText);
+      setImportPreview(preview);
+    } catch (err) {
+      setImportPreview(null);
+      setImportError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel gerar a previa do CSV.',
+      );
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function onConfirmImport() {
+    if (!importPreview) return;
+    const rows = importPreview.rows
+      .filter((row) => row.ok && row.payload)
+      .map((row) => ({
+        rowNumber: row.rowNumber,
+        payload: row.payload!,
+      }));
+    if (rows.length === 0) {
+      setImportError('Nenhuma linha valida para confirmar.');
+      return;
+    }
+
+    setImportBusy(true);
+    setImportError(null);
+    try {
+      const result = await confirmEpiCsvImport(rows);
+      setImportResultMessage(
+        `Importacao concluida: ${result.created} criado(s), ${result.updated} atualizado(s), ${result.variantsCreated} variacao(oes).${
+          result.failed > 0 ? ` Falhas: ${result.failed}.` : ''
+        }`,
+      );
+      if (result.errors.length > 0) {
+        setImportError(
+          result.errors
+            .map((item) => `Linha ${item.rowNumber}: ${item.message}`)
+            .join(' | '),
+        );
+      }
+      setImportPreview(null);
+      await load();
+    } catch (err) {
+      setImportError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel confirmar a importacao.',
+      );
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  const importHasBlockingErrors = Boolean(
+    importPreview && importPreview.totals.withErrors > 0,
+  );
+  const importCanConfirm = Boolean(
+    importPreview &&
+      importPreview.totals.valid > 0 &&
+      !importHasBlockingErrors &&
+      !importBusy,
+  );
+
   return (
     <div className="module-page epi-page">
       <header className="module-header">
@@ -689,11 +807,234 @@ function EpisContent() {
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={openImportPanel}
+          >
+            Importar CSV
+          </button>
           <button type="button" className="btn btn-primary" onClick={openCreate}>
             Novo EPI
           </button>
         </div>
       </header>
+
+      {importOpen ? (
+        <section className="surface epi-import-panel" aria-labelledby="epi-import-title">
+          <div className="form-section-header">
+            <div>
+              <p className="page-kicker">Importacao em lote</p>
+              <h2 id="epi-import-title" className="page-title page-title--sm">
+                Importar EPIs por CSV
+              </h2>
+              <p className="page-lead">
+                Envie a lista do cliente, revise a previa (com enriquecimento
+                CAEPI quando houver CA) e confirme antes de gravar.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={closeImportPanel}
+              disabled={importBusy}
+            >
+              Fechar
+            </button>
+          </div>
+
+          <div className="epi-import-guide">
+            <p className="field-hint">
+              Colunas aceitas (PT ou tecnico): nome/name, ca/caNumber,
+              exige_ca/requiresCa, unidade/unitOfMeasure, vida_util,
+              unidade_vida_util, categoria, codigo_externo, fabricante,
+              referencia, cor, tamanho, modelo e demais campos oficiais.
+              Colunas desconhecidas sao ignoradas com aviso.
+            </p>
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => void onDownloadCsvTemplate()}
+              >
+                Baixar modelo CSV
+              </button>
+              <label className="btn btn-primary" htmlFor="epi-csv-file">
+                {importBusy ? 'Processando...' : 'Selecionar CSV'}
+              </label>
+              <input
+                id="epi-csv-file"
+                ref={importFileRef}
+                type="file"
+                accept=".csv,text/csv"
+                hidden
+                disabled={importBusy}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  void onImportFileSelected(file);
+                }}
+              />
+            </div>
+            {importFileName ? (
+              <p className="field-hint">Arquivo: {importFileName}</p>
+            ) : null}
+          </div>
+
+          {importError ? (
+            <p className="error" role="alert">
+              {importError}
+            </p>
+          ) : null}
+          {importResultMessage ? (
+            <p className="caepi-applied" role="status">
+              {importResultMessage}
+            </p>
+          ) : null}
+
+          {importPreview ? (
+            <>
+              {importPreview.unknownColumns.length > 0 ? (
+                <p className="caepi-message" role="status">
+                  Colunas ignoradas: {importPreview.unknownColumns.join(', ')}
+                </p>
+              ) : null}
+
+              <section className="quota-summary" aria-label="Resumo da previa">
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Lidas</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.rowsRead}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Validas</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.valid}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Com erro</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.withErrors}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Enriquecidas</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.enrichedFromCaepi}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">CA nao encontrado</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.caNotFound}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Atualizacoes</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.conflicts}
+                  </strong>
+                </div>
+              </section>
+
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Linha</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Nome / CA</th>
+                      <th scope="col">Acao</th>
+                      <th scope="col">Detalhes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.rows.map((row) => (
+                      <tr key={row.rowNumber}>
+                        <td className="mono">{row.rowNumber}</td>
+                        <td>
+                          <div className="epi-import-badges">
+                            <span
+                              className={`status-pill status-pill--${
+                                row.ok ? 'active' : 'inactive'
+                              }`}
+                            >
+                              {row.ok ? 'Valido' : 'Erro'}
+                            </span>
+                            {row.warnings.length > 0 ? (
+                              <span className="status-pill status-pill--warn">
+                                Aviso
+                              </span>
+                            ) : null}
+                            {row.enrichedFromCaepi ? (
+                              <span className="status-pill status-pill--info">
+                                CAEPI
+                              </span>
+                            ) : null}
+                            {row.caStatus &&
+                            row.caStatus !== 'VALIDO' &&
+                            row.caStatus !== 'DESCONHECIDO' ? (
+                              <span className={caStatusClassName(row.caStatus)}>
+                                {formatCaStatusLabel(row.caStatus)}
+                              </span>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td>
+                          <strong>
+                            {row.payload?.name || '—'}
+                          </strong>
+                          <span className="table-sub">
+                            CA {row.payload?.caNumber || '—'}
+                            {row.payload?.externalCode
+                              ? ` · ${row.payload.externalCode}`
+                              : ''}
+                          </span>
+                        </td>
+                        <td>
+                          {row.action === 'update'
+                            ? 'Atualizar'
+                            : row.action === 'create'
+                              ? 'Criar'
+                              : '—'}
+                        </td>
+                        <td>
+                          {row.errors.length > 0 ? (
+                            <span className="error">{row.errors.join(' ')}</span>
+                          ) : row.warnings.length > 0 ? (
+                            <span className="field-hint">
+                              {row.warnings.join(' ')}
+                            </span>
+                          ) : (
+                            <span className="field-hint">Pronto para gravar</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={!importCanConfirm}
+                  onClick={() => void onConfirmImport()}
+                >
+                  {importBusy ? 'Confirmando...' : 'Confirmar importacao'}
+                </button>
+                {importHasBlockingErrors ? (
+                  <p className="field-hint">
+                    Corrija as linhas com erro no CSV e gere a previa novamente.
+                  </p>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </section>
+      ) : null}
 
       {error ? (
         <p className="error" role="alert">
