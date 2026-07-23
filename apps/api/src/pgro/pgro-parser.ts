@@ -149,13 +149,20 @@ const STOP_WORDS = new Set([
 ]);
 
 const JOB_HINT_RE =
-  /\b(auxiliar|assistente|encarregado|operador|motorista|vendedor|tecnico|técnico|analista|supervisor|coordenador|gerente|servente|faxineir|limpeza|mecanico|mecânico|eletricista|soldador|pedreiro|pintor|almoxarife|recepcionista|secretario|secretário)\b/i;
+  /\b(auxiliar|assistente|encarregado|operador|motorista|vendedor|tecnico|técnico|analista|supervisor|coordenador|gerente|diretor|diretora|ajudante|instalador|servente|faxineir|limpeza|mecanico|mecânico|eletricista|soldador|pedreiro|pintor|almoxarife|recepcionista|secretario|secretário)\b/i;
 
 const ACTIVITY_START_RE =
-  /\b(executar|realizar|classificar|operar|controlar|efetuar|desenvolver|auxiliar nas|responsaveis em|esta sob as responsabilidades)\b/i;
+  /\b(executar|realizar|classificar|operar|controlar|efetuar|desenvolver|auxiliar nas|responsaveis em|esta sob as responsabilidades|selecionam os|um vendedor|o auxiliar|o encarregado|realizacao de transporte|realização de transporte)\b/i;
+
+const ENVIRONMENT_LINE_RE =
+  /^(trabalham em|trabalhos externos|ambiente interno|ambiente administrativo|balc[aã]o de atendimento|interno e ventilado|interno e climatizado|em diversos locais)/i;
 
 const SECTOR_HINT_RE =
   /^(produc|classific|administr|vendas|transporte|apoio|torref|manutenc|qualidade|logistica|expedicao|almoxarif)/i;
+
+/** Setores conhecidos do layout real (para split mesma linha e detecção). */
+const KNOWN_SECTOR_RE =
+  /^(PRODU[CÇ][AÃ]O|CLASSIFICA[CÇ][AÃ]O|ADMINISTRATIVO|VENDAS|TRANSPORTE|APOIO\s*ADM|TORREFA[CÇ][AÃ]O|MANUTEN[CÇ][AÃ]O|QUALIDADE|LOG[IÍ]STICA|EXPEDI[CÇ][AÃ]O|ALMOXARIFADO)\b/i;
 
 export function normalizeTextKey(value: string): string {
   return value
@@ -374,26 +381,180 @@ function isJunkName(value: string): boolean {
 }
 
 function looksLikeJobTitle(name: string): boolean {
-  return JOB_HINT_RE.test(name) || /\([IVX,\s]+\)/i.test(name) || /\b[IVX]+\b/i.test(name);
+  return (
+    JOB_HINT_RE.test(name) ||
+    /\([IVX,\s]+\)/i.test(name) ||
+    /\b(?:III|II|IV|V|I)\b/i.test(name)
+  );
+}
+
+function isEnvironmentLine(line: string): boolean {
+  const cleaned = cleanLine(line);
+  if (ENVIRONMENT_LINE_RE.test(cleaned)) return true;
+  if (/^TRABALHAM\b/i.test(cleaned)) return true;
+  if (/^TRABALHOS\b/i.test(cleaned)) return true;
+  return false;
+}
+
+function isProseLine(line: string): boolean {
+  const cleaned = cleanLine(line);
+  if (!cleaned) return false;
+  if (isEnvironmentLine(cleaned)) return true;
+  if (cleaned.length > 70) return true;
+  if (ACTIVITY_START_RE.test(cleaned) && cleaned.split(/\s+/).length >= 6) {
+    return true;
+  }
+  // Frases com pontuação / minúsculas longas = descrição
+  if (/[.;:]/.test(cleaned) && cleaned.split(/\s+/).length >= 5) return true;
+  if (
+    /[a-zà-ÿ]/.test(cleaned) &&
+    cleaned.split(/\s+/).length >= 8 &&
+    !looksLikeJobTitle(cleaned)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isIncompleteJobFragment(name: string): boolean {
+  const cleaned = cleanLine(name);
+  if (/\b(DE|DA|DO|DOS|DAS|E)$/i.test(cleaned)) return true;
+  // Cargo sozinho demais curto sem complemento (ex.: AUXILIAR, TÉCNICO DE)
+  const words = cleaned.split(/\s+/);
+  if (
+    words.length === 1 &&
+    JOB_HINT_RE.test(cleaned) &&
+    !/^(diretor|diretora|motorista|gerente|supervisor|coordenador|vendedor|pedreiro|pintor|soldador|eletricista)$/i.test(
+      cleaned,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function canJoinJobContinuation(current: string, next: string): boolean {
+  const a = cleanLine(current);
+  const b = cleanLine(next);
+  if (!a || !b) return false;
+  if (isProseLine(b) || isEnvironmentLine(b)) return false;
+  if (b.length > 45) return false;
+  if (/[.;]/.test(b)) return false;
+
+  // Se o atual já é um cargo completo, não colar o próximo cargo/setor
+  // (exceto sufixo de especialidade: TÉCNICA, EXTERNO, etc.)
+  const titleSuffix =
+    /^(t[eé]cnica|t[eé]cnico|externo|externa|interno|carreteiro|geral|j[uú]nior|pleno|s[eê]nior)$/i;
+  if (
+    isValidFunctionName(normalizeFunctionDisplayName(a)) &&
+    !isIncompleteJobFragment(a) &&
+    (looksLikeJobTitle(b) || KNOWN_SECTOR_RE.test(b)) &&
+    !titleSuffix.test(b)
+  ) {
+    return false;
+  }
+
+  // AJUDANTE DE INSTALAÇÃO + TÉCNICA / VENDEDOR + TÉCNICO
+  if (
+    looksLikeJobTitle(a) &&
+    titleSuffix.test(b) &&
+    a.split(/\s+/).length <= 5
+  ) {
+    return true;
+  }
+
+  const endsWithPrep = /\b(DE|DA|DO|DOS|DAS|E)$/i.test(a);
+  const incomplete = isIncompleteJobFragment(a);
+  const nextContinues =
+    /^(DE|DA|DO|DOS|DAS|E)\b/i.test(b) ||
+    /^(III|II|IV|V|I)\b/i.test(b) ||
+    (/^[A-ZÀ-Ÿ0-9() ,./-]+$/u.test(b) && b.split(/\s+/).length <= 4);
+
+  // "TÉCNICO DE" + "MANUTENÇÃO" / "AUXILIAR" + "ADMINISTRATIVO"
+  // permite juntar mesmo se a próxima palavra for setor conhecido.
+  if ((endsWithPrep || incomplete) && nextContinues && looksLikeJobTitle(a)) {
+    return true;
+  }
+
+  // Não juntar setor puro na sequência (exceto casos acima)
+  if (KNOWN_SECTOR_RE.test(b) && !looksLikeJobTitle(b) && b.split(/\s+/).length <= 2) {
+    return false;
+  }
+
+  if (incomplete && nextContinues) return true;
+
+  // INSTALADOR + TÉCNICO
+  if (
+    looksLikeJobTitle(a) &&
+    a.split(/\s+/).length <= 3 &&
+    looksLikeJobTitle(b) &&
+    b.split(/\s+/).length <= 2 &&
+    !isValidFunctionName(normalizeFunctionDisplayName(a))
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Recompõe cargos quebrados em várias linhas do PDF.
+ * Ex.: "ENCARREGADO" + "DE PRODUÇÃO" → "ENCARREGADO DE PRODUÇÃO"
+ */
+export function mergeBrokenJobTitleLines(lines: string[]): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    let current = cleanLine(lines[i]);
+    while (i + 1 < lines.length && canJoinJobContinuation(current, lines[i + 1])) {
+      i += 1;
+      current = `${current} ${cleanLine(lines[i])}`.replace(/\s+/g, ' ').trim();
+    }
+    out.push(current);
+    i += 1;
+  }
+  return out;
+}
+
+/** "APOIO ADM AUXILIAR DE LIMPEZA" → setor + função. */
+function splitSectorAndFunctionSameLine(
+  line: string,
+): { sector: string; functionName: string } | null {
+  const cleaned = cleanLine(line);
+  const sectorMatch = cleaned.match(KNOWN_SECTOR_RE);
+  if (!sectorMatch || sectorMatch.index !== 0) return null;
+  const sectorName = sectorMatch[0].toUpperCase().replace(/\s+/g, ' ').trim();
+  const rest = cleanLine(cleaned.slice(sectorMatch[0].length));
+  if (!rest || !looksLikeJobTitle(rest)) return null;
+  if (!isValidFunctionName(normalizeFunctionDisplayName(rest))) return null;
+  return { sector: sectorName, functionName: rest };
 }
 
 function isValidSectorName(name: string): boolean {
   const cleaned = cleanLine(name);
   if (isJunkName(cleaned)) return false;
+  if (isEnvironmentLine(cleaned)) return false;
   if (cleaned.length > 40) return false;
   const words = cleaned.split(/\s+/);
   if (words.length > 4) return false;
   if (/\d{3,}/.test(cleaned)) return false;
   if (/[.!?]/.test(cleaned)) return false;
   if (
-    /\b(executar|realizar|atividade|ambiente|conforme|quando|outras|tarefas|responsaveis|responsabilidades)\b/i.test(
+    /\b(executar|realizar|atividade|ambiente|conforme|quando|outras|tarefas|responsaveis|responsabilidades|trabalham|trabalhos)\b/i.test(
       cleaned,
     )
   ) {
     return false;
   }
-  // Cabeçalho que é nome de função não vira setor
+  // Cargo não vira setor (exceto se for nome de setor conhecido)
   if (looksLikeJobTitle(cleaned) && !SECTOR_HINT_RE.test(normalizeTextKey(cleaned))) {
+    return false;
+  }
+  if (
+    !SECTOR_HINT_RE.test(normalizeTextKey(cleaned)) &&
+    !KNOWN_SECTOR_RE.test(cleaned) &&
+    words.length > 2
+  ) {
     return false;
   }
   return true;
@@ -402,12 +563,14 @@ function isValidSectorName(name: string): boolean {
 function isValidFunctionName(name: string): boolean {
   const cleaned = cleanLine(name);
   if (isJunkName(cleaned)) return false;
+  if (isEnvironmentLine(cleaned)) return false;
+  if (isIncompleteJobFragment(cleaned)) return false;
   if (cleaned.length < 3 || cleaned.length > 80) return false;
   const words = cleaned.split(/\s+/);
   if (words.length > 8) return false;
   if (/[.!?]$/.test(cleaned)) return false;
   if (
-    /\b(executar|realizar|outras tarefas|de acordo|gravidade|natureza|notifique|superior|imediat|caracteristicas|descricao|riscos?|medidas?|aprho|protetor auricular|respirador|botina de|oculos de|óculos de|luva de|cinta lombar|avental de|responsaveis em|esta sob as responsabilidades)\b/i.test(
+    /\b(executar|realizar|outras tarefas|de acordo|gravidade|natureza|notifique|superior|imediat|caracteristicas|descricao|riscos?|medidas?|aprho|protetor auricular|respirador|botina de|oculos de|óculos de|luva de|cinta lombar|avental de|responsaveis em|esta sob as responsabilidades|trabalham em|selecionam os)\b/i.test(
       cleaned,
     )
   ) {
@@ -427,7 +590,7 @@ function isValidFunctionName(name: string): boolean {
   for (const seed of DEFAULT_EPI_NEED_SEEDS) {
     if (normalizeTextKey(seed.name) === key) return false;
   }
-  if (!looksLikeJobTitle(cleaned) && words.length <= 2 && !/[IVX]/i.test(cleaned)) {
+  if (!looksLikeJobTitle(cleaned) && words.length <= 3) {
     return false;
   }
   return true;
@@ -512,14 +675,14 @@ function extractGheBlocks(text: string): GheBlock[] {
 
 /**
  * Extrai pares setor→função dentro de um bloco de caracterização.
- * Suporta múltiplas linhas lógicas e herança de setor.
+ * Layout real PDF: tabela sem rótulos, cargos multilinha, funções após descrição.
  */
 function extractSectorFunctionPairsFromGheBody(
   body: string,
   headerLabel: string,
 ): SectorFunctionPair[] {
   const pairs: SectorFunctionPair[] = [];
-  const lines = body
+  const rawLines = body
     .split(/\n/)
     .map((l) => cleanLine(l))
     .filter(Boolean)
@@ -528,77 +691,85 @@ function extractSectorFunctionPairsFromGheBody(
         !/^Caracteriza/i.test(line) &&
         !/^APRHO\b/i.test(line) &&
         !/^Setor\s+Cargo/i.test(line) &&
-        !/^Cargo\/?Fun[cç][aã]o\s+Descri/i.test(line),
+        !/^Cargo\/?Fun[cç][aã]o\s+Descri/i.test(line) &&
+        !/^PGR\b/i.test(line) &&
+        !/^GRO\b/i.test(line) &&
+        !/^PORTARIA\b/i.test(line) &&
+        !/^Norma Regulamentadora\b/i.test(line) &&
+        !/^Revis[aã]o\s+\d+/i.test(line) &&
+        !/^INSEG\b/i.test(line) &&
+        !/^\d{1,3}$/.test(line),
     );
 
+  const lines = mergeBrokenJobTitleLines(rawLines);
   let currentSector: string | null = null;
   let sawTableFunction = false;
 
-  for (const line of lines) {
-    if (ACTIVITY_START_RE.test(line) && line.length > 35) break;
-    if (/^Descri[cç][aã]o\s+da\s+Atividade\b/i.test(line)) break;
-    if (/^Descri[cç][aã]o\s+do\s+Ambiente\b/i.test(line)) break;
+  const pushFunction = (fnRaw: string, sector: string | null, rawText: string) => {
+    const names = expandFunctionNames(fnRaw);
+    for (const fn of names) {
+      if (!isValidFunctionName(fn)) continue;
+      sawTableFunction = true;
+      pairs.push({
+        sectorName: sector,
+        functionName: fn,
+        activity: null,
+        environment: null,
+        rawText,
+      });
+    }
+  };
 
-    // "Setor: PRODUÇÃO" ou "Setor PRODUÇÃO"
+  for (const line of lines) {
+    // Não abortar o bloco: pular prosa/ambiente e continuar até o APRHO
+    if (isProseLine(line) || isEnvironmentLine(line)) continue;
+    if (/^Descri[cç][aã]o\s+da\s+Atividade\b/i.test(line)) continue;
+    if (/^Descri[cç][aã]o\s+do\s+Ambiente\b/i.test(line)) continue;
+
     const sectorLabel = line.match(/^(?:Setor)\s*[:\-–]?\s*(.+)$/i);
     if (sectorLabel) {
       const candidate = cleanLine(sectorLabel[1]).toUpperCase();
-      if (isValidSectorName(candidate)) currentSector = candidate;
-      continue;
-    }
-
-    // "Função: ..." / "Cargo: ..." / "Cargo/Função: ..."
-    const functionLabel = line.match(
-      /^(?:Cargo\/?Fun[cç][aã]o|Cargo|Fun[cç][aã]o)\s*[:\-–]?\s*(.+)$/i,
-    );
-    if (functionLabel) {
-      const names = expandFunctionNames(functionLabel[1]);
-      if (names.length > 0) {
-        sawTableFunction = true;
-        for (const fn of names) {
-          pairs.push({
-            sectorName: currentSector,
-            functionName: fn,
-            activity: null,
-            environment: null,
-            rawText: line,
-          });
-        }
+      const split = splitSectorAndFunctionSameLine(candidate);
+      if (split) {
+        currentSector = split.sector;
+        pushFunction(split.functionName, currentSector, line);
+      } else if (isValidSectorName(candidate)) {
+        currentSector = candidate;
       }
       continue;
     }
 
-    // Linha só com setor (ALL CAPS, curto, sem cara de cargo)
+    const functionLabel = line.match(
+      /^(?:Cargo\/?Fun[cç][aã]o|Cargo|Fun[cç][aã]o)\s*[:\-–]?\s*(.+)$/i,
+    );
+    if (functionLabel) {
+      pushFunction(functionLabel[1], currentSector, line);
+      continue;
+    }
+
+    const sameLine = splitSectorAndFunctionSameLine(line);
+    if (sameLine) {
+      currentSector = sameLine.sector;
+      pushFunction(sameLine.functionName, currentSector, line);
+      continue;
+    }
+
     if (
       isValidSectorName(line) &&
-      line === line.toUpperCase() &&
-      line.length <= 30 &&
-      !looksLikeJobTitle(line)
+      !looksLikeJobTitle(line) &&
+      (KNOWN_SECTOR_RE.test(line) ||
+        (line === line.toUpperCase() && line.length <= 30))
     ) {
       currentSector = line.toUpperCase();
       continue;
     }
 
-    // Linha só com função — herda setor atual
-    if (isValidFunctionName(line) && looksLikeJobTitle(line)) {
-      const names = expandFunctionNames(line);
-      if (names.length > 0) {
-        sawTableFunction = true;
-        for (const fn of names) {
-          pairs.push({
-            sectorName: currentSector,
-            functionName: fn,
-            activity: null,
-            environment: null,
-            rawText: line,
-          });
-        }
-      }
+    if (looksLikeJobTitle(line) || isValidFunctionName(line)) {
+      pushFunction(line, currentSector, line);
       continue;
     }
   }
 
-  // Fallback: cabeçalho do GHE como função só se a tabela não trouxe funções
   if (!sawTableFunction && headerLabel) {
     const headerFns = expandFunctionNames(headerLabel);
     if (headerFns.length > 0 && headerFns.every(looksLikeJobTitle)) {
@@ -620,20 +791,7 @@ function extractSectorFunctionPairsFromGheBody(
     }
   }
 
-  // Aplicar setor herdado/cabeçalho nas funções sem setor
-  if (currentSector) {
-    for (const pair of pairs) {
-      if (!pair.sectorName) pair.sectorName = currentSector;
-    }
-  }
-
-  // GHE 06: cabeçalho = função, tabela = setor, sem linha de função
-  if (
-    pairs.length === 0 &&
-    currentSector &&
-    looksLikeJobTitle(headerLabel) &&
-    isValidFunctionName(normalizeFunctionDisplayName(headerLabel))
-  ) {
+  if (pairs.length === 0 && currentSector && looksLikeJobTitle(headerLabel)) {
     for (const fn of expandFunctionNames(headerLabel)) {
       pairs.push({
         sectorName: currentSector,
@@ -645,8 +803,11 @@ function extractSectorFunctionPairsFromGheBody(
     }
   }
 
-  // Se tabela trouxe funções, não duplicar a partir do cabeçalho
-  // (já coberto por sawTableFunction)
+  if (currentSector) {
+    for (const pair of pairs) {
+      if (!pair.sectorName) pair.sectorName = currentSector;
+    }
+  }
 
   const seen = new Set<string>();
   const deduped: SectorFunctionPair[] = [];
