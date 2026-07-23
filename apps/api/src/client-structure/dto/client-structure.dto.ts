@@ -1,12 +1,15 @@
 import {
   IsBoolean,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import {
+  EpiRequirementSource,
   OccupationalRiskCategory,
   RiskLevel,
 } from '@prisma/client';
@@ -164,4 +167,69 @@ export class LinkJobFunctionRiskDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
+}
+
+export class CreateJobFunctionEpiRequirementDto {
+  @IsString()
+  epiNeedId!: string;
+
+  @IsOptional()
+  @IsString()
+  riskId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isRequired?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  quantity?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  replacementIntervalDays?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string | null;
+
+  @IsOptional()
+  @IsEnum(EpiRequirementSource)
+  source?: EpiRequirementSource;
+}
+
+export class UpdateJobFunctionEpiRequirementDto {
+  @IsOptional()
+  @IsString()
+  epiNeedId?: string;
+
+  @IsOptional()
+  @IsString()
+  riskId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isRequired?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  quantity?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  replacementIntervalDays?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string | null;
+
+  @IsOptional()
+  @IsEnum(EpiRequirementSource)
+  source?: EpiRequirementSource;
 }

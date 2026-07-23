@@ -13,10 +13,12 @@ import { PrismaService } from '../prisma/prisma.service';
 import type {
   CreateClientJobFunctionDto,
   CreateClientSectorDto,
+  CreateJobFunctionEpiRequirementDto,
   CreateOccupationalRiskDto,
   LinkJobFunctionRiskDto,
   UpdateClientJobFunctionDto,
   UpdateClientSectorDto,
+  UpdateJobFunctionEpiRequirementDto,
   UpdateOccupationalRiskDto,
 } from './dto/client-structure.dto';
 import { DEFAULT_OCCUPATIONAL_RISK_SEEDS } from './risk-seeds';
@@ -28,6 +30,15 @@ function parseAliases(value: Prisma.JsonValue | null | undefined): string[] {
   }
   return [];
 }
+
+const jobEpiRequirementInclude = {
+  risk: true,
+  epiNeed: {
+    include: {
+      _count: { select: { itemLinks: true } },
+    },
+  },
+} as const;
 
 @Injectable()
 export class ClientStructureService {
@@ -197,7 +208,7 @@ export class ClientStructureService {
   ) {
     await this.assertClient(organizationId, filters.servedClientId);
     const status = filters.status ?? 'all';
-    return this.prisma.clientJobFunction.findMany({
+    const rows = await this.prisma.clientJobFunction.findMany({
       where: {
         organizationId,
         servedClientId: filters.servedClientId,
@@ -213,10 +224,15 @@ export class ClientStructureService {
           },
           orderBy: { createdAt: 'asc' },
         },
-        _count: { select: { risks: true } },
+        epiRequirements: {
+          include: jobEpiRequirementInclude,
+          orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }],
+        },
+        _count: { select: { risks: true, epiRequirements: true } },
       },
       orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
     });
+    return this.mapJobsWithRequirements(organizationId, rows);
   }
 
   async getJobFunction(organizationId: string, id: string) {
@@ -228,21 +244,17 @@ export class ClientStructureService {
           include: { risk: true },
           orderBy: { createdAt: 'asc' },
         },
+        epiRequirements: {
+          include: jobEpiRequirementInclude,
+          orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }],
+        },
       },
     });
     if (!job) {
       throw new NotFoundException('Funcao nao encontrada.');
     }
-    return {
-      ...job,
-      risks: job.risks.map((link) => ({
-        ...link,
-        risk: {
-          ...link.risk,
-          aliases: parseAliases(link.risk.aliases),
-        },
-      })),
-    };
+    const [mapped] = await this.mapJobsWithRequirements(organizationId, [job]);
+    return mapped;
   }
 
   async createJobFunction(
@@ -456,6 +468,276 @@ export class ClientStructureService {
       entityType: 'JobFunctionRisk',
       entityId: existing.id,
       metadata: { jobFunctionId, riskId },
+    });
+    return { ok: true };
+  }
+
+  // ---- EPI requirements ----
+
+  async listEpiRequirements(organizationId: string, jobFunctionId: string) {
+    await this.requireJob(organizationId, jobFunctionId);
+    const rows = await this.prisma.jobFunctionEpiRequirement.findMany({
+      where: { organizationId, jobFunctionId },
+      include: jobEpiRequirementInclude,
+      orderBy: [{ isActive: 'desc' }, { createdAt: 'asc' }],
+    });
+    return this.mapEpiRequirements(organizationId, rows);
+  }
+
+  async createEpiRequirement(
+    organizationId: string,
+    userId: string,
+    jobFunctionId: string,
+    dto: CreateJobFunctionEpiRequirementDto,
+  ) {
+    const job = await this.requireJob(organizationId, jobFunctionId);
+    const riskId = dto.riskId?.trim() || null;
+    if (riskId) {
+      await this.assertRiskLinkedOrTenant(
+        organizationId,
+        jobFunctionId,
+        riskId,
+      );
+    }
+    await this.requireEpiNeed(organizationId, dto.epiNeedId);
+    const quantity = dto.quantity ?? 1;
+    if (quantity < 1) {
+      throw new BadRequestException('Quantidade deve ser maior que zero.');
+    }
+    if (
+      dto.replacementIntervalDays != null &&
+      dto.replacementIntervalDays < 1
+    ) {
+      throw new BadRequestException(
+        'Periodicidade deve ser maior que zero quando informada.',
+      );
+    }
+    await this.assertUniqueEpiRequirement(
+      organizationId,
+      jobFunctionId,
+      riskId,
+      dto.epiNeedId,
+    );
+
+    try {
+      const created = await this.prisma.jobFunctionEpiRequirement.create({
+        data: {
+          organizationId,
+          jobFunctionId,
+          riskId,
+          epiNeedId: dto.epiNeedId,
+          isRequired: dto.isRequired ?? true,
+          quantity,
+          replacementIntervalDays: dto.replacementIntervalDays ?? null,
+          notes: this.text(dto.notes),
+          source: dto.source ?? 'MANUAL',
+        },
+        include: jobEpiRequirementInclude,
+      });
+
+      await this.audit.log({
+        action: 'job_function_epi_requirement.created',
+        organizationId,
+        userId,
+        entityType: 'JobFunctionEpiRequirement',
+        entityId: created.id,
+        metadata: {
+          jobFunctionId,
+          epiNeedId: dto.epiNeedId,
+          riskId,
+          servedClientId: job.servedClientId,
+        },
+      });
+
+      const [mapped] = await this.mapEpiRequirements(organizationId, [created]);
+      return mapped;
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Ja existe um requisito ativo com esta necessidade (e risco) para a funcao.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  async updateEpiRequirement(
+    organizationId: string,
+    userId: string,
+    jobFunctionId: string,
+    requirementId: string,
+    dto: UpdateJobFunctionEpiRequirementDto,
+  ) {
+    const existing = await this.requireEpiRequirement(
+      organizationId,
+      jobFunctionId,
+      requirementId,
+    );
+    const nextNeedId = dto.epiNeedId ?? existing.epiNeedId;
+    const nextRiskId =
+      dto.riskId === undefined
+        ? existing.riskId
+        : dto.riskId?.trim() || null;
+    if (dto.epiNeedId) {
+      await this.requireEpiNeed(organizationId, dto.epiNeedId);
+    }
+    if (nextRiskId) {
+      await this.assertRiskLinkedOrTenant(
+        organizationId,
+        jobFunctionId,
+        nextRiskId,
+      );
+    }
+    if (dto.quantity != null && dto.quantity < 1) {
+      throw new BadRequestException('Quantidade deve ser maior que zero.');
+    }
+    if (
+      dto.replacementIntervalDays != null &&
+      dto.replacementIntervalDays < 1
+    ) {
+      throw new BadRequestException(
+        'Periodicidade deve ser maior que zero quando informada.',
+      );
+    }
+    if (
+      nextNeedId !== existing.epiNeedId ||
+      nextRiskId !== existing.riskId
+    ) {
+      await this.assertUniqueEpiRequirement(
+        organizationId,
+        jobFunctionId,
+        nextRiskId,
+        nextNeedId,
+        requirementId,
+      );
+    }
+
+    try {
+      const updated = await this.prisma.jobFunctionEpiRequirement.update({
+        where: { id: requirementId },
+        data: {
+          epiNeedId: dto.epiNeedId,
+          riskId: dto.riskId === undefined ? undefined : nextRiskId,
+          isRequired: dto.isRequired,
+          quantity: dto.quantity,
+          replacementIntervalDays:
+            dto.replacementIntervalDays === undefined
+              ? undefined
+              : dto.replacementIntervalDays,
+          notes:
+            dto.notes === undefined ? undefined : this.text(dto.notes),
+          source: dto.source,
+        },
+        include: jobEpiRequirementInclude,
+      });
+
+      await this.audit.log({
+        action: 'job_function_epi_requirement.updated',
+        organizationId,
+        userId,
+        entityType: 'JobFunctionEpiRequirement',
+        entityId: requirementId,
+        metadata: { jobFunctionId },
+      });
+
+      const [mapped] = await this.mapEpiRequirements(organizationId, [updated]);
+      return mapped;
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Ja existe um requisito ativo com esta necessidade (e risco) para a funcao.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  async updateEpiRequirementStatus(
+    organizationId: string,
+    userId: string,
+    jobFunctionId: string,
+    requirementId: string,
+    isActive: boolean,
+  ) {
+    const existing = await this.requireEpiRequirement(
+      organizationId,
+      jobFunctionId,
+      requirementId,
+    );
+    if (existing.isActive === isActive) {
+      const [mapped] = await this.mapEpiRequirements(organizationId, [
+        await this.prisma.jobFunctionEpiRequirement.findFirstOrThrow({
+          where: { id: requirementId },
+          include: jobEpiRequirementInclude,
+        }),
+      ]);
+      return mapped;
+    }
+    if (isActive) {
+      await this.assertUniqueEpiRequirement(
+        organizationId,
+        jobFunctionId,
+        existing.riskId,
+        existing.epiNeedId,
+        requirementId,
+      );
+    }
+    try {
+      const updated = await this.prisma.jobFunctionEpiRequirement.update({
+        where: { id: requirementId },
+        data: { isActive },
+        include: jobEpiRequirementInclude,
+      });
+      await this.audit.log({
+        action: 'job_function_epi_requirement.status_changed',
+        organizationId,
+        userId,
+        entityType: 'JobFunctionEpiRequirement',
+        entityId: requirementId,
+        metadata: { from: existing.isActive, to: isActive, jobFunctionId },
+      });
+      const [mapped] = await this.mapEpiRequirements(organizationId, [updated]);
+      return mapped;
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Ja existe um requisito ativo com esta necessidade (e risco) para a funcao.',
+        );
+      }
+      throw err;
+    }
+  }
+
+  async deleteEpiRequirement(
+    organizationId: string,
+    userId: string,
+    jobFunctionId: string,
+    requirementId: string,
+  ) {
+    await this.requireEpiRequirement(
+      organizationId,
+      jobFunctionId,
+      requirementId,
+    );
+    await this.prisma.jobFunctionEpiRequirement.delete({
+      where: { id: requirementId },
+    });
+    await this.audit.log({
+      action: 'job_function_epi_requirement.deleted',
+      organizationId,
+      userId,
+      entityType: 'JobFunctionEpiRequirement',
+      entityId: requirementId,
+      metadata: { jobFunctionId },
     });
     return { ok: true };
   }
@@ -684,6 +966,256 @@ export class ClientStructureService {
     });
     if (!risk) throw new NotFoundException('Risco ocupacional nao encontrado.');
     return risk;
+  }
+
+  private async requireEpiNeed(organizationId: string, id: string) {
+    const need = await this.prisma.epiNeed.findFirst({
+      where: { id, organizationId },
+      select: { id: true },
+    });
+    if (!need) {
+      throw new NotFoundException('Necessidade de EPI nao encontrada.');
+    }
+    return need;
+  }
+
+  private async requireEpiRequirement(
+    organizationId: string,
+    jobFunctionId: string,
+    requirementId: string,
+  ) {
+    const row = await this.prisma.jobFunctionEpiRequirement.findFirst({
+      where: { id: requirementId, organizationId, jobFunctionId },
+    });
+    if (!row) {
+      throw new NotFoundException('Requisito de EPI nao encontrado.');
+    }
+    return row;
+  }
+
+  private async assertRiskLinkedOrTenant(
+    organizationId: string,
+    jobFunctionId: string,
+    riskId: string,
+  ) {
+    await this.requireRisk(organizationId, riskId);
+    const linked = await this.prisma.jobFunctionRisk.findFirst({
+      where: { organizationId, jobFunctionId, riskId },
+      select: { id: true },
+    });
+    if (!linked) {
+      throw new BadRequestException(
+        'O risco precisa estar vinculado a esta funcao antes de associar o EPI.',
+      );
+    }
+  }
+
+  private async assertUniqueEpiRequirement(
+    organizationId: string,
+    jobFunctionId: string,
+    riskId: string | null,
+    epiNeedId: string,
+    excludeId?: string,
+  ) {
+    const existing = await this.prisma.jobFunctionEpiRequirement.findFirst({
+      where: {
+        organizationId,
+        jobFunctionId,
+        epiNeedId,
+        isActive: true,
+        ...(riskId ? { riskId } : { riskId: null }),
+        ...(excludeId ? { NOT: { id: excludeId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      throw new ConflictException(
+        'Ja existe um requisito ativo com esta necessidade (e risco) para a funcao.',
+      );
+    }
+  }
+
+  private async sumStockByNeedIds(
+    organizationId: string,
+    needIds: string[],
+  ): Promise<Map<string, { linkedItems: number; totalQuantity: number }>> {
+    const result = new Map<
+      string,
+      { linkedItems: number; totalQuantity: number }
+    >();
+    if (needIds.length === 0) return result;
+
+    const links = await this.prisma.epiItemNeed.findMany({
+      where: { organizationId, epiNeedId: { in: needIds } },
+      select: { epiNeedId: true, epiItemId: true },
+    });
+    const itemIds = [...new Set(links.map((l) => l.epiItemId))];
+    const totals =
+      itemIds.length === 0
+        ? []
+        : await this.prisma.epiStockBalance.groupBy({
+            by: ['epiItemId'],
+            where: { organizationId, epiItemId: { in: itemIds } },
+            _sum: { quantity: true },
+          });
+    const qtyByItem = new Map(
+      totals.map((row) => [row.epiItemId, row._sum.quantity ?? 0]),
+    );
+
+    for (const needId of needIds) {
+      const needLinks = links.filter((l) => l.epiNeedId === needId);
+      const totalQuantity = needLinks.reduce(
+        (sum, link) => sum + (qtyByItem.get(link.epiItemId) ?? 0),
+        0,
+      );
+      result.set(needId, {
+        linkedItems: needLinks.length,
+        totalQuantity,
+      });
+    }
+    return result;
+  }
+
+  private async mapEpiRequirements(
+    organizationId: string,
+    rows: Array<{
+      id: string;
+      organizationId: string;
+      jobFunctionId: string;
+      riskId: string | null;
+      epiNeedId: string;
+      isRequired: boolean;
+      quantity: number;
+      replacementIntervalDays: number | null;
+      notes: string | null;
+      source: string;
+      isActive: boolean;
+      createdAt: Date;
+      updatedAt: Date;
+      risk: {
+        id: string;
+        organizationId: string;
+        name: string;
+        category: OccupationalRiskCategory;
+        description: string | null;
+        aliases: Prisma.JsonValue | null;
+        isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
+      } | null;
+      epiNeed: {
+        id: string;
+        organizationId: string;
+        name: string;
+        category: string | null;
+        description: string | null;
+        aliases: Prisma.JsonValue | null;
+        isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
+        _count: { itemLinks: number };
+      };
+    }>,
+  ) {
+    const needIds = rows.map((row) => row.epiNeedId);
+    const stockByNeed = await this.sumStockByNeedIds(organizationId, needIds);
+
+    return rows.map((row) => {
+      const stock = stockByNeed.get(row.epiNeedId) ?? {
+        linkedItems: row.epiNeed._count.itemLinks,
+        totalQuantity: 0,
+      };
+      const linkedItems = row.epiNeed._count.itemLinks;
+      return {
+        ...row,
+        risk: row.risk
+          ? { ...row.risk, aliases: parseAliases(row.risk.aliases) }
+          : null,
+        epiNeed: {
+          ...row.epiNeed,
+          aliases: parseAliases(row.epiNeed.aliases),
+          linkedItemsCount: linkedItems,
+          totalStockQuantity: stock.totalQuantity,
+          stockStatus:
+            linkedItems === 0
+              ? ('UNLINKED' as const)
+              : stock.totalQuantity > 0
+                ? ('WITH_STOCK' as const)
+                : ('NO_STOCK' as const),
+        },
+      };
+    });
+  }
+
+  private async mapJobsWithRequirements(
+    organizationId: string,
+    jobs: Array<{
+      risks: Array<{
+        risk: {
+          aliases: Prisma.JsonValue | null;
+          [key: string]: unknown;
+        };
+        [key: string]: unknown;
+      }>;
+      epiRequirements?: Array<{
+        id: string;
+        organizationId: string;
+        jobFunctionId: string;
+        riskId: string | null;
+        epiNeedId: string;
+        isRequired: boolean;
+        quantity: number;
+        replacementIntervalDays: number | null;
+        notes: string | null;
+        source: string;
+        isActive: boolean;
+        createdAt: Date;
+        updatedAt: Date;
+        risk: {
+          id: string;
+          organizationId: string;
+          name: string;
+          category: OccupationalRiskCategory;
+          description: string | null;
+          aliases: Prisma.JsonValue | null;
+          isActive: boolean;
+          createdAt: Date;
+          updatedAt: Date;
+        } | null;
+        epiNeed: {
+          id: string;
+          organizationId: string;
+          name: string;
+          category: string | null;
+          description: string | null;
+          aliases: Prisma.JsonValue | null;
+          isActive: boolean;
+          createdAt: Date;
+          updatedAt: Date;
+          _count: { itemLinks: number };
+        };
+      }>;
+      [key: string]: unknown;
+    }>,
+  ) {
+    return Promise.all(
+      jobs.map(async (job) => {
+        const epiRequirements = job.epiRequirements
+          ? await this.mapEpiRequirements(organizationId, job.epiRequirements)
+          : [];
+        return {
+          ...job,
+          risks: job.risks.map((link) => ({
+            ...link,
+            risk: {
+              ...link.risk,
+              aliases: parseAliases(link.risk.aliases),
+            },
+          })),
+          epiRequirements,
+        };
+      }),
+    );
   }
 
   private async assertUniqueSectorName(

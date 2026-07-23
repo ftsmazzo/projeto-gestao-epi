@@ -3,6 +3,7 @@
 import type {
   ClientJobFunction,
   ClientSector,
+  EpiNeed,
   OccupationalRisk,
   OccupationalRiskCategory,
   OperationalUnit,
@@ -15,15 +16,20 @@ import { RequireAuth } from '../../../../components/RequireAuth';
 import {
   createClientJobFunction,
   createClientSector,
+  createJobFunctionEpiRequirement,
   linkJobFunctionRisk,
   listClientJobFunctions,
   listClientSectors,
   listOccupationalRisks,
+  normalizeRiskKey,
   suggestOccupationalRiskDefaults,
+  suggestedNeedNamesForRisk,
   unlinkJobFunctionRisk,
   updateClientJobFunctionStatus,
+  updateJobFunctionEpiRequirementStatus,
   updateClientSectorStatus,
 } from '../../../../lib/client-structure';
+import { listEpiNeeds } from '../../../../lib/epi-needs';
 import { listOperationalUnits } from '../../../../lib/operational-units';
 import { getServedClient } from '../../../../lib/served-clients';
 
@@ -42,12 +48,57 @@ function riskCategoryLabel(value: OccupationalRiskCategory) {
   return RISK_CATEGORIES.find((item) => item.value === value)?.label ?? value;
 }
 
+type JobPanelTab = 'dados' | 'riscos' | 'epis';
+
+type JobFunctionEpiRequirementRow = {
+  id: string;
+  isActive: boolean;
+  isRequired: boolean;
+  quantity: number;
+  replacementIntervalDays: number | null;
+  epiNeed?: EpiNeed;
+  risk?: OccupationalRisk | null;
+};
+
+type ClientJobWithEpis = ClientJobFunction & {
+  epiRequirements?: JobFunctionEpiRequirementRow[];
+};
+
+function jobEpiRequirements(job: ClientJobFunction): JobFunctionEpiRequirementRow[] {
+  return (job as ClientJobWithEpis).epiRequirements ?? [];
+}
+
+function countActiveEpiRequirements(job: ClientJobFunction) {
+  return jobEpiRequirements(job).filter((req) => req.isActive).length;
+}
+
+function epiNeedStockLabel(status?: EpiNeed['stockStatus']) {
+  if (status === 'UNLINKED') return 'necessidade cadastrada';
+  if (status === 'WITH_STOCK') return 'EPI real com estoque';
+  if (status === 'NO_STOCK') return 'EPI real sem estoque';
+  return '—';
+}
+
+function epiNeedStockClass(status?: EpiNeed['stockStatus']) {
+  if (status === 'WITH_STOCK') return 'status-pill status-pill--active';
+  if (status === 'NO_STOCK') return 'status-pill status-pill--warn';
+  return 'status-pill status-pill--inactive';
+}
+
+function suggestedEpiNeedsForRisk(riskName: string, needs: EpiNeed[]) {
+  const suggestedNames = suggestedNeedNamesForRisk(riskName);
+  if (suggestedNames.length === 0) return [];
+  const normalized = new Set(suggestedNames.map(normalizeRiskKey));
+  return needs.filter((need) => normalized.has(normalizeRiskKey(need.name)));
+}
+
 function EstruturaContent({ clientId }: { clientId: string }) {
   const [client, setClient] = useState<ServedClient | null>(null);
   const [units, setUnits] = useState<OperationalUnit[]>([]);
   const [sectors, setSectors] = useState<ClientSector[]>([]);
   const [jobs, setJobs] = useState<ClientJobFunction[]>([]);
   const [risks, setRisks] = useState<OccupationalRisk[]>([]);
+  const [epiNeeds, setEpiNeeds] = useState<EpiNeed[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sectorFilter, setSectorFilter] = useState('');
@@ -67,27 +118,39 @@ function EstruturaContent({ clientId }: { clientId: string }) {
   const [jobSaving, setJobSaving] = useState(false);
 
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedJobTab, setSelectedJobTab] = useState<JobPanelTab>('epis');
   const [linkRiskId, setLinkRiskId] = useState('');
   const [linkError, setLinkError] = useState<string | null>(null);
+
+  const [reqEpiNeedId, setReqEpiNeedId] = useState('');
+  const [reqRiskId, setReqRiskId] = useState('');
+  const [reqIsRequired, setReqIsRequired] = useState(true);
+  const [reqQuantity, setReqQuantity] = useState(1);
+  const [reqReplacementDays, setReqReplacementDays] = useState('');
+  const [reqNotes, setReqNotes] = useState('');
+  const [reqError, setReqError] = useState<string | null>(null);
+  const [reqSaving, setReqSaving] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
       const status = showInactive ? 'all' : 'active';
-      const [served, unitList, sectorList, jobList, riskList] =
+      const [served, unitList, sectorList, jobList, riskList, needList] =
         await Promise.all([
           getServedClient(clientId),
           listOperationalUnits(clientId),
           listClientSectors(clientId, status),
           listClientJobFunctions({ servedClientId: clientId, status }),
           listOccupationalRisks({ status: 'active' }),
+          listEpiNeeds({ status: 'active' }),
         ]);
       setClient(served);
       setUnits(unitList);
       setSectors(sectorList);
       setJobs(jobList);
       setRisks(riskList);
+      setEpiNeeds(needList);
     } catch (err) {
       setError(
         err instanceof Error
@@ -122,6 +185,40 @@ function EstruturaContent({ clientId }: { clientId: string }) {
     () => jobs.find((job) => job.id === selectedJobId) ?? null,
     [jobs, selectedJobId],
   );
+
+  const selectedFormRisk = useMemo(() => {
+    if (!selectedJob || !reqRiskId) return null;
+    return (selectedJob.risks ?? []).find((link) => link.riskId === reqRiskId)
+      ?.risk;
+  }, [selectedJob, reqRiskId]);
+
+  const formSuggestedNeeds = useMemo(() => {
+    if (!selectedFormRisk) return [];
+    return suggestedEpiNeedsForRisk(selectedFormRisk.name, epiNeeds);
+  }, [selectedFormRisk, epiNeeds]);
+
+  function resetEpiRequirementForm() {
+    setReqEpiNeedId('');
+    setReqRiskId('');
+    setReqIsRequired(true);
+    setReqQuantity(1);
+    setReqReplacementDays('');
+    setReqNotes('');
+    setReqError(null);
+  }
+
+  function openJobPanel(jobId: string) {
+    setSelectedJobId(jobId);
+    setSelectedJobTab('epis');
+    setLinkError(null);
+    setLinkRiskId('');
+    resetEpiRequirementForm();
+  }
+
+  function closeJobPanel() {
+    setSelectedJobId(null);
+    resetEpiRequirementForm();
+  }
 
   async function onCreateSector(event: FormEvent) {
     event.preventDefault();
@@ -218,6 +315,60 @@ function EstruturaContent({ clientId }: { clientId: string }) {
     }
   }
 
+  async function onCreateEpiRequirement(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedJobId || !reqEpiNeedId) return;
+    setReqError(null);
+    setReqSaving(true);
+    try {
+      const replacementIntervalDays = reqReplacementDays.trim()
+        ? Number(reqReplacementDays)
+        : null;
+      await createJobFunctionEpiRequirement(selectedJobId, {
+        epiNeedId: reqEpiNeedId,
+        riskId: reqRiskId || null,
+        isRequired: reqIsRequired,
+        quantity: reqQuantity,
+        replacementIntervalDays:
+          replacementIntervalDays != null && !Number.isNaN(replacementIntervalDays)
+            ? replacementIntervalDays
+            : null,
+        notes: reqNotes.trim() || null,
+      });
+      resetEpiRequirementForm();
+      await load();
+    } catch (err) {
+      setReqError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao cadastrar EPI necessario.',
+      );
+    } finally {
+      setReqSaving(false);
+    }
+  }
+
+  async function onToggleEpiRequirementStatus(
+    requirement: JobFunctionEpiRequirementRow,
+  ) {
+    if (!selectedJobId) return;
+    setReqError(null);
+    try {
+      await updateJobFunctionEpiRequirementStatus(
+        selectedJobId,
+        requirement.id,
+        !requirement.isActive,
+      );
+      await load();
+    } catch (err) {
+      setReqError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao atualizar status do EPI.',
+      );
+    }
+  }
+
   if (loading && !client) {
     return <p className="page-lead">Carregando estrutura...</p>;
   }
@@ -239,9 +390,8 @@ function EstruturaContent({ clientId }: { clientId: string }) {
             {client.tradeName || client.legalName}
           </h1>
           <p className="page-lead">
-            Configure unidades (referencia), setores, funcoes/cargos e riscos
-            ocupacionais deste cliente. Importacao de PGRO vem em etapa
-            posterior.
+            Configure unidades, setores, funcoes, riscos e EPIs necessarios
+            por funcao. Importacao de PGRO vem em etapa posterior.
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
@@ -565,6 +715,12 @@ function EstruturaContent({ clientId }: { clientId: string }) {
                                 ))
                               )}
                             </div>
+                            {countActiveEpiRequirements(job) > 0 ? (
+                              <span className="table-sub">
+                                {countActiveEpiRequirements(job)} EPI(s)
+                                necessario(s)
+                              </span>
+                            ) : null}
                           </td>
                           <td>
                             <span
@@ -580,13 +736,9 @@ function EstruturaContent({ clientId }: { clientId: string }) {
                               <button
                                 type="button"
                                 className="btn btn-primary btn-compact"
-                                onClick={() => {
-                                  setSelectedJobId(job.id);
-                                  setLinkError(null);
-                                  setLinkRiskId('');
-                                }}
+                                onClick={() => openJobPanel(job.id)}
                               >
-                                Riscos
+                                Abrir
                               </button>
                               <button
                                 type="button"
@@ -609,21 +761,17 @@ function EstruturaContent({ clientId }: { clientId: string }) {
                 </div>
               )}
 
-              <p className="field-hint" style={{ marginTop: '0.75rem' }}>
-                EPIs da funcao: disponivel em etapa futura (vinculo
-                necessidade/risco).
-              </p>
             </section>
           );
         })
       )}
 
       {selectedJob ? (
-        <section className="surface" aria-labelledby="job-risks-title">
+        <section className="surface" aria-labelledby="job-panel-title">
           <div className="form-section-header">
             <div>
-              <p className="page-kicker">Riscos da funcao</p>
-              <h2 id="job-risks-title" className="page-title page-title--sm">
+              <p className="page-kicker">Funcao / cargo</p>
+              <h2 id="job-panel-title" className="page-title page-title--sm">
                 {selectedJob.name}
               </h2>
               <p className="field-hint">
@@ -633,86 +781,374 @@ function EstruturaContent({ clientId }: { clientId: string }) {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => setSelectedJobId(null)}
+              onClick={closeJobPanel}
             >
               Fechar
             </button>
           </div>
 
-          <form className="form" onSubmit={onLinkRisk}>
-            <div className="form-grid">
-              <div className="field field--span-2">
-                <label htmlFor="link-risk">Vincular risco do catalogo</label>
-                <select
-                  id="link-risk"
-                  required
-                  value={linkRiskId}
-                  onChange={(e) => setLinkRiskId(e.target.value)}
+          <div
+            className="panel-tabs"
+            role="tablist"
+            aria-label="Secoes da funcao"
+          >
+            <button
+              type="button"
+              role="tab"
+              className={`panel-tab ${selectedJobTab === 'dados' ? 'is-active' : ''}`}
+              aria-selected={selectedJobTab === 'dados'}
+              onClick={() => setSelectedJobTab('dados')}
+            >
+              Dados
+            </button>
+            <button
+              type="button"
+              role="tab"
+              className={`panel-tab ${selectedJobTab === 'riscos' ? 'is-active' : ''}`}
+              aria-selected={selectedJobTab === 'riscos'}
+              onClick={() => setSelectedJobTab('riscos')}
+            >
+              Riscos
+            </button>
+            <button
+              type="button"
+              role="tab"
+              className={`panel-tab ${selectedJobTab === 'epis' ? 'is-active' : ''}`}
+              aria-selected={selectedJobTab === 'epis'}
+              onClick={() => setSelectedJobTab('epis')}
+            >
+              EPIs necessarios
+            </button>
+          </div>
+
+          {selectedJobTab === 'dados' ? (
+            <div style={{ marginTop: '1rem' }}>
+              <dl className="meta-list">
+                <div>
+                  <dt>Descricao</dt>
+                  <dd>{selectedJob.description?.trim() || '—'}</dd>
+                </div>
+                <div>
+                  <dt>Ambiente / local</dt>
+                  <dd>
+                    {selectedJob.environmentDescription?.trim() || '—'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>
+                    <span
+                      className={`status-pill status-pill--${
+                        selectedJob.isActive ? 'active' : 'inactive'
+                      }`}
+                    >
+                      {selectedJob.isActive ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </dd>
+                </div>
+              </dl>
+              <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() =>
+                    void updateClientJobFunctionStatus(
+                      selectedJob.id,
+                      !selectedJob.isActive,
+                    ).then(load)
+                  }
                 >
-                  <option value="">Selecione...</option>
-                  {risks.map((risk) => (
-                    <option key={risk.id} value={risk.id}>
-                      {risk.name} ({riskCategoryLabel(risk.category)})
-                    </option>
-                  ))}
-                </select>
+                  {selectedJob.isActive ? 'Inativar funcao' : 'Reativar funcao'}
+                </button>
               </div>
             </div>
-            {linkError ? (
-              <p className="error" role="alert">
-                {linkError}
-              </p>
-            ) : null}
-            <div className="btn-row">
-              <button type="submit" className="btn btn-primary">
-                Vincular risco
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => void onSuggestRisks()}
-              >
-                Gerar riscos comuns
-              </button>
-            </div>
-          </form>
+          ) : null}
 
-          <div className="table-wrap" style={{ marginTop: '1rem' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th scope="col">Risco</th>
-                  <th scope="col">Categoria</th>
-                  <th scope="col">Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(selectedJob.risks ?? []).length === 0 ? (
-                  <tr>
-                    <td colSpan={3}>Nenhum risco vinculado.</td>
-                  </tr>
-                ) : (
-                  (selectedJob.risks ?? []).map((link) => (
-                    <tr key={link.id}>
-                      <td>
-                        <strong>{link.risk.name}</strong>
-                      </td>
-                      <td>{riskCategoryLabel(link.risk.category)}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-compact"
-                          onClick={() => void onUnlinkRisk(link.riskId)}
-                        >
-                          Remover
-                        </button>
-                      </td>
+          {selectedJobTab === 'riscos' ? (
+            <>
+              <form className="form" onSubmit={onLinkRisk}>
+                <div className="form-grid">
+                  <div className="field field--span-2">
+                    <label htmlFor="link-risk">
+                      Vincular risco do catalogo
+                    </label>
+                    <select
+                      id="link-risk"
+                      required
+                      value={linkRiskId}
+                      onChange={(e) => setLinkRiskId(e.target.value)}
+                    >
+                      <option value="">Selecione...</option>
+                      {risks.map((risk) => (
+                        <option key={risk.id} value={risk.id}>
+                          {risk.name} ({riskCategoryLabel(risk.category)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {linkError ? (
+                  <p className="error" role="alert">
+                    {linkError}
+                  </p>
+                ) : null}
+                <div className="btn-row">
+                  <button type="submit" className="btn btn-primary">
+                    Vincular risco
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => void onSuggestRisks()}
+                  >
+                    Gerar riscos comuns
+                  </button>
+                </div>
+              </form>
+
+              <div className="table-wrap" style={{ marginTop: '1rem' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Risco</th>
+                      <th scope="col">Categoria</th>
+                      <th scope="col">Acoes</th>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  </thead>
+                  <tbody>
+                    {(selectedJob.risks ?? []).length === 0 ? (
+                      <tr>
+                        <td colSpan={3}>Nenhum risco vinculado.</td>
+                      </tr>
+                    ) : (
+                      (selectedJob.risks ?? []).map((link) => (
+                        <tr key={link.id}>
+                          <td>
+                            <strong>{link.risk.name}</strong>
+                          </td>
+                          <td>{riskCategoryLabel(link.risk.category)}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-compact"
+                              onClick={() => void onUnlinkRisk(link.riskId)}
+                            >
+                              Remover
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
+
+          {selectedJobTab === 'epis' ? (
+            <>
+              <form className="form" onSubmit={onCreateEpiRequirement}>
+                <div className="form-grid">
+                  <div className="field field--span-2">
+                    <label htmlFor="req-epi-need">Necessidade de EPI</label>
+                    <select
+                      id="req-epi-need"
+                      required
+                      value={reqEpiNeedId}
+                      onChange={(e) => setReqEpiNeedId(e.target.value)}
+                    >
+                      <option value="">Selecione...</option>
+                      {epiNeeds.map((need) => (
+                        <option key={need.id} value={need.id}>
+                          {need.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="req-risk">Risco (opcional)</label>
+                    <select
+                      id="req-risk"
+                      value={reqRiskId}
+                      onChange={(e) => setReqRiskId(e.target.value)}
+                    >
+                      <option value="">Nenhum</option>
+                      {(selectedJob.risks ?? []).map((link) => (
+                        <option key={link.id} value={link.riskId}>
+                          {link.risk.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="req-quantity">Quantidade</label>
+                    <input
+                      id="req-quantity"
+                      type="number"
+                      min={1}
+                      required
+                      value={reqQuantity}
+                      onChange={(e) =>
+                        setReqQuantity(Math.max(1, Number(e.target.value) || 1))
+                      }
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="req-interval">
+                      Intervalo de troca (dias, opcional)
+                    </label>
+                    <input
+                      id="req-interval"
+                      type="number"
+                      min={1}
+                      value={reqReplacementDays}
+                      onChange={(e) => setReqReplacementDays(e.target.value)}
+                    />
+                  </div>
+                  <div className="field field--span-2">
+                    <label htmlFor="req-notes">Observacoes (opcional)</label>
+                    <input
+                      id="req-notes"
+                      value={reqNotes}
+                      onChange={(e) => setReqNotes(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label className="field-check" htmlFor="req-required">
+                      <input
+                        id="req-required"
+                        type="checkbox"
+                        checked={reqIsRequired}
+                        onChange={(e) => setReqIsRequired(e.target.checked)}
+                      />
+                      <span>Obrigatorio</span>
+                    </label>
+                  </div>
+                </div>
+
+                {selectedFormRisk && formSuggestedNeeds.length > 0 ? (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <p className="field-hint">
+                      Sugestoes para risco &quot;{selectedFormRisk.name}&quot;:
+                    </p>
+                    <div className="epi-need-picker">
+                      {formSuggestedNeeds.map((need) => (
+                        <button
+                          key={need.id}
+                          type="button"
+                          className="epi-need-chip epi-need-chip--suggested"
+                          onClick={() => setReqEpiNeedId(need.id)}
+                        >
+                          {need.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {reqError ? (
+                  <p className="error" role="alert">
+                    {reqError}
+                  </p>
+                ) : null}
+                <div className="btn-row">
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={reqSaving || epiNeeds.length === 0}
+                  >
+                    {reqSaving ? 'Salvando...' : 'Adicionar EPI necessario'}
+                  </button>
+                </div>
+              </form>
+
+              {epiNeeds.length === 0 ? (
+                <p className="field-hint" style={{ marginTop: '0.75rem' }}>
+                  Nenhuma necessidade de EPI ativa cadastrada. Cadastre em{' '}
+                  <Link href="/epi-needs">Necessidades de EPI</Link>.
+                </p>
+              ) : null}
+
+              <div className="table-wrap" style={{ marginTop: '1rem' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Necessidade</th>
+                      <th scope="col">Risco</th>
+                      <th scope="col">Tipo</th>
+                      <th scope="col">Qtd</th>
+                      <th scope="col">Intervalo</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Estoque</th>
+                      <th scope="col">Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {jobEpiRequirements(selectedJob).length === 0 ? (
+                      <tr>
+                        <td colSpan={8}>
+                          Nenhum EPI necessario definido para esta funcao.
+                        </td>
+                      </tr>
+                    ) : (
+                      jobEpiRequirements(selectedJob).map((requirement) => (
+                        <tr key={requirement.id}>
+                          <td>
+                            <strong>
+                              {requirement.epiNeed?.name ?? '—'}
+                            </strong>
+                          </td>
+                          <td>{requirement.risk?.name ?? '—'}</td>
+                          <td>
+                            {requirement.isRequired
+                              ? 'obrigatorio'
+                              : 'recomendado'}
+                          </td>
+                          <td>{requirement.quantity}</td>
+                          <td>
+                            {requirement.replacementIntervalDays != null
+                              ? `${requirement.replacementIntervalDays} dias`
+                              : '—'}
+                          </td>
+                          <td>
+                            <span
+                              className={`status-pill status-pill--${
+                                requirement.isActive ? 'active' : 'inactive'
+                              }`}
+                            >
+                              {requirement.isActive ? 'Ativo' : 'Inativo'}
+                            </span>
+                          </td>
+                          <td>
+                            <span
+                              className={epiNeedStockClass(
+                                requirement.epiNeed?.stockStatus,
+                              )}
+                            >
+                              {epiNeedStockLabel(
+                                requirement.epiNeed?.stockStatus,
+                              )}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-compact"
+                              onClick={() =>
+                                void onToggleEpiRequirementStatus(requirement)
+                              }
+                            >
+                              {requirement.isActive ? 'Inativar' : 'Reativar'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
         </section>
       ) : null}
     </div>

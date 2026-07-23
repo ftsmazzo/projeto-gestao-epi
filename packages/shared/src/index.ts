@@ -613,7 +613,28 @@ export interface ClientJobFunction {
     isActive: boolean;
   };
   risks?: JobFunctionRiskLink[];
-  _count?: { risks: number };
+  epiRequirements?: JobFunctionEpiRequirement[];
+  _count?: { risks: number; epiRequirements?: number };
+}
+
+export type EpiRequirementSource = 'MANUAL' | 'PGRO' | 'IMPORT';
+
+export interface JobFunctionEpiRequirement {
+  id: string;
+  organizationId: string;
+  jobFunctionId: string;
+  riskId: string | null;
+  epiNeedId: string;
+  isRequired: boolean;
+  quantity: number;
+  replacementIntervalDays: number | null;
+  notes: string | null;
+  source: EpiRequirementSource;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  risk?: OccupationalRisk | null;
+  epiNeed?: EpiNeed;
 }
 
 export interface OccupationalRiskDefaultsResult {

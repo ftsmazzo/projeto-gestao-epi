@@ -35,6 +35,7 @@ type StructureSummary = {
   sectors: number;
   jobs: number;
   riskLinks: number;
+  epiRequirements: number;
 };
 
 type FormMode = 'closed' | 'create' | 'edit';
@@ -110,6 +111,7 @@ function ClienteDetalheContent() {
     sectors: 0,
     jobs: 0,
     riskLinks: 0,
+    epiRequirements: 0,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -154,6 +156,12 @@ function ClienteDetalheContent() {
         jobs: jobList.length,
         riskLinks: jobList.reduce(
           (total, job) => total + (job.risks?.length ?? 0),
+          0,
+        ),
+        epiRequirements: jobList.reduce(
+          (total, job) =>
+            total +
+            (job.epiRequirements?.filter((req) => req.isActive).length ?? 0),
           0,
         ),
       });
@@ -527,6 +535,12 @@ function ClienteDetalheContent() {
             <span className="quota-summary-label">Riscos vinculados</span>
             <strong className="quota-summary-value">
               {structureSummary.riskLinks}
+            </strong>
+          </div>
+          <div className="quota-summary-item">
+            <span className="quota-summary-label">EPIs necessarios</span>
+            <strong className="quota-summary-value">
+              {structureSummary.epiRequirements}
             </strong>
           </div>
         </section>

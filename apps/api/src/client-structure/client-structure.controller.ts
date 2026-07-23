@@ -15,10 +15,12 @@ import type { JwtPayload } from '../auth/types/jwt-payload';
 import {
   CreateClientJobFunctionDto,
   CreateClientSectorDto,
+  CreateJobFunctionEpiRequirementDto,
   CreateOccupationalRiskDto,
   LinkJobFunctionRiskDto,
   UpdateClientJobFunctionDto,
   UpdateClientSectorDto,
+  UpdateJobFunctionEpiRequirementDto,
   UpdateOccupationalRiskDto,
   UpdateStatusDto,
 } from './dto/client-structure.dto';
@@ -157,6 +159,74 @@ export class ClientStructureController {
       user.sub,
       id,
       riskId,
+    );
+  }
+
+  @Get('client-job-functions/:id/epi-requirements')
+  listEpiRequirements(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.structure.listEpiRequirements(user.organizationId, id);
+  }
+
+  @Post('client-job-functions/:id/epi-requirements')
+  createEpiRequirement(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateJobFunctionEpiRequirementDto,
+  ) {
+    return this.structure.createEpiRequirement(
+      user.organizationId,
+      user.sub,
+      id,
+      dto,
+    );
+  }
+
+  @Patch('client-job-functions/:id/epi-requirements/:requirementId')
+  updateEpiRequirement(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('requirementId') requirementId: string,
+    @Body() dto: UpdateJobFunctionEpiRequirementDto,
+  ) {
+    return this.structure.updateEpiRequirement(
+      user.organizationId,
+      user.sub,
+      id,
+      requirementId,
+      dto,
+    );
+  }
+
+  @Patch('client-job-functions/:id/epi-requirements/:requirementId/status')
+  updateEpiRequirementStatus(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('requirementId') requirementId: string,
+    @Body() dto: UpdateStatusDto,
+  ) {
+    return this.structure.updateEpiRequirementStatus(
+      user.organizationId,
+      user.sub,
+      id,
+      requirementId,
+      dto.isActive,
+    );
+  }
+
+  @Delete('client-job-functions/:id/epi-requirements/:requirementId')
+  deleteEpiRequirement(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('requirementId') requirementId: string,
+  ) {
+    return this.structure.deleteEpiRequirement(
+      user.organizationId,
+      user.sub,
+      id,
+      requirementId,
     );
   }
 

@@ -48,6 +48,7 @@ function ClientesContent() {
   const [formMode, setFormMode] = useState<FormMode>('closed');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ClientFormState>(emptyForm);
+  const [createdClient, setCreatedClient] = useState<ServedClient | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -92,6 +93,7 @@ function ClientesContent() {
     setListTab('create');
     setFormMode('closed');
     setEditingId(null);
+    setCreatedClient(null);
     setForm({
       ...emptyForm,
       allocatedLifeQuota: String(Math.min(available, 10)),
@@ -103,6 +105,7 @@ function ClientesContent() {
     setListTab('clients');
     setFormMode('closed');
     setEditingId(null);
+    setCreatedClient(null);
     setForm(emptyForm);
     setFormError(null);
   }
@@ -150,8 +153,14 @@ function ClientesContent() {
 
     try {
       if (listTab === 'create') {
-        await createServedClient(payload);
-        openClientsTab();
+        const created = await createServedClient(payload);
+        setCreatedClient(created);
+        setForm({
+          ...emptyForm,
+          allocatedLifeQuota: String(
+            Math.min(summary?.available ?? 0, 10),
+          ),
+        });
       } else if (formMode === 'edit' && editingId) {
         await updateServedClient(editingId, payload);
         closeEditForm();
@@ -285,57 +294,88 @@ function ClientesContent() {
 
       {isCreateTab ? (
         <section className="surface" aria-labelledby="client-form-title">
-          <div className="form-section-header">
-            <div>
-              <p className="page-kicker">Novo cadastro</p>
-              <h2 id="client-form-title" className="page-title page-title--sm">
-                Novo cliente atendido
+          {createdClient ? (
+            <div className="empty-state">
+              <p className="page-kicker">Cliente criado</p>
+              <h2
+                id="client-form-title"
+                className="page-title page-title--sm"
+              >
+                {createdClient.tradeName || createdClient.legalName}
               </h2>
               <p className="page-lead">
-                Apos cadastrar, use a acao Estrutura na lista para setores,
-                funcoes e riscos.
+                Configure agora setores, funcoes, riscos e EPIs necessarios.
               </p>
+              <div className="btn-row">
+                <Link
+                  className="btn btn-primary"
+                  href={`/clientes/${createdClient.id}/estrutura`}
+                >
+                  Configurar estrutura agora
+                </Link>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={openClientsTab}
+                >
+                  Voltar para lista
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={openClientsTab}
-            >
-              Voltar a lista
-            </button>
-          </div>
+          ) : (
+            <>
+              <div className="form-section-header">
+                <div>
+                  <p className="page-kicker">Novo cadastro</p>
+                  <h2
+                    id="client-form-title"
+                    className="page-title page-title--sm"
+                  >
+                    Novo cliente atendido
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={openClientsTab}
+                >
+                  Voltar a lista
+                </button>
+              </div>
 
-          <form className="form form--wide" onSubmit={onSubmit} noValidate>
-            <ClientFormFields
-              form={form}
-              setForm={setForm}
-              availableForForm={availableForForm}
-            />
+              <form className="form form--wide" onSubmit={onSubmit} noValidate>
+                <ClientFormFields
+                  form={form}
+                  setForm={setForm}
+                  availableForForm={availableForForm}
+                />
 
-            {formError ? (
-              <p className="error" role="alert">
-                {formError}
-              </p>
-            ) : null}
+                {formError ? (
+                  <p className="error" role="alert">
+                    {formError}
+                  </p>
+                ) : null}
 
-            <div className="btn-row">
-              <button
-                className="btn btn-primary"
-                type="submit"
-                disabled={saving}
-              >
-                {saving ? 'Salvando...' : 'Cadastrar cliente'}
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={openClientsTab}
-                disabled={saving}
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
+                <div className="btn-row">
+                  <button
+                    className="btn btn-primary"
+                    type="submit"
+                    disabled={saving}
+                  >
+                    {saving ? 'Salvando...' : 'Cadastrar cliente'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={openClientsTab}
+                    disabled={saving}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
         </section>
       ) : (
         <>
@@ -401,10 +441,6 @@ function ClientesContent() {
                 <h2 id="clients-list-title" className="page-title page-title--sm">
                   Clientes da organizacao
                 </h2>
-                <p className="page-lead">
-                  Use <strong>Estrutura</strong> para setores, funcoes e riscos
-                  ocupacionais do cliente.
-                </p>
               </div>
             </div>
 
@@ -451,9 +487,6 @@ function ClientesContent() {
                               {client.legalName}
                             </span>
                           ) : null}
-                          <span className="table-sub">
-                            Estrutura: setores, funcoes e riscos
-                          </span>
                         </td>
                         <td className="mono">{formatCnpj(client.cnpj)}</td>
                         <td>

@@ -79,6 +79,7 @@ model Organization {
   clientJobFunctions ClientJobFunction[]
   occupationalRisks OccupationalRisk[]
   jobFunctionRisks  JobFunctionRisk[]
+  jobFunctionEpiRequirements JobFunctionEpiRequirement[]
 }
 
 model User {
@@ -223,6 +224,7 @@ model ClientJobFunction {
   servedClient ServedClient      @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
   sector       ClientSector      @relation(fields: [sectorId], references: [id], onDelete: Restrict)
   risks        JobFunctionRisk[]
+  epiRequirements JobFunctionEpiRequirement[]
 
   @@index([organizationId])
   @@index([servedClientId])
@@ -244,9 +246,44 @@ model OccupationalRisk {
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   jobLinks     JobFunctionRisk[]
+  epiRequirements JobFunctionEpiRequirement[]
 
   @@index([organizationId])
   @@index([category])
+  @@index([isActive])
+}
+
+enum EpiRequirementSource {
+  MANUAL
+  PGRO
+  IMPORT
+}
+
+/// Necessidade de EPI exigida por uma funcao/cargo (opcionalmente por risco).
+model JobFunctionEpiRequirement {
+  id                      String               @id @default(cuid())
+  organizationId          String
+  jobFunctionId           String
+  riskId                  String?
+  epiNeedId               String
+  isRequired              Boolean              @default(true)
+  quantity                Int                  @default(1)
+  replacementIntervalDays Int?
+  notes                   String?
+  source                  EpiRequirementSource @default(MANUAL)
+  isActive                Boolean              @default(true)
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  jobFunction  ClientJobFunction @relation(fields: [jobFunctionId], references: [id], onDelete: Cascade)
+  risk         OccupationalRisk? @relation(fields: [riskId], references: [id], onDelete: SetNull)
+  epiNeed      EpiNeed           @relation(fields: [epiNeedId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId])
+  @@index([jobFunctionId])
+  @@index([riskId])
+  @@index([epiNeedId])
   @@index([isActive])
 }
 
@@ -385,6 +422,7 @@ model EpiNeed {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   itemLinks    EpiItemNeed[]
+  jobRequirements JobFunctionEpiRequirement[]
 
   @@index([organizationId])
   @@index([isActive])

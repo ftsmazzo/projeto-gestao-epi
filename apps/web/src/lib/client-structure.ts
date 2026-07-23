@@ -1,6 +1,8 @@
 import type {
   ClientJobFunction,
   ClientSector,
+  EpiRequirementSource,
+  JobFunctionEpiRequirement,
   JobFunctionRiskLink,
   OccupationalRisk,
   OccupationalRiskCategory,
@@ -127,6 +129,79 @@ export function unlinkJobFunctionRisk(jobFunctionId: string, riskId: string) {
   );
 }
 
+export function listJobFunctionEpiRequirements(jobFunctionId: string) {
+  return apiFetch<JobFunctionEpiRequirement[]>(
+    `/client-job-functions/${jobFunctionId}/epi-requirements`,
+  );
+}
+
+export function createJobFunctionEpiRequirement(
+  jobFunctionId: string,
+  input: {
+    epiNeedId: string;
+    riskId?: string | null;
+    isRequired?: boolean;
+    quantity?: number;
+    replacementIntervalDays?: number | null;
+    notes?: string | null;
+    source?: EpiRequirementSource;
+  },
+) {
+  return apiFetch<JobFunctionEpiRequirement>(
+    `/client-job-functions/${jobFunctionId}/epi-requirements`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function updateJobFunctionEpiRequirement(
+  jobFunctionId: string,
+  requirementId: string,
+  input: {
+    epiNeedId?: string;
+    riskId?: string | null;
+    isRequired?: boolean;
+    quantity?: number;
+    replacementIntervalDays?: number | null;
+    notes?: string | null;
+    source?: EpiRequirementSource;
+  },
+) {
+  return apiFetch<JobFunctionEpiRequirement>(
+    `/client-job-functions/${jobFunctionId}/epi-requirements/${requirementId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export function updateJobFunctionEpiRequirementStatus(
+  jobFunctionId: string,
+  requirementId: string,
+  isActive: boolean,
+) {
+  return apiFetch<JobFunctionEpiRequirement>(
+    `/client-job-functions/${jobFunctionId}/epi-requirements/${requirementId}/status`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ isActive }),
+    },
+  );
+}
+
+export function deleteJobFunctionEpiRequirement(
+  jobFunctionId: string,
+  requirementId: string,
+) {
+  return apiFetch<{ ok: boolean }>(
+    `/client-job-functions/${jobFunctionId}/epi-requirements/${requirementId}`,
+    { method: 'DELETE' },
+  );
+}
+
 export function listOccupationalRisks(params?: {
   q?: string;
   category?: OccupationalRiskCategory | '';
@@ -164,4 +239,39 @@ export function updateOccupationalRiskStatus(id: string, isActive: boolean) {
     method: 'PATCH',
     body: JSON.stringify({ isActive }),
   });
+}
+
+/** Sugestoes de necessidades de EPI por nome de risco (nao aplicadas automaticamente). */
+export const RISK_EPI_NEED_SUGGESTIONS: Record<string, string[]> = {
+  ruido: ['Protetor Auricular Plug', 'Protetor Auricular Concha'],
+  calor: ['Avental de Raspa', 'Luva de Vaqueta'],
+  poeira: ['Respirador PFF2'],
+  'corte/perfuracao': ['Luva de Vaqueta', 'Luva Nitrilica'],
+  'queda de altura': ['Cinto de Seguranca', 'Talabarte'],
+  'impacto nos olhos': ['Oculos de Seguranca', 'Viseira Facial'],
+};
+
+export function normalizeRiskKey(name: string) {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+export function suggestedNeedNamesForRisk(riskName: string): string[] {
+  const key = normalizeRiskKey(riskName);
+  if (RISK_EPI_NEED_SUGGESTIONS[key]) {
+    return RISK_EPI_NEED_SUGGESTIONS[key];
+  }
+  for (const [pattern, names] of Object.entries(RISK_EPI_NEED_SUGGESTIONS)) {
+    if (
+      key.includes(pattern) ||
+      pattern.includes(key) ||
+      key.includes(normalizeRiskKey(pattern))
+    ) {
+      return names;
+    }
+  }
+  return [];
 }
