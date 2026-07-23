@@ -19,7 +19,7 @@ export const OPS_NAV: OpsNavItem[] = [
     href: '/clientes',
     label: 'Clientes atendidos',
     status: 'ready',
-    description: 'CNPJ, cotas de vidas e isolamento por cliente.',
+    description: 'CNPJ, cotas, estrutura (setores/funcoes/riscos) e isolamento por cliente.',
   },
   {
     href: '/trabalhadores',

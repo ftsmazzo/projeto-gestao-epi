@@ -234,18 +234,25 @@ function EstruturaContent({ clientId }: { clientId: string }) {
     <div className="module-page">
       <header className="module-header">
         <div>
-          <p className="page-kicker">Estrutura do cliente</p>
+          <p className="page-kicker">Estrutura operacional</p>
           <h1 className="page-title">
             {client.tradeName || client.legalName}
           </h1>
           <p className="page-lead">
-            Setores, funcoes/cargos e riscos ocupacionais. Preparacao para PGRO
-            e trabalhadores.
+            Configure unidades (referencia), setores, funcoes/cargos e riscos
+            ocupacionais deste cliente. Importacao de PGRO vem em etapa
+            posterior.
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
-          <Link className="btn btn-secondary" href={`/clientes/${clientId}`}>
-            Voltar ao cliente
+          <Link className="btn btn-secondary" href="/clientes">
+            Voltar para Clientes
+          </Link>
+          <Link
+            className="btn btn-secondary"
+            href={`/clientes/${clientId}`}
+          >
+            Detalhe do cliente
           </Link>
           <button
             type="button"
@@ -277,12 +284,46 @@ function EstruturaContent({ clientId }: { clientId: string }) {
           <strong className="quota-summary-value">{jobs.length}</strong>
         </div>
         <div className="quota-summary-item">
-          <span className="quota-summary-label">Riscos catalogo</span>
+          <span className="quota-summary-label">Riscos no catalogo</span>
           <strong className="quota-summary-value">{risks.length}</strong>
         </div>
       </section>
 
-      <div className="form-grid" style={{ marginBottom: '1rem' }}>
+      <section className="surface" aria-labelledby="units-block-title">
+        <p className="page-kicker">Bloco</p>
+        <h2 id="units-block-title" className="page-title page-title--sm">
+          Unidades
+        </h2>
+        {units.length === 0 ? (
+          <p className="page-lead">
+            Nenhuma unidade cadastrada. Voce pode criar setores sem unidade ou
+            cadastrar unidades no detalhe do cliente.
+          </p>
+        ) : (
+          <ul className="meta-list">
+            {units.map((unit) => (
+              <li key={unit.id}>
+                <strong>{unit.name}</strong>
+                {unit.city || unit.state ? (
+                  <span className="table-sub">
+                    {[unit.city, unit.state].filter(Boolean).join(' / ')}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+          <Link
+            className="btn btn-secondary btn-compact"
+            href={`/clientes/${clientId}`}
+          >
+            Gerenciar unidades no detalhe
+          </Link>
+        </div>
+      </section>
+
+      <div className="form-grid" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
         <div className="field">
           <label htmlFor="filter-sector">Filtrar setor</label>
           <select

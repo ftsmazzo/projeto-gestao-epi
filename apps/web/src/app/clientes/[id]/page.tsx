@@ -13,6 +13,10 @@ import { RequireAuth } from '../../../components/RequireAuth';
 import { formatCnpj, formatCnpjInput, normalizeCnpj } from '../../../lib/cnpj';
 import { formatCpf, formatCpfInput, stripCpf } from '../../../lib/cpf';
 import {
+  listClientJobFunctions,
+  listClientSectors,
+} from '../../../lib/client-structure';
+import {
   createOperationalUnit,
   listOperationalUnits,
   updateOperationalUnit,
@@ -26,6 +30,12 @@ import {
   updateWorker,
   updateWorkerStatus,
 } from '../../../lib/workers';
+
+type StructureSummary = {
+  sectors: number;
+  jobs: number;
+  riskLinks: number;
+};
 
 type FormMode = 'closed' | 'create' | 'edit';
 type Panel = 'units' | 'workers';
@@ -96,6 +106,11 @@ function ClienteDetalheContent() {
   const [lifeSummary, setLifeSummary] = useState<ClientLifeSummary | null>(
     null,
   );
+  const [structureSummary, setStructureSummary] = useState<StructureSummary>({
+    sectors: 0,
+    jobs: 0,
+    riskLinks: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,16 +130,33 @@ function ClienteDetalheContent() {
     setError(null);
     setLoading(true);
     try {
-      const [servedClient, unitList, workerList, lives] = await Promise.all([
+      const [
+        servedClient,
+        unitList,
+        workerList,
+        lives,
+        sectorList,
+        jobList,
+      ] = await Promise.all([
         getServedClient(clientId),
         listOperationalUnits(clientId),
         listWorkers(clientId),
         getClientLifeSummary(clientId),
+        listClientSectors(clientId, 'active'),
+        listClientJobFunctions({ servedClientId: clientId, status: 'active' }),
       ]);
       setClient(servedClient);
       setUnits(unitList);
       setWorkers(workerList);
       setLifeSummary(lives);
+      setStructureSummary({
+        sectors: sectorList.length,
+        jobs: jobList.length,
+        riskLinks: jobList.reduce(
+          (total, job) => total + (job.risks?.length ?? 0),
+          0,
+        ),
+      });
     } catch (err) {
       setError(
         err instanceof Error
@@ -357,7 +389,8 @@ function ClienteDetalheContent() {
             {client.tradeName || client.legalName}
           </h1>
           <p className="page-lead">
-            Gerencie unidades operacionais e trabalhadores (vidas) deste CNPJ.
+            Gerencie unidades, estrutura operacional (setores/funcoes/riscos) e
+            trabalhadores (vidas) deste CNPJ.
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
@@ -365,10 +398,10 @@ function ClienteDetalheContent() {
             Voltar
           </Link>
           <Link
-            className="btn btn-secondary"
+            className="btn btn-primary"
             href={`/clientes/${client.id}/estrutura`}
           >
-            Estrutura
+            Configurar estrutura
           </Link>
           <button
             type="button"
@@ -379,7 +412,7 @@ function ClienteDetalheContent() {
           </button>
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-secondary"
             onClick={openCreateWorker}
           >
             Novo trabalhador
@@ -445,6 +478,75 @@ function ClienteDetalheContent() {
             </dd>
           </div>
         </dl>
+      </section>
+
+      <section
+        className="surface"
+        aria-labelledby="structure-summary-title"
+      >
+        <div className="form-section-header">
+          <div>
+            <p className="page-kicker">Operacao</p>
+            <h2
+              id="structure-summary-title"
+              className="page-title page-title--sm"
+            >
+              Estrutura do cliente
+            </h2>
+            <p className="page-lead">
+              Setores, funcoes e riscos usados pela Consultoria/Gestao para
+              organizar o cliente antes de PGRO e entregas.
+            </p>
+          </div>
+          <Link
+            className="btn btn-primary"
+            href={`/clientes/${client.id}/estrutura`}
+          >
+            Configurar estrutura
+          </Link>
+        </div>
+
+        <section className="quota-summary" aria-label="Resumo da estrutura">
+          <div className="quota-summary-item">
+            <span className="quota-summary-label">Unidades</span>
+            <strong className="quota-summary-value">{units.length}</strong>
+          </div>
+          <div className="quota-summary-item">
+            <span className="quota-summary-label">Setores</span>
+            <strong className="quota-summary-value">
+              {structureSummary.sectors}
+            </strong>
+          </div>
+          <div className="quota-summary-item">
+            <span className="quota-summary-label">Funcoes</span>
+            <strong className="quota-summary-value">
+              {structureSummary.jobs}
+            </strong>
+          </div>
+          <div className="quota-summary-item">
+            <span className="quota-summary-label">Riscos vinculados</span>
+            <strong className="quota-summary-value">
+              {structureSummary.riskLinks}
+            </strong>
+          </div>
+        </section>
+
+        {structureSummary.sectors === 0 ? (
+          <div className="empty-state" style={{ marginTop: '1rem' }}>
+            <p className="page-title page-title--sm">
+              Estrutura ainda nao configurada
+            </p>
+            <p className="page-lead">
+              Cadastre setores e funcoes para vincular riscos ocupacionais.
+            </p>
+            <Link
+              className="btn btn-primary"
+              href={`/clientes/${client.id}/estrutura`}
+            >
+              Cadastrar setores e funcoes
+            </Link>
+          </div>
+        ) : null}
       </section>
 
       {error ? (
