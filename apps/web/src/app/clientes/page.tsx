@@ -190,7 +190,7 @@ function ClientesContent() {
           storeClientAccessOnce(result.client.id, result.initialAccess);
         }
         await load();
-        router.push(`/clientes/${result.client.id}#usuarios-cliente`);
+        router.push(`/clientes/${result.client.id}/usuarios`);
         return;
       }
       if (formMode === 'edit' && editingId) {
@@ -659,10 +659,8 @@ function ClientFormFields({
           <div className="epi-form-section__head">
             <h3>Gestor inicial</h3>
             <p>
-              Opcional. Prepara o acesso do gestor (nao consome vidas). Apos
-              salvar, o painel do cliente abre com a senha temporaria. Esses
-              dados sao para o portal futuro — nao funcionam no login da
-              Consultoria.
+              Opcional. Apos salvar, o painel abre em Usuarios com a senha
+              temporaria. O gestor entra em /portal/login — nao na Consultoria.
             </p>
           </div>
           <div className="form-grid">

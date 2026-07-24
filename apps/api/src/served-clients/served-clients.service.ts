@@ -398,10 +398,11 @@ export class ServedClientsService {
       process.env.CLIENT_PORTAL_URL?.trim() ||
       process.env.WEB_APP_URL?.trim() ||
       process.env.CORS_ORIGIN?.split(',')[0]?.trim();
-    if (fromEnv) {
-      return fromEnv.replace(/\/$/, '');
+    const base = (fromEnv || 'http://localhost:3000').replace(/\/$/, '');
+    if (base.endsWith('/portal/login') || base.endsWith('/portal')) {
+      return base.includes('/login') ? base : `${base}/login`;
     }
-    return 'http://localhost:3000';
+    return `${base}/portal/login`;
   }
 
   private toInitialAccessPayload(
@@ -423,7 +424,7 @@ export class ServedClientsService {
       accessUrl: this.resolveAccessUrl(),
       accessStatus: membership.accessStatus,
       warning:
-        'A senha temporaria sera exibida apenas agora. Nao use no login da Consultoria — o portal do cliente ainda sera habilitado. Envio por WhatsApp/e-mail sera implementado depois.',
+        'A senha temporaria sera exibida apenas agora. Use o link do portal do cliente (/portal/login), nao o login da Consultoria. Envio por WhatsApp/e-mail sera implementado depois.',
     };
   }
 

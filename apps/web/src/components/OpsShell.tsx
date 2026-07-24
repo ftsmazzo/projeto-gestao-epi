@@ -55,9 +55,9 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
         <aside
           id="ops-nav"
           className={`ops-sidebar ${menuOpen ? 'is-open' : ''}`}
-          aria-label="Navegacao operacional"
+          aria-label="Navegacao da consultoria"
         >
-          <p className="ops-nav-label">Web Admin</p>
+          <p className="ops-nav-label">Consultoria</p>
           <nav className="ops-nav">
             {OPS_NAV.map((item) => {
               const active =
@@ -71,31 +71,10 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
                   onClick={() => setMenuOpen(false)}
                 >
                   <span>{item.label}</span>
-                  {item.status === 'soon' ? (
-                    <span className="ops-nav-badge">Em breve</span>
-                  ) : item.status === 'via-client' ? (
-                    <span className="ops-nav-badge">Via cliente</span>
-                  ) : null}
                 </Link>
               );
             })}
           </nav>
-
-          <div className="ops-sidebar-note">
-            <p className="ops-nav-label">Portal do cliente</p>
-            <p className="field-hint">
-              Area futura para usuarios do cliente atendido acompanharem
-              relatorios e operacao, sem acesso admin do tenant.
-            </p>
-            <Link
-              href="/portal-cliente"
-              className="ops-nav-link"
-              onClick={() => setMenuOpen(false)}
-            >
-              <span>Visao previa</span>
-              <span className="ops-nav-badge">Em breve</span>
-            </Link>
-          </div>
         </aside>
 
         {menuOpen ? (

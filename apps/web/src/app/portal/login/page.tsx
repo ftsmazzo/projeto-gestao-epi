@@ -3,10 +3,10 @@
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AppShell } from '../../components/AppShell';
-import { loginAccount } from '../../lib/auth';
+import { PortalShell } from '../../../components/PortalShell';
+import { clientLoginAccount } from '../../../lib/client-auth';
 
-export default function LoginPage() {
+export default function PortalLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,8 +18,12 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      await loginAccount({ email, password });
-      router.push('/dashboard');
+      const data = await clientLoginAccount({ email, password });
+      if (data.user.mustChangePassword) {
+        router.push('/portal/conta?obrigatorio=1');
+      } else {
+        router.push('/portal');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha no login');
     } finally {
@@ -28,29 +32,22 @@ export default function LoginPage() {
   }
 
   return (
-    <AppShell
-      headerActions={
-        <Link className="btn btn-secondary" href="/register">
-          Criar organizacao
-        </Link>
-      }
-    >
-      <div className="auth-layout">
-        <section className="auth-panel" aria-labelledby="login-title">
-          <p className="page-kicker">Acesso</p>
-          <h1 id="login-title" className="page-title">
-            Entrar na Consultoria
+    <PortalShell>
+      <div className="portal-auth">
+        <section className="portal-card portal-card--auth" aria-labelledby="portal-login-title">
+          <p className="page-kicker">Portal do cliente</p>
+          <h1 id="portal-login-title" className="page-title">
+            Entrar
           </h1>
           <p className="page-lead">
-            Acesso da gestao/consultoria. Gestores de empresa cliente usam o{' '}
-            <Link href="/portal/login">portal do cliente</Link>.
+            Acesso para gestores e operadores da empresa cliente. A Consultoria
+            usa outro login.
           </p>
-
-          <form className="form" onSubmit={onSubmit} noValidate>
+          <form className="form-panel" onSubmit={onSubmit} noValidate>
             <div className="field">
-              <label htmlFor="login-email">Email</label>
+              <label htmlFor="portal-email">E-mail</label>
               <input
-                id="login-email"
+                id="portal-email"
                 type="email"
                 autoComplete="email"
                 required
@@ -59,9 +56,9 @@ export default function LoginPage() {
               />
             </div>
             <div className="field">
-              <label htmlFor="login-password">Senha</label>
+              <label htmlFor="portal-password">Senha</label>
               <input
-                id="login-password"
+                id="portal-password"
                 type="password"
                 autoComplete="current-password"
                 required
@@ -75,17 +72,20 @@ export default function LoginPage() {
                 {error}
               </p>
             ) : null}
-            <button className="btn btn-primary btn-block" type="submit" disabled={loading}>
-              {loading ? 'Entrando...' : 'Entrar'}
+            <button
+              className="btn btn-primary btn-block"
+              type="submit"
+              disabled={loading}
+            >
+              {loading ? 'Entrando...' : 'Entrar no portal'}
             </button>
           </form>
-
-          <p className="form-footer">
-            Ainda nao tem conta?{' '}
-            <Link href="/register">Registrar organizacao</Link>
+          <p className="field-hint" style={{ marginTop: '1rem' }}>
+            E membro da Consultoria?{' '}
+            <Link href="/login">Ir para o login da gestao</Link>
           </p>
         </section>
       </div>
-    </AppShell>
+    </PortalShell>
   );
 }

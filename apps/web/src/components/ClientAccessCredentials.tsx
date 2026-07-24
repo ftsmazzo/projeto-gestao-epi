@@ -31,15 +31,13 @@ export function ClientAccessCredentials({
       </p>
       <div className="notice notice--warn" role="status">
         <p>
-          <strong>Importante:</strong> estes dados sao para o{' '}
-          <em>portal do cliente</em>, que ainda sera habilitado. Eles{' '}
-          <strong>nao funcionam</strong> no login da Consultoria/Gestao (entrada
-          atual do sistema).
+          Entregue ao gestor o link do <strong>portal do cliente</strong>. Nao
+          use o login da Consultoria/Gestao.
         </p>
       </div>
       <dl className="access-credentials__list">
         <div>
-          <dt>URL futura do portal</dt>
+          <dt>Link do portal</dt>
           <dd className="mono">{access.accessUrl}</dd>
         </div>
         <div>
@@ -54,10 +52,6 @@ export function ClientAccessCredentials({
         </div>
       </dl>
       <p className="field-hint">{access.warning}</p>
-      <p className="field-hint">
-        Envio por WhatsApp/e-mail sera implementado depois. Guarde os dados para
-        entregar ao cliente quando o portal estiver pronto.
-      </p>
       <div className="btn-row">
         <button
           type="button"

@@ -12,7 +12,6 @@ import type {
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { RequireAuth } from '../../../../components/RequireAuth';
 import {
   createClientJobFunction,
   createClientSector,
@@ -1164,9 +1163,5 @@ function EstruturaContent({ clientId }: { clientId: string }) {
 export default function ClienteEstruturaPage() {
   const params = useParams();
   const clientId = String(params.id ?? '');
-  return (
-    <RequireAuth>
-      {() => <EstruturaContent clientId={clientId} />}
-    </RequireAuth>
-  );
+  return <EstruturaContent clientId={clientId} />;
 }

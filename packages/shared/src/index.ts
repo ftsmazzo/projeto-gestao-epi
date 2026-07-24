@@ -118,6 +118,33 @@ export type ClientUserAccessStatus =
   | 'ACTIVE'
   | 'DISABLED';
 
+export interface ClientPortalClient {
+  id: string;
+  legalName: string;
+  tradeName: string | null;
+  cnpj: string;
+  status: ServedClientStatus;
+}
+
+export interface ClientPortalUser {
+  id: string;
+  email: string;
+  name: string;
+  role: ClientUserRole;
+  mustChangePassword: boolean;
+  accessStatus: ClientUserAccessStatus;
+  organization: {
+    id: string;
+    name: string;
+  };
+  servedClient: ClientPortalClient;
+}
+
+export interface ClientAuthResponse {
+  accessToken: string;
+  user: ClientPortalUser;
+}
+
 export interface ClientUserMembership {
   id: string;
   organizationId: string;

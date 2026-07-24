@@ -8,8 +8,8 @@ export type OpsNavItem = {
 };
 
 /**
- * Navegacao da Consultoria/Gestao (tenant).
- * Operacao diaria de EPI/estoque/necessidades deve partir do painel do cliente.
+ * Navegacao enxuta da Consultoria/Gestao (tenant).
+ * Operacao por CNPJ fica no workspace do cliente.
  */
 export const OPS_NAV: OpsNavItem[] = [
   {
@@ -29,53 +29,5 @@ export const OPS_NAV: OpsNavItem[] = [
     label: 'Base CAEPI',
     status: 'ready',
     description: 'Base oficial de CAs (global).',
-  },
-  {
-    href: '/configuracoes',
-    label: 'Configuracoes',
-    status: 'soon',
-    description: 'Organizacao, usuarios da consultoria e parametros.',
-  },
-  {
-    href: '/epis',
-    label: 'EPIs (catalogo)',
-    status: 'via-client',
-    description: 'Catalogo do tenant. Prefira operar a partir do cliente.',
-  },
-  {
-    href: '/epi-needs',
-    label: 'Necessidades de EPI',
-    status: 'via-client',
-    description: 'Catalogo do tenant. Prefira via painel do cliente.',
-  },
-  {
-    href: '/estoque',
-    label: 'Estoque',
-    status: 'via-client',
-    description: 'Estoque do tenant. Prefira via painel do cliente.',
-  },
-  {
-    href: '/trabalhadores',
-    label: 'Trabalhadores',
-    status: 'soon',
-    description: 'Importacao e gestao global em breve; vidas no painel do cliente.',
-  },
-  {
-    href: '/entregas',
-    label: 'Entregas',
-    status: 'soon',
-    description: 'Registro operacional e ficha eletronica.',
-  },
-  {
-    href: '/documentos',
-    label: 'Documentos',
-    status: 'soon',
-    description: 'Termos, evidencias e exportacoes.',
-  },
-  {
-    href: '/relatorios',
-    label: 'Relatorios',
-    status: 'soon',
-    description: 'Visao gerencial e auditoria.',
   },
 ];
