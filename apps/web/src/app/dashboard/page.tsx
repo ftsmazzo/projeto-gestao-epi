@@ -2,15 +2,24 @@
 
 import type { QuotaSummary } from '@gestao-epi/shared';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
 import { OPS_NAV } from '../../lib/nav';
+import { hardResetOrganization } from '../../lib/organization';
 import { getQuotaSummary } from '../../lib/served-clients';
 
 export default function DashboardPage() {
   return (
     <RequireAuth>
-      {(user) => <DashboardContent userName={user.name} orgName={user.organization.name} email={user.email} role={user.membershipRole} slug={user.organization.slug} />}
+      {(user) => (
+        <DashboardContent
+          userName={user.name}
+          orgName={user.organization.name}
+          email={user.email}
+          role={user.membershipRole}
+          slug={user.organization.slug}
+        />
+      )}
     </RequireAuth>
   );
 }
@@ -30,6 +39,10 @@ function DashboardContent({
 }) {
   const [summary, setSummary] = useState<QuotaSummary | null>(null);
   const [quotaError, setQuotaError] = useState<string | null>(null);
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetOk, setResetOk] = useState<string | null>(null);
 
   useEffect(() => {
     void getQuotaSummary()
@@ -42,6 +55,28 @@ function DashboardContent({
         );
       });
   }, []);
+
+  async function onHardReset(event: FormEvent) {
+    event.preventDefault();
+    setResetError(null);
+    setResetOk(null);
+    setResetting(true);
+    try {
+      const result = await hardResetOrganization(resetConfirm);
+      setResetConfirm('');
+      setResetOk(
+        `Hard reset ok: ${result.servedClients} clientes, ${result.epiItems} EPIs, ${result.workers} trabalhadores removidos. Voce continua logado.`,
+      );
+      const next = await getQuotaSummary();
+      setSummary(next);
+    } catch (err) {
+      setResetError(
+        err instanceof Error ? err.message : 'Falha ao executar hard reset.',
+      );
+    } finally {
+      setResetting(false);
+    }
+  }
 
   return (
     <div className="module-page">
@@ -180,13 +215,16 @@ function DashboardContent({
           aria-labelledby="actions"
         >
           <p className="page-kicker page-kicker--on-dark">Acoes</p>
-          <h2 id="actions" className="page-title page-title--sm page-title--on-dark">
+          <h2
+            id="actions"
+            className="page-title page-title--sm page-title--on-dark"
+          >
             O que ja e possivel
           </h2>
           <ul className="upcoming-list upcoming-list--on-dark">
             <li>Autenticacao e isolamento por organizacao</li>
-                <li>Cadastro de clientes, unidades e trabalhadores</li>
-                <li>Controle de cotas e vidas usadas</li>
+            <li>Cadastro de clientes, unidades e trabalhadores</li>
+            <li>Controle de cotas e vidas usadas</li>
           </ul>
           <div className="btn-row">
             <Link className="btn btn-primary" href="/clientes">
@@ -197,6 +235,53 @@ function DashboardContent({
             </Link>
           </div>
         </section>
+
+        {role === 'OWNER' ? (
+          <section className="surface" aria-labelledby="hard-reset-title">
+            <p className="page-kicker">Manutencao</p>
+            <h2 id="hard-reset-title" className="page-title page-title--sm">
+              Hard reset (dados de teste)
+            </h2>
+            <p className="page-lead">
+              Apaga clientes, estrutura, trabalhadores, EPIs, estoque, PGRO e
+              usuarios do cliente deste tenant. Mantem seu login, a organizacao
+              e a base CAEPI. Digite <strong>RESETAR</strong> para confirmar.
+            </p>
+            <form className="form-grid" onSubmit={onHardReset}>
+              <label>
+                Confirmacao
+                <input
+                  value={resetConfirm}
+                  onChange={(e) => setResetConfirm(e.target.value)}
+                  placeholder="RESETAR"
+                  autoComplete="off"
+                />
+              </label>
+              <div className="btn-row">
+                <button
+                  type="submit"
+                  className="btn btn-danger"
+                  disabled={
+                    resetting ||
+                    resetConfirm.trim().toUpperCase() !== 'RESETAR'
+                  }
+                >
+                  {resetting ? 'Limpando...' : 'Executar hard reset'}
+                </button>
+              </div>
+            </form>
+            {resetError ? (
+              <p className="error" role="alert">
+                {resetError}
+              </p>
+            ) : null}
+            {resetOk ? (
+              <p className="notice notice--info" role="status">
+                {resetOk}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
       </div>
     </div>
   );

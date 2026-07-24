@@ -14,6 +14,7 @@ import { StockModule } from './stock/stock.module';
 import { EpiNeedsModule } from './epi-needs/epi-needs.module';
 import { ClientStructureModule } from './client-structure/client-structure.module';
 import { PgroModule } from './pgro/pgro.module';
+import { OrganizationModule } from './organization/organization.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { PgroModule } from './pgro/pgro.module';
     EpiNeedsModule,
     ClientStructureModule,
     PgroModule,
+    OrganizationModule,
     HealthModule,
   ],
 })
