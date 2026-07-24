@@ -1089,6 +1089,11 @@ export interface PortalEpiSearchItem {
   usefulLifeLabel: string | null;
   unitOfMeasure: EpiUnitOfMeasure;
   category: EpiCategory | null;
+  /** Quando a busca achou uma necessidade do PGRO/estrutura. */
+  epiNeedId?: string;
+  needName?: string;
+  /** Precisa informar CA para criar/vincular o EPI real. */
+  requiresCa?: boolean;
 }
 
 export interface PortalEpiByCaResponse {
@@ -1103,9 +1108,11 @@ export interface PortalStockEntradasResult {
   created: number;
   items: Array<{
     epiItemId: string;
+    epiNeedId: string | null;
     quantity: number;
     newQuantity: number;
     movementId: string;
+    createdEpiItem: boolean;
   }>;
 }
 

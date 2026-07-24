@@ -26,19 +26,54 @@ function formatDate(iso: string | null) {
   }
 }
 
-type NeedPickRow = {
-  key: string;
+type NeedRow = {
   needId: string;
   needName: string;
-  epiItemId: string;
-  epiName: string;
-  caNumber: string | null;
+  epiItemId: string | null;
+  epiName: string | null;
+  caNumber: string;
   caExpiresAt: string | null;
   usefulLifeLabel: string | null;
   quantity: number;
   selected: boolean;
-  fromSuggestion: boolean;
+  jobNames: string[];
 };
+
+function buildNeedRows(data: PortalEstoqueResponse): NeedRow[] {
+  const rows: NeedRow[] = [];
+  for (const need of data.needs) {
+    if (need.items.length > 0) {
+      for (const item of need.items) {
+        rows.push({
+          needId: need.needId,
+          needName: need.needName,
+          epiItemId: item.id,
+          epiName: item.name,
+          caNumber: item.caNumber ?? '',
+          caExpiresAt: item.caExpiresAt,
+          usefulLifeLabel: item.usefulLifeLabel,
+          quantity: need.suggestedQuantity || 1,
+          selected: true,
+          jobNames: need.jobNames,
+        });
+      }
+    } else {
+      rows.push({
+        needId: need.needId,
+        needName: need.needName,
+        epiItemId: null,
+        epiName: null,
+        caNumber: '',
+        caExpiresAt: null,
+        usefulLifeLabel: null,
+        quantity: need.suggestedQuantity || 1,
+        selected: true,
+        jobNames: need.jobNames,
+      });
+    }
+  }
+  return rows;
+}
 
 function PortalEstoqueContent() {
   const [data, setData] = useState<PortalEstoqueResponse | null>(null);
@@ -51,19 +86,17 @@ function PortalEstoqueContent() {
   const [suggestions, setSuggestions] = useState<PortalEpiSearchItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchHint, setSearchHint] = useState<string | null>(null);
-  const [selectedEpi, setSelectedEpi] = useState<PortalEpiSearchItem | null>(
-    null,
-  );
+  const [selected, setSelected] = useState<PortalEpiSearchItem | null>(null);
   const [freeQty, setFreeQty] = useState(1);
   const [caQuery, setCaQuery] = useState('');
   const [lookingCa, setLookingCa] = useState(false);
 
-  const [needRows, setNeedRows] = useState<NeedPickRow[]>([]);
-  const [listGenerated, setListGenerated] = useState(false);
+  const [needRows, setNeedRows] = useState<NeedRow[]>([]);
 
   async function reload() {
     const res = await fetchPortalEstoque();
     setData(res);
+    setNeedRows(buildNeedRows(res));
     return res;
   }
 
@@ -88,7 +121,7 @@ function PortalEstoqueContent() {
 
   useEffect(() => {
     const q = query.trim();
-    if (selectedEpi) return;
+    if (selected) return;
     if (q.length < SEARCH_MIN) {
       setSuggestions([]);
       setSearching(false);
@@ -105,59 +138,30 @@ function PortalEstoqueContent() {
           setSuggestions(items);
           setSearchHint(
             items.length === 0
-              ? 'Nenhum EPI no catalogo com esse nome/CA. Confira o cadastro na Consultoria ou busque pelo numero do CA.'
+              ? 'Nenhuma necessidade/EPI com esse nome. Confira a estrutura/PGRO desta empresa.'
               : null,
           );
         })
         .catch((err: unknown) => {
           setSuggestions([]);
           setSearchHint(
-            err instanceof Error ? err.message : 'Falha na busca de EPI.',
+            err instanceof Error ? err.message : 'Falha na busca.',
           );
         })
         .finally(() => setSearching(false));
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [query, selectedEpi]);
+  }, [query, selected]);
 
   const selectedNeedCount = useMemo(
-    () => needRows.filter((row) => row.selected && row.quantity > 0).length,
+    () =>
+      needRows.filter((row) => {
+        if (!row.selected || row.quantity < 1) return false;
+        if (row.epiItemId) return true;
+        return row.caNumber.trim().length >= 3;
+      }).length,
     [needRows],
   );
-
-  function generateNeedList() {
-    if (!data) return;
-    const rows: NeedPickRow[] = [];
-    for (const need of data.needs) {
-      const source =
-        need.items.length > 0 ? need.items : need.suggestedItems ?? [];
-      for (const item of source) {
-        rows.push({
-          key: `${need.needId}:${item.id}`,
-          needId: need.needId,
-          needName: need.needName,
-          epiItemId: item.id,
-          epiName: item.name,
-          caNumber: item.caNumber,
-          caExpiresAt: item.caExpiresAt,
-          usefulLifeLabel: item.usefulLifeLabel,
-          quantity: need.suggestedQuantity || 1,
-          selected: need.items.length > 0,
-          fromSuggestion: need.items.length === 0,
-        });
-      }
-    }
-    setNeedRows(rows);
-    setListGenerated(true);
-    setSuccess(null);
-    if (rows.length === 0) {
-      setError(
-        'Nenhuma necessidade encontrou EPI no catalogo. A Consultoria precisa cadastrar/vincular os itens (ex.: Luva) ao catalogo.',
-      );
-    } else {
-      setError(null);
-    }
-  }
 
   async function onLookupCa() {
     const ca = caQuery.trim();
@@ -167,19 +171,32 @@ function PortalEstoqueContent() {
     }
     setLookingCa(true);
     setError(null);
-    setSuccess(null);
     try {
       const result = await lookupPortalEpiByCa(ca);
       if (result.found && result.item) {
-        setSelectedEpi(result.item);
+        setSelected(result.item);
         setQuery(result.item.name);
-        setSuggestions(result.items ?? [result.item]);
-        setSearchHint(result.message);
         setCaQuery(result.item.caNumber ?? ca);
-      } else {
-        setSelectedEpi(null);
         setSuggestions([]);
-        setError(result.message ?? 'CA nao encontrado no catalogo.');
+        setSearchHint(result.message);
+      } else {
+        // CA existe na CAEPI mesmo sem item — permite entrada com CA
+        setSelected({
+          id: `ca:${ca}`,
+          name: `EPI CA ${ca}`,
+          caNumber: ca,
+          caExpiresAt: null,
+          usefulLifeValue: null,
+          usefulLifeUnit: null,
+          usefulLifeLabel: null,
+          unitOfMeasure: 'UNIDADE',
+          category: null,
+          requiresCa: false,
+        });
+        setSearchHint(
+          result.message ??
+            'CA sera usado para criar/vincular o EPI no catalogo na entrada.',
+        );
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao buscar CA.');
@@ -190,21 +207,37 @@ function PortalEstoqueContent() {
 
   async function onFreeEntrada(event: FormEvent) {
     event.preventDefault();
-    if (!selectedEpi) {
-      setError('Selecione um EPI da busca ou pelo CA.');
+    if (!selected) {
+      setError('Selecione uma necessidade/EPI ou informe o CA.');
       return;
     }
+    const ca = (caQuery || selected.caNumber || '').trim();
+    const epiNeedId = selected.epiNeedId;
+    const epiItemId = selected.requiresCa
+      ? undefined
+      : selected.id.startsWith('need:') || selected.id.startsWith('ca:')
+        ? undefined
+        : selected.id;
+
+    if (!epiItemId && !ca) {
+      setError('Informe o CA para esta necessidade.');
+      return;
+    }
+
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
       await createPortalStockEntradas([
-        { epiItemId: selectedEpi.id, quantity: freeQty },
+        {
+          epiItemId,
+          epiNeedId,
+          caNumber: ca || undefined,
+          quantity: freeQty,
+        },
       ]);
-      setSuccess(
-        `Entrada de ${freeQty} un. de ${selectedEpi.name} registrada.`,
-      );
-      setSelectedEpi(null);
+      setSuccess(`Entrada de ${freeQty} un. registrada.`);
+      setSelected(null);
       setQuery('');
       setCaQuery('');
       setSuggestions([]);
@@ -222,31 +255,29 @@ function PortalEstoqueContent() {
   async function onBatchEntrada() {
     const items = needRows
       .filter((row) => row.selected && row.quantity > 0)
-      .map((row) => ({ epiItemId: row.epiItemId, quantity: row.quantity }));
+      .map((row) => ({
+        epiItemId: row.epiItemId ?? undefined,
+        epiNeedId: row.needId,
+        caNumber: row.caNumber.trim() || undefined,
+        quantity: row.quantity,
+      }))
+      .filter((row) => row.epiItemId || (row.caNumber && row.caNumber.length >= 3));
+
     if (items.length === 0) {
-      setError('Selecione ao menos um EPI com quantidade.');
+      setError(
+        'Marque as necessidades e informe o CA (ou use o EPI ja vinculado).',
+      );
       return;
     }
-    const merged = new Map<string, number>();
-    for (const item of items) {
-      merged.set(
-        item.epiItemId,
-        (merged.get(item.epiItemId) ?? 0) + item.quantity,
-      );
-    }
+
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
-      const result = await createPortalStockEntradas(
-        Array.from(merged.entries()).map(([epiItemId, quantity]) => ({
-          epiItemId,
-          quantity,
-        })),
+      const result = await createPortalStockEntradas(items);
+      setSuccess(
+        `${result.created} entrada(s) no estoque. Itens novos criados/vinculados quando necessario.`,
       );
-      setSuccess(`${result.created} entrada(s) registrada(s) no estoque.`);
-      setListGenerated(false);
-      setNeedRows([]);
       await reload();
     } catch (err) {
       setError(
@@ -264,8 +295,9 @@ function PortalEstoqueContent() {
           <p className="page-kicker">Dia a dia</p>
           <h1 className="page-title page-title--sm">Estoque</h1>
           <p className="page-lead">
-            Inclua EPIs do catalogo no estoque desta empresa. Busque por nome
-            (3+ letras) ou pelo numero do CA.
+            A Consultoria gera as <strong>necessidades</strong> (PGRO/estrutura).
+            Aqui voce informa o <strong>CA</strong> e a quantidade — o sistema
+            cruza com o catalogo e entra no estoque desta empresa.
           </p>
         </div>
       </header>
@@ -290,7 +322,17 @@ function PortalEstoqueContent() {
             </p>
           </div>
 
-          <section className="quota-summary" aria-label="Resumo de estoque">
+          <section className="quota-summary" aria-label="Resumo">
+            <div className="quota-summary-item">
+              <span className="quota-summary-label">Necessidades</span>
+              <strong className="quota-summary-value">{data.summary.needs}</strong>
+            </div>
+            <div className="quota-summary-item">
+              <span className="quota-summary-label">Ja com EPI/CA</span>
+              <strong className="quota-summary-value">
+                {data.summary.withLinkedEpi}
+              </strong>
+            </div>
             <div className="quota-summary-item">
               <span className="quota-summary-label">Linhas em saldo</span>
               <strong className="quota-summary-value">
@@ -303,16 +345,137 @@ function PortalEstoqueContent() {
                 {data.summary.totalUnits}
               </strong>
             </div>
-            <div className="quota-summary-item">
-              <span className="quota-summary-label">Necessidades</span>
-              <strong className="quota-summary-value">{data.summary.needs}</strong>
-            </div>
-            <div className="quota-summary-item">
-              <span className="quota-summary-label">Com EPI vinculado</span>
-              <strong className="quota-summary-value">
-                {data.summary.withLinkedEpi}
-              </strong>
-            </div>
+          </section>
+
+          <section className="portal-card" aria-labelledby="needs-stock-title">
+            <h2 id="needs-stock-title" className="page-title page-title--sm">
+              Necessidades desta empresa
+            </h2>
+            <p className="page-lead">
+              Lista vinda da estrutura/PGRO. Se o CA ja estiver vinculado,
+              confirme a quantidade. Se faltar CA, preencha e inclua.
+            </p>
+
+            {needRows.length === 0 ? (
+              <p className="page-lead">
+                Nenhuma necessidade ativa. A Consultoria precisa importar o PGRO
+                ou cadastrar necessidades nas funcoes.
+              </p>
+            ) : (
+              <>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Incluir</th>
+                        <th scope="col">Necessidade</th>
+                        <th scope="col">EPI / CA</th>
+                        <th scope="col">Validade</th>
+                        <th scope="col">Vida util</th>
+                        <th scope="col">Qtd</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {needRows.map((row, index) => (
+                        <tr key={`${row.needId}:${row.epiItemId ?? index}`}>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={row.selected}
+                              onChange={(e) =>
+                                setNeedRows((prev) =>
+                                  prev.map((r, i) =>
+                                    i === index
+                                      ? { ...r, selected: e.target.checked }
+                                      : r,
+                                  ),
+                                )
+                              }
+                              aria-label={`Incluir ${row.needName}`}
+                            />
+                          </td>
+                          <td>
+                            <strong>{row.needName}</strong>
+                            {row.jobNames.length > 0 ? (
+                              <span className="table-sub">
+                                {row.jobNames.join(', ')}
+                              </span>
+                            ) : null}
+                          </td>
+                          <td>
+                            {row.epiName ? (
+                              <span>
+                                {row.epiName}
+                                <span className="table-sub mono">
+                                  CA {row.caNumber || '—'}
+                                </span>
+                              </span>
+                            ) : (
+                              <input
+                                className="portal-qty-input mono"
+                                style={{ width: '8rem' }}
+                                placeholder="Nº CA"
+                                value={row.caNumber}
+                                disabled={!row.selected}
+                                onChange={(e) =>
+                                  setNeedRows((prev) =>
+                                    prev.map((r, i) =>
+                                      i === index
+                                        ? { ...r, caNumber: e.target.value }
+                                        : r,
+                                    ),
+                                  )
+                                }
+                                aria-label={`CA ${row.needName}`}
+                              />
+                            )}
+                          </td>
+                          <td>{formatDate(row.caExpiresAt)}</td>
+                          <td>{row.usefulLifeLabel ?? '—'}</td>
+                          <td>
+                            <input
+                              type="number"
+                              min={1}
+                              className="portal-qty-input"
+                              value={row.quantity}
+                              disabled={!row.selected}
+                              onChange={(e) =>
+                                setNeedRows((prev) =>
+                                  prev.map((r, i) =>
+                                    i === index
+                                      ? {
+                                          ...r,
+                                          quantity: Math.max(
+                                            1,
+                                            Number(e.target.value) || 1,
+                                          ),
+                                        }
+                                      : r,
+                                  ),
+                                )
+                              }
+                              aria-label={`Qtd ${row.needName}`}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={saving || selectedNeedCount === 0}
+                    onClick={() => void onBatchEntrada()}
+                  >
+                    {saving
+                      ? 'Salvando...'
+                      : `Incluir no estoque (${selectedNeedCount})`}
+                  </button>
+                </div>
+              </>
+            )}
           </section>
 
           <section className="portal-card" aria-labelledby="saldos-title">
@@ -333,17 +496,13 @@ function PortalEstoqueContent() {
                 <tbody>
                   {data.balances.length === 0 ? (
                     <tr>
-                      <td colSpan={5}>
-                        Nenhum saldo ainda. Use a entrada livre ou gere a lista
-                        pelas necessidades.
-                      </td>
+                      <td colSpan={5}>Nenhum saldo ainda neste local.</td>
                     </tr>
                   ) : (
                     data.balances.map((row) => (
                       <tr key={row.id}>
                         <td>
                           <strong>{row.epiName}</strong>
-                          <span className="table-sub">{row.locationName}</span>
                         </td>
                         <td className="mono">{row.caNumber ?? '—'}</td>
                         <td>{formatDate(row.caExpiresAt)}</td>
@@ -359,31 +518,29 @@ function PortalEstoqueContent() {
 
           <section className="portal-card" aria-labelledby="entrada-livre-title">
             <h2 id="entrada-livre-title" className="page-title page-title--sm">
-              Entrada livre
+              Entrada avulsa
             </h2>
             <p className="page-lead">
-              Digite o nome (ex.: luva) ou informe o CA e clique em Buscar CA.
+              Busque pelo nome da necessidade (ex.: luva) ou pelo CA.
             </p>
             <form className="form-panel" onSubmit={onFreeEntrada}>
               <div className="field">
-                <label htmlFor="portal-epi-search">Buscar por nome</label>
+                <label htmlFor="portal-epi-search">Nome</label>
                 <input
                   id="portal-epi-search"
-                  value={selectedEpi ? selectedEpi.name : query}
+                  value={selected ? selected.name : query}
                   onChange={(e) => {
-                    setSelectedEpi(null);
+                    setSelected(null);
                     setQuery(e.target.value);
                   }}
-                  placeholder="Ex.: luva, capacete, oculos..."
+                  placeholder="Ex.: luva, botina, oculos..."
                   autoComplete="off"
                 />
-                {searching ? (
-                  <p className="field-hint">Buscando...</p>
-                ) : null}
+                {searching ? <p className="field-hint">Buscando...</p> : null}
                 {searchHint ? (
                   <p className="field-hint">{searchHint}</p>
                 ) : null}
-                {!selectedEpi && suggestions.length > 0 ? (
+                {!selected && suggestions.length > 0 ? (
                   <ul className="portal-suggest-list" role="listbox">
                     {suggestions.map((item) => (
                       <li key={item.id}>
@@ -391,18 +548,23 @@ function PortalEstoqueContent() {
                           type="button"
                           className="portal-suggest-item"
                           onClick={() => {
-                            setSelectedEpi(item);
+                            setSelected(item);
                             setQuery(item.name);
                             setCaQuery(item.caNumber ?? '');
                             setSuggestions([]);
-                            setSearchHint(null);
+                            setSearchHint(
+                              item.requiresCa
+                                ? 'Informe o CA desta necessidade para entrar no estoque.'
+                                : null,
+                            );
                           }}
                         >
                           <strong>{item.name}</strong>
                           <span className="table-sub">
-                            CA {item.caNumber ?? '—'} · Val.{' '}
-                            {formatDate(item.caExpiresAt)} · Vida util{' '}
-                            {item.usefulLifeLabel ?? '—'}
+                            {item.requiresCa
+                              ? 'Necessidade — informe o CA'
+                              : `CA ${item.caNumber ?? '—'} · Val. ${formatDate(item.caExpiresAt)}`}
+                            {item.needName ? ` · ${item.needName}` : ''}
                           </span>
                         </button>
                       </li>
@@ -430,19 +592,10 @@ function PortalEstoqueContent() {
                     disabled={lookingCa || caQuery.trim().length < 3}
                     onClick={() => void onLookupCa()}
                   >
-                    {lookingCa ? 'Buscando CA...' : 'Buscar CA'}
+                    {lookingCa ? 'Buscando...' : 'Buscar CA'}
                   </button>
                 </div>
               </div>
-
-              {selectedEpi ? (
-                <p className="field-hint">
-                  Selecionado: <strong>{selectedEpi.name}</strong> · CA{' '}
-                  {selectedEpi.caNumber ?? '—'} · Validade{' '}
-                  {formatDate(selectedEpi.caExpiresAt)} · Vida util{' '}
-                  {selectedEpi.usefulLifeLabel ?? '—'}
-                </p>
-              ) : null}
 
               <div className="field">
                 <label htmlFor="portal-epi-qty">Quantidade</label>
@@ -460,143 +613,11 @@ function PortalEstoqueContent() {
               <button
                 className="btn btn-primary"
                 type="submit"
-                disabled={saving || !selectedEpi}
+                disabled={saving || !selected}
               >
                 {saving ? 'Salvando...' : 'Incluir no estoque'}
               </button>
             </form>
-          </section>
-
-          <section className="portal-card" aria-labelledby="por-needs-title">
-            <h2 id="por-needs-title" className="page-title page-title--sm">
-              Por necessidades
-            </h2>
-            <p className="page-lead">
-              Gera a lista cruzando necessidades das funcoes com EPIs do
-              catalogo (vinculo direto ou sugestao pelo nome). Ajuste qty,
-              validade/vida util e inclua.
-            </p>
-            <div className="btn-row">
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={generateNeedList}
-                disabled={!data.needs.length}
-              >
-                Gerar lista de EPIs necessarias
-              </button>
-            </div>
-            {data.summary.withoutLinkedEpi > 0 ? (
-              <p className="field-hint" style={{ marginTop: '0.75rem' }}>
-                {data.summary.withoutLinkedEpi} necessidade(s) sem vinculo
-                formal — a lista tentara sugerir EPIs do catalogo pelo nome.
-              </p>
-            ) : null}
-
-            {listGenerated ? (
-              <>
-                <div className="table-wrap" style={{ marginTop: '1rem' }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Incluir</th>
-                        <th scope="col">Necessidade</th>
-                        <th scope="col">EPI</th>
-                        <th scope="col">CA</th>
-                        <th scope="col">Validade</th>
-                        <th scope="col">Vida util</th>
-                        <th scope="col">Qtd</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {needRows.length === 0 ? (
-                        <tr>
-                          <td colSpan={7}>
-                            Nenhum EPI encontrado para as necessidades. Cadastre
-                            itens no catalogo da Consultoria.
-                          </td>
-                        </tr>
-                      ) : (
-                        needRows.map((row) => (
-                          <tr key={row.key}>
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={row.selected}
-                                onChange={(e) =>
-                                  setNeedRows((prev) =>
-                                    prev.map((r) =>
-                                      r.key === row.key
-                                        ? {
-                                            ...r,
-                                            selected: e.target.checked,
-                                          }
-                                        : r,
-                                    ),
-                                  )
-                                }
-                                aria-label={`Incluir ${row.epiName}`}
-                              />
-                            </td>
-                            <td>
-                              {row.needName}
-                              {row.fromSuggestion ? (
-                                <span className="table-sub">
-                                  sugestao pelo nome
-                                </span>
-                              ) : null}
-                            </td>
-                            <td>
-                              <strong>{row.epiName}</strong>
-                            </td>
-                            <td className="mono">{row.caNumber ?? '—'}</td>
-                            <td>{formatDate(row.caExpiresAt)}</td>
-                            <td>{row.usefulLifeLabel ?? '—'}</td>
-                            <td>
-                              <input
-                                type="number"
-                                min={1}
-                                className="portal-qty-input"
-                                value={row.quantity}
-                                disabled={!row.selected}
-                                onChange={(e) =>
-                                  setNeedRows((prev) =>
-                                    prev.map((r) =>
-                                      r.key === row.key
-                                        ? {
-                                            ...r,
-                                            quantity: Math.max(
-                                              1,
-                                              Number(e.target.value) || 1,
-                                            ),
-                                          }
-                                        : r,
-                                    ),
-                                  )
-                                }
-                                aria-label={`Quantidade ${row.epiName}`}
-                              />
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="btn-row" style={{ marginTop: '0.75rem' }}>
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    disabled={saving || selectedNeedCount === 0}
-                    onClick={() => void onBatchEntrada()}
-                  >
-                    {saving
-                      ? 'Salvando...'
-                      : `Incluir selecionados (${selectedNeedCount})`}
-                  </button>
-                </div>
-              </>
-            ) : null}
           </section>
 
           <div className="btn-row">

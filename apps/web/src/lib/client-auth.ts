@@ -128,7 +128,9 @@ export async function lookupPortalEpiByCa(ca: string) {
 
 export async function createPortalStockEntradas(
   items: Array<{
-    epiItemId: string;
+    epiItemId?: string;
+    epiNeedId?: string;
+    caNumber?: string;
     quantity: number;
   }>,
 ) {

@@ -3,14 +3,29 @@ import {
   ArrayMinSize,
   IsArray,
   IsInt,
+  IsOptional,
   IsString,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 
 export class PortalStockEntradaItemDto {
+  /** Item real do catalogo (opcional se informar CA + necessidade). */
+  @IsOptional()
   @IsString()
-  epiItemId!: string;
+  epiItemId?: string;
+
+  /** Necessidade gerada no cliente (PGRO/estrutura). */
+  @IsOptional()
+  @IsString()
+  epiNeedId?: string;
+
+  /** CA para achar ou criar o EPI real e vincular a necessidade. */
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  caNumber?: string;
 
   @IsInt()
   @Min(1)

@@ -305,7 +305,7 @@ export class PortalService {
 
     return {
       mode: 'stock' as const,
-      note: 'Estoque fisico desta empresa. Use entrada livre ou gere a lista pelas necessidades.',
+      note: 'As necessidades desta empresa (PGRO/estrutura) sao a base. Informe o CA de cada uma para entrar no estoque — o sistema vincula ao catalogo automaticamente.',
       location: {
         id: location.id,
         name: location.name,
@@ -326,12 +326,68 @@ export class PortalService {
     const query = q.trim();
     if (query.length < 3) {
       throw new BadRequestException(
-        'Informe ao menos 3 caracteres para buscar EPI.',
+        'Informe ao menos 3 caracteres para buscar.',
       );
     }
 
     const needle = stripDiacritics(query);
     const caNeedle = normalizeCaNumber(query);
+    const byId = new Map<
+      string,
+      ReturnType<typeof mapEpiSearchItem> & {
+        epiNeedId?: string;
+        needName?: string;
+        requiresCa?: boolean;
+      }
+    >();
+
+    // 1) Necessidades do catalogo tecnico (o que o PGRO/Consultoria alimenta)
+    const needs = await this.prisma.epiNeed.findMany({
+      where: { organizationId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        itemLinks: {
+          select: {
+            epiItem: { select: { ...epiCatalogSelect, isActive: true } },
+          },
+        },
+      },
+      take: 300,
+    });
+
+    for (const need of needs) {
+      if (!stripDiacritics(need.name).includes(needle)) continue;
+      const activeLinks = need.itemLinks.filter((l) => l.epiItem?.isActive);
+      if (activeLinks.length > 0) {
+        for (const link of activeLinks) {
+          const mapped = mapEpiSearchItem(link.epiItem as EpiCatalogSelect);
+          byId.set(mapped.id, {
+            ...mapped,
+            epiNeedId: need.id,
+            needName: need.name,
+          });
+        }
+      } else {
+        // Necessidade sem EPI real ainda — usuario informa o CA na entrada
+        byId.set(`need:${need.id}`, {
+          id: `need:${need.id}`,
+          name: need.name,
+          caNumber: null,
+          caExpiresAt: null,
+          usefulLifeValue: null,
+          usefulLifeUnit: null,
+          usefulLifeLabel: null,
+          unitOfMeasure: 'UNIDADE',
+          category: null,
+          epiNeedId: need.id,
+          needName: need.name,
+          requiresCa: true,
+        });
+      }
+    }
+
+    // 2) EPIs reais do catalogo
     const catalog = await this.prisma.epiItem.findMany({
       where: { organizationId, isActive: true },
       select: {
@@ -342,8 +398,6 @@ export class PortalService {
       orderBy: { name: 'asc' },
       take: 500,
     });
-
-    const byId = new Map<string, ReturnType<typeof mapEpiSearchItem>>();
 
     for (const item of catalog) {
       const nameKey = stripDiacritics(item.name);
@@ -356,35 +410,13 @@ export class PortalService {
         codeKey.includes(needle) ||
         mfrKey.includes(needle)
       ) {
-        byId.set(item.id, mapEpiSearchItem(item));
+        if (!byId.has(item.id)) {
+          byId.set(item.id, mapEpiSearchItem(item));
+        }
       }
     }
 
-    // Necessidades do catalogo cujo nome bate → EPIs vinculados
-    const needs = await this.prisma.epiNeed.findMany({
-      where: { organizationId, isActive: true },
-      select: {
-        name: true,
-        itemLinks: {
-          select: {
-            epiItem: { select: epiCatalogSelect },
-          },
-        },
-      },
-      take: 200,
-    });
-    for (const need of needs) {
-      if (!stripDiacritics(need.name).includes(needle)) continue;
-      for (const link of need.itemLinks) {
-        if (!link.epiItem) continue;
-        byId.set(
-          link.epiItem.id,
-          mapEpiSearchItem(link.epiItem as EpiCatalogSelect),
-        );
-      }
-    }
-
-    // CAEPI por nome/CA → cruza com itens do catalogo que tenham o mesmo CA
+    // 3) CAEPI → cruza com itens existentes pelo CA
     if (byId.size < 20) {
       try {
         const caepi = await this.caepi.searchCertificates(query, 15);
@@ -401,17 +433,19 @@ export class PortalService {
             select: epiCatalogSelect,
           });
           for (const item of byCa) {
-            byId.set(item.id, mapEpiSearchItem(item as EpiCatalogSelect));
+            if (!byId.has(item.id)) {
+              byId.set(item.id, mapEpiSearchItem(item as EpiCatalogSelect));
+            }
           }
         }
       } catch {
-        // Base CAEPI pode estar vazia; busca do catalogo segue.
+        // ignore
       }
     }
 
     return Array.from(byId.values())
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-      .slice(0, 20);
+      .slice(0, 25);
   }
 
   async lookupEpiByCa(organizationId: string, caRaw: string) {
@@ -551,18 +585,26 @@ export class PortalService {
 
     const results = [];
     for (const item of dto.items) {
+      const resolved = await this.resolveEpiItemForEntrada(
+        organizationId,
+        item,
+      );
       const result = await this.stock.createMovement(organizationId, userId, {
         type: EpiStockMovementType.ENTRADA,
         stockLocationId: location.id,
-        epiItemId: item.epiItemId,
+        epiItemId: resolved.epiItemId,
         quantity: item.quantity,
-        notes: 'Entrada pelo Painel do Cliente',
+        notes: item.epiNeedId
+          ? `Entrada portal (necessidade ${item.epiNeedId})`
+          : 'Entrada pelo Painel do Cliente',
       });
       results.push({
-        epiItemId: item.epiItemId,
+        epiItemId: resolved.epiItemId,
+        epiNeedId: item.epiNeedId ?? null,
         quantity: item.quantity,
         newQuantity: result.movement.newQuantity,
         movementId: result.movement.id,
+        createdEpiItem: resolved.created,
       });
     }
 
@@ -571,6 +613,165 @@ export class PortalService {
       created: results.length,
       items: results,
     };
+  }
+
+  /**
+   * Resolve EPI real a partir de itemId, CA e/ou necessidade.
+   * PGRO cria necessidades (EpiNeed); o estoque precisa de EpiItem (CA).
+   * Se so houver necessidade + CA, cria/vincula o item automaticamente.
+   */
+  private async resolveEpiItemForEntrada(
+    organizationId: string,
+    input: {
+      epiItemId?: string;
+      epiNeedId?: string;
+      caNumber?: string;
+    },
+  ): Promise<{ epiItemId: string; created: boolean }> {
+    const caNumber = input.caNumber
+      ? normalizeCaNumber(input.caNumber)
+      : null;
+
+    if (input.epiItemId) {
+      const existing = await this.prisma.epiItem.findFirst({
+        where: { id: input.epiItemId, organizationId, isActive: true },
+        select: { id: true },
+      });
+      if (!existing) {
+        throw new NotFoundException('EPI informado nao existe no catalogo.');
+      }
+      if (input.epiNeedId) {
+        await this.ensureNeedItemLink(
+          organizationId,
+          input.epiNeedId,
+          existing.id,
+        );
+      }
+      return { epiItemId: existing.id, created: false };
+    }
+
+    if (input.epiNeedId && !caNumber) {
+      const links = await this.prisma.epiItemNeed.findMany({
+        where: {
+          organizationId,
+          epiNeedId: input.epiNeedId,
+          epiItem: { isActive: true },
+        },
+        select: { epiItemId: true },
+        take: 2,
+      });
+      if (links.length === 1) {
+        return { epiItemId: links[0].epiItemId, created: false };
+      }
+      if (links.length > 1) {
+        throw new BadRequestException(
+          'Necessidade com varios EPIs vinculados. Informe o CA ou o item.',
+        );
+      }
+      throw new BadRequestException(
+        'Necessidade sem EPI com CA. Informe o numero do CA para incluir no estoque.',
+      );
+    }
+
+    if (!caNumber) {
+      throw new BadRequestException(
+        'Informe o EPI, a necessidade com CA, ou o numero do CA.',
+      );
+    }
+
+    const byCa = await this.prisma.epiItem.findFirst({
+      where: {
+        organizationId,
+        isActive: true,
+        caNumber: { equals: caNumber, mode: 'insensitive' },
+      },
+      select: { id: true },
+    });
+    if (byCa) {
+      if (input.epiNeedId) {
+        await this.ensureNeedItemLink(
+          organizationId,
+          input.epiNeedId,
+          byCa.id,
+        );
+      }
+      return { epiItemId: byCa.id, created: false };
+    }
+
+    const caepi = await this.caepi.findByCaNumber(caNumber);
+    if (!caepi.found || !caepi.certificate) {
+      throw new BadRequestException(
+        caepi.message ??
+          `CA ${caNumber} nao encontrado na base CAEPI. Atualize a base na Consultoria.`,
+      );
+    }
+
+    const cert = caepi.certificate;
+    const name =
+      cert.equipmentName?.trim() ||
+      (input.epiNeedId
+        ? (
+            await this.prisma.epiNeed.findFirst({
+              where: { id: input.epiNeedId, organizationId },
+              select: { name: true },
+            })
+          )?.name
+        : null) ||
+      `EPI CA ${caNumber}`;
+
+    const created = await this.prisma.epiItem.create({
+      data: {
+        organizationId,
+        name,
+        caNumber,
+        caExpiresAt: cert.expiresAt,
+        requiresCa: true,
+        manufacturerName: cert.manufacturerName,
+        reference: cert.reference,
+        color: cert.color,
+        approvedFor: cert.approvedFor,
+        restriction: cert.restriction,
+        technicalNotes: cert.analysisNotes,
+        description: cert.equipmentDescription,
+      },
+      select: { id: true },
+    });
+
+    if (input.epiNeedId) {
+      await this.ensureNeedItemLink(
+        organizationId,
+        input.epiNeedId,
+        created.id,
+      );
+    }
+
+    return { epiItemId: created.id, created: true };
+  }
+
+  private async ensureNeedItemLink(
+    organizationId: string,
+    epiNeedId: string,
+    epiItemId: string,
+  ) {
+    const need = await this.prisma.epiNeed.findFirst({
+      where: { id: epiNeedId, organizationId },
+      select: { id: true },
+    });
+    if (!need) {
+      throw new NotFoundException('Necessidade nao encontrada.');
+    }
+    const existing = await this.prisma.epiItemNeed.findFirst({
+      where: { organizationId, epiNeedId, epiItemId },
+    });
+    if (existing) return existing;
+    return this.prisma.epiItemNeed.create({
+      data: {
+        organizationId,
+        epiNeedId,
+        epiItemId,
+        isPrimary: true,
+      },
+    });
   }
 
   private async ensureDefaultLocation(
