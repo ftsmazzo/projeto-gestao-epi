@@ -4,6 +4,7 @@ import type { ClientPortalUser } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ReactNode } from 'react';
+import { isPortalNavActive, PORTAL_NAV } from '../lib/nav';
 
 type Props = {
   children: ReactNode;
@@ -31,19 +32,18 @@ export function PortalShell({ children, user, onLogout }: Props) {
           </Link>
         </div>
         {user ? (
-          <nav className="portal-nav" aria-label="Painel do cliente">
-            <Link
-              href="/portal"
-              className={`portal-nav-link ${pathname === '/portal' ? 'is-active' : ''}`}
-            >
-              Painel
-            </Link>
-            <Link
-              href="/portal/conta"
-              className={`portal-nav-link ${pathname.startsWith('/portal/conta') ? 'is-active' : ''}`}
-            >
-              Minha conta
-            </Link>
+          <nav className="portal-nav" aria-label="Dia a dia da empresa">
+            {PORTAL_NAV.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`portal-nav-link ${
+                  isPortalNavActive(pathname, item) ? 'is-active' : ''
+                }`}
+              >
+                {item.label}
+              </Link>
+            ))}
           </nav>
         ) : null}
         <div className="portal-topbar-right">

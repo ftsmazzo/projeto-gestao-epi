@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 export type PortalDashCardId =
   | 'entregas'
   | 'validade'
@@ -8,6 +10,7 @@ export type PortalDashCardId =
 
 type PortalDashCard = {
   id: PortalDashCardId;
+  href: string;
   title: string;
   description: string;
   metricLabel: string;
@@ -16,24 +19,28 @@ type PortalDashCard = {
 const CARDS: PortalDashCard[] = [
   {
     id: 'entregas',
+    href: '/portal/entregas',
     title: 'Entregas',
     description: 'Controle de entregas, fichas e pendencias da empresa.',
     metricLabel: 'Pendentes',
   },
   {
     id: 'validade',
+    href: '/portal/validade',
     title: 'Validade',
     description: 'CA, vida util e vencimentos que exigem atencao.',
     metricLabel: 'Alertas',
   },
   {
     id: 'custos',
+    href: '/portal/custos',
     title: 'Custos',
     description: 'Consumo e custo de EPI por periodo e unidade.',
     metricLabel: 'Periodo',
   },
   {
     id: 'estoque',
+    href: '/portal/estoque',
     title: 'Estoque',
     description: 'Saldo, lotes e disponibilidade operacional.',
     metricLabel: 'Itens',
@@ -56,8 +63,8 @@ export function PortalDashboardCards({ metrics }: Props) {
           Painel operacional
         </h2>
         <p className="page-lead">
-          Espaco da empresa cliente para acompanhar operacao. Dados reais
-          entram nas proximas etapas — a Consultoria nao opera daqui.
+          Menu do dia a dia da empresa. Dados reais entram nas proximas
+          etapas — a Consultoria nao opera daqui.
         </p>
       </div>
       <div className="portal-dash-grid">
@@ -65,9 +72,10 @@ export function PortalDashboardCards({ metrics }: Props) {
           const value = metrics?.[card.id];
           const hasValue = value !== undefined && value !== null && value !== '';
           return (
-            <article
+            <Link
               key={card.id}
-              className="portal-metric-card"
+              href={card.href}
+              className="portal-metric-card portal-metric-card--link"
               aria-labelledby={`portal-metric-${card.id}`}
             >
               <p className="portal-metric-kicker">{card.metricLabel}</p>
@@ -81,8 +89,8 @@ export function PortalDashboardCards({ metrics }: Props) {
                 {hasValue ? String(value) : '—'}
               </p>
               <p className="portal-metric-desc">{card.description}</p>
-              <span className="portal-metric-status">Em preparacao</span>
-            </article>
+              <span className="portal-metric-status">Abrir modulo</span>
+            </Link>
           );
         })}
       </div>

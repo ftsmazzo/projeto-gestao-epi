@@ -31,3 +31,28 @@ export const OPS_NAV: OpsNavItem[] = [
     description: 'Base oficial de CAs (global).',
   },
 ];
+
+export type PortalNavItem = {
+  href: string;
+  label: string;
+  /** Match exato (ex.: /portal) vs prefixo. */
+  exact?: boolean;
+};
+
+/**
+ * Menu do dia a dia da empresa cliente (Painel do Cliente).
+ * Nao misturar com OPS_NAV da Consultoria.
+ */
+export const PORTAL_NAV: PortalNavItem[] = [
+  { href: '/portal', label: 'Painel', exact: true },
+  { href: '/portal/entregas', label: 'Entregas' },
+  { href: '/portal/validade', label: 'Validade' },
+  { href: '/portal/custos', label: 'Custos' },
+  { href: '/portal/estoque', label: 'Estoque' },
+  { href: '/portal/conta', label: 'Minha conta' },
+];
+
+export function isPortalNavActive(pathname: string, item: PortalNavItem) {
+  if (item.exact) return pathname === item.href;
+  return pathname === item.href || pathname.startsWith(`${item.href}/`);
+}

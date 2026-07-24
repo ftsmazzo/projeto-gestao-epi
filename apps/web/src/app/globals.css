@@ -1764,6 +1764,7 @@ a.btn-danger:hover {
 
 .portal-nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
   margin-left: auto;
 }
@@ -1775,6 +1776,7 @@ a.btn-danger:hover {
   font-weight: 600;
   color: var(--color-ink-secondary);
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .portal-nav-link.is-active,
@@ -1882,6 +1884,27 @@ a.btn-danger:hover {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
   min-height: 11.5rem;
+}
+
+.portal-metric-card--link {
+  text-decoration: none;
+  color: inherit;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.portal-metric-card--link:hover,
+.portal-metric-card--link:focus-visible {
+  border-color: rgba(26, 107, 255, 0.35);
+  box-shadow: var(--shadow-md);
+  outline: none;
+}
+
+.portal-metric-card--link:hover .portal-metric-status,
+.portal-metric-card--link:focus-visible .portal-metric-status {
+  color: var(--color-accent, #1a6bff);
 }
 
 .portal-metric-kicker {
