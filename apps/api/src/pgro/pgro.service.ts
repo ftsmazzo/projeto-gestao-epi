@@ -13,6 +13,7 @@ import {
 import pdfParse from 'pdf-parse';
 import { AuditService } from '../audit/audit.service';
 import { validateCnpj } from '../common/cnpj';
+import { ensureMatrizOperationalUnit } from '../operational-units/matriz-unit';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ConfirmPgroImportDto } from './dto/pgro-import.dto';
 import {
@@ -246,6 +247,26 @@ export class PgroService {
       }
 
       summary.servedClientId = servedClientId!;
+
+      const clientForMatriz = await tx.servedClient.findFirst({
+        where: { id: servedClientId!, organizationId },
+        select: {
+          id: true,
+          legalName: true,
+          tradeName: true,
+          cnpj: true,
+        },
+      });
+      if (clientForMatriz) {
+        const matriz = await ensureMatrizOperationalUnit(
+          tx,
+          organizationId,
+          clientForMatriz,
+        );
+        if (matriz.created) {
+          warnings.push('Unidade Matriz criada automaticamente para o cliente.');
+        }
+      }
 
       const sectorIdByName = new Map<string, string>();
       const includedSectors = dto.sectors.filter((s) => s.included);

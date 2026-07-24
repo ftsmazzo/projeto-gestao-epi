@@ -1,13 +1,22 @@
 'use client';
 
 import type {
+  ClientJobFunction,
   ClientLifeSummary,
+  ClientSector,
+  JobFunctionEpiRequirement,
   OperationalUnit,
   WorkerImportPreviewResponse,
   WorkerListItem,
 } from '@gestao-epi/shared';
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import {
+  listClientJobFunctions,
+  listClientSectors,
+  listJobFunctionEpiRequirements,
+} from '../../../../lib/client-structure';
 import { formatCpf, formatCpfInput, stripCpf } from '../../../../lib/cpf';
 import { listOperationalUnits } from '../../../../lib/operational-units';
 import {
@@ -29,9 +38,9 @@ type WorkerFormState = {
   name: string;
   cpf: string;
   registration: string;
-  role: string;
-  department: string;
   operationalUnitId: string;
+  clientSectorId: string;
+  clientJobFunctionId: string;
   admissionDate: string;
   notes: string;
 };
@@ -40,9 +49,9 @@ const emptyForm: WorkerFormState = {
   name: '',
   cpf: '',
   registration: '',
-  role: '',
-  department: '',
   operationalUnitId: '',
+  clientSectorId: '',
+  clientJobFunctionId: '',
   admissionDate: '',
   notes: '',
 };
@@ -57,6 +66,11 @@ export default function ClienteTrabalhadoresPage() {
   const clientId = params.id;
   const [workers, setWorkers] = useState<WorkerListItem[]>([]);
   const [units, setUnits] = useState<OperationalUnit[]>([]);
+  const [sectors, setSectors] = useState<ClientSector[]>([]);
+  const [jobs, setJobs] = useState<ClientJobFunction[]>([]);
+  const [epiPreview, setEpiPreview] = useState<JobFunctionEpiRequirement[]>(
+    [],
+  );
   const [lifeSummary, setLifeSummary] = useState<ClientLifeSummary | null>(
     null,
   );
@@ -75,19 +89,42 @@ export default function ClienteTrabalhadoresPage() {
   const [importBusy, setImportBusy] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
 
+  const activeSectors = useMemo(
+    () => sectors.filter((sector) => sector.isActive),
+    [sectors],
+  );
+  const jobsForSector = useMemo(
+    () =>
+      jobs.filter(
+        (job) =>
+          job.isActive &&
+          (!form.clientSectorId || job.sectorId === form.clientSectorId),
+      ),
+    [jobs, form.clientSectorId],
+  );
+  const hasStructure = activeSectors.length > 0;
+
   const load = useCallback(async () => {
     if (!clientId) return;
     setLoading(true);
     setError(null);
     try {
-      const [workerList, unitList, lives] = await Promise.all([
-        listWorkers(clientId),
-        listOperationalUnits(clientId),
-        getClientLifeSummary(clientId),
-      ]);
+      const [workerList, unitList, lives, sectorList, jobList] =
+        await Promise.all([
+          listWorkers(clientId),
+          listOperationalUnits(clientId),
+          getClientLifeSummary(clientId),
+          listClientSectors(clientId, 'all'),
+          listClientJobFunctions({
+            servedClientId: clientId,
+            status: 'all',
+          }),
+        ]);
       setWorkers(workerList);
       setUnits(unitList);
       setLifeSummary(lives);
+      setSectors(sectorList);
+      setJobs(jobList);
     } catch (err) {
       setError(
         err instanceof Error
@@ -103,11 +140,37 @@ export default function ClienteTrabalhadoresPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!form.clientJobFunctionId) {
+      setEpiPreview([]);
+      return;
+    }
+    let cancelled = false;
+    void listJobFunctionEpiRequirements(form.clientJobFunctionId)
+      .then((rows) => {
+        if (!cancelled) {
+          setEpiPreview(rows.filter((row) => row.isActive));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setEpiPreview([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [form.clientJobFunctionId]);
+
   function openCreate() {
     setPanel('list');
     setMode('create');
     setEditingId(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      operationalUnitId:
+        units.find((unit) => unit.name.toLowerCase() === 'matriz')?.id ??
+        units[0]?.id ??
+        '',
+    });
     setFormError(null);
   }
 
@@ -119,9 +182,9 @@ export default function ClienteTrabalhadoresPage() {
       name: worker.name,
       cpf: worker.cpf ? formatCpf(worker.cpf) : '',
       registration: worker.registration ?? '',
-      role: worker.jobFunctionName ?? worker.role ?? '',
-      department: worker.sectorName ?? worker.department ?? '',
       operationalUnitId: worker.operationalUnitId ?? '',
+      clientSectorId: worker.clientSectorId ?? '',
+      clientJobFunctionId: worker.clientJobFunctionId ?? '',
       admissionDate: toDateInput(worker.admissionDate),
       notes: worker.notes ?? '',
     });
@@ -133,6 +196,7 @@ export default function ClienteTrabalhadoresPage() {
     setEditingId(null);
     setForm(emptyForm);
     setFormError(null);
+    setEpiPreview([]);
   }
 
   function openImport() {
@@ -229,15 +293,25 @@ export default function ClienteTrabalhadoresPage() {
     event.preventDefault();
     if (!clientId) return;
     setFormError(null);
+
+    if (hasStructure && !form.clientSectorId) {
+      setFormError('Selecione o setor da estrutura.');
+      return;
+    }
+    if (hasStructure && !form.clientJobFunctionId) {
+      setFormError('Selecione a funcao da estrutura.');
+      return;
+    }
+
     setSaving(true);
     const payload = {
       name: form.name.trim(),
       cpf: stripCpf(form.cpf) || null,
       registration: form.registration.trim() || null,
-      role: form.role.trim() || null,
-      department: form.department.trim() || null,
       operationalUnitId:
         units.length === 0 ? null : form.operationalUnitId || null,
+      clientSectorId: form.clientSectorId || null,
+      clientJobFunctionId: form.clientJobFunctionId || null,
       admissionDate: form.admissionDate || null,
       notes: form.notes.trim() || null,
     };
@@ -247,9 +321,9 @@ export default function ClienteTrabalhadoresPage() {
           ...payload,
           cpf: payload.cpf ?? undefined,
           registration: payload.registration ?? undefined,
-          role: payload.role ?? undefined,
-          department: payload.department ?? undefined,
           operationalUnitId: payload.operationalUnitId ?? undefined,
+          clientSectorId: payload.clientSectorId ?? undefined,
+          clientJobFunctionId: payload.clientJobFunctionId ?? undefined,
           admissionDate: payload.admissionDate ?? undefined,
           notes: payload.notes ?? undefined,
         });
@@ -575,29 +649,6 @@ export default function ClienteTrabalhadoresPage() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="worker-role">Cargo / funcao</label>
-                <input
-                  id="worker-role"
-                  value={form.role}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, role: e.target.value }))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="worker-department">Departamento / setor</label>
-                <input
-                  id="worker-department"
-                  value={form.department}
-                  onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      department: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="field">
                 <label htmlFor="worker-unit">Unidade</label>
                 <select
                   id="worker-unit"
@@ -613,6 +664,56 @@ export default function ClienteTrabalhadoresPage() {
                   {units.map((unit) => (
                     <option key={unit.id} value={unit.id}>
                       {unit.name}
+                      {unit.code ? ` (${unit.code})` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="worker-sector">Setor</label>
+                <select
+                  id="worker-sector"
+                  value={form.clientSectorId}
+                  disabled={!hasStructure}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      clientSectorId: e.target.value,
+                      clientJobFunctionId: '',
+                    }))
+                  }
+                >
+                  <option value="">
+                    {hasStructure ? 'Selecione o setor' : 'Sem estrutura'}
+                  </option>
+                  {activeSectors.map((sector) => (
+                    <option key={sector.id} value={sector.id}>
+                      {sector.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="worker-job">Funcao</label>
+                <select
+                  id="worker-job"
+                  value={form.clientJobFunctionId}
+                  disabled={!form.clientSectorId}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      clientJobFunctionId: e.target.value,
+                    }))
+                  }
+                >
+                  <option value="">
+                    {form.clientSectorId
+                      ? 'Selecione a funcao'
+                      : 'Selecione o setor antes'}
+                  </option>
+                  {jobsForSector.map((job) => (
+                    <option key={job.id} value={job.id}>
+                      {job.name}
                     </option>
                   ))}
                 </select>
@@ -632,6 +733,56 @@ export default function ClienteTrabalhadoresPage() {
                 />
               </div>
             </div>
+
+            {!hasStructure ? (
+              <div className="notice notice--warn" role="status">
+                <p>
+                  Este cliente ainda nao tem setores/funcoes na estrutura. Sem
+                  funcao, o trabalhador <strong>nao herdara EPIs</strong>.
+                </p>
+                <div className="btn-row">
+                  <Link
+                    className="btn btn-secondary btn-compact"
+                    href={`/clientes/${clientId}/estrutura`}
+                  >
+                    Configurar estrutura
+                  </Link>
+                  <Link
+                    className="btn btn-secondary btn-compact"
+                    href={`/clientes/${clientId}/atualizar-pgro`}
+                  >
+                    Importar PGRO
+                  </Link>
+                </div>
+              </div>
+            ) : null}
+
+            {form.clientJobFunctionId ? (
+              <div className="notice notice--info" role="status">
+                <p>
+                  EPIs herdados da funcao:{' '}
+                  <strong>{epiPreview.length}</strong>
+                </p>
+                {epiPreview.length > 0 ? (
+                  <ul className="page-lead">
+                    {epiPreview.slice(0, 8).map((req) => (
+                      <li key={req.id}>
+                        {req.epiNeed?.name ?? req.epiNeedId}
+                        {req.isRequired ? '' : ' (opcional)'}
+                      </li>
+                    ))}
+                    {epiPreview.length > 8 ? (
+                      <li>… e mais {epiPreview.length - 8}</li>
+                    ) : null}
+                  </ul>
+                ) : (
+                  <p className="field-hint">
+                    Nenhuma necessidade de EPI ativa nesta funcao.
+                  </p>
+                )}
+              </div>
+            ) : null}
+
             <div className="field">
               <label htmlFor="worker-notes">Observacoes</label>
               <textarea

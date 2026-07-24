@@ -179,6 +179,7 @@ Ultimo commit dessa frente: `714206a`.
 | Portal: painel + navegacao | Feito |
 | Portal: estoque operacional com CAEPI | Feito |
 | Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
+| Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
 | Portal: entregas / ficha / biometria | Ainda nao |
 | Portal: custos / relatorios ricos | Ainda nao |

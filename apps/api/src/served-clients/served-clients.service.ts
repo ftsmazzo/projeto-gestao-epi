@@ -15,6 +15,7 @@ import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { AuditService } from '../audit/audit.service';
 import { validateCnpj } from '../common/cnpj';
+import { ensureMatrizOperationalUnit } from '../operational-units/matriz-unit';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateServedClientDto } from './dto/create-served-client.dto';
 import type { UpdateServedClientDto } from './dto/update-served-client.dto';
@@ -157,14 +158,11 @@ export class ServedClientsService {
         },
       });
 
-      const matriz = await this.prisma.operationalUnit.create({
-        data: {
-          organizationId,
-          servedClientId: client.id,
-          name: 'Matriz',
-          status: 'ACTIVE',
-        },
-      });
+      const matriz = await ensureMatrizOperationalUnit(
+        this.prisma,
+        organizationId,
+        client,
+      );
 
       await this.audit.log({
         action: 'served_client.created',
@@ -178,6 +176,7 @@ export class ServedClientsService {
           status: client.status,
           withInitialManager: wantsManager,
           matrizUnitId: matriz.id,
+          matrizCreated: matriz.created,
         },
       });
 
@@ -1183,7 +1182,7 @@ export class ServedClientsService {
 
     if (nextQuota < activeWorkers) {
       throw new BadRequestException(
-        'A nova cota nao pode ser menor que as vidas ativas ja cadastradas neste cliente.',
+        `A nova cota (${nextQuota}) nao pode ser menor que as vidas ativas ja cadastradas (${activeWorkers}).`,
       );
     }
   }
