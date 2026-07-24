@@ -15,6 +15,7 @@ Para iniciar o projeto no Cursor:
 - `README.md`
 - `docs/CURSOR-CONTEXTO.md`
 - `docs/decisions.md`
+- `docs/ESTADO-ATUAL-SISTEMA.md` — **onde o sistema esta hoje** (Consultoria × Painel do Cliente, o que ja foi entregue)
 - `docs/deploy/EASYPANEL.md`
 - `docs/referencias/Documento-Cursor-Analise-Links-EPI.txt`
 

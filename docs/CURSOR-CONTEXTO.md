@@ -1,5 +1,7 @@
 # Contexto para Cursor - Gestao Digital de Entrega de EPI
 
+> **Estado atual do sistema:** leia `docs/ESTADO-ATUAL-SISTEMA.md` — divisao Consultoria × Painel do Cliente, mapas de tela e o que ja foi entregue.
+
 ## 1. Produto
 
 Estamos construindo uma plataforma de gestao digital de EPI para empresas que precisam entregar, rastrear, auditar e controlar Equipamentos de Protecao Individual sem depender de papel.
