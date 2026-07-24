@@ -13,6 +13,20 @@ enum MembershipRole {
   MEMBER
 }
 
+/// Papel operacional do usuario na empresa cliente (CNPJ). Distinto do Membership do tenant.
+enum ClientUserRole {
+  CLIENT_MANAGER
+  STOCK_OPERATOR
+  /// Reservado para portal do trabalhador (nao usado nesta etapa).
+  WORKER
+}
+
+/// Estado do vinculo usuario ↔ cliente. PREPARED = cadastrado sem login/convite ativo.
+enum ClientUserInviteStatus {
+  PREPARED
+  LINKED
+}
+
 enum ServedClientStatus {
   ACTIVE
   INACTIVE
@@ -64,6 +78,7 @@ model Organization {
   updatedAt           DateTime @updatedAt
 
   memberships       Membership[]
+  clientUserMemberships ClientUserMembership[]
   auditLogs         AuditLog[]
   servedClients     ServedClient[]
   operationalUnits  OperationalUnit[]
@@ -92,6 +107,7 @@ model User {
   updatedAt    DateTime @updatedAt
 
   memberships     Membership[]
+  clientUserMemberships ClientUserMembership[]
   auditLogs       AuditLog[]
   caepiImportRuns CaepiImportRun[]
   epiStockMovements EpiStockMovement[]
@@ -133,10 +149,38 @@ model ServedClient {
   sectors          ClientSector[]
   jobFunctions     ClientJobFunction[]
   pgroImportRuns   PgroImportRun[]
+  clientUsers      ClientUserMembership[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
   @@index([status])
+}
+
+/// Usuario operacional da empresa cliente (gestor / estoque). Nao consome vidas.
+/// Nesta etapa o cadastro fica PREPARED (sem convite/login completo).
+model ClientUserMembership {
+  id             String                 @id @default(cuid())
+  organizationId String
+  servedClientId String
+  /// Null enquanto o login/convite nao estiver ativo.
+  userId         String?
+  email          String
+  name           String
+  role           ClientUserRole
+  isActive       Boolean                @default(true)
+  inviteStatus   ClientUserInviteStatus @default(PREPARED)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([servedClientId, email])
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([userId])
+  @@index([role, isActive])
 }
 
 /// Unidade operacional do cliente atendido (filial, obra, planta, local de entrega).

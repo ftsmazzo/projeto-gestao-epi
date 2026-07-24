@@ -13,6 +13,11 @@ import type { JwtPayload } from '../auth/types/jwt-payload';
 import { CreateServedClientDto } from './dto/create-served-client.dto';
 import { UpdateServedClientDto } from './dto/update-served-client.dto';
 import { UpdateServedClientStatusDto } from './dto/update-served-client-status.dto';
+import {
+  CreateClientUserDto,
+  UpdateClientUserDto,
+  UpdateClientUserStatusDto,
+} from './dto/client-user.dto';
 import { ServedClientsService } from './served-clients.service';
 
 @Controller('served-clients')
@@ -28,6 +33,62 @@ export class ServedClientsController {
   @Get('quota-summary')
   quotaSummary(@CurrentUser() user: JwtPayload) {
     return this.servedClients.getQuotaSummary(user.organizationId);
+  }
+
+  @Get(':id/overview')
+  overview(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.servedClients.getOverview(user.organizationId, id);
+  }
+
+  @Get(':id/users')
+  listUsers(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.servedClients.listClientUsers(user.organizationId, id);
+  }
+
+  @Post(':id/users')
+  createUser(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateClientUserDto,
+  ) {
+    return this.servedClients.createClientUser(
+      user.organizationId,
+      user.sub,
+      id,
+      dto,
+    );
+  }
+
+  @Patch(':id/users/:membershipId')
+  updateUser(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('membershipId') membershipId: string,
+    @Body() dto: UpdateClientUserDto,
+  ) {
+    return this.servedClients.updateClientUser(
+      user.organizationId,
+      user.sub,
+      id,
+      membershipId,
+      dto,
+    );
+  }
+
+  @Patch(':id/users/:membershipId/status')
+  updateUserStatus(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('membershipId') membershipId: string,
+    @Body() dto: UpdateClientUserStatusDto,
+  ) {
+    return this.servedClients.updateClientUserStatus(
+      user.organizationId,
+      user.sub,
+      id,
+      membershipId,
+      dto.isActive,
+    );
   }
 
   @Get(':id')

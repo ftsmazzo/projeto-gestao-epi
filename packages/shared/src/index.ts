@@ -107,6 +107,78 @@ export interface ClientLifeSummary {
   totalWorkers: number;
 }
 
+export type ClientUserRole =
+  | 'CLIENT_MANAGER'
+  | 'STOCK_OPERATOR'
+  | 'WORKER';
+
+export type ClientUserInviteStatus = 'PREPARED' | 'LINKED';
+
+export interface ClientUserMembership {
+  id: string;
+  organizationId: string;
+  servedClientId: string;
+  userId: string | null;
+  email: string;
+  name: string;
+  role: ClientUserRole;
+  isActive: boolean;
+  inviteStatus: ClientUserInviteStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ServedClientOverview {
+  client: ServedClient;
+  operational: boolean;
+  lives: {
+    allocated: number;
+    used: number;
+    available: number;
+    note: string;
+  };
+  counts: {
+    units: { active: number; total: number };
+    workers: { active: number; total: number };
+    sectors: { active: number; total: number };
+    jobFunctions: { active: number; total: number };
+    riskLinks: number;
+    epiRequirements: number;
+    epiNeeds: {
+      active: number;
+      scopedToClient: boolean;
+      note: string;
+    };
+    epiItems: {
+      active: number;
+      scopedToClient: boolean;
+      note: string;
+    };
+    stock: {
+      balanceRows: number;
+      totalQuantity: number;
+      low: number;
+      zero: number;
+      scopedToClient: boolean;
+      note: string;
+    };
+    users: {
+      managers: { active: number; total: number; limit: number };
+      stockOperators: { active: number; total: number; limit: number };
+    };
+  };
+  lastPgroImport: {
+    id: string;
+    fileName: string;
+    status: string;
+    createdAt: string;
+    finishedAt: string | null;
+  } | null;
+}
+
+export const CLIENT_MANAGER_LIMIT = 2;
+export const STOCK_OPERATOR_LIMIT = 4;
+
 export type EpiUnitOfMeasure = 'UNIDADE' | 'PAR' | 'CAIXA' | 'KIT';
 
 export type EpiUsefulLifeUnit = 'DIAS' | 'MESES' | 'ANOS';

@@ -4,15 +4,25 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, ServedClientStatus, WorkerStatus } from '@prisma/client';
+import {
+  ClientUserInviteStatus,
+  ClientUserRole,
+  Prisma,
+  ServedClientStatus,
+  WorkerStatus,
+} from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { validateCnpj } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateServedClientDto } from './dto/create-served-client.dto';
 import type { UpdateServedClientDto } from './dto/update-served-client.dto';
+import type { CreateClientUserDto, UpdateClientUserDto } from './dto/client-user.dto';
 
 const REACTIVATE_QUOTA_ERROR =
   'Nao ha vidas disponiveis suficientes para reativar esta empresa.';
+
+export const CLIENT_MANAGER_LIMIT = 2;
+export const STOCK_OPERATOR_LIMIT = 4;
 
 @Injectable()
 export class ServedClientsService {
@@ -271,6 +281,472 @@ export class ServedClientsService {
     });
 
     return client;
+  }
+
+  async getOverview(organizationId: string, id: string) {
+    const client = await this.getById(organizationId, id);
+
+    const [
+      unitsTotal,
+      unitsActive,
+      workersActive,
+      workersTotal,
+      sectorsActive,
+      sectorsTotal,
+      jobsActive,
+      jobsTotal,
+      riskLinks,
+      epiRequirements,
+      epiNeedsActive,
+      epiItemsActive,
+      stockAgg,
+      stockZero,
+      lastPgro,
+      managersActive,
+      managersTotal,
+      stockOpsActive,
+      stockOpsTotal,
+    ] = await Promise.all([
+      this.prisma.operationalUnit.count({
+        where: { organizationId, servedClientId: id },
+      }),
+      this.prisma.operationalUnit.count({
+        where: {
+          organizationId,
+          servedClientId: id,
+          status: 'ACTIVE',
+        },
+      }),
+      this.prisma.worker.count({
+        where: {
+          organizationId,
+          servedClientId: id,
+          status: WorkerStatus.ACTIVE,
+        },
+      }),
+      this.prisma.worker.count({
+        where: { organizationId, servedClientId: id },
+      }),
+      this.prisma.clientSector.count({
+        where: { organizationId, servedClientId: id, isActive: true },
+      }),
+      this.prisma.clientSector.count({
+        where: { organizationId, servedClientId: id },
+      }),
+      this.prisma.clientJobFunction.count({
+        where: { organizationId, servedClientId: id, isActive: true },
+      }),
+      this.prisma.clientJobFunction.count({
+        where: { organizationId, servedClientId: id },
+      }),
+      this.prisma.jobFunctionRisk.count({
+        where: {
+          organizationId,
+          jobFunction: { servedClientId: id },
+        },
+      }),
+      this.prisma.jobFunctionEpiRequirement.count({
+        where: {
+          organizationId,
+          jobFunction: { servedClientId: id },
+          isActive: true,
+        },
+      }),
+      this.prisma.epiNeed.count({
+        where: { organizationId, isActive: true },
+      }),
+      this.prisma.epiItem.count({
+        where: { organizationId, isActive: true },
+      }),
+      this.prisma.epiStockBalance.aggregate({
+        where: { organizationId },
+        _sum: { quantity: true },
+        _count: { _all: true },
+      }),
+      this.prisma.epiStockBalance.count({
+        where: { organizationId, quantity: { lte: 0 } },
+      }),
+      this.prisma.pgroImportRun.findFirst({
+        where: { organizationId, servedClientId: id },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          fileName: true,
+          status: true,
+          createdAt: true,
+          finishedAt: true,
+        },
+      }),
+      this.prisma.clientUserMembership.count({
+        where: {
+          organizationId,
+          servedClientId: id,
+          role: ClientUserRole.CLIENT_MANAGER,
+          isActive: true,
+        },
+      }),
+      this.prisma.clientUserMembership.count({
+        where: {
+          organizationId,
+          servedClientId: id,
+          role: ClientUserRole.CLIENT_MANAGER,
+        },
+      }),
+      this.prisma.clientUserMembership.count({
+        where: {
+          organizationId,
+          servedClientId: id,
+          role: ClientUserRole.STOCK_OPERATOR,
+          isActive: true,
+        },
+      }),
+      this.prisma.clientUserMembership.count({
+        where: {
+          organizationId,
+          servedClientId: id,
+          role: ClientUserRole.STOCK_OPERATOR,
+        },
+      }),
+    ]);
+
+    const lowBalances = await this.prisma.epiStockBalance.findMany({
+      where: { organizationId, quantity: { gt: 0 }, minQuantity: { not: null } },
+      select: { quantity: true, minQuantity: true },
+    });
+    const stockLowCount = lowBalances.filter(
+      (b) => b.minQuantity != null && b.quantity <= b.minQuantity,
+    ).length;
+
+    return {
+      client,
+      operational: client.status === ServedClientStatus.ACTIVE,
+      lives: {
+        allocated: client.allocatedLifeQuota,
+        used: workersActive,
+        available: Math.max(0, client.allocatedLifeQuota - workersActive),
+        note: 'Vidas representam trabalhadores ativos. Gestores e operadores de estoque nao consomem vidas.',
+      },
+      counts: {
+        units: { active: unitsActive, total: unitsTotal },
+        workers: { active: workersActive, total: workersTotal },
+        sectors: { active: sectorsActive, total: sectorsTotal },
+        jobFunctions: { active: jobsActive, total: jobsTotal },
+        riskLinks,
+        epiRequirements,
+        epiNeeds: {
+          active: epiNeedsActive,
+          scopedToClient: false,
+          note: 'Necessidades ainda sao catalogo do tenant; escopo por cliente em etapa futura.',
+        },
+        epiItems: {
+          active: epiItemsActive,
+          scopedToClient: false,
+          note: 'EPIs reais ainda sao catalogo do tenant; operacao por cliente em etapa futura.',
+        },
+        stock: {
+          balanceRows: stockAgg._count._all,
+          totalQuantity: stockAgg._sum.quantity ?? 0,
+          low: stockLowCount,
+          zero: stockZero,
+          scopedToClient: false,
+          note: 'Estoque ainda e do tenant; escopo por cliente em etapa futura.',
+        },
+        users: {
+          managers: {
+            active: managersActive,
+            total: managersTotal,
+            limit: CLIENT_MANAGER_LIMIT,
+          },
+          stockOperators: {
+            active: stockOpsActive,
+            total: stockOpsTotal,
+            limit: STOCK_OPERATOR_LIMIT,
+          },
+        },
+      },
+      lastPgroImport: lastPgro
+        ? {
+            id: lastPgro.id,
+            fileName: lastPgro.fileName,
+            status: lastPgro.status,
+            createdAt: lastPgro.createdAt,
+            finishedAt: lastPgro.finishedAt,
+          }
+        : null,
+    };
+  }
+
+  async listClientUsers(organizationId: string, servedClientId: string) {
+    await this.getById(organizationId, servedClientId);
+    return this.prisma.clientUserMembership.findMany({
+      where: { organizationId, servedClientId },
+      orderBy: [{ role: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async createClientUser(
+    organizationId: string,
+    actorUserId: string,
+    servedClientId: string,
+    dto: CreateClientUserDto,
+  ) {
+    const client = await this.getById(organizationId, servedClientId);
+    this.assertClientOperational(client.status);
+
+    const role = dto.role;
+    if (role === ClientUserRole.WORKER) {
+      throw new BadRequestException(
+        'Usuario trabalhador ainda nao esta disponivel nesta etapa.',
+      );
+    }
+
+    const email = dto.email.trim().toLowerCase();
+    const name = dto.name.trim();
+    if (!email || !name) {
+      throw new BadRequestException('Nome e e-mail sao obrigatorios.');
+    }
+
+    await this.assertClientUserRoleLimit(organizationId, servedClientId, role);
+
+    const duplicate = await this.prisma.clientUserMembership.findFirst({
+      where: { servedClientId, email },
+    });
+    if (duplicate) {
+      throw new ConflictException(
+        'Ja existe um usuario operacional com este e-mail neste cliente.',
+      );
+    }
+
+    try {
+      const membership = await this.prisma.clientUserMembership.create({
+        data: {
+          organizationId,
+          servedClientId,
+          email,
+          name,
+          role,
+          isActive: true,
+          inviteStatus: ClientUserInviteStatus.PREPARED,
+          userId: null,
+        },
+      });
+
+      await this.audit.log({
+        action: 'client_user.created',
+        organizationId,
+        userId: actorUserId,
+        entityType: 'ClientUserMembership',
+        entityId: membership.id,
+        metadata: {
+          servedClientId,
+          email,
+          role,
+          inviteStatus: membership.inviteStatus,
+        },
+      });
+
+      return membership;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Ja existe um usuario operacional com este e-mail neste cliente.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  async updateClientUser(
+    organizationId: string,
+    actorUserId: string,
+    servedClientId: string,
+    membershipId: string,
+    dto: UpdateClientUserDto,
+  ) {
+    const client = await this.getById(organizationId, servedClientId);
+    this.assertClientOperational(client.status);
+
+    const existing = await this.getClientUserMembership(
+      organizationId,
+      servedClientId,
+      membershipId,
+    );
+
+    const nextRole = dto.role ?? existing.role;
+    if (nextRole === ClientUserRole.WORKER) {
+      throw new BadRequestException(
+        'Usuario trabalhador ainda nao esta disponivel nesta etapa.',
+      );
+    }
+
+    if (dto.role && dto.role !== existing.role && existing.isActive) {
+      await this.assertClientUserRoleLimit(
+        organizationId,
+        servedClientId,
+        dto.role,
+        membershipId,
+      );
+    }
+
+    const nextEmail =
+      dto.email !== undefined ? dto.email.trim().toLowerCase() : existing.email;
+    if (dto.email !== undefined && nextEmail !== existing.email) {
+      const duplicate = await this.prisma.clientUserMembership.findFirst({
+        where: {
+          servedClientId,
+          email: nextEmail,
+          NOT: { id: membershipId },
+        },
+      });
+      if (duplicate) {
+        throw new ConflictException(
+          'Ja existe um usuario operacional com este e-mail neste cliente.',
+        );
+      }
+    }
+
+    const membership = await this.prisma.clientUserMembership.update({
+      where: { id: membershipId },
+      data: {
+        name: dto.name?.trim(),
+        email: dto.email !== undefined ? nextEmail : undefined,
+        role: dto.role,
+      },
+    });
+
+    await this.audit.log({
+      action: 'client_user.updated',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'ClientUserMembership',
+      entityId: membership.id,
+      metadata: {
+        servedClientId,
+        before: {
+          name: existing.name,
+          email: existing.email,
+          role: existing.role,
+        },
+        after: {
+          name: membership.name,
+          email: membership.email,
+          role: membership.role,
+        },
+      },
+    });
+
+    return membership;
+  }
+
+  async updateClientUserStatus(
+    organizationId: string,
+    actorUserId: string,
+    servedClientId: string,
+    membershipId: string,
+    isActive: boolean,
+  ) {
+    await this.getById(organizationId, servedClientId);
+    const existing = await this.getClientUserMembership(
+      organizationId,
+      servedClientId,
+      membershipId,
+    );
+
+    if (existing.isActive === isActive) {
+      return existing;
+    }
+
+    if (isActive) {
+      const client = await this.getById(organizationId, servedClientId);
+      this.assertClientOperational(client.status);
+      await this.assertClientUserRoleLimit(
+        organizationId,
+        servedClientId,
+        existing.role,
+        membershipId,
+      );
+    }
+
+    const membership = await this.prisma.clientUserMembership.update({
+      where: { id: membershipId },
+      data: { isActive },
+    });
+
+    await this.audit.log({
+      action: 'client_user.status_changed',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'ClientUserMembership',
+      entityId: membership.id,
+      metadata: {
+        servedClientId,
+        from: existing.isActive,
+        to: membership.isActive,
+        role: membership.role,
+      },
+    });
+
+    return membership;
+  }
+
+  private assertClientOperational(status: ServedClientStatus) {
+    if (status !== ServedClientStatus.ACTIVE) {
+      throw new BadRequestException(
+        'Cliente inativo: operacao diaria e gestao de usuarios bloqueadas.',
+      );
+    }
+  }
+
+  private async getClientUserMembership(
+    organizationId: string,
+    servedClientId: string,
+    membershipId: string,
+  ) {
+    const membership = await this.prisma.clientUserMembership.findFirst({
+      where: { id: membershipId, organizationId, servedClientId },
+    });
+    if (!membership) {
+      throw new NotFoundException('Usuario do cliente nao encontrado.');
+    }
+    return membership;
+  }
+
+  private async assertClientUserRoleLimit(
+    organizationId: string,
+    servedClientId: string,
+    role: ClientUserRole,
+    excludeId?: string,
+  ) {
+    const limit =
+      role === ClientUserRole.CLIENT_MANAGER
+        ? CLIENT_MANAGER_LIMIT
+        : role === ClientUserRole.STOCK_OPERATOR
+          ? STOCK_OPERATOR_LIMIT
+          : null;
+    if (limit == null) return;
+
+    const activeCount = await this.prisma.clientUserMembership.count({
+      where: {
+        organizationId,
+        servedClientId,
+        role,
+        isActive: true,
+        ...(excludeId ? { NOT: { id: excludeId } } : {}),
+      },
+    });
+
+    if (activeCount >= limit) {
+      const label =
+        role === ClientUserRole.CLIENT_MANAGER
+          ? 'gestores do cliente'
+          : 'operadores de estoque';
+      throw new BadRequestException(
+        `Limite de ${limit} ${label} ativos atingido neste cliente.`,
+      );
+    }
   }
 
   private normalizeAndValidateCnpj(value: string): string {

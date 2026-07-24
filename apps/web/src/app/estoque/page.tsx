@@ -12,6 +12,7 @@ import type {
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { RequireAuth } from '../../components/RequireAuth';
+import { ClientScopeNotice } from '../../components/ClientScopeNotice';
 import { listEpiItems } from '../../lib/epis';
 import {
   createStockLocation,
@@ -291,6 +292,7 @@ function EstoqueContent() {
 
   return (
     <div className="module-page">
+      <ClientScopeNotice moduleLabel="Estoque" />
       <header className="module-header">
         <div>
           <p className="page-kicker">Operacao</p>

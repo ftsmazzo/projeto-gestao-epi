@@ -73,6 +73,8 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
                   <span>{item.label}</span>
                   {item.status === 'soon' ? (
                     <span className="ops-nav-badge">Em breve</span>
+                  ) : item.status === 'via-client' ? (
+                    <span className="ops-nav-badge">Via cliente</span>
                   ) : null}
                 </Link>
               );

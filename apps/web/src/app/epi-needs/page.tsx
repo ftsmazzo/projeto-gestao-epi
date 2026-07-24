@@ -8,6 +8,7 @@ import type {
 } from '@gestao-epi/shared';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
+import { ClientScopeNotice } from '../../components/ClientScopeNotice';
 import {
   createEpiNeed,
   getEpiNeed,
@@ -255,6 +256,7 @@ function EpiNeedsContent() {
 
   return (
     <div className="module-page">
+      <ClientScopeNotice moduleLabel="Necessidades de EPI" />
       <header className="module-header">
         <div>
           <p className="page-kicker">Catalogo operacional</p>

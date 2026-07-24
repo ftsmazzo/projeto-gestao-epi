@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { RequireAuth } from '../../../components/RequireAuth';
+import { ClientOperationalHub } from '../../../components/ClientOperationalHub';
 import { formatCnpj, formatCnpjInput, normalizeCnpj } from '../../../lib/cnpj';
 import { formatCpf, formatCpfInput, stripCpf } from '../../../lib/cpf';
 import {
@@ -392,41 +393,23 @@ function ClienteDetalheContent() {
     <div className="module-page">
       <header className="module-header">
         <div>
-          <p className="page-kicker">Cliente atendido</p>
+          <p className="page-kicker">Painel do cliente</p>
           <h1 className="page-title">
             {client.tradeName || client.legalName}
           </h1>
           <p className="page-lead">
-            Gerencie unidades, estrutura operacional (setores/funcoes/riscos) e
-            trabalhadores (vidas) deste CNPJ.
+            Operacao da empresa (CNPJ): estrutura, PGRO, usuarios, unidades e
+            vidas (trabalhadores ativos). Gestores e estoque nao consomem vidas.
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
           <Link className="btn btn-secondary" href="/clientes">
-            Voltar
+            Voltar para clientes
           </Link>
-          <Link
-            className="btn btn-primary"
-            href={`/clientes/${client.id}/estrutura`}
-          >
-            Configurar estrutura
-          </Link>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={openCreateUnit}
-          >
-            Nova unidade
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={openCreateWorker}
-          >
-            Novo trabalhador
-          </button>
         </div>
       </header>
+
+      <ClientOperationalHub clientId={client.id} />
 
       {lifeSummary ? (
         <section className="quota-summary" aria-label="Resumo de vidas">

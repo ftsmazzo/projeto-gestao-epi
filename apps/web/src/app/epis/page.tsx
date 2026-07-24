@@ -20,6 +20,7 @@ import {
 } from 'react';
 import Link from 'next/link';
 import { RequireAuth } from '../../components/RequireAuth';
+import { ClientScopeNotice } from '../../components/ClientScopeNotice';
 import {
   buildCaepiFormPatch,
   caStatusClassName,
@@ -888,6 +889,7 @@ function EpisContent() {
 
   return (
     <div className="module-page epi-page">
+      <ClientScopeNotice moduleLabel="EPIs" />
       <header className="module-header">
         <div>
           <p className="page-kicker">Catalogo mestre</p>

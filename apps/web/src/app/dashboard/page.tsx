@@ -162,7 +162,11 @@ function DashboardContent({
                       <span className="field-hint">{item.description}</span>
                     </span>
                     <span className="ops-nav-badge">
-                      {item.status === 'ready' ? 'Ativo' : 'Em breve'}
+                      {item.status === 'ready'
+                        ? 'Ativo'
+                        : item.status === 'via-client'
+                          ? 'Via cliente'
+                          : 'Em breve'}
                     </span>
                   </Link>
                 </li>
