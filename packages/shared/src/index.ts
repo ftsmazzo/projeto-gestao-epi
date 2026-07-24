@@ -1040,7 +1040,17 @@ export interface PortalEstoqueResponse {
     jobNames: string[];
     suggestedQuantity: number;
     hasLinkedEpi: boolean;
+    hasCatalogSuggestions: boolean;
     items: Array<{
+      id: string;
+      name: string;
+      caNumber: string | null;
+      caExpiresAt: string | null;
+      usefulLifeValue: number | null;
+      usefulLifeUnit: EpiUsefulLifeUnit | null;
+      usefulLifeLabel: string | null;
+    }>;
+    suggestedItems: Array<{
       id: string;
       name: string;
       caNumber: string | null;
@@ -1081,6 +1091,13 @@ export interface PortalEpiSearchItem {
   category: EpiCategory | null;
 }
 
+export interface PortalEpiByCaResponse {
+  found: boolean;
+  item: PortalEpiSearchItem | null;
+  items?: PortalEpiSearchItem[];
+  message: string | null;
+}
+
 export interface PortalStockEntradasResult {
   locationId: string;
   created: number;
@@ -1091,5 +1108,6 @@ export interface PortalStockEntradasResult {
     movementId: string;
   }>;
 }
+
 
 

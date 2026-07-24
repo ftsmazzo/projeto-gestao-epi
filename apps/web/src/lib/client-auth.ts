@@ -2,6 +2,7 @@ import type {
   ClientAuthResponse,
   ClientPortalUser,
   PortalDashboardResponse,
+  PortalEpiByCaResponse,
   PortalEpiSearchItem,
   PortalEstoqueResponse,
   PortalEstruturaResponse,
@@ -115,6 +116,13 @@ export async function searchPortalEpis(q: string) {
   const params = new URLSearchParams({ q });
   return clientApiFetch<PortalEpiSearchItem[]>(
     `/portal/epis/search?${params.toString()}`,
+  );
+}
+
+export async function lookupPortalEpiByCa(ca: string) {
+  const params = new URLSearchParams({ ca });
+  return clientApiFetch<PortalEpiByCaResponse>(
+    `/portal/epis/by-ca?${params.toString()}`,
   );
 }
 

@@ -63,6 +63,15 @@ export class PortalController {
     return this.portal.searchEpis(user.organizationId, q);
   }
 
+  @Get('epis/by-ca')
+  lookupEpiByCa(
+    @CurrentUser() user: ClientJwtPayload,
+    @Query('ca') ca = '',
+  ) {
+    this.assertClient(user);
+    return this.portal.lookupEpiByCa(user.organizationId, ca);
+  }
+
   @Get('stock/locations')
   stockLocations(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);

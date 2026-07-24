@@ -10,6 +10,7 @@ import { RequireClientAuth } from '../../../components/RequireClientAuth';
 import {
   createPortalStockEntradas,
   fetchPortalEstoque,
+  lookupPortalEpiByCa,
   searchPortalEpis,
 } from '../../../lib/client-auth';
 
@@ -36,6 +37,7 @@ type NeedPickRow = {
   usefulLifeLabel: string | null;
   quantity: number;
   selected: boolean;
+  fromSuggestion: boolean;
 };
 
 function PortalEstoqueContent() {
@@ -48,10 +50,13 @@ function PortalEstoqueContent() {
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PortalEpiSearchItem[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchHint, setSearchHint] = useState<string | null>(null);
   const [selectedEpi, setSelectedEpi] = useState<PortalEpiSearchItem | null>(
     null,
   );
   const [freeQty, setFreeQty] = useState(1);
+  const [caQuery, setCaQuery] = useState('');
+  const [lookingCa, setLookingCa] = useState(false);
 
   const [needRows, setNeedRows] = useState<NeedPickRow[]>([]);
   const [listGenerated, setListGenerated] = useState(false);
@@ -83,20 +88,37 @@ function PortalEstoqueContent() {
 
   useEffect(() => {
     const q = query.trim();
+    if (selectedEpi) return;
     if (q.length < SEARCH_MIN) {
       setSuggestions([]);
       setSearching(false);
+      setSearchHint(
+        q.length > 0 ? `Digite mais ${SEARCH_MIN - q.length} letra(s)...` : null,
+      );
       return;
     }
     setSearching(true);
+    setSearchHint(null);
     const handle = window.setTimeout(() => {
       void searchPortalEpis(q)
-        .then((items) => setSuggestions(items))
-        .catch(() => setSuggestions([]))
+        .then((items) => {
+          setSuggestions(items);
+          setSearchHint(
+            items.length === 0
+              ? 'Nenhum EPI no catalogo com esse nome/CA. Confira o cadastro na Consultoria ou busque pelo numero do CA.'
+              : null,
+          );
+        })
+        .catch((err: unknown) => {
+          setSuggestions([]);
+          setSearchHint(
+            err instanceof Error ? err.message : 'Falha na busca de EPI.',
+          );
+        })
         .finally(() => setSearching(false));
     }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
-  }, [query]);
+  }, [query, selectedEpi]);
 
   const selectedNeedCount = useMemo(
     () => needRows.filter((row) => row.selected && row.quantity > 0).length,
@@ -107,8 +129,9 @@ function PortalEstoqueContent() {
     if (!data) return;
     const rows: NeedPickRow[] = [];
     for (const need of data.needs) {
-      if (need.items.length === 0) continue;
-      for (const item of need.items) {
+      const source =
+        need.items.length > 0 ? need.items : need.suggestedItems ?? [];
+      for (const item of source) {
         rows.push({
           key: `${need.needId}:${item.id}`,
           needId: need.needId,
@@ -119,20 +142,56 @@ function PortalEstoqueContent() {
           caExpiresAt: item.caExpiresAt,
           usefulLifeLabel: item.usefulLifeLabel,
           quantity: need.suggestedQuantity || 1,
-          selected: true,
+          selected: need.items.length > 0,
+          fromSuggestion: need.items.length === 0,
         });
       }
     }
     setNeedRows(rows);
     setListGenerated(true);
     setSuccess(null);
+    if (rows.length === 0) {
+      setError(
+        'Nenhuma necessidade encontrou EPI no catalogo. A Consultoria precisa cadastrar/vincular os itens (ex.: Luva) ao catalogo.',
+      );
+    } else {
+      setError(null);
+    }
+  }
+
+  async function onLookupCa() {
+    const ca = caQuery.trim();
+    if (ca.length < 3) {
+      setError('Informe um CA com ao menos 3 digitos.');
+      return;
+    }
+    setLookingCa(true);
     setError(null);
+    setSuccess(null);
+    try {
+      const result = await lookupPortalEpiByCa(ca);
+      if (result.found && result.item) {
+        setSelectedEpi(result.item);
+        setQuery(result.item.name);
+        setSuggestions(result.items ?? [result.item]);
+        setSearchHint(result.message);
+        setCaQuery(result.item.caNumber ?? ca);
+      } else {
+        setSelectedEpi(null);
+        setSuggestions([]);
+        setError(result.message ?? 'CA nao encontrado no catalogo.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao buscar CA.');
+    } finally {
+      setLookingCa(false);
+    }
   }
 
   async function onFreeEntrada(event: FormEvent) {
     event.preventDefault();
     if (!selectedEpi) {
-      setError('Selecione um EPI da busca.');
+      setError('Selecione um EPI da busca ou pelo CA.');
       return;
     }
     setSaving(true);
@@ -147,6 +206,7 @@ function PortalEstoqueContent() {
       );
       setSelectedEpi(null);
       setQuery('');
+      setCaQuery('');
       setSuggestions([]);
       setFreeQty(1);
       await reload();
@@ -167,7 +227,6 @@ function PortalEstoqueContent() {
       setError('Selecione ao menos um EPI com quantidade.');
       return;
     }
-    // Agrupa mesmo epiItemId somando qty
     const merged = new Map<string, number>();
     for (const item of items) {
       merged.set(
@@ -205,8 +264,8 @@ function PortalEstoqueContent() {
           <p className="page-kicker">Dia a dia</p>
           <h1 className="page-title page-title--sm">Estoque</h1>
           <p className="page-lead">
-            Inclua EPIs do catalogo no estoque desta empresa. A validade do CA e
-            a vida util aparecem para preparar o controle na entrega.
+            Inclua EPIs do catalogo no estoque desta empresa. Busque por nome
+            (3+ letras) ou pelo numero do CA.
           </p>
         </div>
       </header>
@@ -303,12 +362,11 @@ function PortalEstoqueContent() {
               Entrada livre
             </h2>
             <p className="page-lead">
-              Digite ao menos {SEARCH_MIN} letras do nome ou o CA. So EPIs ja
-              cadastrados no catalogo da Consultoria.
+              Digite o nome (ex.: luva) ou informe o CA e clique em Buscar CA.
             </p>
             <form className="form-panel" onSubmit={onFreeEntrada}>
               <div className="field">
-                <label htmlFor="portal-epi-search">Buscar EPI</label>
+                <label htmlFor="portal-epi-search">Buscar por nome</label>
                 <input
                   id="portal-epi-search"
                   value={selectedEpi ? selectedEpi.name : query}
@@ -316,11 +374,14 @@ function PortalEstoqueContent() {
                     setSelectedEpi(null);
                     setQuery(e.target.value);
                   }}
-                  placeholder="Nome ou CA..."
+                  placeholder="Ex.: luva, capacete, oculos..."
                   autoComplete="off"
                 />
                 {searching ? (
                   <p className="field-hint">Buscando...</p>
+                ) : null}
+                {searchHint ? (
+                  <p className="field-hint">{searchHint}</p>
                 ) : null}
                 {!selectedEpi && suggestions.length > 0 ? (
                   <ul className="portal-suggest-list" role="listbox">
@@ -332,7 +393,9 @@ function PortalEstoqueContent() {
                           onClick={() => {
                             setSelectedEpi(item);
                             setQuery(item.name);
+                            setCaQuery(item.caNumber ?? '');
                             setSuggestions([]);
+                            setSearchHint(null);
                           }}
                         >
                           <strong>{item.name}</strong>
@@ -346,14 +409,41 @@ function PortalEstoqueContent() {
                     ))}
                   </ul>
                 ) : null}
-                {selectedEpi ? (
-                  <p className="field-hint">
-                    CA {selectedEpi.caNumber ?? '—'} · Validade{' '}
-                    {formatDate(selectedEpi.caExpiresAt)} · Vida util{' '}
-                    {selectedEpi.usefulLifeLabel ?? '—'}
-                  </p>
-                ) : null}
               </div>
+
+              <div className="form-grid">
+                <div className="field">
+                  <label htmlFor="portal-epi-ca">Numero do CA</label>
+                  <input
+                    id="portal-epi-ca"
+                    className="mono"
+                    value={caQuery}
+                    onChange={(e) => setCaQuery(e.target.value)}
+                    placeholder="Ex.: 12345"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="field" style={{ alignSelf: 'end' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={lookingCa || caQuery.trim().length < 3}
+                    onClick={() => void onLookupCa()}
+                  >
+                    {lookingCa ? 'Buscando CA...' : 'Buscar CA'}
+                  </button>
+                </div>
+              </div>
+
+              {selectedEpi ? (
+                <p className="field-hint">
+                  Selecionado: <strong>{selectedEpi.name}</strong> · CA{' '}
+                  {selectedEpi.caNumber ?? '—'} · Validade{' '}
+                  {formatDate(selectedEpi.caExpiresAt)} · Vida util{' '}
+                  {selectedEpi.usefulLifeLabel ?? '—'}
+                </p>
+              ) : null}
+
               <div className="field">
                 <label htmlFor="portal-epi-qty">Quantidade</label>
                 <input
@@ -382,23 +472,24 @@ function PortalEstoqueContent() {
               Por necessidades
             </h2>
             <p className="page-lead">
-              Cruza as necessidades das funcoes com os EPIs vinculados (por CA)
-              no catalogo. Ajuste a quantidade e inclua.
+              Gera a lista cruzando necessidades das funcoes com EPIs do
+              catalogo (vinculo direto ou sugestao pelo nome). Ajuste qty,
+              validade/vida util e inclua.
             </p>
             <div className="btn-row">
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={generateNeedList}
-                disabled={data.needs.every((n) => !n.hasLinkedEpi)}
+                disabled={!data.needs.length}
               >
                 Gerar lista de EPIs necessarias
               </button>
             </div>
             {data.summary.withoutLinkedEpi > 0 ? (
               <p className="field-hint" style={{ marginTop: '0.75rem' }}>
-                {data.summary.withoutLinkedEpi} necessidade(s) sem EPI
-                vinculado — a Consultoria precisa vincular no catalogo.
+                {data.summary.withoutLinkedEpi} necessidade(s) sem vinculo
+                formal — a lista tentara sugerir EPIs do catalogo pelo nome.
               </p>
             ) : null}
 
@@ -421,7 +512,8 @@ function PortalEstoqueContent() {
                       {needRows.length === 0 ? (
                         <tr>
                           <td colSpan={7}>
-                            Nenhuma necessidade com EPI vinculado para gerar.
+                            Nenhum EPI encontrado para as necessidades. Cadastre
+                            itens no catalogo da Consultoria.
                           </td>
                         </tr>
                       ) : (
@@ -446,7 +538,14 @@ function PortalEstoqueContent() {
                                 aria-label={`Incluir ${row.epiName}`}
                               />
                             </td>
-                            <td>{row.needName}</td>
+                            <td>
+                              {row.needName}
+                              {row.fromSuggestion ? (
+                                <span className="table-sub">
+                                  sugestao pelo nome
+                                </span>
+                              ) : null}
+                            </td>
                             <td>
                               <strong>{row.epiName}</strong>
                             </td>

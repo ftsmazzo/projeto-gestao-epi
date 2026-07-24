@@ -4,6 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EpiStockMovementType, WorkerStatus } from '@prisma/client';
+import { normalizeCaNumber } from '../caepi/caepi-import.utils';
+import { CaepiService } from '../caepi/caepi.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../stock/stock.service';
 import type { PortalStockEntradasDto } from './dto/portal-stock.dto';
@@ -12,6 +14,24 @@ const VALIDITY_SOON_DAYS = 90;
 const DEFAULT_LOCATION_NAME = 'Estoque principal';
 
 type ValidityBucket = 'expired' | 'soon' | 'ok' | 'missing';
+
+type EpiCatalogSelect = {
+  id: string;
+  name: string;
+  caNumber: string | null;
+  caExpiresAt: Date | null;
+  usefulLifeValue: number | null;
+  usefulLifeUnit: string | null;
+  unitOfMeasure: string;
+  category: string | null;
+};
+
+function stripDiacritics(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
 
 function formatUsefulLife(
   value: number | null | undefined,
@@ -23,11 +43,40 @@ function formatUsefulLife(
   return `${value} ${label}`;
 }
 
+function mapEpiSearchItem(item: EpiCatalogSelect) {
+  return {
+    id: item.id,
+    name: item.name,
+    caNumber: item.caNumber,
+    caExpiresAt: item.caExpiresAt?.toISOString() ?? null,
+    usefulLifeValue: item.usefulLifeValue,
+    usefulLifeUnit: item.usefulLifeUnit,
+    usefulLifeLabel: formatUsefulLife(
+      item.usefulLifeValue,
+      item.usefulLifeUnit,
+    ),
+    unitOfMeasure: item.unitOfMeasure,
+    category: item.category,
+  };
+}
+
+const epiCatalogSelect = {
+  id: true,
+  name: true,
+  caNumber: true,
+  caExpiresAt: true,
+  usefulLifeValue: true,
+  usefulLifeUnit: true,
+  unitOfMeasure: true,
+  category: true,
+} as const;
+
 @Injectable()
 export class PortalService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stock: StockService,
+    private readonly caepi: CaepiService,
   ) {}
 
   async getDashboard(organizationId: string, servedClientId: string) {
@@ -281,45 +330,140 @@ export class PortalService {
       );
     }
 
-    const items = await this.prisma.epiItem.findMany({
+    const needle = stripDiacritics(query);
+    const caNeedle = normalizeCaNumber(query);
+    const catalog = await this.prisma.epiItem.findMany({
+      where: { organizationId, isActive: true },
+      select: {
+        ...epiCatalogSelect,
+        externalCode: true,
+        manufacturerName: true,
+      },
+      orderBy: { name: 'asc' },
+      take: 500,
+    });
+
+    const byId = new Map<string, ReturnType<typeof mapEpiSearchItem>>();
+
+    for (const item of catalog) {
+      const nameKey = stripDiacritics(item.name);
+      const caKey = stripDiacritics(item.caNumber ?? '');
+      const codeKey = stripDiacritics(item.externalCode ?? '');
+      const mfrKey = stripDiacritics(item.manufacturerName ?? '');
+      if (
+        nameKey.includes(needle) ||
+        caKey.includes(stripDiacritics(caNeedle)) ||
+        codeKey.includes(needle) ||
+        mfrKey.includes(needle)
+      ) {
+        byId.set(item.id, mapEpiSearchItem(item));
+      }
+    }
+
+    // Necessidades do catalogo cujo nome bate → EPIs vinculados
+    const needs = await this.prisma.epiNeed.findMany({
+      where: { organizationId, isActive: true },
+      select: {
+        name: true,
+        itemLinks: {
+          select: {
+            epiItem: { select: epiCatalogSelect },
+          },
+        },
+      },
+      take: 200,
+    });
+    for (const need of needs) {
+      if (!stripDiacritics(need.name).includes(needle)) continue;
+      for (const link of need.itemLinks) {
+        if (!link.epiItem) continue;
+        byId.set(
+          link.epiItem.id,
+          mapEpiSearchItem(link.epiItem as EpiCatalogSelect),
+        );
+      }
+    }
+
+    // CAEPI por nome/CA → cruza com itens do catalogo que tenham o mesmo CA
+    if (byId.size < 20) {
+      try {
+        const caepi = await this.caepi.searchCertificates(query, 15);
+        const caNumbers = caepi.items
+          .map((item) => normalizeCaNumber(item.caNumber))
+          .filter(Boolean);
+        if (caNumbers.length > 0) {
+          const byCa = await this.prisma.epiItem.findMany({
+            where: {
+              organizationId,
+              isActive: true,
+              caNumber: { in: caNumbers },
+            },
+            select: epiCatalogSelect,
+          });
+          for (const item of byCa) {
+            byId.set(item.id, mapEpiSearchItem(item as EpiCatalogSelect));
+          }
+        }
+      } catch {
+        // Base CAEPI pode estar vazia; busca do catalogo segue.
+      }
+    }
+
+    return Array.from(byId.values())
+      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+      .slice(0, 20);
+  }
+
+  async lookupEpiByCa(organizationId: string, caRaw: string) {
+    const caNumber = normalizeCaNumber(caRaw);
+    if (caNumber.length < 3) {
+      throw new BadRequestException('Informe um CA com ao menos 3 digitos.');
+    }
+
+    const exact = await this.prisma.epiItem.findFirst({
       where: {
         organizationId,
         isActive: true,
-        OR: [
-          { name: { contains: query, mode: 'insensitive' } },
-          { caNumber: { contains: query.replace(/\s+/g, ''), mode: 'insensitive' } },
-          { externalCode: { contains: query, mode: 'insensitive' } },
-          { manufacturerName: { contains: query, mode: 'insensitive' } },
-        ],
+        caNumber: { equals: caNumber, mode: 'insensitive' },
       },
-      select: {
-        id: true,
-        name: true,
-        caNumber: true,
-        caExpiresAt: true,
-        usefulLifeValue: true,
-        usefulLifeUnit: true,
-        unitOfMeasure: true,
-        category: true,
-      },
-      orderBy: { name: 'asc' },
-      take: 20,
+      select: epiCatalogSelect,
     });
+    if (exact) {
+      return {
+        found: true as const,
+        item: mapEpiSearchItem(exact as EpiCatalogSelect),
+        message: null as string | null,
+      };
+    }
 
-    return items.map((item) => ({
-      id: item.id,
-      name: item.name,
-      caNumber: item.caNumber,
-      caExpiresAt: item.caExpiresAt?.toISOString() ?? null,
-      usefulLifeValue: item.usefulLifeValue,
-      usefulLifeUnit: item.usefulLifeUnit,
-      usefulLifeLabel: formatUsefulLife(
-        item.usefulLifeValue,
-        item.usefulLifeUnit,
-      ),
-      unitOfMeasure: item.unitOfMeasure,
-      category: item.category,
-    }));
+    const partial = await this.prisma.epiItem.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        caNumber: { contains: caNumber, mode: 'insensitive' },
+      },
+      select: epiCatalogSelect,
+      take: 10,
+      orderBy: { name: 'asc' },
+    });
+    if (partial.length > 0) {
+      return {
+        found: true as const,
+        item: mapEpiSearchItem(partial[0] as EpiCatalogSelect),
+        items: partial.map((item) => mapEpiSearchItem(item as EpiCatalogSelect)),
+        message:
+          partial.length > 1
+            ? `Encontrados ${partial.length} EPIs com CA semelhante.`
+            : null,
+      };
+    }
+
+    return {
+      found: false as const,
+      item: null,
+      message:
+        'Nenhum EPI do catalogo da Consultoria com este CA. Peca o cadastro/vinculo do item antes de entrar no estoque.',
+    };
   }
 
   async listStockLocations(organizationId: string, servedClientId: string) {
@@ -540,13 +684,59 @@ export class PortalService {
       }
     }
 
+    const catalog = await this.prisma.epiItem.findMany({
+      where: { organizationId, isActive: true },
+      select: epiCatalogSelect,
+      take: 500,
+    });
+
     return Array.from(byNeed.values())
-      .map((n) => ({
-        ...n,
-        jobNames: n.jobNames.sort((a, b) => a.localeCompare(b, 'pt-BR')),
-        items: n.items.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
-        hasLinkedEpi: n.items.length > 0,
-      }))
+      .map((n) => {
+        const items = n.items.sort((a, b) =>
+          a.name.localeCompare(b.name, 'pt-BR'),
+        );
+        let suggestedItems: typeof items = [];
+        if (items.length === 0) {
+          const needKey = stripDiacritics(n.needName);
+          const tokens = needKey
+            .split(/\s+/)
+            .filter((t) => t.length >= 3)
+            .flatMap((t) => (t.endsWith('s') && t.length > 3 ? [t, t.slice(0, -1)] : [t]));
+          suggestedItems = catalog
+            .filter((item) => {
+              const nameKey = stripDiacritics(item.name);
+              if (nameKey.includes(needKey) || needKey.includes(nameKey)) {
+                return true;
+              }
+              return tokens.some(
+                (token) =>
+                  nameKey.includes(token) ||
+                  (token.length >= 4 && nameKey.includes(token.slice(0, 4))),
+              );
+            })
+            .slice(0, 5)
+            .map((item) => ({
+              id: item.id,
+              name: item.name,
+              caNumber: item.caNumber,
+              caExpiresAt: item.caExpiresAt?.toISOString() ?? null,
+              usefulLifeValue: item.usefulLifeValue,
+              usefulLifeUnit: item.usefulLifeUnit,
+              usefulLifeLabel: formatUsefulLife(
+                item.usefulLifeValue,
+                item.usefulLifeUnit,
+              ),
+            }));
+        }
+        return {
+          ...n,
+          jobNames: n.jobNames.sort((a, b) => a.localeCompare(b, 'pt-BR')),
+          items,
+          suggestedItems,
+          hasLinkedEpi: items.length > 0,
+          hasCatalogSuggestions: suggestedItems.length > 0,
+        };
+      })
       .sort((a, b) => a.needName.localeCompare(b.needName, 'pt-BR'));
   }
 
