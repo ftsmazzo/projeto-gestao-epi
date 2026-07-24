@@ -247,8 +247,8 @@ function ClientesContent() {
           <p className="page-kicker">Cadastros</p>
           <h1 className="page-title">Clientes atendidos</h1>
           <p className="page-lead">
-            Cadastre CNPJs, distribua a franquia de vidas e configure a
-            estrutura operacional (setores, funcoes e riscos) de cada cliente.
+            Cadastre CNPJs, distribua a franquia de vidas e abra o workspace de
+            cada cliente para implantacao e operacao.
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
@@ -523,12 +523,6 @@ function ClientesContent() {
                           <div className="table-actions">
                             <Link
                               className="btn btn-primary btn-compact"
-                              href={`/clientes/${client.id}/estrutura`}
-                            >
-                              Estrutura
-                            </Link>
-                            <Link
-                              className="btn btn-secondary btn-compact"
                               href={`/clientes/${client.id}`}
                             >
                               Abrir

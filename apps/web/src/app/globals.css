@@ -1071,8 +1071,10 @@ a.btn-danger:hover {
 
 .table-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 0.4rem;
+  white-space: nowrap;
 }
 
 .btn-compact {
