@@ -500,6 +500,37 @@ export class PortalService {
     };
   }
 
+  /** Busca na base CAEPI local — mesmo comportamento do catalogo mestre. */
+  async searchCaepiBase(q: string, limit = 12) {
+    const result = await this.caepi.searchCertificates(q, limit);
+    return {
+      query: result.query,
+      baseCertificateCount: result.baseCertificateCount,
+      baseIncomplete: result.baseIncomplete,
+      message: result.message,
+      items: result.items.map((item) => ({
+        caNumber: item.caNumber,
+        status: item.status,
+        expiresAt:
+          item.expiresAt instanceof Date
+            ? item.expiresAt.toISOString()
+            : item.expiresAt
+              ? String(item.expiresAt)
+              : null,
+        equipmentName: item.equipmentName,
+        manufacturerName: item.manufacturerName,
+        reference: item.reference,
+        color: item.color,
+        sourceImportedAt:
+          item.sourceImportedAt instanceof Date
+            ? item.sourceImportedAt.toISOString()
+            : item.sourceImportedAt
+              ? String(item.sourceImportedAt)
+              : null,
+      })),
+    };
+  }
+
   async listStockLocations(organizationId: string, servedClientId: string) {
     await this.requireClient(organizationId, servedClientId);
     const location = await this.ensureDefaultLocation(

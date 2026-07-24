@@ -72,6 +72,18 @@ export class PortalController {
     return this.portal.lookupEpiByCa(user.organizationId, ca);
   }
 
+  /** Mesma busca CAEPI do catalogo mestre da Consultoria, no JWT do cliente. */
+  @Get('caepi/search')
+  searchCaepi(
+    @CurrentUser() user: ClientJwtPayload,
+    @Query('q') q = '',
+    @Query('limit') limitRaw?: string,
+  ) {
+    this.assertClient(user);
+    const limit = limitRaw ? Number(limitRaw) : 12;
+    return this.portal.searchCaepiBase(q, limit);
+  }
+
   @Get('stock/locations')
   stockLocations(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);

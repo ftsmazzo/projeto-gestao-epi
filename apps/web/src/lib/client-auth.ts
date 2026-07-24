@@ -1,6 +1,7 @@
 import type {
   ClientAuthResponse,
   ClientPortalUser,
+  CaCertificateSearchResponse,
   PortalDashboardResponse,
   PortalEpiByCaResponse,
   PortalEpiSearchItem,
@@ -123,6 +124,16 @@ export async function lookupPortalEpiByCa(ca: string) {
   const params = new URLSearchParams({ ca });
   return clientApiFetch<PortalEpiByCaResponse>(
     `/portal/epis/by-ca?${params.toString()}`,
+  );
+}
+
+export async function searchPortalCaepi(q: string, limit = 12) {
+  const params = new URLSearchParams({
+    q: q.trim(),
+    limit: String(limit),
+  });
+  return clientApiFetch<CaCertificateSearchResponse>(
+    `/portal/caepi/search?${params.toString()}`,
   );
 }
 
