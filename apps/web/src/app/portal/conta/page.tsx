@@ -46,7 +46,7 @@ function PortalContaForm({ user }: { user: ClientPortalUser }) {
   return (
     <div className="portal-home">
       <section className="portal-card">
-        <p className="page-kicker">Conta</p>
+        <p className="page-kicker">Painel do cliente</p>
         <h1 className="page-title page-title--sm">Minha conta</h1>
         <dl className="meta-list">
           <div>

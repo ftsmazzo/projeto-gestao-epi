@@ -100,3 +100,24 @@ Impacto:
 - Relatorios e painel administrativo devem expor contratadas, alocadas, usadas e disponiveis.
 - Implementacao de cotas pode entrar depois do bootstrap, mas o modelo de dados nao deve colapsar essas entidades.
 
+## D08 - Duas superficies: Consultoria e Painel do Cliente
+
+Decisao:
+Ha dois ambientes web distintos, com auth e navegacao proprias:
+
+1. **Consultoria** (`/login`, OpsShell, `/clientes/[id]/*`): implantacao — CNPJ, PGRO, estrutura (setores/funcoes/riscos/necessidades), catalogo CAEPI, usuarios do cliente e cotas.
+2. **Painel do Cliente** (`/portal/login`, PortalShell, `/portal/*`): operacao da empresa cliente — dashboard (entregas, validade, custos, estoque), conta do gestor/operador e, nas proximas etapas, fluxos operacionais.
+
+Regras:
+
+- Tokens separados (`audience: consultoria` vs `audience: client`); nao reutilizar sessao entre superficies.
+- Nao embutir `ClientWorkspaceShell` nem rotas `/clientes/[id]` no portal.
+- Estoque/entregas da Consultoria (se existirem como telas de gestao) nao sao o mesmo produto do painel operacional do cliente.
+- O Inicio do portal e um dashboard com cards; metricas reais entram quando houver APIs client-scoped.
+
+Motivo:
+Manter o fluxo fluido: Consultoria configura e implanta; o cliente opera o dia a dia sem misturar contextos.
+
+Impacto:
+Novos modulos do cliente nascem sob `/portal/*` + `ClientJwtAuthGuard`. Novos modulos de implantacao ficam no workspace da Consultoria.
+

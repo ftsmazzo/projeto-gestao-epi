@@ -35,13 +35,13 @@ export default function PortalLoginPage() {
     <PortalShell>
       <div className="portal-auth">
         <section className="portal-card portal-card--auth" aria-labelledby="portal-login-title">
-          <p className="page-kicker">Portal do cliente</p>
+          <p className="page-kicker">Painel do cliente</p>
           <h1 id="portal-login-title" className="page-title">
             Entrar
           </h1>
           <p className="page-lead">
-            Acesso para gestores e operadores da empresa cliente. A Consultoria
-            usa outro login.
+            Acesso da empresa cliente (gestores e operadores). A Consultoria
+            entra por outro login.
           </p>
           <form className="form-panel" onSubmit={onSubmit} noValidate>
             <div className="field">
@@ -77,7 +77,7 @@ export default function PortalLoginPage() {
               type="submit"
               disabled={loading}
             >
-              {loading ? 'Entrando...' : 'Entrar no portal'}
+              {loading ? 'Entrando...' : 'Entrar no painel'}
             </button>
           </form>
           <p className="field-hint" style={{ marginTop: '1rem' }}>

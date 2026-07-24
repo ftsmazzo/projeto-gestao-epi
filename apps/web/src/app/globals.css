@@ -1807,7 +1807,7 @@ a.btn-danger:hover {
 
 .portal-main {
   padding: var(--space-page);
-  width: min(960px, 100%);
+  width: min(1100px, 100%);
   margin: 0 auto;
 }
 
@@ -1832,7 +1832,102 @@ a.btn-danger:hover {
 
 .portal-home {
   display: grid;
-  gap: 1.25rem;
+  gap: 1.35rem;
+}
+
+.portal-home-header {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem 1.4rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.portal-identity {
+  margin: 0;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.portal-dash {
+  display: grid;
+  gap: 1rem;
+}
+
+.portal-dash-intro {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.portal-dash-intro .page-lead {
+  margin: 0;
+  max-width: 42rem;
+}
+
+.portal-dash-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+
+.portal-metric-card {
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+  padding: 1.1rem 1.15rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  min-height: 11.5rem;
+}
+
+.portal-metric-kicker {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.portal-metric-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.portal-metric-value {
+  margin: 0.15rem 0 0;
+  font-size: 1.85rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--color-ink);
+}
+
+.portal-metric-desc {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  color: var(--color-ink-secondary);
+}
+
+.portal-metric-status {
+  margin-top: auto;
+  padding-top: 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+@media (max-width: 960px) {
+  .portal-dash-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
@@ -1848,6 +1943,10 @@ a.btn-danger:hover {
   .portal-topbar-right {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .portal-dash-grid {
+    grid-template-columns: 1fr;
   }
 }
 

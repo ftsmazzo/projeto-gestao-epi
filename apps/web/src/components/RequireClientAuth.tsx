@@ -57,14 +57,14 @@ export function RequireClientAuth({
     return (
       <PortalShell>
         <section className="portal-card" aria-live="polite">
-          <p className="page-kicker">Portal</p>
+          <p className="page-kicker">Painel do cliente</p>
           <h1 className="page-title page-title--sm">Carregando...</h1>
           {error ? (
             <p className="error" role="alert">
               {error}
             </p>
           ) : (
-            <p className="page-lead">Validando seu acesso ao cliente.</p>
+            <p className="page-lead">Validando seu acesso ao painel.</p>
           )}
         </section>
       </PortalShell>

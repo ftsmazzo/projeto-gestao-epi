@@ -85,12 +85,15 @@ Estas premissas podem ser ajustadas antes do primeiro bootstrap:
 ## 6. Perfis previstos
 
 - Admin da plataforma.
-- Admin da empresa.
-- Gestor de seguranca/SESMT.
-- Almoxarife/entregador.
-- Lider/gestor solicitante.
+- Admin da empresa (Consultoria / tenant).
+- Gestor de seguranca/SESMT (Consultoria ou cliente, conforme contrato).
+- Almoxarife/entregador (Painel do Cliente).
+- Lider/gestor solicitante (Painel do Cliente).
 - Auditor.
-- Trabalhador/colaborador, em app/portal futuro.
+- Gestor do cliente atendido: acesso ao **Painel do Cliente** (`/portal`), separado da Consultoria.
+- Trabalhador/colaborador, em app futuro.
+
+Fronteira de UI (ver `docs/decisions.md` D08): Consultoria implanta; Painel do Cliente opera (dashboard de entregas, validade, custos, estoque).
 
 ## 7. Fluxo principal futuro
 
