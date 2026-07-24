@@ -1129,4 +1129,351 @@ export class PortalService {
     }
     return client;
   }
+
+  private maskCpf(cpf: string | null | undefined): string | null {
+    if (!cpf) return null;
+    const digits = cpf.replace(/\D/g, '');
+    if (digits.length < 2) return '***.***.***-**';
+    return `***.***.***-${digits.slice(-2)}`;
+  }
+
+  private formatReplacementInterval(days: number | null | undefined) {
+    if (days == null || days <= 0) return null;
+    if (days % 365 === 0) {
+      const years = days / 365;
+      return years === 1 ? '1 ano' : `${years} anos`;
+    }
+    if (days % 30 === 0) {
+      const months = days / 30;
+      return months === 1 ? '1 mes' : `${months} meses`;
+    }
+    return days === 1 ? '1 dia' : `${days} dias`;
+  }
+
+  /** Lista trabalhadores ativos para preparacao de entrega (somente leitura). */
+  async getEntregasPreparacao(
+    organizationId: string,
+    servedClientId: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+
+    const [workers, units, sectors, jobs] = await Promise.all([
+      this.prisma.worker.findMany({
+        where: {
+          organizationId,
+          servedClientId,
+          status: WorkerStatus.ACTIVE,
+        },
+        orderBy: { name: 'asc' },
+        include: {
+          operationalUnit: { select: { id: true, name: true } },
+          clientSector: { select: { id: true, name: true } },
+          clientJobFunction: {
+            select: {
+              id: true,
+              name: true,
+              epiRequirements: {
+                where: { isActive: true },
+                select: { epiNeedId: true },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.operationalUnit.findMany({
+        where: { organizationId, servedClientId, status: 'ACTIVE' },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.clientSector.findMany({
+        where: { organizationId, servedClientId, isActive: true },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.clientJobFunction.findMany({
+        where: { organizationId, servedClientId, isActive: true },
+        select: { id: true, name: true, sectorId: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    const mapped = workers.map((w) => {
+      const needIds = new Set(
+        (w.clientJobFunction?.epiRequirements ?? []).map((r) => r.epiNeedId),
+      );
+      return {
+        id: w.id,
+        name: w.name,
+        registration: w.registration,
+        cpfMasked: this.maskCpf(w.cpf),
+        unitId: w.operationalUnitId,
+        unitName: w.operationalUnit?.name ?? null,
+        sectorId: w.clientSectorId,
+        sectorName: w.clientSector?.name ?? w.department ?? null,
+        jobFunctionId: w.clientJobFunctionId,
+        jobFunctionName: w.clientJobFunction?.name ?? w.role ?? null,
+        hasJobFunction: Boolean(w.clientJobFunctionId),
+        requiredEpiCount: needIds.size,
+      };
+    });
+
+    return {
+      workers: mapped,
+      filters: {
+        units,
+        sectors,
+        jobs,
+      },
+      summary: {
+        activeWorkers: mapped.length,
+        withJobFunction: mapped.filter((w) => w.hasJobFunction).length,
+        withoutJobFunction: mapped.filter((w) => !w.hasJobFunction).length,
+      },
+    };
+  }
+
+  /** Cobertura de EPIs necessarios do trabalhador (sem criar entrega). */
+  async getWorkerEpiCoverage(
+    organizationId: string,
+    servedClientId: string,
+    workerId: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+
+    const worker = await this.prisma.worker.findFirst({
+      where: { id: workerId, organizationId, servedClientId },
+      include: {
+        operationalUnit: { select: { id: true, name: true } },
+        clientSector: { select: { id: true, name: true } },
+        clientJobFunction: { select: { id: true, name: true } },
+      },
+    });
+    if (!worker) {
+      throw new NotFoundException('Trabalhador nao encontrado neste cliente.');
+    }
+
+    const workerDto = {
+      id: worker.id,
+      name: worker.name,
+      registration: worker.registration,
+      cpfMasked: this.maskCpf(worker.cpf),
+      unitId: worker.operationalUnitId,
+      unitName: worker.operationalUnit?.name ?? null,
+      sectorId: worker.clientSectorId,
+      sectorName: worker.clientSector?.name ?? worker.department ?? null,
+      jobFunctionId: worker.clientJobFunctionId,
+      jobFunctionName: worker.clientJobFunction?.name ?? worker.role ?? null,
+    };
+
+    if (!worker.clientJobFunctionId) {
+      return {
+        worker: workerDto,
+        summary: {
+          totalNeeds: 0,
+          disponivel: 0,
+          semEstoque: 0,
+          semEpiReal: 0,
+          status: 'SEM_REQUISITO' as const,
+          message:
+            'Trabalhador sem funcao estruturada. A Consultoria precisa ajustar o cadastro.',
+        },
+        needs: [],
+      };
+    }
+
+    const requirements = await this.prisma.jobFunctionEpiRequirement.findMany({
+      where: {
+        organizationId,
+        jobFunctionId: worker.clientJobFunctionId,
+        isActive: true,
+      },
+      include: {
+        epiNeed: {
+          select: {
+            id: true,
+            name: true,
+            isActive: true,
+            itemLinks: {
+              select: {
+                isPrimary: true,
+                epiItem: {
+                  select: {
+                    id: true,
+                    name: true,
+                    caNumber: true,
+                    caExpiresAt: true,
+                    usefulLifeValue: true,
+                    usefulLifeUnit: true,
+                    isActive: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        risk: { select: { id: true, name: true } },
+      },
+      orderBy: [{ isRequired: 'desc' }, { createdAt: 'asc' }],
+    });
+
+    if (requirements.length === 0) {
+      return {
+        worker: workerDto,
+        summary: {
+          totalNeeds: 0,
+          disponivel: 0,
+          semEstoque: 0,
+          semEpiReal: 0,
+          status: 'SEM_REQUISITO' as const,
+          message: 'Nenhum EPI necessario configurado para esta funcao.',
+        },
+        needs: [],
+      };
+    }
+
+    const epiItemIds = new Set<string>();
+    for (const req of requirements) {
+      for (const link of req.epiNeed.itemLinks) {
+        if (link.epiItem?.isActive) epiItemIds.add(link.epiItem.id);
+      }
+    }
+
+    const balances =
+      epiItemIds.size === 0
+        ? []
+        : await this.prisma.epiStockBalance.findMany({
+            where: {
+              organizationId,
+              epiItemId: { in: Array.from(epiItemIds) },
+              stockLocation: { servedClientId, isActive: true },
+            },
+            include: {
+              stockLocation: { select: { id: true, name: true } },
+            },
+          });
+
+    const balancesByEpi = new Map<
+      string,
+      Array<{
+        stockLocationId: string;
+        locationName: string;
+        quantity: number;
+      }>
+    >();
+    for (const row of balances) {
+      const list = balancesByEpi.get(row.epiItemId) ?? [];
+      list.push({
+        stockLocationId: row.stockLocationId,
+        locationName: row.stockLocation.name,
+        quantity: row.quantity,
+      });
+      balancesByEpi.set(row.epiItemId, list);
+    }
+
+    const needs = requirements.map((req) => {
+      const linkedEpis = req.epiNeed.itemLinks
+        .filter((link) => link.epiItem?.isActive)
+        .map((link) => {
+          const item = link.epiItem!;
+          const itemBalances = balancesByEpi.get(item.id) ?? [];
+          const totalQuantity = itemBalances.reduce(
+            (sum, b) => sum + b.quantity,
+            0,
+          );
+          return {
+            epiItemId: item.id,
+            name: item.name,
+            caNumber: item.caNumber,
+            caExpiresAt: item.caExpiresAt?.toISOString() ?? null,
+            usefulLifeLabel: formatUsefulLife(
+              item.usefulLifeValue,
+              item.usefulLifeUnit,
+            ),
+            totalQuantity,
+            balances: itemBalances,
+            isPrimary: link.isPrimary,
+          };
+        })
+        .sort((a, b) => {
+          if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+          return b.totalQuantity - a.totalQuantity;
+        });
+
+      let status: 'DISPONIVEL' | 'SEM_ESTOQUE' | 'SEM_EPI_REAL_VINCULADO';
+      let guidance: string | null = null;
+      if (linkedEpis.length === 0) {
+        status = 'SEM_EPI_REAL_VINCULADO';
+        guidance =
+          'Vincule um EPI real a esta necessidade no cadastro de EPIs/estoque.';
+      } else if (linkedEpis.every((item) => item.totalQuantity <= 0)) {
+        status = 'SEM_ESTOQUE';
+        guidance = 'Registre entrada no estoque antes da entrega.';
+      } else {
+        status = 'DISPONIVEL';
+        guidance = null;
+      }
+
+      const suggested =
+        linkedEpis.find((item) => item.totalQuantity > 0) ??
+        linkedEpis[0] ??
+        null;
+
+      return {
+        requirementId: req.id,
+        epiNeedId: req.epiNeedId,
+        needName: req.epiNeed.name,
+        riskId: req.riskId,
+        riskName: req.risk?.name ?? null,
+        isRequired: req.isRequired,
+        quantity: req.quantity,
+        replacementIntervalDays: req.replacementIntervalDays,
+        replacementLabel: this.formatReplacementInterval(
+          req.replacementIntervalDays,
+        ),
+        status,
+        guidance,
+        linkedEpis: linkedEpis.map((item) => ({
+          epiItemId: item.epiItemId,
+          name: item.name,
+          caNumber: item.caNumber,
+          caExpiresAt: item.caExpiresAt,
+          usefulLifeLabel: item.usefulLifeLabel,
+          totalQuantity: item.totalQuantity,
+          balances: item.balances,
+        })),
+        suggestedEpiItemId: suggested?.epiItemId ?? null,
+      };
+    });
+
+    const disponivel = needs.filter((n) => n.status === 'DISPONIVEL').length;
+    const semEstoque = needs.filter((n) => n.status === 'SEM_ESTOQUE').length;
+    const semEpiReal = needs.filter(
+      (n) => n.status === 'SEM_EPI_REAL_VINCULADO',
+    ).length;
+
+    let summaryStatus: 'OK' | 'ATENCAO' | 'BLOQUEADO' = 'OK';
+    let message: string | null = null;
+    if (semEpiReal > 0) {
+      summaryStatus = 'BLOQUEADO';
+      message = `${semEpiReal} necessidade(s) sem EPI real vinculado.`;
+    } else if (semEstoque > 0) {
+      summaryStatus = 'ATENCAO';
+      message = `${semEstoque} necessidade(s) sem estoque disponivel.`;
+    } else {
+      message = 'Todas as necessidades tem EPI real com estoque.';
+    }
+
+    return {
+      worker: workerDto,
+      summary: {
+        totalNeeds: needs.length,
+        disponivel,
+        semEstoque,
+        semEpiReal,
+        status: summaryStatus,
+        message,
+      },
+      needs,
+    };
+  }
 }

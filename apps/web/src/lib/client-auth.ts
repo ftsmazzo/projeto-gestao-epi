@@ -4,7 +4,9 @@ import type {
   CaCertificateSearchResponse,
   PortalDashboardResponse,
   PortalEpiByCaResponse,
+  PortalEpiCoverageResponse,
   PortalEpiSearchItem,
+  PortalEntregasPreparacaoResponse,
   PortalEstoqueResponse,
   PortalEstruturaResponse,
   PortalStockEntradasResult,
@@ -107,6 +109,18 @@ export async function fetchPortalEstrutura() {
 
 export async function fetchPortalTrabalhadores() {
   return clientApiFetch<PortalTrabalhadoresResponse>('/portal/trabalhadores');
+}
+
+export async function fetchPortalEntregasPreparacao() {
+  return clientApiFetch<PortalEntregasPreparacaoResponse>(
+    '/portal/entregas/preparacao',
+  );
+}
+
+export async function fetchPortalWorkerEpiCoverage(workerId: string) {
+  return clientApiFetch<PortalEpiCoverageResponse>(
+    `/portal/trabalhadores/${workerId}/epi-coverage`,
+  );
 }
 
 export async function fetchPortalEstoque() {

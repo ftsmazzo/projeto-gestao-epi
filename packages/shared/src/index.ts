@@ -1201,5 +1201,96 @@ export interface PortalStockEntradasResult {
   }>;
 }
 
+/** Status operacional de cobertura para preparacao de entrega. */
+export type PortalEpiCoverageStatus =
+  | 'DISPONIVEL'
+  | 'SEM_ESTOQUE'
+  | 'SEM_EPI_REAL_VINCULADO'
+  | 'SEM_REQUISITO';
+
+export interface PortalEntregaWorkerOption {
+  id: string;
+  name: string;
+  registration: string | null;
+  /** CPF mascarado para busca/exibicao (nunca completo). */
+  cpfMasked: string | null;
+  unitId: string | null;
+  unitName: string | null;
+  sectorId: string | null;
+  sectorName: string | null;
+  jobFunctionId: string | null;
+  jobFunctionName: string | null;
+  hasJobFunction: boolean;
+  requiredEpiCount: number;
+}
+
+export interface PortalEntregasPreparacaoResponse {
+  workers: PortalEntregaWorkerOption[];
+  filters: {
+    units: Array<{ id: string; name: string }>;
+    sectors: Array<{ id: string; name: string }>;
+    jobs: Array<{ id: string; name: string; sectorId: string }>;
+  };
+  summary: {
+    activeWorkers: number;
+    withJobFunction: number;
+    withoutJobFunction: number;
+  };
+}
+
+export interface PortalEpiCoverageLinkedItem {
+  epiItemId: string;
+  name: string;
+  caNumber: string | null;
+  caExpiresAt: string | null;
+  usefulLifeLabel: string | null;
+  totalQuantity: number;
+  balances: Array<{
+    stockLocationId: string;
+    locationName: string;
+    quantity: number;
+  }>;
+}
+
+export interface PortalEpiCoverageNeedRow {
+  requirementId: string;
+  epiNeedId: string;
+  needName: string;
+  riskId: string | null;
+  riskName: string | null;
+  isRequired: boolean;
+  quantity: number;
+  replacementIntervalDays: number | null;
+  replacementLabel: string | null;
+  status: PortalEpiCoverageStatus;
+  guidance: string | null;
+  linkedEpis: PortalEpiCoverageLinkedItem[];
+  suggestedEpiItemId: string | null;
+}
+
+export interface PortalEpiCoverageResponse {
+  worker: {
+    id: string;
+    name: string;
+    registration: string | null;
+    cpfMasked: string | null;
+    unitId: string | null;
+    unitName: string | null;
+    sectorId: string | null;
+    sectorName: string | null;
+    jobFunctionId: string | null;
+    jobFunctionName: string | null;
+  };
+  summary: {
+    totalNeeds: number;
+    disponivel: number;
+    semEstoque: number;
+    semEpiReal: number;
+    status: PortalEpiCoverageStatus | 'OK' | 'ATENCAO' | 'BLOQUEADO';
+    message: string | null;
+  };
+  needs: PortalEpiCoverageNeedRow[];
+}
+
 
 

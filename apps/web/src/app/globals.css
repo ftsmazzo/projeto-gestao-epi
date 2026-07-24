@@ -1990,6 +1990,54 @@ a.btn-danger:hover {
   font: inherit;
 }
 
+.portal-coverage-worker {
+  margin-bottom: 0.75rem;
+}
+
+.portal-coverage-list {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.portal-coverage-need {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+  background: var(--color-surface, #fff);
+}
+
+.portal-coverage-need__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.portal-coverage-need__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.portal-coverage-epis {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.portal-coverage-epis li {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.data-table tr.is-selected-row td {
+  background: var(--color-accent-muted, rgba(37, 99, 235, 0.08));
+}
+
 @media (max-width: 960px) {
   .portal-dash-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

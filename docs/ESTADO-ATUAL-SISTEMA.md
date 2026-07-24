@@ -181,7 +181,7 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
-| Portal: entregas / ficha / biometria | Ainda nao |
+| Portal: entregas / ficha / biometria | Preparacao (07.1): selecionar trabalhador e ver cobertura de EPIs — sem registrar entrega |
 | Portal: custos / relatorios ricos | Ainda nao |
 
 Proximo passo natural combinado com o usuario: evoluir **Trabalhadores no Painel do Cliente** (hoje so leitura; na Consultoria o CRUD ja existe em `/clientes/[id]/trabalhadores`).

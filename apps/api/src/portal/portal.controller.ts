@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   NotFoundException,
+  Param,
   Post,
   Query,
   UseGuards,
@@ -36,12 +37,34 @@ export class PortalController {
     return this.portal.getEstrutura(user.organizationId, user.servedClientId);
   }
 
+  @Get('entregas/preparacao')
+  entregasPreparacao(@CurrentUser() user: ClientJwtPayload) {
+    this.assertClient(user);
+    return this.portal.getEntregasPreparacao(
+      user.organizationId,
+      user.servedClientId,
+    );
+  }
+
   @Get('trabalhadores')
   trabalhadores(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);
     return this.portal.getTrabalhadores(
       user.organizationId,
       user.servedClientId,
+    );
+  }
+
+  @Get('trabalhadores/:id/epi-coverage')
+  trabalhadorEpiCoverage(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+  ) {
+    this.assertClient(user);
+    return this.portal.getWorkerEpiCoverage(
+      user.organizationId,
+      user.servedClientId,
+      id,
     );
   }
 
