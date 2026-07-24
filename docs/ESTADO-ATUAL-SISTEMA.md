@@ -178,7 +178,8 @@ Ultimo commit dessa frente: `714206a`.
 | Implantacao: cliente, PGRO, estrutura, CAEPI, catalogo, usuarios | Feito (em evolucao) |
 | Portal: painel + navegacao | Feito |
 | Portal: estoque operacional com CAEPI | Feito |
-| Portal: trabalhadores (CRUD do dia a dia) | **Proximo** — hoje so lista |
+| Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
+| Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
 | Portal: entregas / ficha / biometria | Ainda nao |
 | Portal: custos / relatorios ricos | Ainda nao |
 

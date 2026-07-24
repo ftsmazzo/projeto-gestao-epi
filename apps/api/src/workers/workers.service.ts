@@ -21,9 +21,62 @@ export class WorkersService {
   async listByServedClient(organizationId: string, servedClientId: string) {
     await this.assertServedClient(organizationId, servedClientId);
 
-    return this.prisma.worker.findMany({
+    const workers = await this.prisma.worker.findMany({
       where: { organizationId, servedClientId },
       orderBy: [{ status: 'asc' }, { name: 'asc' }],
+      include: {
+        operationalUnit: { select: { id: true, name: true } },
+        clientSector: { select: { id: true, name: true } },
+        clientJobFunction: {
+          select: {
+            id: true,
+            name: true,
+            epiRequirements: {
+              where: { isActive: true },
+              select: {
+                epiNeed: { select: { id: true, name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return workers.map((worker) => {
+      const needMap = new Map<string, string>();
+      for (const req of worker.clientJobFunction?.epiRequirements ?? []) {
+        needMap.set(req.epiNeed.id, req.epiNeed.name);
+      }
+      const requiredEpiNeeds = Array.from(needMap.entries())
+        .map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+      return {
+        id: worker.id,
+        organizationId: worker.organizationId,
+        servedClientId: worker.servedClientId,
+        operationalUnitId: worker.operationalUnitId,
+        clientSectorId: worker.clientSectorId,
+        clientJobFunctionId: worker.clientJobFunctionId,
+        name: worker.name,
+        cpf: worker.cpf,
+        registration: worker.registration,
+        email: worker.email,
+        phone: worker.phone,
+        role: worker.role,
+        department: worker.department,
+        status: worker.status,
+        admissionDate: worker.admissionDate?.toISOString() ?? null,
+        notes: worker.notes,
+        createdAt: worker.createdAt.toISOString(),
+        updatedAt: worker.updatedAt.toISOString(),
+        unitName: worker.operationalUnit?.name ?? null,
+        sectorName: worker.clientSector?.name ?? worker.department ?? null,
+        jobFunctionName:
+          worker.clientJobFunction?.name ?? worker.role ?? null,
+        requiredEpiCount: requiredEpiNeeds.length,
+        requiredEpiNeeds,
+      };
     });
   }
 
@@ -81,6 +134,13 @@ export class WorkersService {
       servedClientId,
       dto.operationalUnitId,
     );
+    const structure = await this.resolveStructureIds(
+      organizationId,
+      servedClientId,
+      dto.clientSectorId,
+      dto.clientJobFunctionId,
+      operationalUnitId,
+    );
 
     if (cpf) {
       await this.assertUniqueCpf(organizationId, cpf);
@@ -98,11 +158,19 @@ export class WorkersService {
           organizationId,
           servedClientId,
           operationalUnitId,
+          clientSectorId: structure.clientSectorId,
+          clientJobFunctionId: structure.clientJobFunctionId,
           name: dto.name.trim(),
           cpf,
           registration,
-          role: this.normalizeOptionalText(dto.role),
-          department: this.normalizeOptionalText(dto.department),
+          email: this.normalizeOptionalText(dto.email),
+          phone: this.normalizeOptionalText(dto.phone),
+          role:
+            structure.jobFunctionName ??
+            this.normalizeOptionalText(dto.role),
+          department:
+            structure.sectorName ??
+            this.normalizeOptionalText(dto.department),
           status,
           admissionDate: this.parseAdmissionDate(dto.admissionDate),
           notes: this.normalizeOptionalText(dto.notes),
@@ -157,6 +225,23 @@ export class WorkersService {
             dto.operationalUnitId,
           );
 
+    const nextSectorId =
+      dto.clientSectorId === undefined
+        ? existing.clientSectorId
+        : dto.clientSectorId;
+    const nextJobId =
+      dto.clientJobFunctionId === undefined
+        ? existing.clientJobFunctionId
+        : dto.clientJobFunctionId;
+
+    const structure = await this.resolveStructureIds(
+      organizationId,
+      existing.servedClientId,
+      nextSectorId,
+      nextJobId,
+      nextUnitId,
+    );
+
     if (nextCpf && nextCpf !== existing.cpf) {
       await this.assertUniqueCpf(organizationId, nextCpf, id);
     }
@@ -186,16 +271,38 @@ export class WorkersService {
           cpf: dto.cpf === undefined ? undefined : nextCpf,
           registration:
             dto.registration === undefined ? undefined : nextRegistration,
+          email:
+            dto.email === undefined
+              ? undefined
+              : this.normalizeOptionalText(dto.email),
+          phone:
+            dto.phone === undefined
+              ? undefined
+              : this.normalizeOptionalText(dto.phone),
           role:
-            dto.role === undefined
+            dto.role === undefined && dto.clientJobFunctionId === undefined
               ? undefined
-              : this.normalizeOptionalText(dto.role),
+              : structure.jobFunctionName ??
+                (dto.role === undefined
+                  ? undefined
+                  : this.normalizeOptionalText(dto.role)),
           department:
-            dto.department === undefined
+            dto.department === undefined && dto.clientSectorId === undefined
               ? undefined
-              : this.normalizeOptionalText(dto.department),
+              : structure.sectorName ??
+                (dto.department === undefined
+                  ? undefined
+                  : this.normalizeOptionalText(dto.department)),
           operationalUnitId:
             dto.operationalUnitId === undefined ? undefined : nextUnitId,
+          clientSectorId:
+            dto.clientSectorId === undefined
+              ? undefined
+              : structure.clientSectorId,
+          clientJobFunctionId:
+            dto.clientJobFunctionId === undefined
+              ? undefined
+              : structure.clientJobFunctionId,
           status: dto.status,
           admissionDate:
             dto.admissionDate === undefined
@@ -310,6 +417,87 @@ export class WorkersService {
         `A cota de vidas deste cliente foi atingida (${client.allocatedLifeQuota}). Inative um trabalhador ou aumente a cota alocada.`,
       );
     }
+  }
+
+  private async resolveStructureIds(
+    organizationId: string,
+    servedClientId: string,
+    clientSectorId?: string | null,
+    clientJobFunctionId?: string | null,
+    operationalUnitId?: string | null,
+  ): Promise<{
+    clientSectorId: string | null;
+    clientJobFunctionId: string | null;
+    sectorName: string | null;
+    jobFunctionName: string | null;
+  }> {
+    let sectorId =
+      clientSectorId === undefined || clientSectorId === null
+        ? null
+        : clientSectorId.trim() || null;
+    let jobId =
+      clientJobFunctionId === undefined || clientJobFunctionId === null
+        ? null
+        : clientJobFunctionId.trim() || null;
+
+    let sectorName: string | null = null;
+    let jobFunctionName: string | null = null;
+
+    if (sectorId) {
+      const sector = await this.prisma.clientSector.findFirst({
+        where: { id: sectorId, organizationId, servedClientId },
+        select: { id: true, name: true, operationalUnitId: true },
+      });
+      if (!sector) {
+        throw new BadRequestException(
+          'Setor invalido para este cliente atendido.',
+        );
+      }
+      if (
+        operationalUnitId &&
+        sector.operationalUnitId &&
+        sector.operationalUnitId !== operationalUnitId
+      ) {
+        // aviso suave: ainda aceita; estrutura pode ter setor global
+      }
+      sectorName = sector.name;
+      sectorId = sector.id;
+    }
+
+    if (jobId) {
+      const job = await this.prisma.clientJobFunction.findFirst({
+        where: {
+          id: jobId,
+          organizationId,
+          servedClientId,
+          ...(sectorId ? { sectorId } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          sectorId: true,
+          sector: { select: { name: true } },
+        },
+      });
+      if (!job) {
+        throw new BadRequestException(
+          'Funcao invalida para este cliente/setor.',
+        );
+      }
+      jobFunctionName = job.name;
+      jobId = job.id;
+      if (!sectorId) {
+        sectorId = job.sectorId;
+        sectorName = job.sector.name;
+      }
+    }
+
+    return {
+      clientSectorId: sectorId,
+      clientJobFunctionId: jobId,
+      sectorName,
+      jobFunctionName,
+    };
   }
 
   private async resolveOperationalUnitId(

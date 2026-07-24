@@ -3,21 +3,27 @@
 import type {
   ClientLifeSummary,
   OperationalUnit,
-  Worker,
+  WorkerImportPreviewResponse,
+  WorkerListItem,
 } from '@gestao-epi/shared';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { formatCpf, formatCpfInput, stripCpf } from '../../../../lib/cpf';
 import { listOperationalUnits } from '../../../../lib/operational-units';
 import {
+  confirmWorkerCsvImport,
   createWorker,
+  downloadCsvText,
   getClientLifeSummary,
+  getWorkerCsvTemplate,
   listWorkers,
+  previewWorkerCsvImport,
   updateWorker,
   updateWorkerStatus,
 } from '../../../../lib/workers';
 
 type FormMode = 'closed' | 'create' | 'edit';
+type PanelMode = 'list' | 'import';
 
 type WorkerFormState = {
   name: string;
@@ -49,7 +55,7 @@ function toDateInput(value: string | null) {
 export default function ClienteTrabalhadoresPage() {
   const params = useParams<{ id: string }>();
   const clientId = params.id;
-  const [workers, setWorkers] = useState<Worker[]>([]);
+  const [workers, setWorkers] = useState<WorkerListItem[]>([]);
   const [units, setUnits] = useState<OperationalUnit[]>([]);
   const [lifeSummary, setLifeSummary] = useState<ClientLifeSummary | null>(
     null,
@@ -59,8 +65,15 @@ export default function ClienteTrabalhadoresPage() {
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [mode, setMode] = useState<FormMode>('closed');
+  const [panel, setPanel] = useState<PanelMode>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<WorkerFormState>(emptyForm);
+
+  const [importFileName, setImportFileName] = useState<string | null>(null);
+  const [importPreview, setImportPreview] =
+    useState<WorkerImportPreviewResponse | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!clientId) return;
@@ -91,21 +104,23 @@ export default function ClienteTrabalhadoresPage() {
   }, [load]);
 
   function openCreate() {
+    setPanel('list');
     setMode('create');
     setEditingId(null);
     setForm(emptyForm);
     setFormError(null);
   }
 
-  function openEdit(worker: Worker) {
+  function openEdit(worker: WorkerListItem) {
+    setPanel('list');
     setMode('edit');
     setEditingId(worker.id);
     setForm({
       name: worker.name,
       cpf: worker.cpf ? formatCpf(worker.cpf) : '',
       registration: worker.registration ?? '',
-      role: worker.role ?? '',
-      department: worker.department ?? '',
+      role: worker.jobFunctionName ?? worker.role ?? '',
+      department: worker.sectorName ?? worker.department ?? '',
       operationalUnitId: worker.operationalUnitId ?? '',
       admissionDate: toDateInput(worker.admissionDate),
       notes: worker.notes ?? '',
@@ -118,6 +133,96 @@ export default function ClienteTrabalhadoresPage() {
     setEditingId(null);
     setForm(emptyForm);
     setFormError(null);
+  }
+
+  function openImport() {
+    setMode('closed');
+    setPanel('import');
+    setImportPreview(null);
+    setImportFileName(null);
+    setImportMessage(null);
+    setError(null);
+  }
+
+  function closeImport() {
+    setPanel('list');
+    setImportPreview(null);
+    setImportFileName(null);
+    setImportMessage(null);
+  }
+
+  async function onDownloadTemplate() {
+    if (!clientId) return;
+    setImportMessage(null);
+    try {
+      const template = await getWorkerCsvTemplate(clientId);
+      downloadCsvText(template.fileName, template.csvText);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel baixar o modelo CSV.',
+      );
+    }
+  }
+
+  async function onPreviewFile(file: File | null) {
+    if (!clientId || !file) return;
+    setImportBusy(true);
+    setImportMessage(null);
+    setError(null);
+    setImportFileName(file.name);
+    try {
+      const csvText = await file.text();
+      const preview = await previewWorkerCsvImport(clientId, csvText);
+      setImportPreview(preview);
+    } catch (err) {
+      setImportPreview(null);
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao gerar previa da importacao.',
+      );
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function onConfirmImport() {
+    if (!clientId || !importPreview) return;
+    const rows = importPreview.rows
+      .filter((row) => row.status === 'valid' && row.payload)
+      .map((row) => ({
+        rowNumber: row.rowNumber,
+        payload: row.payload!,
+      }));
+    if (rows.length === 0) {
+      setError('Nenhuma linha valida para confirmar.');
+      return;
+    }
+    setImportBusy(true);
+    setError(null);
+    setImportMessage(null);
+    try {
+      const result = await confirmWorkerCsvImport(clientId, rows);
+      setImportMessage(
+        `Importacao concluida: ${result.created} criado(s), ${result.updated} atualizado(s)` +
+          (result.skipped ? `, ${result.skipped} ignorado(s).` : '.'),
+      );
+      setImportPreview(null);
+      setImportFileName(null);
+      setLifeSummary(result.lifeSummary);
+      await load();
+      setPanel('list');
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao confirmar a importacao.',
+      );
+    } finally {
+      setImportBusy(false);
+    }
   }
 
   async function onSubmit(event: FormEvent) {
@@ -162,7 +267,7 @@ export default function ClienteTrabalhadoresPage() {
     }
   }
 
-  async function toggleStatus(worker: Worker) {
+  async function toggleStatus(worker: WorkerListItem) {
     setError(null);
     try {
       await updateWorkerStatus(
@@ -177,11 +282,6 @@ export default function ClienteTrabalhadoresPage() {
           : 'Nao foi possivel atualizar o status.',
       );
     }
-  }
-
-  function unitNameById(id: string | null) {
-    if (!id) return '—';
-    return units.find((unit) => unit.id === id)?.name ?? '—';
   }
 
   return (
@@ -210,6 +310,212 @@ export default function ClienteTrabalhadoresPage() {
               {lifeSummary.activeWorkers}
             </strong>
           </div>
+        </section>
+      ) : null}
+
+      {panel === 'import' ? (
+        <section className="surface" aria-labelledby="worker-import-title">
+          <div className="form-section-header">
+            <div>
+              <p className="page-kicker">Lote</p>
+              <h2 id="worker-import-title" className="page-title page-title--sm">
+                Importar trabalhadores
+              </h2>
+              <p className="page-lead">
+                CSV com unidade, setor e funcao ja existentes na estrutura do
+                cliente. EPIs necessarios vem da funcao (sem copia fixa).
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={closeImport}
+              disabled={importBusy}
+            >
+              Voltar
+            </button>
+          </div>
+
+          <div className="btn-row" style={{ marginBottom: '1rem' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void onDownloadTemplate()}
+              disabled={importBusy}
+            >
+              Baixar modelo CSV
+            </button>
+            <label className="btn btn-primary" style={{ cursor: 'pointer' }}>
+              {importBusy ? 'Processando...' : 'Selecionar CSV'}
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                hidden
+                disabled={importBusy}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  void onPreviewFile(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+          </div>
+
+          {importFileName ? (
+            <p className="field-hint">Arquivo: {importFileName}</p>
+          ) : null}
+          {importMessage ? (
+            <p className="notice notice--info" role="status">
+              {importMessage}
+            </p>
+          ) : null}
+          {error ? (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          {importPreview ? (
+            <>
+              {importPreview.warnings.length > 0 ? (
+                <ul className="page-lead">
+                  {importPreview.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <section className="quota-summary" aria-label="Impacto na cota">
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Linhas lidas</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.rowsRead}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Validas</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.valid}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Com erro</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.withErrors}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Novos / updates</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.creates} /{' '}
+                    {importPreview.totals.updates}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Excedem cota</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.exceedQuota}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Vidas apos</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.lifeImpact.availableAfter} disp.
+                  </strong>
+                </div>
+              </section>
+
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Linha</th>
+                      <th>Nome</th>
+                      <th>Acao</th>
+                      <th>Setor / Funcao</th>
+                      <th>EPIs</th>
+                      <th>Status linha</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.rows.map((row) => (
+                      <tr key={row.rowNumber}>
+                        <td className="mono">{row.rowNumber}</td>
+                        <td>
+                          <strong>
+                            {row.payload?.name ??
+                              row.raw.nome ??
+                              row.raw.name ??
+                              '—'}
+                          </strong>
+                          <span className="table-sub">
+                            {row.payload?.registration ??
+                              row.raw.matricula ??
+                              '—'}
+                          </span>
+                        </td>
+                        <td>
+                          {row.action === 'create'
+                            ? 'Novo'
+                            : row.action === 'update'
+                              ? `Atualizar (${row.matchBy ?? '—'})`
+                              : '—'}
+                        </td>
+                        <td>
+                          {row.resolved.sectorName ?? '—'}
+                          <span className="table-sub">
+                            {row.resolved.jobFunctionName ?? '—'}
+                          </span>
+                        </td>
+                        <td className="mono">
+                          {row.resolved.requiredEpiCount}
+                        </td>
+                        <td>
+                          {row.status === 'valid' ? (
+                            <span className="status-pill status-pill--active">
+                              Valida
+                            </span>
+                          ) : (
+                            <span className="status-pill status-pill--inactive">
+                              Erro
+                            </span>
+                          )}
+                          {row.errors.length > 0 ? (
+                            <span className="table-sub">
+                              {row.errors.join(' · ')}
+                            </span>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={
+                    importBusy || importPreview.totals.valid === 0
+                  }
+                  onClick={() => void onConfirmImport()}
+                >
+                  {importBusy
+                    ? 'Confirmando...'
+                    : `Confirmar importacao (${importPreview.totals.valid})`}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={importBusy}
+                  onClick={closeImport}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </>
+          ) : null}
         </section>
       ) : null}
 
@@ -279,7 +585,7 @@ export default function ClienteTrabalhadoresPage() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="worker-department">Departamento</label>
+                <label htmlFor="worker-department">Departamento / setor</label>
                 <input
                   id="worker-department"
                   value={form.department}
@@ -359,98 +665,148 @@ export default function ClienteTrabalhadoresPage() {
         </section>
       ) : null}
 
-      <section className="surface" aria-labelledby="workers-list-title">
-        <div className="form-section-header">
-          <div>
-            <p className="page-kicker">Vidas</p>
-            <h2 id="workers-list-title" className="page-title page-title--sm">
-              Trabalhadores
-            </h2>
-            <p className="page-lead">
-              Cada trabalhador ativo consome 1 vida da cota alocada.
+      {panel === 'list' ? (
+        <section className="surface" aria-labelledby="workers-list-title">
+          <div className="form-section-header">
+            <div>
+              <p className="page-kicker">Vidas</p>
+              <h2 id="workers-list-title" className="page-title page-title--sm">
+                Trabalhadores
+              </h2>
+              <p className="page-lead">
+                Cada trabalhador ativo consome 1 vida da cota alocada. Importacao
+                e cadastro sao da Consultoria; o portal do cliente so consulta.
+              </p>
+            </div>
+            {mode === 'closed' ? (
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={openImport}
+                >
+                  Importar trabalhadores
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={openCreate}
+                >
+                  Novo trabalhador
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {error && panel === 'list' ? (
+            <p className="error" role="alert">
+              {error}
             </p>
-          </div>
-          {mode === 'closed' ? (
-            <button type="button" className="btn btn-primary" onClick={openCreate}>
-              Novo trabalhador
-            </button>
           ) : null}
-        </div>
+          {importMessage && panel === 'list' ? (
+            <p className="notice notice--info" role="status">
+              {importMessage}
+            </p>
+          ) : null}
 
-        {error ? (
-          <p className="error" role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        {loading ? (
-          <p className="page-lead">Carregando...</p>
-        ) : workers.length === 0 ? (
-          <div className="empty-state">
-            <p className="page-lead">Nenhum trabalhador cadastrado.</p>
-            <button type="button" className="btn btn-primary" onClick={openCreate}>
-              Cadastrar primeiro trabalhador
-            </button>
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>CPF</th>
-                  <th>Matricula</th>
-                  <th>Unidade</th>
-                  <th>Status</th>
-                  <th>Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {workers.map((worker) => (
-                  <tr key={worker.id}>
-                    <td>
-                      <strong>{worker.name}</strong>
-                      {worker.role ? (
-                        <span className="table-sub">{worker.role}</span>
-                      ) : null}
-                    </td>
-                    <td className="mono">
-                      {worker.cpf ? formatCpf(worker.cpf) : '—'}
-                    </td>
-                    <td className="mono">{worker.registration || '—'}</td>
-                    <td>{unitNameById(worker.operationalUnitId)}</td>
-                    <td>
-                      <span
-                        className={`status-pill status-pill--${worker.status.toLowerCase()}`}
-                      >
-                        {worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="table-actions">
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-compact"
-                          onClick={() => openEdit(worker)}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-compact"
-                          onClick={() => void toggleStatus(worker)}
-                        >
-                          {worker.status === 'ACTIVE' ? 'Inativar' : 'Reativar'}
-                        </button>
-                      </div>
-                    </td>
+          {loading ? (
+            <p className="page-lead">Carregando...</p>
+          ) : workers.length === 0 ? (
+            <div className="empty-state">
+              <p className="page-lead">Nenhum trabalhador cadastrado.</p>
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={openImport}
+                >
+                  Importar CSV
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={openCreate}
+                >
+                  Cadastrar primeiro trabalhador
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>CPF</th>
+                    <th>Matricula</th>
+                    <th>Unidade</th>
+                    <th>Setor</th>
+                    <th>Funcao</th>
+                    <th>EPIs</th>
+                    <th>Status</th>
+                    <th>Acoes</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                </thead>
+                <tbody>
+                  {workers.map((worker) => (
+                    <tr key={worker.id}>
+                      <td>
+                        <strong>{worker.name}</strong>
+                      </td>
+                      <td className="mono">
+                        {worker.cpf ? formatCpf(worker.cpf) : '—'}
+                      </td>
+                      <td className="mono">{worker.registration || '—'}</td>
+                      <td>{worker.unitName ?? '—'}</td>
+                      <td>{worker.sectorName ?? '—'}</td>
+                      <td>{worker.jobFunctionName ?? '—'}</td>
+                      <td>
+                        <span className="mono">{worker.requiredEpiCount}</span>
+                        {worker.requiredEpiNeeds.length > 0 ? (
+                          <span className="table-sub">
+                            {worker.requiredEpiNeeds
+                              .slice(0, 3)
+                              .map((need) => need.name)
+                              .join(', ')}
+                            {worker.requiredEpiNeeds.length > 3 ? '…' : ''}
+                          </span>
+                        ) : null}
+                      </td>
+                      <td>
+                        <span
+                          className={`status-pill status-pill--${worker.status.toLowerCase()}`}
+                        >
+                          {worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="table-actions">
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-compact"
+                            onClick={() => openEdit(worker)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-compact"
+                            onClick={() => void toggleStatus(worker)}
+                          >
+                            {worker.status === 'ACTIVE'
+                              ? 'Inativar'
+                              : 'Reativar'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      ) : null}
     </div>
   );
 }

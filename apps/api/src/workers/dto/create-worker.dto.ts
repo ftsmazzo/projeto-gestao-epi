@@ -38,7 +38,25 @@ export class CreateWorkerDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(200)
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
   operationalUnitId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  clientSectorId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  clientJobFunctionId?: string | null;
 
   @IsOptional()
   @IsEnum(WorkerStatus)

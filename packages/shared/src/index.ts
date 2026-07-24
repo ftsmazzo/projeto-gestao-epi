@@ -87,9 +87,13 @@ export interface Worker {
   organizationId: string;
   servedClientId: string;
   operationalUnitId: string | null;
+  clientSectorId: string | null;
+  clientJobFunctionId: string | null;
   name: string;
   cpf: string | null;
   registration: string | null;
+  email: string | null;
+  phone: string | null;
   role: string | null;
   department: string | null;
   status: WorkerStatus;
@@ -97,6 +101,87 @@ export interface Worker {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Item enriquecido para listagem na Consultoria (estrutura + EPIs herdados). */
+export interface WorkerListItem extends Worker {
+  unitName: string | null;
+  sectorName: string | null;
+  jobFunctionName: string | null;
+  requiredEpiCount: number;
+  requiredEpiNeeds: Array<{ id: string; name: string }>;
+}
+
+export type WorkerImportRowAction = 'create' | 'update';
+export type WorkerImportMatchBy = 'cpf' | 'registration';
+
+export interface WorkerImportNormalizedPayload {
+  name: string;
+  cpf: string | null;
+  registration: string | null;
+  email: string | null;
+  phone: string | null;
+  admissionDate: string | null;
+  status: WorkerStatus;
+  operationalUnitId: string | null;
+  clientSectorId: string | null;
+  clientJobFunctionId: string | null;
+  /** Espelho textual do setor (compat / exibicao). */
+  department: string | null;
+  /** Espelho textual da funcao (compat / exibicao). */
+  role: string | null;
+}
+
+export interface WorkerImportPreviewRow {
+  rowNumber: number;
+  status: 'valid' | 'error';
+  action: WorkerImportRowAction | null;
+  matchBy: WorkerImportMatchBy | null;
+  existingWorkerId: string | null;
+  exceedsQuota: boolean;
+  errors: string[];
+  warnings: string[];
+  raw: Record<string, string>;
+  payload: WorkerImportNormalizedPayload | null;
+  resolved: {
+    unitName: string | null;
+    sectorName: string | null;
+    jobFunctionName: string | null;
+    requiredEpiCount: number;
+  };
+}
+
+export interface WorkerImportPreviewResponse {
+  warnings: string[];
+  totals: {
+    rowsRead: number;
+    valid: number;
+    withErrors: number;
+    creates: number;
+    updates: number;
+    exceedQuota: number;
+  };
+  lifeImpact: {
+    allocated: number;
+    currentlyUsed: number;
+    availableBefore: number;
+    activeDelta: number;
+    availableAfter: number;
+  };
+  rows: WorkerImportPreviewRow[];
+}
+
+export interface WorkerImportConfirmRowInput {
+  rowNumber: number;
+  payload: WorkerImportNormalizedPayload;
+}
+
+export interface WorkerImportConfirmResponse {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ rowNumber: number; message: string }>;
+  lifeSummary: ClientLifeSummary;
 }
 
 export interface ClientLifeSummary {

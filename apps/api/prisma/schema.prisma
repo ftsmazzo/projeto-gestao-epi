@@ -253,6 +253,7 @@ model ClientSector {
   servedClient    ServedClient     @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
   operationalUnit OperationalUnit? @relation(fields: [operationalUnitId], references: [id], onDelete: SetNull)
   jobFunctions    ClientJobFunction[]
+  workers         Worker[]
 
   @@index([organizationId])
   @@index([servedClientId])
@@ -278,6 +279,7 @@ model ClientJobFunction {
   sector       ClientSector      @relation(fields: [sectorId], references: [id], onDelete: Restrict)
   risks        JobFunctionRisk[]
   epiRequirements JobFunctionEpiRequirement[]
+  workers      Worker[]
 
   @@index([organizationId])
   @@index([servedClientId])
@@ -369,12 +371,20 @@ model Worker {
   organizationId     String
   servedClientId     String
   operationalUnitId  String?
+  /// Setor da estrutura do cliente (ClientSector).
+  clientSectorId     String?
+  /// Funcao/cargo da estrutura (ClientJobFunction) — fonte dos EPIs herdados.
+  clientJobFunctionId String?
   name               String
   /// CPF apenas digitos (11), opcional.
   cpf                String?
   /// Matricula/codigo interno, unico por cliente quando informado.
   registration       String?
+  email              String?
+  phone              String?
+  /// Texto legado/espelho do nome da funcao (compat).
   role               String?
+  /// Texto legado/espelho do nome do setor (compat).
   department         String?
   status             WorkerStatus @default(ACTIVE)
   admissionDate      DateTime?
@@ -382,15 +392,19 @@ model Worker {
   createdAt          DateTime     @default(now())
   updatedAt          DateTime     @updatedAt
 
-  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  servedClient    ServedClient     @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
-  operationalUnit OperationalUnit? @relation(fields: [operationalUnitId], references: [id], onDelete: SetNull)
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient     ServedClient      @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  operationalUnit  OperationalUnit? @relation(fields: [operationalUnitId], references: [id], onDelete: SetNull)
+  clientSector     ClientSector?     @relation(fields: [clientSectorId], references: [id], onDelete: SetNull)
+  clientJobFunction ClientJobFunction? @relation(fields: [clientJobFunctionId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, cpf])
   @@unique([servedClientId, registration])
   @@index([organizationId])
   @@index([servedClientId])
   @@index([operationalUnitId])
+  @@index([clientSectorId])
+  @@index([clientJobFunctionId])
   @@index([status])
 }
 

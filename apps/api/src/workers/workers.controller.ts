@@ -13,12 +13,21 @@ import type { JwtPayload } from '../auth/types/jwt-payload';
 import { CreateWorkerDto } from './dto/create-worker.dto';
 import { UpdateWorkerDto } from './dto/update-worker.dto';
 import { UpdateWorkerStatusDto } from './dto/update-worker-status.dto';
+import {
+  ConfirmWorkerImportDto,
+  PreviewWorkerImportDto,
+} from './dto/worker-import.dto';
+import { WORKER_CSV_TEMPLATE } from './worker-import.utils';
+import { WorkerImportService } from './worker-import.service';
 import { WorkersService } from './workers.service';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class WorkersController {
-  constructor(private readonly workers: WorkersService) {}
+  constructor(
+    private readonly workers: WorkersService,
+    private readonly workerImport: WorkerImportService,
+  ) {}
 
   @Get('served-clients/:servedClientId/workers')
   listByServedClient(
@@ -36,6 +45,58 @@ export class WorkersController {
     return this.workers.getClientLifeSummary(
       user.organizationId,
       servedClientId,
+    );
+  }
+
+  @Get('served-clients/:servedClientId/workers/import/csv-template')
+  csvTemplate() {
+    return {
+      fileName: 'modelo-importacao-trabalhadores.csv',
+      contentType: 'text/csv; charset=utf-8',
+      csvText: WORKER_CSV_TEMPLATE,
+    };
+  }
+
+  @Post('served-clients/:servedClientId/workers/import/preview')
+  previewImport(
+    @CurrentUser() user: JwtPayload,
+    @Param('servedClientId') servedClientId: string,
+    @Body() dto: PreviewWorkerImportDto,
+  ) {
+    return this.workerImport.preview(
+      user.organizationId,
+      servedClientId,
+      dto.csvText,
+    );
+  }
+
+  @Post('served-clients/:servedClientId/workers/import/confirm')
+  confirmImport(
+    @CurrentUser() user: JwtPayload,
+    @Param('servedClientId') servedClientId: string,
+    @Body() dto: ConfirmWorkerImportDto,
+  ) {
+    return this.workerImport.confirm(
+      user.organizationId,
+      user.sub,
+      servedClientId,
+      dto.rows.map((row) => ({
+        rowNumber: row.rowNumber,
+        payload: {
+          name: row.payload.name,
+          cpf: row.payload.cpf ?? null,
+          registration: row.payload.registration ?? null,
+          email: row.payload.email ?? null,
+          phone: row.payload.phone ?? null,
+          admissionDate: row.payload.admissionDate ?? null,
+          status: row.payload.status,
+          operationalUnitId: row.payload.operationalUnitId ?? null,
+          clientSectorId: row.payload.clientSectorId ?? null,
+          clientJobFunctionId: row.payload.clientJobFunctionId ?? null,
+          department: row.payload.department ?? null,
+          role: row.payload.role ?? null,
+        },
+      })),
     );
   }
 
