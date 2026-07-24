@@ -1,7 +1,6 @@
 'use client';
 
 import type { ServedClientOverview } from '@gestao-epi/shared';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { getServedClientOverview } from '../../../lib/served-clients';
@@ -47,8 +46,7 @@ export default function ClienteVisaoGeralPage() {
     );
   }
 
-  const { client, counts, lives, lastPgroImport, operational } = overview;
-  const base = `/clientes/${client.id}`;
+  const { counts, lives, lastPgroImport, operational } = overview;
 
   return (
     <div className="workspace-section">
@@ -66,82 +64,56 @@ export default function ClienteVisaoGeralPage() {
         <h2 id="overview-title" className="page-title page-title--sm">
           Visao geral
         </h2>
-        <p className="page-lead">
-          Use o menu acima para estrutura, PGRO, usuarios, unidades e
-          trabalhadores. Gestores e estoque nao consomem vidas.
-        </p>
 
-        <div className="quota-summary" aria-label="Indicadores">
-          <div className="quota-summary-item">
-            <span className="quota-summary-label">Vidas</span>
-            <strong className="quota-summary-value">
+        <div className="overview-metrics" aria-label="Indicadores">
+          <div className="overview-metric">
+            <span className="overview-metric__label">Vidas</span>
+            <strong className="overview-metric__value">
               {lives.used}/{lives.allocated}
             </strong>
-            <span className="table-sub">{lives.available} disponiveis</span>
+            <span className="overview-metric__hint">
+              {lives.available} disponiveis
+            </span>
           </div>
-          <div className="quota-summary-item">
-            <span className="quota-summary-label">Setores</span>
-            <strong className="quota-summary-value">
+          <div className="overview-metric">
+            <span className="overview-metric__label">Setores</span>
+            <strong className="overview-metric__value">
               {counts.sectors.active}
             </strong>
           </div>
-          <div className="quota-summary-item">
-            <span className="quota-summary-label">Funcoes</span>
-            <strong className="quota-summary-value">
+          <div className="overview-metric">
+            <span className="overview-metric__label">Funcoes</span>
+            <strong className="overview-metric__value">
               {counts.jobFunctions.active}
             </strong>
           </div>
-          <div className="quota-summary-item">
-            <span className="quota-summary-label">Gestores</span>
-            <strong className="quota-summary-value">
+          <div className="overview-metric">
+            <span className="overview-metric__label">Gestores</span>
+            <strong className="overview-metric__value">
               {counts.users.managers.active}/{counts.users.managers.limit}
             </strong>
           </div>
-          <div className="quota-summary-item">
-            <span className="quota-summary-label">Operadores estoque</span>
-            <strong className="quota-summary-value">
+          <div className="overview-metric">
+            <span className="overview-metric__label">Op. estoque</span>
+            <strong className="overview-metric__value">
               {counts.users.stockOperators.active}/
               {counts.users.stockOperators.limit}
             </strong>
           </div>
         </div>
 
-        <p className="table-sub">{lives.note}</p>
-
         {lastPgroImport ? (
-          <p className="table-sub">
-            Ultimo PGRO: {lastPgroImport.fileName} · {lastPgroImport.status} ·{' '}
+          <p className="overview-pgro">
+            Ultimo PGRO: Arquivo {lastPgroImport.fileName} ·{' '}
+            {lastPgroImport.status} ·{' '}
             {new Date(lastPgroImport.createdAt).toLocaleString('pt-BR')}
+            {lastPgroImport.createdByEmail
+              ? ` · ${lastPgroImport.createdByEmail}`
+              : null}
           </p>
         ) : (
-          <p className="table-sub">Nenhuma importacao PGRO neste cliente.</p>
+          <p className="overview-pgro">Nenhuma importacao PGRO neste cliente.</p>
         )}
-      </section>
-
-      <section className="surface" aria-labelledby="overview-next">
-        <h2 id="overview-next" className="page-title page-title--sm">
-          Proximos passos
-        </h2>
-        <ul className="workspace-link-list">
-          <li>
-            <Link href={`${base}/estrutura`}>Configurar estrutura</Link>
-            <span>Setores, funcoes e riscos</span>
-          </li>
-          <li>
-            <Link href={`/clientes/importar-pgro?clientId=${client.id}`}>
-              Importar PGRO
-            </Link>
-            <span>Popular estrutura a partir do PDF</span>
-          </li>
-          <li>
-            <Link href={`${base}/usuarios`}>Usuarios do cliente</Link>
-            <span>Gestores e operadores (acesso ao portal)</span>
-          </li>
-          <li>
-            <Link href={`${base}/trabalhadores`}>Trabalhadores</Link>
-            <span>Vidas ativas do cliente</span>
-          </li>
-        </ul>
       </section>
     </div>
   );

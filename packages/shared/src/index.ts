@@ -223,6 +223,8 @@ export interface ServedClientOverview {
     status: string;
     createdAt: string;
     finishedAt: string | null;
+    createdByEmail: string | null;
+    createdByName: string | null;
   } | null;
 }
 

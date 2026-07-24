@@ -658,6 +658,9 @@ export class ServedClientsService {
           status: true,
           createdAt: true,
           finishedAt: true,
+          createdByUser: {
+            select: { email: true, name: true },
+          },
         },
       }),
       this.prisma.clientUserMembership.count({
@@ -754,6 +757,8 @@ export class ServedClientsService {
             status: lastPgro.status,
             createdAt: lastPgro.createdAt,
             finishedAt: lastPgro.finishedAt,
+            createdByEmail: lastPgro.createdByUser?.email ?? null,
+            createdByName: lastPgro.createdByUser?.name ?? null,
           }
         : null,
     };
