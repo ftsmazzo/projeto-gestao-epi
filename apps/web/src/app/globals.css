@@ -1947,6 +1947,49 @@ a.btn-danger:hover {
   color: var(--color-muted);
 }
 
+.portal-suggest-list {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.portal-suggest-item {
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.65rem 0.75rem;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+}
+
+.portal-suggest-item:last-child {
+  border-bottom: 0;
+}
+
+.portal-suggest-item:hover,
+.portal-suggest-item:focus-visible {
+  background: var(--color-accent-muted);
+  outline: none;
+}
+
+.portal-qty-input {
+  width: 5rem;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
 @media (max-width: 960px) {
   .portal-dash-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

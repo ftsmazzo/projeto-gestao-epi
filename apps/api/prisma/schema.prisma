@@ -152,6 +152,7 @@ model ServedClient {
   jobFunctions     ClientJobFunction[]
   pgroImportRuns   PgroImportRun[]
   clientUsers      ClientUserMembership[]
+  stockLocations   StockLocation[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -507,10 +508,13 @@ enum EpiStockMovementType {
   AJUSTE
 }
 
-/// Local fisico/logico de armazenamento de EPI no tenant.
+/// Local fisico/logico de armazenamento de EPI.
+/// servedClientId null = almoxarifado da Consultoria (legado/tenant);
+/// preenchido = estoque operacional da empresa cliente (Painel).
 model StockLocation {
   id             String   @id @default(cuid())
   organizationId String
+  servedClientId String?
   name           String
   description    String?
   isActive       Boolean  @default(true)
@@ -518,10 +522,12 @@ model StockLocation {
   updatedAt      DateTime @updatedAt
 
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient?      @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
   balances     EpiStockBalance[]
   movements    EpiStockMovement[]
 
   @@index([organizationId])
+  @@index([servedClientId])
   @@index([isActive])
 }
 

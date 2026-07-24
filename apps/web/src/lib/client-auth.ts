@@ -2,8 +2,10 @@ import type {
   ClientAuthResponse,
   ClientPortalUser,
   PortalDashboardResponse,
+  PortalEpiSearchItem,
   PortalEstoqueResponse,
   PortalEstruturaResponse,
+  PortalStockEntradasResult,
   PortalTrabalhadoresResponse,
   PortalValidadeResponse,
 } from '@gestao-epi/shared';
@@ -107,4 +109,23 @@ export async function fetchPortalTrabalhadores() {
 
 export async function fetchPortalEstoque() {
   return clientApiFetch<PortalEstoqueResponse>('/portal/estoque');
+}
+
+export async function searchPortalEpis(q: string) {
+  const params = new URLSearchParams({ q });
+  return clientApiFetch<PortalEpiSearchItem[]>(
+    `/portal/epis/search?${params.toString()}`,
+  );
+}
+
+export async function createPortalStockEntradas(
+  items: Array<{
+    epiItemId: string;
+    quantity: number;
+  }>,
+) {
+  return clientApiFetch<PortalStockEntradasResult>('/portal/stock/entradas', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  });
 }

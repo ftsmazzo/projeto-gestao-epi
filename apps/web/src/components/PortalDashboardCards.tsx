@@ -42,8 +42,8 @@ const CARDS: PortalDashCard[] = [
     id: 'estoque',
     href: '/portal/estoque',
     title: 'Estoque',
-    description: 'Necessidades e EPIs vinculados a esta empresa.',
-    metricLabel: 'Necessidades',
+    description: 'Saldo fisico e entradas desta empresa.',
+    metricLabel: 'Unidades',
   },
 ];
 

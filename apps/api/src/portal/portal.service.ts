@@ -1,14 +1,34 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { WorkerStatus } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { EpiStockMovementType, WorkerStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { StockService } from '../stock/stock.service';
+import type { PortalStockEntradasDto } from './dto/portal-stock.dto';
 
 const VALIDITY_SOON_DAYS = 90;
+const DEFAULT_LOCATION_NAME = 'Estoque principal';
 
 type ValidityBucket = 'expired' | 'soon' | 'ok' | 'missing';
 
+function formatUsefulLife(
+  value: number | null | undefined,
+  unit: string | null | undefined,
+): string | null {
+  if (value == null || !unit) return null;
+  const label =
+    unit === 'DIAS' ? 'dia(s)' : unit === 'MESES' ? 'mes(es)' : 'ano(s)';
+  return `${value} ${label}`;
+}
+
 @Injectable()
 export class PortalService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stock: StockService,
+  ) {}
 
   async getDashboard(organizationId: string, servedClientId: string) {
     const client = await this.requireClient(organizationId, servedClientId);
@@ -52,6 +72,15 @@ export class PortalService {
       servedClientId,
     );
 
+    const stockAgg = await this.prisma.epiStockBalance.aggregate({
+      where: {
+        organizationId,
+        stockLocation: { servedClientId },
+      },
+      _sum: { quantity: true },
+      _count: { _all: true },
+    });
+
     const expired = validity.filter((v) => v.bucket === 'expired').length;
     const soon = validity.filter((v) => v.bucket === 'soon').length;
     const missingCa = validity.filter((v) => v.bucket === 'missing').length;
@@ -82,7 +111,7 @@ export class PortalService {
         entregas: null as number | null,
         validade: expired + soon + missingCa,
         custos: null as number | null,
-        estoque: uniqueNeeds,
+        estoque: stockAgg._sum.quantity ?? 0,
       },
       validitySummary: {
         expired,
@@ -96,9 +125,8 @@ export class PortalService {
         custos: { ready: false, reason: 'Sem precificacao/consumo valorizado.' },
         estoque: {
           ready: true,
-          mode: 'needs' as const,
-          reason:
-            'Exibe necessidades da empresa. Saldo fisico por cliente vem na proxima etapa.',
+          mode: 'stock' as const,
+          reason: 'Entrada e saldos desta empresa no Painel do Cliente.',
         },
       },
     };
@@ -217,7 +245,214 @@ export class PortalService {
 
   async getEstoqueResumo(organizationId: string, servedClientId: string) {
     await this.requireClient(organizationId, servedClientId);
+    const location = await this.ensureDefaultLocation(
+      organizationId,
+      servedClientId,
+    );
+    const [balances, needs] = await Promise.all([
+      this.listClientBalances(organizationId, servedClientId),
+      this.buildNeedsWithItems(organizationId, servedClientId),
+    ]);
 
+    return {
+      mode: 'stock' as const,
+      note: 'Estoque fisico desta empresa. Use entrada livre ou gere a lista pelas necessidades.',
+      location: {
+        id: location.id,
+        name: location.name,
+      },
+      summary: {
+        needs: needs.length,
+        withLinkedEpi: needs.filter((n) => n.hasLinkedEpi).length,
+        withoutLinkedEpi: needs.filter((n) => !n.hasLinkedEpi).length,
+        balanceLines: balances.length,
+        totalUnits: balances.reduce((sum, row) => sum + row.quantity, 0),
+      },
+      balances,
+      needs,
+    };
+  }
+
+  async searchEpis(organizationId: string, q: string) {
+    const query = q.trim();
+    if (query.length < 3) {
+      throw new BadRequestException(
+        'Informe ao menos 3 caracteres para buscar EPI.',
+      );
+    }
+
+    const items = await this.prisma.epiItem.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        OR: [
+          { name: { contains: query, mode: 'insensitive' } },
+          { caNumber: { contains: query.replace(/\s+/g, ''), mode: 'insensitive' } },
+          { externalCode: { contains: query, mode: 'insensitive' } },
+          { manufacturerName: { contains: query, mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        caNumber: true,
+        caExpiresAt: true,
+        usefulLifeValue: true,
+        usefulLifeUnit: true,
+        unitOfMeasure: true,
+        category: true,
+      },
+      orderBy: { name: 'asc' },
+      take: 20,
+    });
+
+    return items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      caNumber: item.caNumber,
+      caExpiresAt: item.caExpiresAt?.toISOString() ?? null,
+      usefulLifeValue: item.usefulLifeValue,
+      usefulLifeUnit: item.usefulLifeUnit,
+      usefulLifeLabel: formatUsefulLife(
+        item.usefulLifeValue,
+        item.usefulLifeUnit,
+      ),
+      unitOfMeasure: item.unitOfMeasure,
+      category: item.category,
+    }));
+  }
+
+  async listStockLocations(organizationId: string, servedClientId: string) {
+    await this.requireClient(organizationId, servedClientId);
+    const location = await this.ensureDefaultLocation(
+      organizationId,
+      servedClientId,
+    );
+    const locations = await this.prisma.stockLocation.findMany({
+      where: { organizationId, servedClientId, isActive: true },
+      orderBy: { name: 'asc' },
+    });
+    return {
+      defaultLocationId: location.id,
+      locations,
+    };
+  }
+
+  async listClientBalances(organizationId: string, servedClientId: string) {
+    await this.requireClient(organizationId, servedClientId);
+    const rows = await this.prisma.epiStockBalance.findMany({
+      where: {
+        organizationId,
+        stockLocation: { servedClientId },
+      },
+      include: {
+        epiItem: {
+          select: {
+            id: true,
+            name: true,
+            caNumber: true,
+            caExpiresAt: true,
+            usefulLifeValue: true,
+            usefulLifeUnit: true,
+            unitOfMeasure: true,
+            category: true,
+            isActive: true,
+          },
+        },
+        stockLocation: {
+          select: { id: true, name: true, isActive: true },
+        },
+      },
+      orderBy: [{ updatedAt: 'desc' }],
+    });
+
+    return rows.map((row) => ({
+      id: row.id,
+      epiItemId: row.epiItemId,
+      stockLocationId: row.stockLocationId,
+      quantity: row.quantity,
+      minQuantity: row.minQuantity,
+      locationName: row.stockLocation.name,
+      epiName: row.epiItem.name,
+      caNumber: row.epiItem.caNumber,
+      caExpiresAt: row.epiItem.caExpiresAt?.toISOString() ?? null,
+      usefulLifeValue: row.epiItem.usefulLifeValue,
+      usefulLifeUnit: row.epiItem.usefulLifeUnit,
+      usefulLifeLabel: formatUsefulLife(
+        row.epiItem.usefulLifeValue,
+        row.epiItem.usefulLifeUnit,
+      ),
+      unitOfMeasure: row.epiItem.unitOfMeasure,
+      category: row.epiItem.category,
+    }));
+  }
+
+  async createEntradas(
+    organizationId: string,
+    servedClientId: string,
+    userId: string,
+    dto: PortalStockEntradasDto,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    if (!userId) {
+      throw new BadRequestException(
+        'Usuario do portal sem vinculo para registrar movimentacao.',
+      );
+    }
+
+    const location = await this.ensureDefaultLocation(
+      organizationId,
+      servedClientId,
+    );
+
+    const results = [];
+    for (const item of dto.items) {
+      const result = await this.stock.createMovement(organizationId, userId, {
+        type: EpiStockMovementType.ENTRADA,
+        stockLocationId: location.id,
+        epiItemId: item.epiItemId,
+        quantity: item.quantity,
+        notes: 'Entrada pelo Painel do Cliente',
+      });
+      results.push({
+        epiItemId: item.epiItemId,
+        quantity: item.quantity,
+        newQuantity: result.movement.newQuantity,
+        movementId: result.movement.id,
+      });
+    }
+
+    return {
+      locationId: location.id,
+      created: results.length,
+      items: results,
+    };
+  }
+
+  private async ensureDefaultLocation(
+    organizationId: string,
+    servedClientId: string,
+  ) {
+    const existing = await this.prisma.stockLocation.findFirst({
+      where: { organizationId, servedClientId, isActive: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (existing) return existing;
+
+    return this.prisma.stockLocation.create({
+      data: {
+        organizationId,
+        servedClientId,
+        name: DEFAULT_LOCATION_NAME,
+        description: 'Local padrao do estoque operacional da empresa.',
+      },
+    });
+  }
+
+  private async buildNeedsWithItems(
+    organizationId: string,
+    servedClientId: string,
+  ) {
     const requirements = await this.prisma.jobFunctionEpiRequirement.findMany({
       where: {
         organizationId,
@@ -235,6 +470,8 @@ export class PortalService {
                     name: true,
                     caNumber: true,
                     caExpiresAt: true,
+                    usefulLifeValue: true,
+                    usefulLifeUnit: true,
                     isActive: true,
                   },
                 },
@@ -252,11 +489,15 @@ export class PortalService {
         needId: string;
         needName: string;
         jobNames: string[];
+        suggestedQuantity: number;
         items: Array<{
           id: string;
           name: string;
           caNumber: string | null;
           caExpiresAt: string | null;
+          usefulLifeValue: number | null;
+          usefulLifeUnit: string | null;
+          usefulLifeLabel: string | null;
         }>;
       }
     >();
@@ -269,6 +510,7 @@ export class PortalService {
           needId: need.id,
           needName: need.name,
           jobNames: [],
+          suggestedQuantity: 0,
           items: [],
         };
         byNeed.set(need.id, entry);
@@ -276,6 +518,10 @@ export class PortalService {
       if (!entry.jobNames.includes(req.jobFunction.name)) {
         entry.jobNames.push(req.jobFunction.name);
       }
+      entry.suggestedQuantity = Math.max(
+        entry.suggestedQuantity,
+        Math.max(1, req.quantity || 1),
+      );
       for (const link of need.itemLinks) {
         if (!link.epiItem.isActive) continue;
         if (entry.items.some((i) => i.id === link.epiItem.id)) continue;
@@ -284,11 +530,17 @@ export class PortalService {
           name: link.epiItem.name,
           caNumber: link.epiItem.caNumber,
           caExpiresAt: link.epiItem.caExpiresAt?.toISOString() ?? null,
+          usefulLifeValue: link.epiItem.usefulLifeValue,
+          usefulLifeUnit: link.epiItem.usefulLifeUnit,
+          usefulLifeLabel: formatUsefulLife(
+            link.epiItem.usefulLifeValue,
+            link.epiItem.usefulLifeUnit,
+          ),
         });
       }
     }
 
-    const needs = Array.from(byNeed.values())
+    return Array.from(byNeed.values())
       .map((n) => ({
         ...n,
         jobNames: n.jobNames.sort((a, b) => a.localeCompare(b, 'pt-BR')),
@@ -296,17 +548,6 @@ export class PortalService {
         hasLinkedEpi: n.items.length > 0,
       }))
       .sort((a, b) => a.needName.localeCompare(b.needName, 'pt-BR'));
-
-    return {
-      mode: 'needs' as const,
-      note: 'Saldo fisico por empresa ainda nao esta liberado. Aqui voce ve as necessidades desta empresa e os EPIs vinculados pela Consultoria.',
-      summary: {
-        needs: needs.length,
-        withLinkedEpi: needs.filter((n) => n.hasLinkedEpi).length,
-        withoutLinkedEpi: needs.filter((n) => !n.hasLinkedEpi).length,
-      },
-      needs,
-    };
   }
 
   private async countUniqueNeeds(

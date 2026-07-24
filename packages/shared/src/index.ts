@@ -515,6 +515,7 @@ export type StockBalanceStatus = 'OK' | 'BAIXO' | 'ZERADO';
 export interface StockLocation {
   id: string;
   organizationId: string;
+  servedClientId: string | null;
   name: string;
   description: string | null;
   isActive: boolean;
@@ -954,7 +955,7 @@ export interface PortalDashboardResponse {
     entregas: { ready: boolean; reason?: string };
     validade: { ready: boolean; reason?: string };
     custos: { ready: boolean; reason?: string };
-    estoque: { ready: boolean; mode?: 'needs'; reason?: string };
+    estoque: { ready: boolean; mode?: 'needs' | 'stock'; reason?: string };
   };
 }
 
@@ -1019,24 +1020,75 @@ export interface PortalTrabalhadoresResponse {
 }
 
 export interface PortalEstoqueResponse {
-  mode: 'needs';
+  mode: 'stock';
   note: string;
+  location: {
+    id: string;
+    name: string;
+  };
   summary: {
     needs: number;
     withLinkedEpi: number;
     withoutLinkedEpi: number;
+    balanceLines: number;
+    totalUnits: number;
   };
+  balances: PortalStockBalanceRow[];
   needs: Array<{
     needId: string;
     needName: string;
     jobNames: string[];
+    suggestedQuantity: number;
     hasLinkedEpi: boolean;
     items: Array<{
       id: string;
       name: string;
       caNumber: string | null;
       caExpiresAt: string | null;
+      usefulLifeValue: number | null;
+      usefulLifeUnit: EpiUsefulLifeUnit | null;
+      usefulLifeLabel: string | null;
     }>;
+  }>;
+}
+
+export interface PortalStockBalanceRow {
+  id: string;
+  epiItemId: string;
+  stockLocationId: string;
+  quantity: number;
+  minQuantity: number | null;
+  locationName: string;
+  epiName: string;
+  caNumber: string | null;
+  caExpiresAt: string | null;
+  usefulLifeValue: number | null;
+  usefulLifeUnit: EpiUsefulLifeUnit | null;
+  usefulLifeLabel: string | null;
+  unitOfMeasure: EpiUnitOfMeasure;
+  category: EpiCategory | null;
+}
+
+export interface PortalEpiSearchItem {
+  id: string;
+  name: string;
+  caNumber: string | null;
+  caExpiresAt: string | null;
+  usefulLifeValue: number | null;
+  usefulLifeUnit: EpiUsefulLifeUnit | null;
+  usefulLifeLabel: string | null;
+  unitOfMeasure: EpiUnitOfMeasure;
+  category: EpiCategory | null;
+}
+
+export interface PortalStockEntradasResult {
+  locationId: string;
+  created: number;
+  items: Array<{
+    epiItemId: string;
+    quantity: number;
+    newQuantity: number;
+    movementId: string;
   }>;
 }
 

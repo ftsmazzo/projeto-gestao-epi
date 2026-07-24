@@ -68,7 +68,7 @@ export class StockService {
 
   listLocations(organizationId: string) {
     return this.prisma.stockLocation.findMany({
-      where: { organizationId },
+      where: { organizationId, servedClientId: null },
       orderBy: [{ isActive: 'desc' }, { name: 'asc' }],
     });
   }
@@ -160,13 +160,17 @@ export class StockService {
   }
 
   async getSummary(organizationId: string) {
+    const locationFilter = { organizationId, servedClientId: null as string | null };
     const [locationsActive, locationsTotal, balances] = await Promise.all([
       this.prisma.stockLocation.count({
-        where: { organizationId, isActive: true },
+        where: { ...locationFilter, isActive: true },
       }),
-      this.prisma.stockLocation.count({ where: { organizationId } }),
+      this.prisma.stockLocation.count({ where: locationFilter }),
       this.prisma.epiStockBalance.findMany({
-        where: { organizationId },
+        where: {
+          organizationId,
+          stockLocation: { servedClientId: null },
+        },
         select: { quantity: true, minQuantity: true },
       }),
     ]);
@@ -203,6 +207,7 @@ export class StockService {
     const rows = await this.prisma.epiStockBalance.findMany({
       where: {
         organizationId,
+        stockLocation: { servedClientId: null },
         ...(filters.epiItemId ? { epiItemId: filters.epiItemId } : {}),
         ...(filters.stockLocationId
           ? { stockLocationId: filters.stockLocationId }
@@ -231,7 +236,10 @@ export class StockService {
   async listTotalsByEpi(organizationId: string) {
     const grouped = await this.prisma.epiStockBalance.groupBy({
       by: ['epiItemId'],
-      where: { organizationId },
+      where: {
+        organizationId,
+        stockLocation: { servedClientId: null },
+      },
       _sum: { quantity: true },
     });
     return grouped.map((row) => ({
@@ -253,6 +261,7 @@ export class StockService {
     return this.prisma.epiStockMovement.findMany({
       where: {
         organizationId,
+        stockLocation: { servedClientId: null },
         ...(filters.epiItemId ? { epiItemId: filters.epiItemId } : {}),
         ...(filters.stockLocationId
           ? { stockLocationId: filters.stockLocationId }

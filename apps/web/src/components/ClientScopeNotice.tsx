@@ -14,13 +14,13 @@ export function ClientScopeNotice({ moduleLabel }: Props) {
   return (
     <div className="notice notice--info" role="status">
       <p>
-        <strong>{moduleLabel}</strong> ainda e catalogo/operacao do tenant
-        (Consultoria). Para o movimento diario da empresa, abra um cliente em{' '}
-        <Link href="/clientes">Clientes atendidos</Link> e use o painel
-        operacional.
+        <strong>{moduleLabel}</strong> nesta tela e o estoque/catalogo da
+        Consultoria (tenant). O estoque operacional da empresa cliente fica no{' '}
+        <Link href="/portal">Painel do Cliente</Link> (login em /portal/login).
       </p>
       <p className="table-sub">
-        Selecione um cliente para operar este modulo no contexto da empresa.
+        Locais com empresa vinculada nao aparecem aqui — so almoxarifados da
+        Consultoria.
       </p>
     </div>
   );
