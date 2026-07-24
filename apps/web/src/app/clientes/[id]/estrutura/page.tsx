@@ -69,7 +69,65 @@ function jobEpiRequirements(job: ClientJobFunction): JobFunctionEpiRequirementRo
 }
 
 function countActiveEpiRequirements(job: ClientJobFunction) {
-  return jobEpiRequirements(job).filter((req) => req.isActive).length;
+  const active = jobEpiRequirements(job).filter((req) => req.isActive);
+  const unique = new Set(
+    active.map((req) => req.epiNeed?.id ?? req.id).filter(Boolean),
+  );
+  return unique.size;
+}
+
+type GroupedEpiRequirement = {
+  epiNeedId: string;
+  name: string;
+  stockStatus?: EpiNeed['stockStatus'];
+  isRequired: boolean;
+  quantity: number;
+  replacementIntervalDays: number | null;
+  isActive: boolean;
+  riskNames: string[];
+  requirementIds: string[];
+};
+
+function groupEpiRequirementsByNeed(
+  requirements: JobFunctionEpiRequirementRow[],
+): GroupedEpiRequirement[] {
+  const groups = new Map<string, GroupedEpiRequirement>();
+  for (const req of requirements) {
+    const epiNeedId = req.epiNeed?.id ?? `req:${req.id}`;
+    const existing = groups.get(epiNeedId);
+    const riskName = req.risk?.name?.trim();
+    if (existing) {
+      if (riskName && !existing.riskNames.includes(riskName)) {
+        existing.riskNames.push(riskName);
+      }
+      existing.requirementIds.push(req.id);
+      existing.isRequired = existing.isRequired || req.isRequired;
+      existing.isActive = existing.isActive || req.isActive;
+      existing.quantity = Math.max(existing.quantity, req.quantity);
+      if (
+        req.replacementIntervalDays != null &&
+        (existing.replacementIntervalDays == null ||
+          req.replacementIntervalDays < existing.replacementIntervalDays)
+      ) {
+        existing.replacementIntervalDays = req.replacementIntervalDays;
+      }
+    } else {
+      groups.set(epiNeedId, {
+        epiNeedId,
+        name: req.epiNeed?.name ?? '—',
+        stockStatus: req.epiNeed?.stockStatus,
+        isRequired: req.isRequired,
+        quantity: req.quantity,
+        replacementIntervalDays: req.replacementIntervalDays,
+        isActive: req.isActive,
+        riskNames: riskName ? [riskName] : [],
+        requirementIds: [req.id],
+      });
+    }
+  }
+  return Array.from(groups.values()).sort((a, b) =>
+    a.name.localeCompare(b.name, 'pt-BR'),
+  );
 }
 
 function epiNeedStockLabel(status?: EpiNeed['stockStatus']) {
@@ -198,6 +256,14 @@ function EstruturaContent({ clientId }: { clientId: string }) {
   const selectedJob = useMemo(
     () => jobs.find((job) => job.id === selectedJobId) ?? null,
     [jobs, selectedJobId],
+  );
+
+  const groupedSelectedJobEpis = useMemo(
+    () =>
+      selectedJob
+        ? groupEpiRequirementsByNeed(jobEpiRequirements(selectedJob))
+        : [],
+    [selectedJob],
   );
 
   const selectedFormRisk = useMemo(() => {
@@ -362,23 +428,28 @@ function EstruturaContent({ clientId }: { clientId: string }) {
     }
   }
 
-  async function onToggleEpiRequirementStatus(
-    requirement: JobFunctionEpiRequirementRow,
+  async function onToggleGroupedEpiRequirement(
+    group: GroupedEpiRequirement,
   ) {
     if (!selectedJobId) return;
     setReqError(null);
+    const nextActive = !group.isActive;
     try {
-      await updateJobFunctionEpiRequirementStatus(
-        selectedJobId,
-        requirement.id,
-        !requirement.isActive,
+      await Promise.all(
+        group.requirementIds.map((requirementId) =>
+          updateJobFunctionEpiRequirementStatus(
+            selectedJobId,
+            requirementId,
+            nextActive,
+          ),
+        ),
       );
       await load();
     } catch (err) {
       setReqError(
         err instanceof Error
           ? err.message
-          : 'Falha ao atualizar status do EPI.',
+          : 'Falha ao atualizar status da necessidade.',
       );
     }
   }
@@ -400,21 +471,15 @@ function EstruturaContent({ clientId }: { clientId: string }) {
       <header className="module-header">
         <div>
           <p className="page-kicker">Estrutura operacional</p>
-          <h1 className="page-title">
+          <h1 className="page-title page-title--sm">
             {client.tradeName || client.legalName}
           </h1>
           <p className="page-lead">
-            Setores, funcoes, riscos e necessidades desta empresa. Use Atualizar
-            PGRO para implantar ou refrescar a estrutura a partir do PDF.
+            Setores, funcoes, riscos e necessidades desta empresa. PGRO fica na
+            aba Atualizar PGRO do menu do workspace.
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
-          <Link
-            className="btn btn-primary"
-            href={`/clientes/${clientId}/atualizar-pgro`}
-          >
-            Atualizar PGRO
-          </Link>
           <button
             type="button"
             className="btn btn-secondary"
@@ -447,6 +512,12 @@ function EstruturaContent({ clientId }: { clientId: string }) {
         <div className="quota-summary-item">
           <span className="quota-summary-label">Riscos no catalogo</span>
           <strong className="quota-summary-value">{risks.length}</strong>
+        </div>
+        <div className="quota-summary-item">
+          <span className="quota-summary-label">Necessidades</span>
+          <strong className="quota-summary-value">
+            {jobs.reduce((total, job) => total + countActiveEpiRequirements(job), 0)}
+          </strong>
         </div>
       </section>
 
@@ -483,36 +554,6 @@ function EstruturaContent({ clientId }: { clientId: string }) {
           </Link>
         </div>
       </section>
-
-      <div className="form-grid" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
-        <div className="field">
-          <label htmlFor="filter-sector">Filtrar setor</label>
-          <select
-            id="filter-sector"
-            value={sectorFilter}
-            onChange={(e) => setSectorFilter(e.target.value)}
-          >
-            <option value="">Todos</option>
-            {sectors.map((sector) => (
-              <option key={sector.id} value={sector.id}>
-                {sector.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="show-inactive">Status</label>
-          <label className="field-check" htmlFor="show-inactive">
-            <input
-              id="show-inactive"
-              type="checkbox"
-              checked={showInactive}
-              onChange={(e) => setShowInactive(e.target.checked)}
-            />
-            <span>Mostrar inativos</span>
-          </label>
-        </div>
-      </div>
 
       <div className="dashboard-grid dashboard-grid--ops">
         <section className="surface" aria-labelledby="new-sector-title">
@@ -631,6 +672,36 @@ function EstruturaContent({ clientId }: { clientId: string }) {
             </button>
           </form>
         </section>
+      </div>
+
+      <div className="form-grid" style={{ marginTop: '1rem', marginBottom: '1rem' }}>
+        <div className="field">
+          <label htmlFor="filter-sector">Filtrar setor</label>
+          <select
+            id="filter-sector"
+            value={sectorFilter}
+            onChange={(e) => setSectorFilter(e.target.value)}
+          >
+            <option value="">Todos</option>
+            {sectors.map((sector) => (
+              <option key={sector.id} value={sector.id}>
+                {sector.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="show-inactive">Status</label>
+          <label className="field-check" htmlFor="show-inactive">
+            <input
+              id="show-inactive"
+              type="checkbox"
+              checked={showInactive}
+              onChange={(e) => setShowInactive(e.target.checked)}
+            />
+            <span>Mostrar inativos</span>
+          </label>
+        </div>
       </div>
 
       {filteredSectors.length === 0 ? (
@@ -808,7 +879,7 @@ function EstruturaContent({ clientId }: { clientId: string }) {
                             </div>
                             {countActiveEpiRequirements(job) > 0 ? (
                               <span className="table-sub">
-                                {countActiveEpiRequirements(job)} EPI(s)
+                                {countActiveEpiRequirements(job)} necessidade(s)
                                 necessario(s)
                               </span>
                             ) : null}
@@ -908,7 +979,7 @@ function EstruturaContent({ clientId }: { clientId: string }) {
               aria-selected={selectedJobTab === 'epis'}
               onClick={() => setSelectedJobTab('epis')}
             >
-              EPIs necessarios
+              Necessidades
             </button>
           </div>
 
@@ -1166,7 +1237,7 @@ function EstruturaContent({ clientId }: { clientId: string }) {
                   <thead>
                     <tr>
                       <th scope="col">Necessidade</th>
-                      <th scope="col">Risco</th>
+                      <th scope="col">Riscos</th>
                       <th scope="col">Tipo</th>
                       <th scope="col">Qtd</th>
                       <th scope="col">Intervalo</th>
@@ -1176,50 +1247,57 @@ function EstruturaContent({ clientId }: { clientId: string }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {jobEpiRequirements(selectedJob).length === 0 ? (
+                    {groupedSelectedJobEpis.length === 0 ? (
                       <tr>
                         <td colSpan={8}>
-                          Nenhum EPI necessario definido para esta funcao.
+                          Nenhuma necessidade definida para esta funcao.
                         </td>
                       </tr>
                     ) : (
-                      jobEpiRequirements(selectedJob).map((requirement) => (
-                        <tr key={requirement.id}>
+                      groupedSelectedJobEpis.map((group) => (
+                        <tr key={group.epiNeedId}>
                           <td>
-                            <strong>
-                              {requirement.epiNeed?.name ?? '—'}
-                            </strong>
+                            <strong>{group.name}</strong>
                           </td>
-                          <td>{requirement.risk?.name ?? '—'}</td>
                           <td>
-                            {requirement.isRequired
-                              ? 'obrigatorio'
-                              : 'recomendado'}
+                            {group.riskNames.length === 0 ? (
+                              '—'
+                            ) : (
+                              <div className="epi-need-picker">
+                                {group.riskNames.map((riskName) => (
+                                  <span
+                                    key={riskName}
+                                    className="epi-need-chip"
+                                  >
+                                    {riskName}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                           </td>
-                          <td>{requirement.quantity}</td>
                           <td>
-                            {requirement.replacementIntervalDays != null
-                              ? `${requirement.replacementIntervalDays} dias`
+                            {group.isRequired ? 'obrigatorio' : 'recomendado'}
+                          </td>
+                          <td>{group.quantity}</td>
+                          <td>
+                            {group.replacementIntervalDays != null
+                              ? `${group.replacementIntervalDays} dias`
                               : '—'}
                           </td>
                           <td>
                             <span
                               className={`status-pill status-pill--${
-                                requirement.isActive ? 'active' : 'inactive'
+                                group.isActive ? 'active' : 'inactive'
                               }`}
                             >
-                              {requirement.isActive ? 'Ativo' : 'Inativo'}
+                              {group.isActive ? 'Ativo' : 'Inativo'}
                             </span>
                           </td>
                           <td>
                             <span
-                              className={epiNeedStockClass(
-                                requirement.epiNeed?.stockStatus,
-                              )}
+                              className={epiNeedStockClass(group.stockStatus)}
                             >
-                              {epiNeedStockLabel(
-                                requirement.epiNeed?.stockStatus,
-                              )}
+                              {epiNeedStockLabel(group.stockStatus)}
                             </span>
                           </td>
                           <td>
@@ -1227,10 +1305,10 @@ function EstruturaContent({ clientId }: { clientId: string }) {
                               type="button"
                               className="btn btn-secondary btn-compact"
                               onClick={() =>
-                                void onToggleEpiRequirementStatus(requirement)
+                                void onToggleGroupedEpiRequirement(group)
                               }
                             >
-                              {requirement.isActive ? 'Inativar' : 'Reativar'}
+                              {group.isActive ? 'Inativar' : 'Reativar'}
                             </button>
                           </td>
                         </tr>
