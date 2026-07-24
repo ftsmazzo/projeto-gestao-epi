@@ -10,8 +10,8 @@ export default function PortalCustosPage() {
         <PortalSoonModule
           title="Custos"
           description="Consumo e custo de EPI por periodo e unidade."
-          emptyTitle="Sem dados de custo"
-          emptyDescription="Custos e consumo entrarao apos movimentacoes de estoque e entregas nesta empresa."
+          emptyTitle="Sem precificacao ainda"
+          emptyDescription="Custos exigem movimentacoes valorizadas e preco por item/lote. Quando isso existir no dominio, os indicadores entram neste modulo."
           upcoming={[
             'Consumo por periodo',
             'Custo por unidade',

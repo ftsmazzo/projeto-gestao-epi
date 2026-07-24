@@ -49,6 +49,8 @@ export const PORTAL_NAV: PortalNavItem[] = [
   { href: '/portal/validade', label: 'Validade' },
   { href: '/portal/custos', label: 'Custos' },
   { href: '/portal/estoque', label: 'Estoque' },
+  { href: '/portal/estrutura', label: 'Estrutura' },
+  { href: '/portal/trabalhadores', label: 'Trabalhadores' },
   { href: '/portal/conta', label: 'Minha conta' },
 ];
 

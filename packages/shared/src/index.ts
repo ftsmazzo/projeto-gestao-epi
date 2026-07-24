@@ -913,4 +913,131 @@ export interface ConfirmPgroImportPayload {
   }>;
 }
 
+/** Respostas do Painel do Cliente (`/portal/*`, JWT audience client). */
+export type PortalValidityBucket = 'expired' | 'soon' | 'ok' | 'missing';
+
+export interface PortalDashboardResponse {
+  client: {
+    id: string;
+    legalName: string;
+    tradeName: string | null;
+    cnpj: string;
+    status: ServedClientStatus;
+    allocatedLifeQuota: number;
+  };
+  lives: {
+    allocated: number;
+    used: number;
+    available: number;
+  };
+  counts: {
+    unitsActive: number;
+    workersActive: number;
+    sectorsActive: number;
+    jobsActive: number;
+    requirementsActive: number;
+    uniqueNeeds: number;
+  };
+  metrics: {
+    entregas: number | null;
+    validade: number;
+    custos: number | null;
+    estoque: number;
+  };
+  validitySummary: {
+    expired: number;
+    soon: number;
+    missingCa: number;
+    tracked: number;
+  };
+  modules: {
+    entregas: { ready: boolean; reason?: string };
+    validade: { ready: boolean; reason?: string };
+    custos: { ready: boolean; reason?: string };
+    estoque: { ready: boolean; mode?: 'needs'; reason?: string };
+  };
+}
+
+export interface PortalValidityItem {
+  epiItemId: string;
+  epiName: string;
+  caNumber: string | null;
+  caExpiresAt: string | null;
+  requiresCa: boolean;
+  bucket: PortalValidityBucket;
+  daysRemaining: number | null;
+  needNames: string[];
+  jobNames: string[];
+}
+
+export interface PortalValidadeResponse {
+  summary: {
+    expired: number;
+    soon: number;
+    ok: number;
+    missing: number;
+    total: number;
+    horizonDays: number;
+  };
+  items: PortalValidityItem[];
+}
+
+export interface PortalEstruturaResponse {
+  sectors: Array<{
+    id: string;
+    name: string;
+    unitName: string | null;
+    jobs: Array<{
+      id: string;
+      name: string;
+      risks: string[];
+      needs: Array<{
+        id: string;
+        name: string;
+        riskNames: string[];
+      }>;
+    }>;
+  }>;
+}
+
+export interface PortalTrabalhadoresResponse {
+  lives: {
+    allocated: number;
+    used: number;
+    available: number;
+  };
+  workers: Array<{
+    id: string;
+    name: string;
+    registration: string | null;
+    role: string | null;
+    department: string | null;
+    status: 'ACTIVE' | 'INACTIVE';
+    unitName: string | null;
+    admissionDate: string | null;
+  }>;
+}
+
+export interface PortalEstoqueResponse {
+  mode: 'needs';
+  note: string;
+  summary: {
+    needs: number;
+    withLinkedEpi: number;
+    withoutLinkedEpi: number;
+  };
+  needs: Array<{
+    needId: string;
+    needName: string;
+    jobNames: string[];
+    hasLinkedEpi: boolean;
+    items: Array<{
+      id: string;
+      name: string;
+      caNumber: string | null;
+      caExpiresAt: string | null;
+    }>;
+  }>;
+}
+
 

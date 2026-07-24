@@ -42,35 +42,34 @@ const CARDS: PortalDashCard[] = [
     id: 'estoque',
     href: '/portal/estoque',
     title: 'Estoque',
-    description: 'Saldo, lotes e disponibilidade operacional.',
-    metricLabel: 'Itens',
+    description: 'Necessidades e EPIs vinculados a esta empresa.',
+    metricLabel: 'Necessidades',
   },
 ];
 
 type Props = {
-  /** Quando houver API, passe valores reais por id. */
-  metrics?: Partial<Record<PortalDashCardId, string | number>>;
+  metrics?: Partial<Record<PortalDashCardId, string | number | null>>;
+  ready?: Partial<Record<PortalDashCardId, boolean>>;
 };
 
-export function PortalDashboardCards({ metrics }: Props) {
+export function PortalDashboardCards({ metrics, ready }: Props) {
   return (
-    <section
-      className="portal-dash"
-      aria-labelledby="portal-dash-title"
-    >
+    <section className="portal-dash" aria-labelledby="portal-dash-title">
       <div className="portal-dash-intro">
         <h2 id="portal-dash-title" className="page-title page-title--sm">
           Painel operacional
         </h2>
         <p className="page-lead">
-          Menu do dia a dia da empresa. Dados reais entram nas proximas
-          etapas — a Consultoria nao opera daqui.
+          Dia a dia da empresa cliente. Numeros vem da implantacao feita pela
+          Consultoria e dos cadastros desta empresa.
         </p>
       </div>
       <div className="portal-dash-grid">
         {CARDS.map((card) => {
           const value = metrics?.[card.id];
-          const hasValue = value !== undefined && value !== null && value !== '';
+          const hasValue =
+            value !== undefined && value !== null && value !== '';
+          const isReady = ready?.[card.id] ?? false;
           return (
             <Link
               key={card.id}
@@ -89,7 +88,9 @@ export function PortalDashboardCards({ metrics }: Props) {
                 {hasValue ? String(value) : '—'}
               </p>
               <p className="portal-metric-desc">{card.description}</p>
-              <span className="portal-metric-status">Abrir modulo</span>
+              <span className="portal-metric-status">
+                {isReady ? 'Abrir modulo' : 'Em preparacao'}
+              </span>
             </Link>
           );
         })}

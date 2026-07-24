@@ -1,6 +1,11 @@
 import type {
   ClientAuthResponse,
   ClientPortalUser,
+  PortalDashboardResponse,
+  PortalEstoqueResponse,
+  PortalEstruturaResponse,
+  PortalTrabalhadoresResponse,
+  PortalValidadeResponse,
 } from '@gestao-epi/shared';
 import { getApiUrl } from './auth';
 
@@ -82,4 +87,24 @@ export async function changeClientPassword(input: {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+export async function fetchPortalDashboard() {
+  return clientApiFetch<PortalDashboardResponse>('/portal/dashboard');
+}
+
+export async function fetchPortalValidade() {
+  return clientApiFetch<PortalValidadeResponse>('/portal/validade');
+}
+
+export async function fetchPortalEstrutura() {
+  return clientApiFetch<PortalEstruturaResponse>('/portal/estrutura');
+}
+
+export async function fetchPortalTrabalhadores() {
+  return clientApiFetch<PortalTrabalhadoresResponse>('/portal/trabalhadores');
+}
+
+export async function fetchPortalEstoque() {
+  return clientApiFetch<PortalEstoqueResponse>('/portal/estoque');
 }

@@ -10,8 +10,8 @@ export default function PortalEntregasPage() {
         <PortalSoonModule
           title="Entregas"
           description="Controle de entregas, fichas e pendencias da empresa."
-          emptyTitle="Nenhuma entrega registrada"
-          emptyDescription="O fluxo de entrega digital sera liberado aqui, no Painel do Cliente — fora da Consultoria."
+          emptyTitle="Fluxo de entrega ainda nao liberado"
+          emptyDescription="Este modulo pertence ao Painel do Cliente. A Consultoria nao opera entregas daqui — quando o dominio de entrega existir, as fichas e pendencias aparecerao nesta tela."
           upcoming={[
             'Selecao de trabalhador e EPI',
             'Evidencia de recebimento',

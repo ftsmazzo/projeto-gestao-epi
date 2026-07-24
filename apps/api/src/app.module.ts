@@ -15,6 +15,7 @@ import { EpiNeedsModule } from './epi-needs/epi-needs.module';
 import { ClientStructureModule } from './client-structure/client-structure.module';
 import { PgroModule } from './pgro/pgro.module';
 import { OrganizationModule } from './organization/organization.module';
+import { PortalModule } from './portal/portal.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { OrganizationModule } from './organization/organization.module';
     ClientStructureModule,
     PgroModule,
     OrganizationModule,
+    PortalModule,
     HealthModule,
   ],
 })
