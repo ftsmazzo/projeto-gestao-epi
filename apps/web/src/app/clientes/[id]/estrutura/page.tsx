@@ -26,6 +26,7 @@ import {
   unlinkJobFunctionRisk,
   updateClientJobFunctionStatus,
   updateJobFunctionEpiRequirementStatus,
+  updateClientSector,
   updateClientSectorStatus,
 } from '../../../../lib/client-structure';
 import { listEpiNeeds } from '../../../../lib/epi-needs';
@@ -108,6 +109,10 @@ function EstruturaContent({ clientId }: { clientId: string }) {
   const [sectorDesc, setSectorDesc] = useState('');
   const [sectorError, setSectorError] = useState<string | null>(null);
   const [sectorSaving, setSectorSaving] = useState(false);
+  const [editingSectorId, setEditingSectorId] = useState<string | null>(null);
+  const [editingSectorUnitId, setEditingSectorUnitId] = useState('');
+  const [sectorEditSaving, setSectorEditSaving] = useState(false);
+  const [sectorEditError, setSectorEditError] = useState<string | null>(null);
 
   const [jobSectorId, setJobSectorId] = useState('');
   const [jobName, setJobName] = useState('');
@@ -164,6 +169,16 @@ function EstruturaContent({ clientId }: { clientId: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (sectorUnitId) return;
+    const matriz = units.find(
+      (u) => u.status === 'ACTIVE' && u.name.toLowerCase() === 'matriz',
+    );
+    const fallback = units.find((u) => u.status === 'ACTIVE') ?? units[0];
+    const preferred = matriz ?? fallback;
+    if (preferred) setSectorUnitId(preferred.id);
+  }, [units, sectorUnitId]);
 
   const filteredSectors = useMemo(() => {
     if (!sectorFilter) return sectors;
@@ -389,25 +404,16 @@ function EstruturaContent({ clientId }: { clientId: string }) {
             {client.tradeName || client.legalName}
           </h1>
           <p className="page-lead">
-            Configure unidades, setores, funcoes, riscos e EPIs necessarios
-            por funcao. Importacao de PGRO vem em etapa posterior.
+            Setores, funcoes, riscos e necessidades desta empresa. Use Atualizar
+            PGRO para implantar ou refrescar a estrutura a partir do PDF.
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
-          <Link className="btn btn-secondary" href="/clientes">
-            Voltar para Clientes
-          </Link>
           <Link
-            className="btn btn-secondary"
-            href={`/clientes/${clientId}`}
+            className="btn btn-primary"
+            href={`/clientes/${clientId}/atualizar-pgro`}
           >
-            Detalhe do cliente
-          </Link>
-          <Link
-            className="btn btn-secondary"
-            href={`/clientes/importar-pgro?clientId=${clientId}`}
-          >
-            Importar PGRO para este cliente
+            Atualizar PGRO
           </Link>
           <button
             type="button"
@@ -451,8 +457,8 @@ function EstruturaContent({ clientId }: { clientId: string }) {
         </h2>
         {units.length === 0 ? (
           <p className="page-lead">
-            Nenhuma unidade cadastrada. Voce pode criar setores sem unidade ou
-            cadastrar unidades no detalhe do cliente.
+            Nenhuma unidade cadastrada. Cadastre em Unidades (ex.: Matriz e
+            filiais) para vincular aos setores.
           </p>
         ) : (
           <ul className="meta-list">
@@ -471,9 +477,9 @@ function EstruturaContent({ clientId }: { clientId: string }) {
         <div className="btn-row" style={{ marginTop: '0.75rem' }}>
           <Link
             className="btn btn-secondary btn-compact"
-            href={`/clientes/${clientId}`}
+            href={`/clientes/${clientId}/unidades`}
           >
-            Gerenciar unidades no detalhe
+            Gerenciar unidades
           </Link>
         </div>
       </section>
@@ -525,7 +531,7 @@ function EstruturaContent({ clientId }: { clientId: string }) {
               />
             </div>
             <div className="field">
-              <label htmlFor="sector-unit">Unidade (opcional)</label>
+              <label htmlFor="sector-unit">Unidade</label>
               <select
                 id="sector-unit"
                 value={sectorUnitId}
@@ -665,19 +671,99 @@ function EstruturaContent({ clientId }: { clientId: string }) {
                     {!sector.isActive ? ' · Inativo' : ''}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-compact"
-                  onClick={() =>
-                    void updateClientSectorStatus(
-                      sector.id,
-                      !sector.isActive,
-                    ).then(load)
-                  }
-                >
-                  {sector.isActive ? 'Inativar setor' : 'Reativar setor'}
-                </button>
+                <div className="btn-row">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-compact"
+                    onClick={() => {
+                      setEditingSectorId(sector.id);
+                      setEditingSectorUnitId(sector.operationalUnitId ?? '');
+                      setSectorEditError(null);
+                    }}
+                  >
+                    Alterar unidade
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-compact"
+                    onClick={() =>
+                      void updateClientSectorStatus(
+                        sector.id,
+                        !sector.isActive,
+                      ).then(load)
+                    }
+                  >
+                    {sector.isActive ? 'Inativar setor' : 'Reativar setor'}
+                  </button>
+                </div>
               </div>
+
+              {editingSectorId === sector.id ? (
+                <form
+                  className="form-panel"
+                  style={{ marginBottom: '1rem' }}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    setSectorEditSaving(true);
+                    setSectorEditError(null);
+                    void updateClientSector(sector.id, {
+                      operationalUnitId: editingSectorUnitId || null,
+                    })
+                      .then(() => {
+                        setEditingSectorId(null);
+                        return load();
+                      })
+                      .catch((err: unknown) => {
+                        setSectorEditError(
+                          err instanceof Error
+                            ? err.message
+                            : 'Falha ao atualizar unidade do setor.',
+                        );
+                      })
+                      .finally(() => setSectorEditSaving(false));
+                  }}
+                >
+                  <div className="field">
+                    <label htmlFor={`edit-unit-${sector.id}`}>
+                      Unidade do setor
+                    </label>
+                    <select
+                      id={`edit-unit-${sector.id}`}
+                      value={editingSectorUnitId}
+                      onChange={(e) => setEditingSectorUnitId(e.target.value)}
+                    >
+                      <option value="">Sem unidade</option>
+                      {units.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {sectorEditError ? (
+                    <p className="error" role="alert">
+                      {sectorEditError}
+                    </p>
+                  ) : null}
+                  <div className="btn-row">
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={sectorEditSaving}
+                    >
+                      {sectorEditSaving ? 'Salvando...' : 'Salvar unidade'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setEditingSectorId(null)}
+                      disabled={sectorEditSaving}
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </form>
+              ) : null}
 
               {sectorJobs.length === 0 ? (
                 <p className="field-hint">
@@ -1069,8 +1155,9 @@ function EstruturaContent({ clientId }: { clientId: string }) {
 
               {epiNeeds.length === 0 ? (
                 <p className="field-hint" style={{ marginTop: '0.75rem' }}>
-                  Nenhuma necessidade de EPI ativa cadastrada. Cadastre em{' '}
-                  <Link href="/epi-needs">Necessidades de EPI</Link>.
+                  Nenhuma necessidade de EPI ativa no catalogo da Consultoria.
+                  Cadastre necessidades no catalogo tecnico antes de vincular
+                  aqui.
                 </p>
               ) : null}
 

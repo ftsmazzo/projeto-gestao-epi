@@ -157,6 +157,15 @@ export class ServedClientsService {
         },
       });
 
+      const matriz = await this.prisma.operationalUnit.create({
+        data: {
+          organizationId,
+          servedClientId: client.id,
+          name: 'Matriz',
+          status: 'ACTIVE',
+        },
+      });
+
       await this.audit.log({
         action: 'served_client.created',
         organizationId,
@@ -168,6 +177,7 @@ export class ServedClientsService {
           allocatedLifeQuota: client.allocatedLifeQuota,
           status: client.status,
           withInitialManager: wantsManager,
+          matrizUnitId: matriz.id,
         },
       });
 
