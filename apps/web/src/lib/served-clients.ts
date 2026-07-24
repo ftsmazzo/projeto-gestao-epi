@@ -155,12 +155,13 @@ export function clientUserAccessLabel(status: ClientUserAccessStatus) {
 
 export function formatAccessCredentialsCopy(access: ClientInitialAccess) {
   return [
-    `Link de acesso: ${access.accessUrl}`,
+    `URL futura do portal: ${access.accessUrl}`,
     `Usuario/e-mail: ${access.managerEmail}`,
     `Senha temporaria: ${access.temporaryPassword}`,
     '',
     'Copie estes dados agora. A senha temporaria nao sera exibida novamente.',
+    'ATENCAO: nao use estes dados no login da Consultoria/Gestao.',
+    'O portal do cliente ainda sera habilitado nas proximas etapas.',
     'Envio por WhatsApp/e-mail sera implementado depois.',
-    'Portal do cliente sera habilitado nas proximas etapas.',
   ].join('\n');
 }

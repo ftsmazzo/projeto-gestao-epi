@@ -1,15 +1,12 @@
 'use client';
 
-import type {
-  ClientInitialAccess,
-  QuotaSummary,
-  ServedClient,
-} from '@gestao-epi/shared';
+import type { QuotaSummary, ServedClient } from '@gestao-epi/shared';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { ClientAccessCredentials } from '../../components/ClientAccessCredentials';
 import { RequireAuth } from '../../components/RequireAuth';
+import { storeClientAccessOnce } from '../../lib/client-access-session';
 import {
   formatCnpj,
   formatCnpjInput,
@@ -54,6 +51,7 @@ function statusLabel(status: ServedClient['status']) {
 }
 
 function ClientesContent() {
+  const router = useRouter();
   const [clients, setClients] = useState<ServedClient[]>([]);
   const [summary, setSummary] = useState<QuotaSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,9 +62,6 @@ function ClientesContent() {
   const [formMode, setFormMode] = useState<FormMode>('closed');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ClientFormState>(emptyForm);
-  const [createdClient, setCreatedClient] = useState<ServedClient | null>(null);
-  const [createdAccess, setCreatedAccess] =
-    useState<ClientInitialAccess | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -110,8 +105,6 @@ function ClientesContent() {
     setListTab('create');
     setFormMode('closed');
     setEditingId(null);
-    setCreatedClient(null);
-    setCreatedAccess(null);
     setForm({
       ...emptyForm,
       allocatedLifeQuota: String(Math.min(available, 10)),
@@ -123,8 +116,6 @@ function ClientesContent() {
     setListTab('clients');
     setFormMode('closed');
     setEditingId(null);
-    setCreatedClient(null);
-    setCreatedAccess(null);
     setForm(emptyForm);
     setFormError(null);
   }
@@ -195,13 +186,14 @@ function ClientesContent() {
     try {
       if (listTab === 'create') {
         const result = await createServedClient(payload);
-        setCreatedClient(result.client);
-        setCreatedAccess(result.initialAccess);
-        setForm({
-          ...emptyForm,
-          allocatedLifeQuota: String(Math.min(summary?.available ?? 0, 10)),
-        });
-      } else if (formMode === 'edit' && editingId) {
+        if (result.initialAccess) {
+          storeClientAccessOnce(result.client.id, result.initialAccess);
+        }
+        await load();
+        router.push(`/clientes/${result.client.id}#usuarios-cliente`);
+        return;
+      }
+      if (formMode === 'edit' && editingId) {
         await updateServedClient(editingId, {
           legalName: payload.legalName,
           tradeName: payload.tradeName,
@@ -210,8 +202,8 @@ function ClientesContent() {
           notes: payload.notes,
         });
         closeEditForm();
+        await load();
       }
-      await load();
     } catch (err) {
       setFormError(
         err instanceof Error ? err.message : 'Nao foi possivel salvar.',
@@ -343,103 +335,62 @@ function ClientesContent() {
 
       {isCreateTab ? (
         <section className="surface" aria-labelledby="client-form-title">
-          {createdClient ? (
-            <div className="empty-state">
-              <p className="page-kicker">Cliente criado</p>
+          <div className="form-section-header">
+            <div>
+              <p className="page-kicker">Novo cadastro</p>
               <h2
                 id="client-form-title"
                 className="page-title page-title--sm"
               >
-                {createdClient.tradeName || createdClient.legalName}
+                Novo cliente atendido
               </h2>
               <p className="page-lead">
-                Configure agora setores, funcoes, riscos e EPIs necessarios.
+                Ao salvar, voce sera levado automaticamente ao painel deste
+                cliente. Se informar o gestor inicial, a senha temporaria
+                aparecera la (uma unica vez).
               </p>
-              {createdAccess ? (
-                <ClientAccessCredentials access={createdAccess} />
-              ) : (
-                <p className="field-hint">
-                  Nenhum gestor inicial foi criado nesta etapa. Voce pode
-                  gerar o acesso depois no painel do cliente.
-                </p>
-              )}
-              <div className="btn-row">
-                <Link
-                  className="btn btn-primary"
-                  href={`/clientes/${createdClient.id}/estrutura`}
-                >
-                  Configurar estrutura agora
-                </Link>
-                <Link
-                  className="btn btn-secondary"
-                  href={`/clientes/${createdClient.id}`}
-                >
-                  Abrir painel do cliente
-                </Link>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={openClientsTab}
-                >
-                  Voltar para lista
-                </button>
-              </div>
             </div>
-          ) : (
-            <>
-              <div className="form-section-header">
-                <div>
-                  <p className="page-kicker">Novo cadastro</p>
-                  <h2
-                    id="client-form-title"
-                    className="page-title page-title--sm"
-                  >
-                    Novo cliente atendido
-                  </h2>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={openClientsTab}
-                >
-                  Voltar a lista
-                </button>
-              </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={openClientsTab}
+            >
+              Voltar a lista
+            </button>
+          </div>
 
-              <form className="form form--wide" onSubmit={onSubmit} noValidate>
-                <ClientFormFields
-                  form={form}
-                  setForm={setForm}
-                  availableForForm={availableForForm}
-                  showInitialManager
-                />
+          <form className="form form--wide" onSubmit={onSubmit} noValidate>
+            <ClientFormFields
+              form={form}
+              setForm={setForm}
+              availableForForm={availableForForm}
+              showInitialManager
+            />
 
-                {formError ? (
-                  <p className="error" role="alert">
-                    {formError}
-                  </p>
-                ) : null}
+            {formError ? (
+              <p className="error" role="alert">
+                {formError}
+              </p>
+            ) : null}
 
-                <div className="btn-row">
-                  <button
-                    className="btn btn-primary"
-                    type="submit"
-                    disabled={saving}
-                  >
-                    {saving ? 'Salvando...' : 'Cadastrar cliente'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={openClientsTab}
-                    disabled={saving}
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </form>
-            </>
-          )}
+            <div className="btn-row">
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={saving}
+              >
+                {saving ? 'Salvando e abrindo painel...' : 'Cadastrar cliente'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={openClientsTab}
+                disabled={saving}
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
         </section>
       ) : (
         <>
@@ -708,9 +659,10 @@ function ClientFormFields({
           <div className="epi-form-section__head">
             <h3>Gestor inicial</h3>
             <p>
-              Opcional. Prepara o acesso do gestor do cliente (nao consome
-              vidas). A senha temporaria sera exibida apenas uma vez apos o
-              cadastro.
+              Opcional. Prepara o acesso do gestor (nao consome vidas). Apos
+              salvar, o painel do cliente abre com a senha temporaria. Esses
+              dados sao para o portal futuro — nao funcionam no login da
+              Consultoria.
             </p>
           </div>
           <div className="form-grid">

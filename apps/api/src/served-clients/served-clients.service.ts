@@ -423,7 +423,7 @@ export class ServedClientsService {
       accessUrl: this.resolveAccessUrl(),
       accessStatus: membership.accessStatus,
       warning:
-        'A senha temporaria sera exibida apenas agora. Copie os dados de acesso. Envio por WhatsApp/e-mail sera implementado depois.',
+        'A senha temporaria sera exibida apenas agora. Nao use no login da Consultoria — o portal do cliente ainda sera habilitado. Envio por WhatsApp/e-mail sera implementado depois.',
     };
   }
 

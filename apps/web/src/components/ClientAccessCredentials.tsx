@@ -6,11 +6,13 @@ import { formatAccessCredentialsCopy } from '../lib/served-clients';
 type Props = {
   access: ClientInitialAccess;
   title?: string;
+  onDismiss?: () => void;
 };
 
 export function ClientAccessCredentials({
   access,
   title = 'Dados de acesso do gestor',
+  onDismiss,
 }: Props) {
   async function copyAccess() {
     const text = formatAccessCredentialsCopy(access);
@@ -27,9 +29,17 @@ export function ClientAccessCredentials({
       <p className="page-lead access-credentials__warning">
         Copie estes dados agora. A senha temporaria nao sera exibida novamente.
       </p>
+      <div className="notice notice--warn" role="status">
+        <p>
+          <strong>Importante:</strong> estes dados sao para o{' '}
+          <em>portal do cliente</em>, que ainda sera habilitado. Eles{' '}
+          <strong>nao funcionam</strong> no login da Consultoria/Gestao (entrada
+          atual do sistema).
+        </p>
+      </div>
       <dl className="access-credentials__list">
         <div>
-          <dt>Link de acesso</dt>
+          <dt>URL futura do portal</dt>
           <dd className="mono">{access.accessUrl}</dd>
         </div>
         <div>
@@ -45,13 +55,22 @@ export function ClientAccessCredentials({
       </dl>
       <p className="field-hint">{access.warning}</p>
       <p className="field-hint">
-        Portal do cliente sera habilitado nas proximas etapas. Envio por
-        WhatsApp/e-mail sera implementado depois.
+        Envio por WhatsApp/e-mail sera implementado depois. Guarde os dados para
+        entregar ao cliente quando o portal estiver pronto.
       </p>
       <div className="btn-row">
-        <button type="button" className="btn btn-primary" onClick={() => void copyAccess()}>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => void copyAccess()}
+        >
           Copiar dados de acesso
         </button>
+        {onDismiss ? (
+          <button type="button" className="btn btn-secondary" onClick={onDismiss}>
+            Ja copiei / ocultar
+          </button>
+        ) : null}
       </div>
     </div>
   );

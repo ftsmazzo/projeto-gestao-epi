@@ -13,6 +13,7 @@ import {
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { ClientAccessCredentials } from './ClientAccessCredentials';
+import { consumeClientAccessOnce } from '../lib/client-access-session';
 import {
   clientUserAccessLabel,
   clientUserRoleLabel,
@@ -38,13 +39,10 @@ export function ClientOperationalHub({ clientId, onOverviewLoaded }: Props) {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [role, setRole] = useState<Exclude<ClientUserRole, 'WORKER'>>(
     'CLIENT_MANAGER',
   );
-  const [managerName, setManagerName] = useState('');
-  const [managerEmail, setManagerEmail] = useState('');
-  const [managerPhone, setManagerPhone] = useState('');
-  const [showManagerForm, setShowManagerForm] = useState(false);
   const [oneTimeAccess, setOneTimeAccess] =
     useState<ClientInitialAccess | null>(null);
 
@@ -74,16 +72,33 @@ export function ClientOperationalHub({ clientId, onOverviewLoaded }: Props) {
     void load();
   }, [load]);
 
-  const managers = useMemo(
-    () => users.filter((u) => u.role === 'CLIENT_MANAGER'),
-    [users],
-  );
+  useEffect(() => {
+    const pending = consumeClientAccessOnce(clientId);
+    if (pending) {
+      setOneTimeAccess(pending);
+    }
+  }, [clientId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (window.location.hash !== '#usuarios-cliente') return;
+    const el = document.getElementById('usuarios-cliente');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [overview, oneTimeAccess]);
+
   const managersActive = overview?.counts.users.managers.active ?? 0;
   const stockActive = overview?.counts.users.stockOperators.active ?? 0;
   const canAddManager = managersActive < CLIENT_MANAGER_LIMIT;
   const canAddStock = stockActive < STOCK_OPERATOR_LIMIT;
   const canOperate = overview?.operational === true;
-  const hasManager = managers.length > 0;
+
+  useEffect(() => {
+    if (!canAddManager && canAddStock && role === 'CLIENT_MANAGER') {
+      setRole('STOCK_OPERATOR');
+    }
+  }, [canAddManager, canAddStock, role]);
 
   const roleBlocked = useMemo(() => {
     if (role === 'CLIENT_MANAGER') return !canAddManager;
@@ -96,13 +111,24 @@ export function ClientOperationalHub({ clientId, onOverviewLoaded }: Props) {
     setUserError(null);
     setSaving(true);
     try {
-      await createClientUser(clientId, {
-        name: name.trim(),
-        email: email.trim(),
-        role,
-      });
+      if (role === 'CLIENT_MANAGER') {
+        const access = await createInitialManager(clientId, {
+          name: name.trim(),
+          email: email.trim(),
+          phone: phone.trim() || undefined,
+        });
+        setOneTimeAccess(access);
+      } else {
+        await createClientUser(clientId, {
+          name: name.trim(),
+          email: email.trim(),
+          role,
+          phone: phone.trim() || undefined,
+        });
+      }
       setName('');
       setEmail('');
+      setPhone('');
       await load();
     } catch (err) {
       setUserError(
@@ -113,38 +139,10 @@ export function ClientOperationalHub({ clientId, onOverviewLoaded }: Props) {
     }
   }
 
-  async function onCreateInitialManager(event: FormEvent) {
-    event.preventDefault();
-    if (!canOperate || !canAddManager) return;
-    setUserError(null);
-    setSaving(true);
-    try {
-      const access = await createInitialManager(clientId, {
-        name: managerName.trim(),
-        email: managerEmail.trim(),
-        phone: managerPhone.trim() || undefined,
-      });
-      setOneTimeAccess(access);
-      setShowManagerForm(false);
-      setManagerName('');
-      setManagerEmail('');
-      setManagerPhone('');
-      await load();
-    } catch (err) {
-      setUserError(
-        err instanceof Error
-          ? err.message
-          : 'Falha ao gerar gestor inicial.',
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function onResetAccess(user: ClientUserMembership) {
     if (!canOperate || !user.isActive) return;
     const confirmed = window.confirm(
-      'Gerar nova senha temporaria? A senha anterior deixara de valer e a nova sera exibida apenas agora.',
+      'Gerar nova senha temporaria? A senha anterior deixara de valer e a nova sera exibida apenas agora. Lembre: o portal do cliente ainda nao esta habilitado para login.',
     );
     if (!confirmed) return;
 
@@ -335,9 +333,10 @@ export function ClientOperationalHub({ clientId, onOverviewLoaded }: Props) {
               Usuarios do cliente
             </h2>
             <p className="page-lead">
-              Gestores e operadores nao consomem vidas. Vidas serao usadas para
-              trabalhadores ativos. Acesso inicial preparado para login/portal
-              futuro.
+              Cadastre gestores (ate {CLIENT_MANAGER_LIMIT}) e operadores de
+              estoque (ate {STOCK_OPERATOR_LIMIT}). Eles nao consomem vidas.
+              Gestor recebe senha temporaria para o portal futuro — nao use no
+              login da Consultoria.
             </p>
           </div>
           <div className="quota-summary" aria-label="Limites de usuarios">
@@ -358,85 +357,11 @@ export function ClientOperationalHub({ clientId, onOverviewLoaded }: Props) {
 
         {oneTimeAccess ? (
           <div style={{ marginBottom: '1.25rem' }}>
-            <ClientAccessCredentials access={oneTimeAccess} />
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setOneTimeAccess(null)}
-            >
-              Ocultar dados de acesso
-            </button>
+            <ClientAccessCredentials
+              access={oneTimeAccess}
+              onDismiss={() => setOneTimeAccess(null)}
+            />
           </div>
-        ) : null}
-
-        {!hasManager && canOperate ? (
-          <div className="notice notice--info" style={{ marginBottom: '1rem' }}>
-            <p>
-              Nenhum gestor cadastrado. Gere o gestor inicial para entregar
-              link, usuario e senha temporaria ao cliente.
-            </p>
-            {!showManagerForm ? (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={!canAddManager || saving}
-                onClick={() => setShowManagerForm(true)}
-              >
-                Gerar gestor inicial
-              </button>
-            ) : (
-              <form className="form-grid" onSubmit={onCreateInitialManager}>
-                <label>
-                  Nome do gestor
-                  <input
-                    value={managerName}
-                    onChange={(e) => setManagerName(e.target.value)}
-                    required
-                    minLength={2}
-                  />
-                </label>
-                <label>
-                  E-mail
-                  <input
-                    type="email"
-                    value={managerEmail}
-                    onChange={(e) => setManagerEmail(e.target.value)}
-                    required
-                  />
-                </label>
-                <label>
-                  WhatsApp / telefone (opcional)
-                  <input
-                    value={managerPhone}
-                    onChange={(e) => setManagerPhone(e.target.value)}
-                  />
-                </label>
-                <div className="btn-row">
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    disabled={saving || !canAddManager}
-                  >
-                    {saving ? 'Gerando...' : 'Gerar acesso'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowManagerForm(false)}
-                    disabled={saving}
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        ) : null}
-
-        {!canOperate && !hasManager ? (
-          <p className="table-sub">
-            Reative o cliente para gerar o gestor inicial.
-          </p>
         ) : null}
 
         {canOperate ? (
@@ -460,6 +385,13 @@ export function ClientOperationalHub({ clientId, onOverviewLoaded }: Props) {
               />
             </label>
             <label>
+              WhatsApp / telefone (opcional)
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </label>
+            <label>
               Papel
               <select
                 value={role}
@@ -467,8 +399,14 @@ export function ClientOperationalHub({ clientId, onOverviewLoaded }: Props) {
                   setRole(e.target.value as Exclude<ClientUserRole, 'WORKER'>)
                 }
               >
-                <option value="CLIENT_MANAGER">Gestor do cliente</option>
-                <option value="STOCK_OPERATOR">Operador de estoque</option>
+                <option value="CLIENT_MANAGER" disabled={!canAddManager}>
+                  Gestor do cliente
+                  {!canAddManager ? ' (limite atingido)' : ''}
+                </option>
+                <option value="STOCK_OPERATOR" disabled={!canAddStock}>
+                  Operador de estoque
+                  {!canAddStock ? ' (limite atingido)' : ''}
+                </option>
               </select>
             </label>
             <div className="btn-row">
@@ -477,17 +415,28 @@ export function ClientOperationalHub({ clientId, onOverviewLoaded }: Props) {
                 className="btn btn-primary"
                 disabled={saving || roleBlocked}
               >
-                {roleBlocked
-                  ? 'Limite atingido'
-                  : 'Cadastrar usuario preparado'}
+                {saving
+                  ? 'Salvando...'
+                  : roleBlocked
+                    ? 'Limite atingido'
+                    : role === 'CLIENT_MANAGER'
+                      ? 'Cadastrar gestor e gerar acesso'
+                      : 'Cadastrar operador'}
               </button>
             </div>
+            {role === 'CLIENT_MANAGER' ? (
+              <p className="field-hint" style={{ gridColumn: '1 / -1' }}>
+                Ao cadastrar um gestor, a senha temporaria aparece uma unica
+                vez neste painel. O login no portal do cliente ainda nao esta
+                liberado.
+              </p>
+            ) : null}
           </form>
-        ) : hasManager ? (
+        ) : (
           <p className="table-sub">
             Reative o cliente para cadastrar gestores ou operadores.
           </p>
-        ) : null}
+        )}
 
         {userError ? (
           <p className="error" role="alert">
@@ -496,7 +445,9 @@ export function ClientOperationalHub({ clientId, onOverviewLoaded }: Props) {
         ) : null}
 
         {users.length === 0 ? (
-          <p className="page-lead">Nenhum usuario operacional cadastrado.</p>
+          <p className="page-lead">
+            Nenhum usuario operacional cadastrado. Use o formulario acima.
+          </p>
         ) : (
           <div className="table-wrap">
             <table className="data-table">
