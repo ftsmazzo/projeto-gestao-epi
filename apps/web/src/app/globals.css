@@ -745,6 +745,51 @@ a.btn-danger:hover {
   gap: 0.85rem;
 }
 
+.access-credentials {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0.5rem 0 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--color-border, #d5dbe7);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface, #fff) 92%, #e8f0ff);
+  text-align: left;
+}
+
+.access-credentials__warning {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-ink, #1a2333);
+}
+
+.access-credentials__list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.access-credentials__list > div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.access-credentials__list dt {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-ink-secondary, #5b677a);
+}
+
+.access-credentials__list dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.access-credentials__password {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
 .empty-inline {
   display: grid;
   gap: 0.85rem;

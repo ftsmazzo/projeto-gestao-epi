@@ -15,6 +15,7 @@ import { UpdateServedClientDto } from './dto/update-served-client.dto';
 import { UpdateServedClientStatusDto } from './dto/update-served-client-status.dto';
 import {
   CreateClientUserDto,
+  CreateInitialManagerDto,
   UpdateClientUserDto,
   UpdateClientUserStatusDto,
 } from './dto/client-user.dto';
@@ -45,6 +46,20 @@ export class ServedClientsController {
     return this.servedClients.listClientUsers(user.organizationId, id);
   }
 
+  @Post(':id/initial-manager')
+  createInitialManager(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: CreateInitialManagerDto,
+  ) {
+    return this.servedClients.createInitialManager(
+      user.organizationId,
+      user.sub,
+      id,
+      dto,
+    );
+  }
+
   @Post(':id/users')
   createUser(
     @CurrentUser() user: JwtPayload,
@@ -56,6 +71,20 @@ export class ServedClientsController {
       user.sub,
       id,
       dto,
+    );
+  }
+
+  @Post(':id/users/:membershipId/reset-access')
+  resetAccess(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('membershipId') membershipId: string,
+  ) {
+    return this.servedClients.resetClientUserAccess(
+      user.organizationId,
+      user.sub,
+      id,
+      membershipId,
     );
   }
 

@@ -1,11 +1,21 @@
 'use client';
 
-import type { QuotaSummary, ServedClient } from '@gestao-epi/shared';
+import type {
+  ClientInitialAccess,
+  QuotaSummary,
+  ServedClient,
+} from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
+import { ClientAccessCredentials } from '../../components/ClientAccessCredentials';
 import { RequireAuth } from '../../components/RequireAuth';
-import { formatCnpj, formatCnpjInput, normalizeCnpj, cnpjClientValidationMessage } from '../../lib/cnpj';
+import {
+  formatCnpj,
+  formatCnpjInput,
+  normalizeCnpj,
+  cnpjClientValidationMessage,
+} from '../../lib/cnpj';
 import {
   createServedClient,
   getQuotaSummary,
@@ -23,6 +33,9 @@ type ClientFormState = {
   cnpj: string;
   allocatedLifeQuota: string;
   notes: string;
+  initialManagerName: string;
+  initialManagerEmail: string;
+  initialManagerPhone: string;
 };
 
 const emptyForm: ClientFormState = {
@@ -31,6 +44,9 @@ const emptyForm: ClientFormState = {
   cnpj: '',
   allocatedLifeQuota: '0',
   notes: '',
+  initialManagerName: '',
+  initialManagerEmail: '',
+  initialManagerPhone: '',
 };
 
 function statusLabel(status: ServedClient['status']) {
@@ -49,6 +65,8 @@ function ClientesContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ClientFormState>(emptyForm);
   const [createdClient, setCreatedClient] = useState<ServedClient | null>(null);
+  const [createdAccess, setCreatedAccess] =
+    useState<ClientInitialAccess | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -79,7 +97,6 @@ function ClientesContent() {
     if (!summary) return 0;
     if (formMode === 'edit' && editingId) {
       const current = clients.find((item) => item.id === editingId);
-      // Cliente inativo nao consome franquia; a cota so volta a contar ao reativar.
       if (current?.status === 'ACTIVE') {
         return summary.available + (current.allocatedLifeQuota ?? 0);
       }
@@ -94,6 +111,7 @@ function ClientesContent() {
     setFormMode('closed');
     setEditingId(null);
     setCreatedClient(null);
+    setCreatedAccess(null);
     setForm({
       ...emptyForm,
       allocatedLifeQuota: String(Math.min(available, 10)),
@@ -106,6 +124,7 @@ function ClientesContent() {
     setFormMode('closed');
     setEditingId(null);
     setCreatedClient(null);
+    setCreatedAccess(null);
     setForm(emptyForm);
     setFormError(null);
   }
@@ -120,6 +139,9 @@ function ClientesContent() {
       cnpj: formatCnpj(client.cnpj),
       allocatedLifeQuota: String(client.allocatedLifeQuota),
       notes: client.notes ?? '',
+      initialManagerName: '',
+      initialManagerEmail: '',
+      initialManagerPhone: '',
     });
     setFormError(null);
   }
@@ -141,6 +163,17 @@ function ClientesContent() {
       return;
     }
 
+    const managerName = form.initialManagerName.trim();
+    const managerEmail = form.initialManagerEmail.trim();
+    if (listTab === 'create' && (managerName || managerEmail)) {
+      if (!managerName || !managerEmail) {
+        setFormError(
+          'Para criar o gestor inicial, informe nome e e-mail.',
+        );
+        return;
+      }
+    }
+
     setSaving(true);
 
     const payload = {
@@ -149,20 +182,33 @@ function ClientesContent() {
       cnpj: normalizeCnpj(form.cnpj),
       allocatedLifeQuota: Number(form.allocatedLifeQuota),
       notes: form.notes.trim() || undefined,
+      ...(listTab === 'create' && managerName && managerEmail
+        ? {
+            initialManagerName: managerName,
+            initialManagerEmail: managerEmail,
+            initialManagerPhone:
+              form.initialManagerPhone.trim() || undefined,
+          }
+        : {}),
     };
 
     try {
       if (listTab === 'create') {
-        const created = await createServedClient(payload);
-        setCreatedClient(created);
+        const result = await createServedClient(payload);
+        setCreatedClient(result.client);
+        setCreatedAccess(result.initialAccess);
         setForm({
           ...emptyForm,
-          allocatedLifeQuota: String(
-            Math.min(summary?.available ?? 0, 10),
-          ),
+          allocatedLifeQuota: String(Math.min(summary?.available ?? 0, 10)),
         });
       } else if (formMode === 'edit' && editingId) {
-        await updateServedClient(editingId, payload);
+        await updateServedClient(editingId, {
+          legalName: payload.legalName,
+          tradeName: payload.tradeName,
+          cnpj: payload.cnpj,
+          allocatedLifeQuota: payload.allocatedLifeQuota,
+          notes: payload.notes,
+        });
         closeEditForm();
       }
       await load();
@@ -309,12 +355,26 @@ function ClientesContent() {
               <p className="page-lead">
                 Configure agora setores, funcoes, riscos e EPIs necessarios.
               </p>
+              {createdAccess ? (
+                <ClientAccessCredentials access={createdAccess} />
+              ) : (
+                <p className="field-hint">
+                  Nenhum gestor inicial foi criado nesta etapa. Voce pode
+                  gerar o acesso depois no painel do cliente.
+                </p>
+              )}
               <div className="btn-row">
                 <Link
                   className="btn btn-primary"
                   href={`/clientes/${createdClient.id}/estrutura`}
                 >
                   Configurar estrutura agora
+                </Link>
+                <Link
+                  className="btn btn-secondary"
+                  href={`/clientes/${createdClient.id}`}
+                >
+                  Abrir painel do cliente
                 </Link>
                 <button
                   type="button"
@@ -351,6 +411,7 @@ function ClientesContent() {
                   form={form}
                   setForm={setForm}
                   availableForForm={availableForForm}
+                  showInitialManager
                 />
 
                 {formError ? (
@@ -556,10 +617,12 @@ function ClientFormFields({
   form,
   setForm,
   availableForForm,
+  showInitialManager = false,
 }: {
   form: ClientFormState;
   setForm: Dispatch<SetStateAction<ClientFormState>>;
   availableForForm: number;
+  showInitialManager?: boolean;
 }) {
   return (
     <>
@@ -639,6 +702,63 @@ function ClientFormFields({
           }
         />
       </div>
+
+      {showInitialManager ? (
+        <fieldset className="epi-form-section">
+          <div className="epi-form-section__head">
+            <h3>Gestor inicial</h3>
+            <p>
+              Opcional. Prepara o acesso do gestor do cliente (nao consome
+              vidas). A senha temporaria sera exibida apenas uma vez apos o
+              cadastro.
+            </p>
+          </div>
+          <div className="form-grid">
+            <div className="field">
+              <label htmlFor="initialManagerName">Nome do gestor</label>
+              <input
+                id="initialManagerName"
+                value={form.initialManagerName}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    initialManagerName: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="initialManagerEmail">E-mail</label>
+              <input
+                id="initialManagerEmail"
+                type="email"
+                value={form.initialManagerEmail}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    initialManagerEmail: e.target.value,
+                  }))
+                }
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="initialManagerPhone">
+                WhatsApp / telefone (opcional)
+              </label>
+              <input
+                id="initialManagerPhone"
+                value={form.initialManagerPhone}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    initialManagerPhone: e.target.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+        </fieldset>
+      ) : null}
 
       <aside className="cnpj-lookup-slot" aria-label="Consulta de CNPJ">
         <p className="page-kicker">Consulta cadastral</p>

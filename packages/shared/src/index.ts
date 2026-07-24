@@ -112,7 +112,11 @@ export type ClientUserRole =
   | 'STOCK_OPERATOR'
   | 'WORKER';
 
-export type ClientUserInviteStatus = 'PREPARED' | 'LINKED';
+export type ClientUserAccessStatus =
+  | 'PREPARED'
+  | 'INVITED'
+  | 'ACTIVE'
+  | 'DISABLED';
 
 export interface ClientUserMembership {
   id: string;
@@ -121,11 +125,30 @@ export interface ClientUserMembership {
   userId: string | null;
   email: string;
   name: string;
+  phone: string | null;
   role: ClientUserRole;
   isActive: boolean;
-  inviteStatus: ClientUserInviteStatus;
+  accessStatus: ClientUserAccessStatus;
+  mustChangePassword: boolean;
+  temporaryPasswordCreatedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ClientInitialAccess {
+  membershipId: string;
+  managerName: string;
+  managerEmail: string;
+  managerPhone: string | null;
+  temporaryPassword: string;
+  accessUrl: string;
+  accessStatus: ClientUserAccessStatus;
+  warning: string;
+}
+
+export interface CreateServedClientResult {
+  client: ServedClient;
+  initialAccess: ClientInitialAccess | null;
 }
 
 export interface ServedClientOverview {

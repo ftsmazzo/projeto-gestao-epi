@@ -21,6 +21,11 @@ export class CreateClientUserDto {
 
   @IsEnum(ClientUserRole)
   role!: ClientUserRole;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string | null;
 }
 
 export class UpdateClientUserDto {
@@ -38,9 +43,30 @@ export class UpdateClientUserDto {
   @IsOptional()
   @IsEnum(ClientUserRole)
   role?: ClientUserRole;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string | null;
 }
 
 export class UpdateClientUserStatusDto {
   @IsBoolean()
   isActive!: boolean;
+}
+
+export class CreateInitialManagerDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  name!: string;
+
+  @IsEmail()
+  @MaxLength(200)
+  email!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string | null;
 }

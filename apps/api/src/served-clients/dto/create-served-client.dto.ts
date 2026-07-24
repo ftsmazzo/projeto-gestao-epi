@@ -1,4 +1,5 @@
 import {
+  IsEmail,
   IsEnum,
   IsInt,
   IsOptional,
@@ -6,6 +7,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { ServedClientStatus } from '@prisma/client';
 
@@ -37,4 +39,23 @@ export class CreateServedClientDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
+
+  /** Se informado junto com e-mail, cria gestor inicial com senha temporaria. */
+  @IsOptional()
+  @ValidateIf((o: CreateServedClientDto) => !!o.initialManagerEmail)
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  initialManagerName?: string;
+
+  @IsOptional()
+  @ValidateIf((o: CreateServedClientDto) => !!o.initialManagerName)
+  @IsEmail()
+  @MaxLength(200)
+  initialManagerEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  initialManagerPhone?: string;
 }

@@ -21,10 +21,12 @@ enum ClientUserRole {
   WORKER
 }
 
-/// Estado do vinculo usuario ↔ cliente. PREPARED = cadastrado sem login/convite ativo.
-enum ClientUserInviteStatus {
+/// Estado do acesso do usuario na empresa cliente.
+enum ClientUserAccessStatus {
   PREPARED
-  LINKED
+  INVITED
+  ACTIVE
+  DISABLED
 }
 
 enum ServedClientStatus {
@@ -157,20 +159,22 @@ model ServedClient {
 }
 
 /// Usuario operacional da empresa cliente (gestor / estoque). Nao consome vidas.
-/// Nesta etapa o cadastro fica PREPARED (sem convite/login completo).
 model ClientUserMembership {
-  id             String                 @id @default(cuid())
-  organizationId String
-  servedClientId String
-  /// Null enquanto o login/convite nao estiver ativo.
-  userId         String?
-  email          String
-  name           String
-  role           ClientUserRole
-  isActive       Boolean                @default(true)
-  inviteStatus   ClientUserInviteStatus @default(PREPARED)
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  id                          String                 @id @default(cuid())
+  organizationId              String
+  servedClientId              String
+  /// Null enquanto o login ainda nao foi provisionado.
+  userId                      String?
+  email                       String
+  name                        String
+  phone                       String?
+  role                        ClientUserRole
+  isActive                    Boolean                @default(true)
+  accessStatus                ClientUserAccessStatus @default(PREPARED)
+  mustChangePassword          Boolean                @default(false)
+  temporaryPasswordCreatedAt  DateTime?
+  createdAt                   DateTime               @default(now())
+  updatedAt                   DateTime               @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   servedClient ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
@@ -181,6 +185,7 @@ model ClientUserMembership {
   @@index([servedClientId])
   @@index([userId])
   @@index([role, isActive])
+  @@index([accessStatus])
 }
 
 /// Unidade operacional do cliente atendido (filial, obra, planta, local de entrega).

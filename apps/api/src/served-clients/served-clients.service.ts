@@ -5,24 +5,41 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
-  ClientUserInviteStatus,
+  ClientUserAccessStatus,
   ClientUserRole,
   Prisma,
   ServedClientStatus,
   WorkerStatus,
 } from '@prisma/client';
+import { randomBytes } from 'crypto';
+import * as bcrypt from 'bcryptjs';
 import { AuditService } from '../audit/audit.service';
 import { validateCnpj } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateServedClientDto } from './dto/create-served-client.dto';
 import type { UpdateServedClientDto } from './dto/update-served-client.dto';
-import type { CreateClientUserDto, UpdateClientUserDto } from './dto/client-user.dto';
+import type {
+  CreateClientUserDto,
+  CreateInitialManagerDto,
+  UpdateClientUserDto,
+} from './dto/client-user.dto';
 
 const REACTIVATE_QUOTA_ERROR =
   'Nao ha vidas disponiveis suficientes para reativar esta empresa.';
 
 export const CLIENT_MANAGER_LIMIT = 2;
 export const STOCK_OPERATOR_LIMIT = 4;
+
+export type ClientInitialAccessPayload = {
+  membershipId: string;
+  managerName: string;
+  managerEmail: string;
+  managerPhone: string | null;
+  temporaryPassword: string;
+  accessUrl: string;
+  accessStatus: ClientUserAccessStatus;
+  warning: string;
+};
 
 @Injectable()
 export class ServedClientsService {
@@ -112,6 +129,21 @@ export class ServedClientsService {
 
     await this.assertUniqueCnpj(organizationId, cnpj);
 
+    const wantsManager =
+      !!dto.initialManagerName?.trim() || !!dto.initialManagerEmail?.trim();
+    if (wantsManager) {
+      if (!dto.initialManagerName?.trim() || !dto.initialManagerEmail?.trim()) {
+        throw new BadRequestException(
+          'Para criar o gestor inicial, informe nome e e-mail.',
+        );
+      }
+      if (status !== ServedClientStatus.ACTIVE) {
+        throw new BadRequestException(
+          'Gestor inicial so pode ser criado para cliente ativo.',
+        );
+      }
+    }
+
     try {
       const client = await this.prisma.servedClient.create({
         data: {
@@ -135,14 +167,264 @@ export class ServedClientsService {
           cnpj: client.cnpj,
           allocatedLifeQuota: client.allocatedLifeQuota,
           status: client.status,
+          withInitialManager: wantsManager,
         },
       });
 
-      return client;
+      let initialAccess: ClientInitialAccessPayload | null = null;
+      if (wantsManager) {
+        initialAccess = await this.provisionInitialManager(
+          organizationId,
+          userId,
+          client.id,
+          {
+            name: dto.initialManagerName!.trim(),
+            email: dto.initialManagerEmail!.trim(),
+            phone: dto.initialManagerPhone?.trim() || null,
+          },
+        );
+      }
+
+      return {
+        client,
+        initialAccess,
+        servedClientId: client.id,
+        ...(initialAccess
+          ? {
+              managerName: initialAccess.managerName,
+              managerEmail: initialAccess.managerEmail,
+              temporaryPassword: initialAccess.temporaryPassword,
+              accessUrl: initialAccess.accessUrl,
+              warning: initialAccess.warning,
+            }
+          : {}),
+      };
     } catch (error) {
       this.rethrowUniqueConflict(error);
       throw error;
     }
+  }
+
+  async createInitialManager(
+    organizationId: string,
+    actorUserId: string,
+    servedClientId: string,
+    dto: CreateInitialManagerDto,
+  ) {
+    const client = await this.getById(organizationId, servedClientId);
+    this.assertClientOperational(client.status);
+    return this.provisionInitialManager(organizationId, actorUserId, client.id, {
+      name: dto.name.trim(),
+      email: dto.email.trim(),
+      phone: dto.phone?.trim() || null,
+    });
+  }
+
+  async resetClientUserAccess(
+    organizationId: string,
+    actorUserId: string,
+    servedClientId: string,
+    membershipId: string,
+  ) {
+    const client = await this.getById(organizationId, servedClientId);
+    this.assertClientOperational(client.status);
+    const membership = await this.getClientUserMembership(
+      organizationId,
+      servedClientId,
+      membershipId,
+    );
+    if (!membership.isActive) {
+      throw new BadRequestException(
+        'Reative o usuario antes de redefinir o acesso.',
+      );
+    }
+    if (membership.role === ClientUserRole.WORKER) {
+      throw new BadRequestException(
+        'Usuario trabalhador ainda nao esta disponivel nesta etapa.',
+      );
+    }
+
+    const temporaryPassword = this.generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    const email = membership.email.toLowerCase();
+
+    const user = await this.ensureUserForClientAccess({
+      email,
+      name: membership.name,
+      passwordHash,
+    });
+
+    const updated = await this.prisma.clientUserMembership.update({
+      where: { id: membership.id },
+      data: {
+        userId: user.id,
+        accessStatus: ClientUserAccessStatus.INVITED,
+        mustChangePassword: true,
+        temporaryPasswordCreatedAt: new Date(),
+        isActive: true,
+      },
+    });
+
+    await this.audit.log({
+      action: 'client_user.access_reset',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'ClientUserMembership',
+      entityId: updated.id,
+      metadata: {
+        servedClientId,
+        email,
+        role: updated.role,
+        // nunca logar senha
+      },
+    });
+
+    return this.toInitialAccessPayload(updated, temporaryPassword);
+  }
+
+  private async provisionInitialManager(
+    organizationId: string,
+    actorUserId: string,
+    servedClientId: string,
+    input: { name: string; email: string; phone: string | null },
+  ): Promise<ClientInitialAccessPayload> {
+    const email = input.email.trim().toLowerCase();
+    const name = input.name.trim();
+    if (!email || !name) {
+      throw new BadRequestException('Nome e e-mail do gestor sao obrigatorios.');
+    }
+
+    await this.assertClientUserRoleLimit(
+      organizationId,
+      servedClientId,
+      ClientUserRole.CLIENT_MANAGER,
+    );
+
+    const duplicate = await this.prisma.clientUserMembership.findFirst({
+      where: { servedClientId, email },
+    });
+    if (duplicate) {
+      throw new ConflictException(
+        'Ja existe um usuario operacional com este e-mail neste cliente.',
+      );
+    }
+
+    const temporaryPassword = this.generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    const user = await this.ensureUserForClientAccess({
+      email,
+      name,
+      passwordHash,
+    });
+
+    const membership = await this.prisma.clientUserMembership.create({
+      data: {
+        organizationId,
+        servedClientId,
+        userId: user.id,
+        email,
+        name,
+        phone: input.phone,
+        role: ClientUserRole.CLIENT_MANAGER,
+        isActive: true,
+        accessStatus: ClientUserAccessStatus.INVITED,
+        mustChangePassword: true,
+        temporaryPasswordCreatedAt: new Date(),
+      },
+    });
+
+    await this.audit.log({
+      action: 'client_user.initial_manager_created',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'ClientUserMembership',
+      entityId: membership.id,
+      metadata: {
+        servedClientId,
+        email,
+        role: membership.role,
+        accessStatus: membership.accessStatus,
+      },
+    });
+
+    return this.toInitialAccessPayload(membership, temporaryPassword);
+  }
+
+  private async ensureUserForClientAccess(input: {
+    email: string;
+    name: string;
+    passwordHash: string;
+  }) {
+    const existing = await this.prisma.user.findUnique({
+      where: { email: input.email },
+      include: { _count: { select: { memberships: true } } },
+    });
+    if (existing) {
+      if (existing._count.memberships > 0) {
+        throw new ConflictException(
+          'Este e-mail ja pertence a um usuario da consultoria. Use outro e-mail para o gestor do cliente.',
+        );
+      }
+      return this.prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          name: input.name,
+          passwordHash: input.passwordHash,
+        },
+      });
+    }
+    return this.prisma.user.create({
+      data: {
+        email: input.email,
+        name: input.name,
+        passwordHash: input.passwordHash,
+      },
+    });
+  }
+
+  private generateTemporaryPassword(): string {
+    const alphabet =
+      'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';
+    const bytes = randomBytes(14);
+    let out = '';
+    for (let i = 0; i < 14; i += 1) {
+      out += alphabet[bytes[i] % alphabet.length];
+    }
+    return out;
+  }
+
+  private resolveAccessUrl(): string {
+    const fromEnv =
+      process.env.CLIENT_PORTAL_URL?.trim() ||
+      process.env.WEB_APP_URL?.trim() ||
+      process.env.CORS_ORIGIN?.split(',')[0]?.trim();
+    if (fromEnv) {
+      return fromEnv.replace(/\/$/, '');
+    }
+    return 'http://localhost:3000';
+  }
+
+  private toInitialAccessPayload(
+    membership: {
+      id: string;
+      name: string;
+      email: string;
+      phone: string | null;
+      accessStatus: ClientUserAccessStatus;
+    },
+    temporaryPassword: string,
+  ): ClientInitialAccessPayload {
+    return {
+      membershipId: membership.id,
+      managerName: membership.name,
+      managerEmail: membership.email,
+      managerPhone: membership.phone,
+      temporaryPassword,
+      accessUrl: this.resolveAccessUrl(),
+      accessStatus: membership.accessStatus,
+      warning:
+        'A senha temporaria sera exibida apenas agora. Copie os dados de acesso. Envio por WhatsApp/e-mail sera implementado depois.',
+    };
   }
 
   async update(
@@ -526,8 +808,9 @@ export class ServedClientsService {
           name,
           role,
           isActive: true,
-          inviteStatus: ClientUserInviteStatus.PREPARED,
+          accessStatus: ClientUserAccessStatus.PREPARED,
           userId: null,
+          phone: dto.phone?.trim() || null,
         },
       });
 
@@ -541,7 +824,7 @@ export class ServedClientsService {
           servedClientId,
           email,
           role,
-          inviteStatus: membership.inviteStatus,
+          accessStatus: membership.accessStatus,
         },
       });
 
@@ -614,6 +897,10 @@ export class ServedClientsService {
         name: dto.name?.trim(),
         email: dto.email !== undefined ? nextEmail : undefined,
         role: dto.role,
+        phone:
+          dto.phone !== undefined
+            ? dto.phone?.trim() || null
+            : undefined,
       },
     });
 
@@ -672,7 +959,14 @@ export class ServedClientsService {
 
     const membership = await this.prisma.clientUserMembership.update({
       where: { id: membershipId },
-      data: { isActive },
+      data: {
+        isActive,
+        accessStatus: isActive
+          ? existing.userId
+            ? ClientUserAccessStatus.INVITED
+            : ClientUserAccessStatus.PREPARED
+          : ClientUserAccessStatus.DISABLED,
+      },
     });
 
     await this.audit.log({
