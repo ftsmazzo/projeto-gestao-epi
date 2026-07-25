@@ -231,14 +231,14 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
         : 'Nao cadastrada';
 
   return (
-    <section className="face-enroll" aria-labelledby="facial-ref-title">
+    <section className="face-enroll face-enroll--panel" aria-labelledby="facial-ref-title">
       <header className="face-enroll__header">
         <h3 id="facial-ref-title" className="face-enroll__title">
           Biometria facial
         </h3>
         <p className="face-enroll__subtitle">
-          Centralize o rosto na foto. O sistema detecta a face e cadastra a
-          biometria para validacao automatica nas entregas.
+          Centralize o rosto na moldura. O sistema detecta a face e cadastra a
+          biometria para as entregas no portal.
         </p>
       </header>
 
@@ -277,7 +277,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
         </p>
       ) : null}
 
-      <div className="face-enroll__grid">
+      <div className="face-enroll__layout">
         {previewUrl ? (
           <figure className="face-enroll__ref">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -300,18 +300,33 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
                 className="face-ux__media"
               />
             ) : (
-              <video
-                ref={videoRef}
-                className="face-ux__media"
-                playsInline
-                muted
-                aria-label="Preview da camera"
-              />
+              <>
+                <video
+                  ref={videoRef}
+                  className={`face-ux__media${cameraOn ? '' : ' is-hidden'}`}
+                  playsInline
+                  muted
+                  autoPlay
+                  aria-label="Preview da camera"
+                />
+                {!cameraOn ? (
+                  <div className="face-ux__placeholder">
+                    <span className="face-ux__placeholder-icon" aria-hidden />
+                    <span>Camera ou upload</span>
+                  </div>
+                ) : null}
+              </>
             )}
-            <div className="face-ux__oval" aria-hidden />
+            {(cameraOn || pendingPreview) && (
+              <div className="face-ux__oval" aria-hidden />
+            )}
           </div>
           <p className="face-enroll__caption">
-            {pendingPreview ? 'Nova captura' : 'Camera / upload'}
+            {pendingPreview
+              ? 'Nova captura pronta para salvar'
+              : cameraOn
+                ? 'Centralize o rosto e toque em Capturar'
+                : 'Abra a camera ou envie uma imagem'}
           </p>
         </div>
       </div>
@@ -324,12 +339,12 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
 
       <p className="face-ux__consent">{WORKER_FACE_REFERENCE_CONSENT_TEXT}</p>
 
-      <div className="face-ux__actions">
+      <div className="face-ux__actions face-ux__actions--stack">
         {!pendingPreview ? (
           <>
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-primary face-ux__btn-main"
               onClick={() => void startCamera()}
               disabled={cameraOn || saving || !engineReady}
             >
@@ -337,7 +352,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
             </button>
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary face-ux__btn-main"
               onClick={capture}
               disabled={!cameraOn || saving}
             >
@@ -345,7 +360,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
             </button>
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-secondary face-ux__btn-main"
               onClick={() => fileInputRef.current?.click()}
               disabled={saving || !engineReady}
             >
@@ -355,6 +370,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              capture="user"
               hidden
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -367,7 +383,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
           <>
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-primary face-ux__btn-main"
               onClick={() => void saveReference()}
               disabled={saving || !engineReady}
             >
@@ -379,7 +395,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
             </button>
             <button
               type="button"
-              className="btn btn-secondary"
+              className="btn btn-secondary face-ux__btn-main"
               onClick={() => {
                 setPending(null);
                 void startCamera();
@@ -393,7 +409,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
         {meta?.hasActiveReference || meta?.status === 'NEEDS_REENROLLMENT' ? (
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-secondary face-ux__btn-main"
             onClick={() => void revoke()}
             disabled={saving}
           >

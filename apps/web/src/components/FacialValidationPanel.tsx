@@ -376,13 +376,14 @@ export function FacialValidationPanel({
           : guideTone;
 
   return (
-    <section className="face-ux" aria-labelledby="face-ux-title">
+    <section className="face-ux face-ux--panel" aria-labelledby="face-ux-title">
       <header className="face-ux__header">
+        <p className="face-ux__kicker">Passo 3</p>
         <h2 id="face-ux-title" className="face-ux__title">
           Validacao facial
         </h2>
         <p className="face-ux__subtitle">
-          Posicione o rosto no enquadramento. A captura e automatica.
+          Toque em iniciar, enquadre o rosto e aguarde a captura automatica.
         </p>
       </header>
 
@@ -406,6 +407,7 @@ export function FacialValidationPanel({
               className="face-ux__media"
               playsInline
               muted
+              autoPlay
               aria-label="Preview da camera"
             />
           ) : thumbUrl ? (
@@ -457,11 +459,11 @@ export function FacialValidationPanel({
         desta entrega.
       </p>
 
-      <div className="face-ux__actions">
+      <div className="face-ux__actions face-ux__actions--stack">
         {blocked ? null : status === 'idle' ? (
           <button
             type="button"
-            className="btn btn-primary"
+            className="btn btn-primary face-ux__btn-main"
             onClick={() => void startCamera()}
             disabled={disabled || starting || !engineReady}
           >
@@ -472,7 +474,7 @@ export function FacialValidationPanel({
         {status === 'capturing' ? (
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-secondary face-ux__btn-main"
             onClick={() => {
               stopCamera();
               setUxStatus('idle');
@@ -487,7 +489,7 @@ export function FacialValidationPanel({
         ) : null}
 
         {status === 'processing' ? (
-          <button type="button" className="btn btn-primary" disabled>
+          <button type="button" className="btn btn-primary face-ux__btn-main" disabled>
             Validando...
           </button>
         ) : null}
@@ -504,7 +506,7 @@ export function FacialValidationPanel({
         status === 'error' ? (
           <button
             type="button"
-            className="btn btn-secondary"
+            className="btn btn-primary face-ux__btn-main"
             onClick={retry}
             disabled={disabled}
           >

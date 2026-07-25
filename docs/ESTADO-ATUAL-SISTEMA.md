@@ -184,7 +184,7 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
-| Portal: entregas / ficha / biometria | **09.1.3:** portal mobile-first + captura facial automatica (enquadramento estavel); matching 09.1.1 e UX 09.1.2 preservados |
+| Portal: entregas / ficha / biometria | **09.1.3+:** mobile real com cards (sem tabela larga), facial full-width e captura automatica |
 | Portal: relatorios operacionais basicos | **08.1** — feito (consulta; sem PDF/export avancado; sem custo unitario ainda) |
 | Portal: custos / exportacoes ricas | Ainda nao |
 

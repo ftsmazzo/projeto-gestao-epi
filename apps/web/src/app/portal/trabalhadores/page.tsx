@@ -79,58 +79,38 @@ function PortalTrabalhadoresContent() {
           </section>
 
           <section className="portal-card">
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Nome</th>
-                    <th scope="col">Matricula</th>
-                    <th scope="col">Funcao / depto</th>
-                    <th scope="col">Unidade</th>
-                    <th scope="col">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.workers.length === 0 ? (
-                    <tr>
-                      <td colSpan={5}>
-                        Nenhum trabalhador cadastrado para esta empresa.
-                      </td>
-                    </tr>
-                  ) : (
-                    data.workers.map((worker) => (
-                      <tr key={worker.id}>
-                        <td>
-                          <strong>{worker.name}</strong>
-                        </td>
-                        <td className="mono">
-                          {worker.registration ?? '—'}
-                        </td>
-                        <td>
-                          {worker.role || worker.department || '—'}
-                          {worker.role && worker.department ? (
-                            <span className="table-sub">
-                              {worker.department}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td>{worker.unitName ?? '—'}</td>
-                        <td>
-                          <span
-                            className={`status-pill status-pill--${
-                              worker.status === 'ACTIVE'
-                                ? 'active'
-                                : 'inactive'
-                            }`}
-                          >
-                            {worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            <div className="portal-pick-list" role="list">
+              {data.workers.length === 0 ? (
+                <p className="page-lead">
+                  Nenhum trabalhador cadastrado para esta empresa.
+                </p>
+              ) : (
+                data.workers.map((worker) => (
+                  <article key={worker.id} role="listitem" className="portal-pick-card">
+                    <div className="portal-pick-card__body portal-pick-card__body--stack">
+                      <div className="portal-pick-card__main">
+                        <strong className="portal-pick-card__title">
+                          {worker.name}
+                        </strong>
+                        <p className="portal-pick-card__meta mono">
+                          {worker.registration ?? 'Sem matricula'}
+                        </p>
+                        <p className="portal-pick-card__meta">
+                          {worker.role || worker.department || 'Sem funcao'}
+                          {worker.unitName ? ` · ${worker.unitName}` : ''}
+                        </p>
+                      </div>
+                      <span
+                        className={`status-pill status-pill--${
+                          worker.status === 'ACTIVE' ? 'active' : 'inactive'
+                        }`}
+                      >
+                        {worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </div>
+                  </article>
+                ))
+              )}
             </div>
             <div className="btn-row" style={{ marginTop: '1rem' }}>
               <Link className="btn btn-secondary" href="/portal">

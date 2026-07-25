@@ -2117,7 +2117,64 @@ a.btn-danger:hover {
 
 /* —— Validacao facial (UX 09.1.2) —— */
 .portal-card--face {
-  max-width: 420px;
+  max-width: 440px;
+}
+
+.portal-pick-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.85rem;
+}
+
+.portal-pick-card {
+  border: 1px solid var(--color-border);
+  border-radius: 0.85rem;
+  background: var(--color-surface, #fff);
+  padding: 0.85rem 0.95rem;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.portal-pick-card.is-selected {
+  border-color: color-mix(in srgb, var(--color-accent, #1a6bff) 45%, var(--color-border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #1a6bff) 14%, transparent);
+}
+
+.portal-pick-card__body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+}
+
+.portal-pick-card__body--stack {
+  align-items: flex-start;
+}
+
+.portal-pick-card__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.portal-pick-card__title {
+  display: block;
+  font-size: 1rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.portal-pick-card__meta {
+  margin: 0.2rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: var(--color-muted, #64748b);
+  word-break: break-word;
+}
+
+.portal-pick-card__action {
+  flex-shrink: 0;
+  min-width: 7.5rem;
 }
 
 .face-ux {
@@ -2126,13 +2183,27 @@ a.btn-danger:hover {
   gap: 0.75rem;
 }
 
+.face-ux--panel {
+  width: 100%;
+}
+
 .face-ux__header {
   margin: 0;
+  text-align: center;
+}
+
+.face-ux__kicker {
+  margin: 0 0 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
 }
 
 .face-ux__title {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.15rem;
   font-weight: 650;
   letter-spacing: -0.01em;
 }
@@ -2148,23 +2219,28 @@ a.btn-danger:hover {
   color: var(--color-muted, #64748b);
 }
 
+.face-ux__subtitle {
+  margin-top: 0.35rem;
+}
+
 .face-ux__frame {
   display: flex;
   justify-content: center;
+  width: 100%;
 }
 
 .face-ux__stage {
   position: relative;
-  width: min(280px, 100%);
+  width: min(300px, 100%);
   aspect-ratio: 3 / 4;
-  border-radius: 1.15rem;
+  border-radius: 1.25rem;
   overflow: hidden;
   background: #0b1220;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .face-ux__stage--enroll {
-  width: min(220px, 100%);
+  width: min(260px, 100%);
 }
 
 .face-ux__media {
@@ -2173,6 +2249,13 @@ a.btn-danger:hover {
   object-fit: cover;
   display: block;
   transform: scaleX(-1);
+}
+
+.face-ux__media.is-hidden {
+  opacity: 0;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .face-ux__media--thumb {
@@ -2346,27 +2429,49 @@ a.btn-danger:hover {
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+  justify-content: center;
+}
+
+.face-ux__actions--stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.face-ux__btn-main {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
 }
 
 .face-ux__capture-note {
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  text-align: center;
 }
 
 .face-ux__ready {
   color: #15803d;
   font-weight: 600;
+  text-align: center;
+}
+
+.face-ux__consent {
+  text-align: center;
 }
 
 .face-enroll {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.85rem;
   padding: 1rem;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface, #fff);
+}
+
+.face-enroll--panel {
+  max-width: 520px;
 }
 
 .face-enroll__title {
@@ -2383,9 +2488,11 @@ a.btn-danger:hover {
 
 .face-enroll__badge {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.45rem;
   width: fit-content;
+  max-width: 100%;
   padding: 0.35rem 0.7rem;
   border-radius: 999px;
   font-size: 0.85rem;
@@ -2427,16 +2534,20 @@ a.btn-danger:hover {
   font-size: 0.78rem;
 }
 
-.face-enroll__grid {
+.face-enroll__layout {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
   align-items: flex-start;
+  justify-content: center;
 }
 
 .face-enroll__ref,
 .face-enroll__capture {
   margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
 }
 
 .face-enroll__img {
@@ -2450,10 +2561,11 @@ a.btn-danger:hover {
 
 .face-enroll__ref figcaption,
 .face-enroll__caption {
-  margin-top: 0.35rem;
+  margin: 0;
   font-size: 0.75rem;
   color: var(--color-muted, #64748b);
   text-align: center;
+  max-width: 260px;
 }
 
 .portal-receipt__biometric {
@@ -2614,10 +2726,6 @@ a.btn-danger:hover {
     border-radius: var(--radius-sm);
   }
 
-  .portal-card--face {
-    max-width: none;
-  }
-
   .portal-home-header {
     padding: 1rem;
   }
@@ -2740,15 +2848,67 @@ a.btn-danger:hover {
     min-height: 44px;
   }
 
+  .portal-card--face {
+    max-width: none;
+    padding: 1rem 0.85rem 1.15rem;
+  }
+
+  .portal-pick-card__body {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .portal-pick-card__action {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+  }
+
+  .portal-coverage-need__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .portal-need-select {
+    width: 100%;
+  }
+
+  .form-grid--compact {
+    grid-template-columns: 1fr;
+  }
+
   .table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    margin-inline: -0.15rem;
+    margin-inline: 0;
     padding-bottom: 0.15rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background:
+      linear-gradient(90deg, #fff 30%, transparent),
+      linear-gradient(90deg, transparent, #fff 70%) 100% 0,
+      linear-gradient(90deg, rgba(15, 23, 42, 0.08), transparent),
+      linear-gradient(90deg, transparent, rgba(15, 23, 42, 0.08)) 100% 0;
+    background-repeat: no-repeat;
+    background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+
+  .table-wrap::before {
+    content: 'Deslize a tabela →';
+    display: block;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface-muted);
   }
 
   .data-table {
-    min-width: 640px;
+    min-width: 560px;
+    margin: 0;
   }
 
   .data-table th,
@@ -2793,14 +2953,36 @@ a.btn-danger:hover {
     background: rgba(255, 255, 255, 0.96);
     backdrop-filter: blur(8px);
     box-shadow: var(--shadow-sm);
+    flex-direction: column;
+  }
+
+  .portal-sticky-actions .btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .portal-hide-mobile {
     display: none !important;
   }
 
-  .face-ux__stage {
-    width: min(260px, 78vw);
+  .face-ux__stage,
+  .face-ux__stage--enroll {
+    width: min(100%, 320px);
+  }
+
+  .face-enroll--panel {
+    max-width: none;
+    padding: 0.85rem;
+  }
+
+  .face-enroll__layout {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .face-enroll__img {
+    width: 120px;
+    height: 150px;
   }
 
   .quota-summary {

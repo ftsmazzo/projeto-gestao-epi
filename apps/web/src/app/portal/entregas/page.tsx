@@ -445,8 +445,8 @@ function PortalEntregasContent() {
           <p className="page-kicker">Dia a dia</p>
           <h1 className="page-title page-title--sm">Entrega de EPI</h1>
           <p className="page-lead">
-            Selecione o trabalhador, os EPIs disponiveis e valide a face para
-            registrar a entrega com baixa automatica de estoque.
+            Escolha o trabalhador, marque os EPIs e valide a face para
+            concluir a entrega.
           </p>
         </div>
       </header>
@@ -612,65 +612,53 @@ function PortalEntregasContent() {
               </div>
             </div>
 
-            <div className="table-wrap" style={{ marginTop: '0.75rem' }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Nome</th>
-                    <th>Matricula</th>
-                    <th>Unidade</th>
-                    <th>Setor</th>
-                    <th>Funcao</th>
-                    <th>EPIs</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredWorkers.length === 0 ? (
-                    <tr>
-                      <td colSpan={7}>Nenhum trabalhador ativo encontrado.</td>
-                    </tr>
-                  ) : (
-                    filteredWorkers.map((worker) => (
-                      <tr
-                        key={worker.id}
-                        className={
-                          selectedId === worker.id ? 'is-selected-row' : undefined
-                        }
-                      >
-                        <td>
-                          <strong>{worker.name}</strong>
-                          {worker.cpfMasked ? (
-                            <span className="table-sub mono">
-                              {worker.cpfMasked}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="mono">{worker.registration ?? '—'}</td>
-                        <td>{worker.unitName ?? '—'}</td>
-                        <td>{worker.sectorName ?? '—'}</td>
-                        <td>
-                          {worker.jobFunctionName ?? (
-                            <span className="status-pill status-pill--warn">
-                              Sem funcao
-                            </span>
-                          )}
-                        </td>
-                        <td className="mono">{worker.requiredEpiCount}</td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-compact"
-                            onClick={() => void selectWorker(worker)}
-                          >
-                            Selecionar
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            <div className="portal-pick-list" role="list" aria-label="Trabalhadores">
+              {filteredWorkers.length === 0 ? (
+                <p className="page-lead">Nenhum trabalhador ativo encontrado.</p>
+              ) : (
+                filteredWorkers.map((worker) => {
+                  const selected = selectedId === worker.id;
+                  return (
+                    <article
+                      key={worker.id}
+                      role="listitem"
+                      className={`portal-pick-card${selected ? ' is-selected' : ''}`}
+                    >
+                      <div className="portal-pick-card__body">
+                        <div className="portal-pick-card__main">
+                          <strong className="portal-pick-card__title">
+                            {worker.name}
+                          </strong>
+                          <p className="portal-pick-card__meta">
+                            {worker.registration
+                              ? `Mat. ${worker.registration}`
+                              : 'Sem matricula'}
+                            {worker.cpfMasked ? ` · ${worker.cpfMasked}` : ''}
+                          </p>
+                          <p className="portal-pick-card__meta">
+                            {worker.unitName ?? 'Sem unidade'}
+                            {' · '}
+                            {worker.sectorName ?? 'Sem setor'}
+                          </p>
+                          <p className="portal-pick-card__meta">
+                            {worker.jobFunctionName ?? 'Sem funcao'}
+                            {' · '}
+                            {worker.requiredEpiCount} EPI
+                            {worker.requiredEpiCount === 1 ? '' : 's'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className={`btn ${selected ? 'btn-primary' : 'btn-secondary'} portal-pick-card__action`}
+                          onClick={() => void selectWorker(worker)}
+                        >
+                          {selected ? 'Selecionado' : 'Selecionar'}
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
             </div>
           </section>
 
@@ -843,58 +831,37 @@ function PortalEntregasContent() {
         {history.length === 0 ? (
           <p className="page-lead">Nenhuma entrega registrada ainda.</p>
         ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Comprovante</th>
-                  <th>Status</th>
-                  <th>Data</th>
-                  <th>Trabalhador</th>
-                  <th>Itens</th>
-                  <th>Operador</th>
-                  <th>Metodo</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((row) => (
-                  <tr key={row.id}>
-                    <td className="mono">{row.receiptNumber}</td>
-                    <td>{row.statusLabel}</td>
-                    <td>{formatDateTime(row.deliveredAt)}</td>
-                    <td>
-                      <strong>{row.worker.name}</strong>
-                      {row.worker.registration ? (
-                        <span className="table-sub">
-                          Mat. {row.worker.registration}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td>
+          <div className="portal-pick-list" role="list" aria-label="Historico de entregas">
+            {history.map((row) => (
+              <article key={row.id} role="listitem" className="portal-pick-card">
+                <div className="portal-pick-card__body">
+                  <div className="portal-pick-card__main">
+                    <strong className="portal-pick-card__title">
+                      {row.worker.name}
+                    </strong>
+                    <p className="portal-pick-card__meta mono">
+                      {row.receiptNumber} · {row.statusLabel}
+                    </p>
+                    <p className="portal-pick-card__meta">
+                      {formatDateTime(row.deliveredAt)}
+                      {' · '}
+                      {row.deliveredBy.name}
+                    </p>
+                    <p className="portal-pick-card__meta">
                       {row.items
                         .map((item) => `${item.needName} (${item.quantity})`)
                         .join(', ')}
-                    </td>
-                    <td>{row.deliveredBy.name}</td>
-                    <td>
-                      {row.method}
-                      {row.evidence?.statusLabel
-                        ? ` · ${row.evidence.statusLabel}`
-                        : ''}
-                    </td>
-                    <td>
-                      <Link
-                        className="btn btn-secondary btn-compact"
-                        href={`/portal/entregas/${row.id}`}
-                      >
-                        Ver comprovante
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </p>
+                  </div>
+                  <Link
+                    className="btn btn-secondary portal-pick-card__action"
+                    href={`/portal/entregas/${row.id}`}
+                  >
+                    Ver
+                  </Link>
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </section>
