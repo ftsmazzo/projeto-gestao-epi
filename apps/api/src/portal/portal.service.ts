@@ -3,12 +3,27 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EpiStockMovementType, WorkerStatus } from '@prisma/client';
+import {
+  DeliveryEvidenceType,
+  DeliveryEvidenceVerificationStatus,
+  EpiDeliveryStatus,
+  EpiStockMovementType,
+  EpiUsefulLifeUnit,
+  Prisma,
+  WorkerStatus,
+} from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { unlink } from 'fs/promises';
 import { normalizeCaNumber } from '../caepi/caepi-import.utils';
 import { CaepiService } from '../caepi/caepi.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../stock/stock.service';
+import type { PortalCreateDeliveryPayloadDto } from './dto/portal-delivery.dto';
 import type { PortalStockEntradasDto } from './dto/portal-stock.dto';
+import {
+  resolveEvidenceAbsolutePath,
+  saveFacialEvidenceFile,
+} from './facial-evidence.storage';
 
 const VALIDITY_SOON_DAYS = 90;
 const DEFAULT_LOCATION_NAME = 'Estoque principal';
@@ -1474,6 +1489,581 @@ export class PortalService {
         message,
       },
       needs,
+    };
+  }
+
+  /** Historico de entregas do cliente (sem imagem facial). */
+  async listDeliveries(organizationId: string, servedClientId: string) {
+    await this.requireClient(organizationId, servedClientId);
+
+    const rows = await this.prisma.epiDelivery.findMany({
+      where: { organizationId, servedClientId },
+      orderBy: { deliveredAt: 'desc' },
+      take: 50,
+      include: {
+        worker: {
+          select: { id: true, name: true, registration: true },
+        },
+        deliveredByUser: { select: { id: true, name: true, email: true } },
+        items: {
+          include: {
+            epiNeed: { select: { id: true, name: true } },
+            epiItem: {
+              select: { id: true, name: true, caNumber: true },
+            },
+            stockLocation: { select: { id: true, name: true } },
+          },
+        },
+        evidences: {
+          where: { type: DeliveryEvidenceType.FACIAL_CAPTURE },
+          select: {
+            id: true,
+            type: true,
+            capturedAt: true,
+            verificationStatus: true,
+          },
+          take: 1,
+        },
+      },
+    });
+
+    return {
+      deliveries: rows.map((row) => this.mapDeliverySummary(row)),
+    };
+  }
+
+  async getDelivery(
+    organizationId: string,
+    servedClientId: string,
+    deliveryId: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+
+    const row = await this.prisma.epiDelivery.findFirst({
+      where: { id: deliveryId, organizationId, servedClientId },
+      include: {
+        worker: {
+          select: {
+            id: true,
+            name: true,
+            registration: true,
+            cpf: true,
+          },
+        },
+        deliveredByUser: { select: { id: true, name: true, email: true } },
+        items: {
+          include: {
+            epiNeed: { select: { id: true, name: true } },
+            epiItem: {
+              select: { id: true, name: true, caNumber: true },
+            },
+            epiVariant: {
+              select: {
+                id: true,
+                size: true,
+                color: true,
+                model: true,
+              },
+            },
+            stockLocation: { select: { id: true, name: true } },
+            stockMovement: {
+              select: {
+                id: true,
+                type: true,
+                quantity: true,
+                previousQuantity: true,
+                newQuantity: true,
+              },
+            },
+          },
+        },
+        evidences: {
+          where: { type: DeliveryEvidenceType.FACIAL_CAPTURE },
+          select: {
+            id: true,
+            type: true,
+            capturedAt: true,
+            verificationStatus: true,
+            mimeType: true,
+            byteSize: true,
+            metadata: true,
+          },
+        },
+      },
+    });
+
+    if (!row) {
+      throw new NotFoundException('Entrega nao encontrada.');
+    }
+
+    const facial = row.evidences[0] ?? null;
+
+    return {
+      id: row.id,
+      status: row.status,
+      deliveredAt: row.deliveredAt.toISOString(),
+      notes: row.notes,
+      worker: {
+        id: row.worker.id,
+        name: row.worker.name,
+        registration: row.worker.registration,
+        cpfMasked: this.maskCpf(row.worker.cpf),
+      },
+      deliveredBy: {
+        id: row.deliveredByUser.id,
+        name: row.deliveredByUser.name,
+        email: row.deliveredByUser.email,
+      },
+      items: row.items.map((item) => ({
+        id: item.id,
+        epiNeedId: item.epiNeedId,
+        needName: item.epiNeed.name,
+        epiItemId: item.epiItemId,
+        epiName: item.epiItem.name,
+        caNumber: item.epiItem.caNumber,
+        epiVariantId: item.epiVariantId,
+        variantName: item.epiVariant
+          ? [item.epiVariant.size, item.epiVariant.color, item.epiVariant.model]
+              .filter(Boolean)
+              .join(' / ') || null
+          : null,
+        stockLocationId: item.stockLocationId,
+        locationName: item.stockLocation.name,
+        quantity: item.quantity,
+        nextReplacementAt: item.nextReplacementAt?.toISOString() ?? null,
+        stockMovement: {
+          id: item.stockMovement.id,
+          type: item.stockMovement.type,
+          quantity: item.stockMovement.quantity,
+          previousQuantity: item.stockMovement.previousQuantity,
+          newQuantity: item.stockMovement.newQuantity,
+        },
+      })),
+      evidence: facial
+        ? {
+            id: facial.id,
+            type: facial.type,
+            method: 'Facial capturada' as const,
+            capturedAt: facial.capturedAt.toISOString(),
+            verificationStatus: facial.verificationStatus,
+            mimeType: facial.mimeType,
+            byteSize: facial.byteSize,
+            hasFile: true,
+            // Sem URL publica; imagem so via endpoint autenticado.
+          }
+        : null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
+  /**
+   * Cria entrega com baixa de estoque (ENTREGA) e evidencia facial obrigatoria.
+   * Sem reconhecimento biometrico automatico nesta etapa.
+   */
+  async createDelivery(
+    organizationId: string,
+    servedClientId: string,
+    userId: string,
+    payload: PortalCreateDeliveryPayloadDto,
+    facial: { buffer: Buffer; mimeType?: string; originalName?: string },
+  ) {
+    const client = await this.requireClient(organizationId, servedClientId);
+    if (client.status !== 'ACTIVE') {
+      throw new BadRequestException(
+        'Cliente inativo. Nao e possivel registrar entregas.',
+      );
+    }
+
+    if (!facial?.buffer?.byteLength) {
+      throw new BadRequestException(
+        'Evidencia facial obrigatoria. Capture a foto antes de confirmar.',
+      );
+    }
+
+    const mimeType = facial.mimeType?.trim() || 'image/jpeg';
+    if (!mimeType.startsWith('image/')) {
+      throw new BadRequestException(
+        'Arquivo de evidencia facial deve ser uma imagem.',
+      );
+    }
+    if (facial.buffer.byteLength > 5 * 1024 * 1024) {
+      throw new BadRequestException(
+        'Imagem facial excede o limite de 5 MB.',
+      );
+    }
+
+    const worker = await this.prisma.worker.findFirst({
+      where: {
+        id: payload.workerId,
+        organizationId,
+        servedClientId,
+      },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        clientJobFunctionId: true,
+      },
+    });
+    if (!worker) {
+      throw new NotFoundException('Trabalhador nao encontrado neste cliente.');
+    }
+    if (worker.status !== WorkerStatus.ACTIVE) {
+      throw new BadRequestException(
+        'Somente trabalhadores ativos podem receber EPI.',
+      );
+    }
+    if (!worker.clientJobFunctionId) {
+      throw new BadRequestException(
+        'Trabalhador sem funcao estruturada. Ajuste o cadastro na Consultoria.',
+      );
+    }
+
+    const needIds = payload.items.map((item) => item.epiNeedId);
+    if (new Set(needIds).size !== needIds.length) {
+      throw new BadRequestException(
+        'Nao e permitido repetir a mesma necessidade na entrega.',
+      );
+    }
+
+    for (const item of payload.items) {
+      if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
+        throw new BadRequestException(
+          'Quantidade de cada item deve ser um inteiro maior que zero.',
+        );
+      }
+    }
+
+    const requirements = await this.prisma.jobFunctionEpiRequirement.findMany({
+      where: {
+        organizationId,
+        jobFunctionId: worker.clientJobFunctionId,
+        isActive: true,
+        epiNeedId: { in: needIds },
+      },
+      include: {
+        epiNeed: {
+          select: {
+            id: true,
+            name: true,
+            itemLinks: {
+              where: { epiItemId: { in: payload.items.map((i) => i.epiItemId) } },
+              select: { epiItemId: true },
+            },
+          },
+        },
+      },
+    });
+
+    const reqByNeed = new Map(
+      requirements.map((req) => [req.epiNeedId, req] as const),
+    );
+
+    const locationIds = [...new Set(payload.items.map((i) => i.stockLocationId))];
+    const locations = await this.prisma.stockLocation.findMany({
+      where: {
+        id: { in: locationIds },
+        organizationId,
+        servedClientId,
+        isActive: true,
+      },
+      select: { id: true, name: true },
+    });
+    const locationSet = new Set(locations.map((l) => l.id));
+
+    const epiIds = [...new Set(payload.items.map((i) => i.epiItemId))];
+    const epis = await this.prisma.epiItem.findMany({
+      where: { id: { in: epiIds }, organizationId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        usefulLifeValue: true,
+        usefulLifeUnit: true,
+      },
+    });
+    const epiById = new Map(epis.map((e) => [e.id, e] as const));
+
+    for (const item of payload.items) {
+      const req = reqByNeed.get(item.epiNeedId);
+      if (!req) {
+        throw new BadRequestException(
+          'Necessidade nao pertence a funcao do trabalhador (entrega avulsa nao permitida nesta etapa).',
+        );
+      }
+      if (!locationSet.has(item.stockLocationId)) {
+        throw new BadRequestException(
+          'Local de estoque invalido ou nao pertence a este cliente.',
+        );
+      }
+      const epi = epiById.get(item.epiItemId);
+      if (!epi) {
+        throw new BadRequestException('EPI real invalido ou inativo.');
+      }
+      const linked = req.epiNeed.itemLinks.some(
+        (link) => link.epiItemId === item.epiItemId,
+      );
+      if (!linked) {
+        const anyLink = await this.prisma.epiItemNeed.findFirst({
+          where: {
+            organizationId,
+            epiNeedId: item.epiNeedId,
+            epiItemId: item.epiItemId,
+          },
+          select: { id: true },
+        });
+        if (!anyLink) {
+          throw new BadRequestException(
+            `EPI "${epi.name}" nao esta vinculado a necessidade "${req.epiNeed.name}".`,
+          );
+        }
+      }
+    }
+
+    const deliveredAt = new Date();
+    const deliveryId = randomUUID().replace(/-/g, '').slice(0, 24);
+    const operator = await this.prisma.user.findFirst({
+      where: { id: userId },
+      select: { id: true, name: true, email: true },
+    });
+    if (!operator) {
+      throw new BadRequestException('Operador do portal nao encontrado.');
+    }
+
+    let savedFile: Awaited<ReturnType<typeof saveFacialEvidenceFile>> | null =
+      null;
+
+    try {
+      savedFile = await saveFacialEvidenceFile({
+        organizationId,
+        deliveryId,
+        buffer: facial.buffer,
+        mimeType,
+      });
+
+      const created = await this.prisma.$transaction(async (tx) => {
+        const delivery = await tx.epiDelivery.create({
+          data: {
+            id: deliveryId,
+            organizationId,
+            servedClientId,
+            workerId: worker.id,
+            deliveredByUserId: userId,
+            status: EpiDeliveryStatus.COMPLETED,
+            deliveredAt,
+            notes: payload.notes?.trim() || null,
+          },
+        });
+
+        const createdItems: Array<{
+          id: string;
+          epiNeedId: string;
+          epiItemId: string;
+          stockLocationId: string;
+          quantity: number;
+          stockMovementId: string;
+          nextReplacementAt: Date | null;
+        }> = [];
+
+        for (const item of payload.items) {
+          const req = reqByNeed.get(item.epiNeedId)!;
+          const epi = epiById.get(item.epiItemId)!;
+          const variantId = item.epiVariantId?.trim() || null;
+
+          const movementResult = await this.stock.applyMovementInTx(
+            tx,
+            organizationId,
+            userId,
+            {
+              type: EpiStockMovementType.ENTREGA,
+              stockLocationId: item.stockLocationId,
+              epiItemId: item.epiItemId,
+              epiVariantId: variantId ?? undefined,
+              quantity: item.quantity,
+              reason: `Entrega de EPI — ${worker.name}`,
+              notes: `deliveryId=${delivery.id}; need=${req.epiNeed.name}`,
+            },
+          );
+
+          const nextReplacementAt = this.computeNextReplacementAt(
+            deliveredAt,
+            req.replacementIntervalDays,
+            epi.usefulLifeValue,
+            epi.usefulLifeUnit,
+          );
+
+          const deliveryItem = await tx.epiDeliveryItem.create({
+            data: {
+              deliveryId: delivery.id,
+              epiNeedId: item.epiNeedId,
+              epiItemId: item.epiItemId,
+              epiVariantId: variantId,
+              stockLocationId: item.stockLocationId,
+              stockMovementId: movementResult.movement.id,
+              quantity: item.quantity,
+              nextReplacementAt,
+            },
+          });
+
+          createdItems.push({
+            id: deliveryItem.id,
+            epiNeedId: deliveryItem.epiNeedId,
+            epiItemId: deliveryItem.epiItemId,
+            stockLocationId: deliveryItem.stockLocationId,
+            quantity: deliveryItem.quantity,
+            stockMovementId: deliveryItem.stockMovementId,
+            nextReplacementAt: deliveryItem.nextReplacementAt,
+          });
+        }
+
+        await tx.deliveryEvidence.create({
+          data: {
+            deliveryId: delivery.id,
+            type: DeliveryEvidenceType.FACIAL_CAPTURE,
+            capturedAt: deliveredAt,
+            filePath: savedFile!.relativePath,
+            fileHash: savedFile!.fileHash,
+            mimeType: savedFile!.mimeType,
+            byteSize: savedFile!.byteSize,
+            verificationStatus: DeliveryEvidenceVerificationStatus.CAPTURED,
+            metadata: {
+              captureSource: 'portal_camera',
+              consentNoticeShown: true,
+              biometricMatch: false,
+              note: 'Captura registrada como evidencia; sem verificacao biometrica automatica.',
+              originalName: facial.originalName ?? null,
+            } as Prisma.InputJsonValue,
+          },
+        });
+
+        return { delivery, createdItems };
+      });
+
+      const detail = await this.getDelivery(
+        organizationId,
+        servedClientId,
+        created.delivery.id,
+      );
+
+      return detail;
+    } catch (err) {
+      if (savedFile) {
+        try {
+          await unlink(savedFile.absolutePath);
+        } catch {
+          // ignora falha de limpeza
+        }
+      }
+      throw err;
+    }
+  }
+
+  /** Caminho absoluto da evidencia facial (uso autenticado; nao logar conteudo). */
+  async getFacialEvidenceAbsolutePath(
+    organizationId: string,
+    servedClientId: string,
+    deliveryId: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+
+    const evidence = await this.prisma.deliveryEvidence.findFirst({
+      where: {
+        deliveryId,
+        type: DeliveryEvidenceType.FACIAL_CAPTURE,
+        delivery: { organizationId, servedClientId },
+      },
+      select: { filePath: true, mimeType: true },
+    });
+    if (!evidence) {
+      throw new NotFoundException('Evidencia facial nao encontrada.');
+    }
+
+    return {
+      absolutePath: resolveEvidenceAbsolutePath(evidence.filePath),
+      mimeType: evidence.mimeType ?? 'image/jpeg',
+    };
+  }
+
+  private computeNextReplacementAt(
+    deliveredAt: Date,
+    intervalDays: number | null | undefined,
+    usefulLifeValue: number | null | undefined,
+    usefulLifeUnit: EpiUsefulLifeUnit | null | undefined,
+  ): Date | null {
+    if (intervalDays != null && intervalDays > 0) {
+      const next = new Date(deliveredAt);
+      next.setUTCDate(next.getUTCDate() + intervalDays);
+      return next;
+    }
+    if (usefulLifeValue != null && usefulLifeValue > 0 && usefulLifeUnit) {
+      const next = new Date(deliveredAt);
+      if (usefulLifeUnit === EpiUsefulLifeUnit.DIAS) {
+        next.setUTCDate(next.getUTCDate() + usefulLifeValue);
+      } else if (usefulLifeUnit === EpiUsefulLifeUnit.MESES) {
+        next.setUTCMonth(next.getUTCMonth() + usefulLifeValue);
+      } else if (usefulLifeUnit === EpiUsefulLifeUnit.ANOS) {
+        next.setUTCFullYear(next.getUTCFullYear() + usefulLifeValue);
+      }
+      return next;
+    }
+    return null;
+  }
+
+  private mapDeliverySummary(row: {
+    id: string;
+    status: EpiDeliveryStatus;
+    deliveredAt: Date;
+    notes: string | null;
+    worker: { id: string; name: string; registration: string | null };
+    deliveredByUser: { id: string; name: string; email: string };
+    items: Array<{
+      id: string;
+      quantity: number;
+      epiNeed: { id: string; name: string };
+      epiItem: { id: string; name: string; caNumber: string | null };
+      stockLocation: { id: string; name: string };
+    }>;
+    evidences: Array<{
+      id: string;
+      type: DeliveryEvidenceType;
+      capturedAt: Date;
+      verificationStatus: DeliveryEvidenceVerificationStatus;
+    }>;
+  }) {
+    const facial = row.evidences[0] ?? null;
+    return {
+      id: row.id,
+      status: row.status,
+      deliveredAt: row.deliveredAt.toISOString(),
+      notes: row.notes,
+      worker: {
+        id: row.worker.id,
+        name: row.worker.name,
+        registration: row.worker.registration,
+      },
+      deliveredBy: {
+        id: row.deliveredByUser.id,
+        name: row.deliveredByUser.name,
+        email: row.deliveredByUser.email,
+      },
+      itemCount: row.items.length,
+      items: row.items.map((item) => ({
+        id: item.id,
+        needName: item.epiNeed.name,
+        epiName: item.epiItem.name,
+        caNumber: item.epiItem.caNumber,
+        locationName: item.stockLocation.name,
+        quantity: item.quantity,
+      })),
+      method: facial ? ('Facial capturada' as const) : ('Sem evidencia' as const),
+      evidence: facial
+        ? {
+            id: facial.id,
+            type: facial.type,
+            capturedAt: facial.capturedAt.toISOString(),
+            verificationStatus: facial.verificationStatus,
+          }
+        : null,
     };
   }
 }

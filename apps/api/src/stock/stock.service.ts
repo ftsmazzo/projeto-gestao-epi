@@ -319,17 +319,19 @@ export class StockService {
 
     if (
       (dto.type === EpiStockMovementType.SAIDA_MANUAL ||
+        dto.type === EpiStockMovementType.ENTREGA ||
         dto.type === EpiStockMovementType.AJUSTE) &&
       !dto.reason?.trim()
     ) {
       throw new BadRequestException(
-        'Informe o motivo para saida manual ou ajuste.',
+        'Informe o motivo para saida, entrega ou ajuste.',
       );
     }
 
     if (
       dto.type === EpiStockMovementType.ENTRADA ||
-      dto.type === EpiStockMovementType.SAIDA_MANUAL
+      dto.type === EpiStockMovementType.SAIDA_MANUAL ||
+      dto.type === EpiStockMovementType.ENTREGA
     ) {
       if (dto.quantity <= 0) {
         throw new BadRequestException(
@@ -339,82 +341,7 @@ export class StockService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
-      const existing = await tx.epiStockBalance.findFirst({
-        where: {
-          organizationId,
-          epiItemId: dto.epiItemId,
-          stockLocationId: dto.stockLocationId,
-          ...(epiVariantId
-            ? { epiVariantId }
-            : { epiVariantId: null }),
-        },
-      });
-
-      const previousQuantity = existing?.quantity ?? 0;
-      let newQuantity = previousQuantity;
-
-      if (dto.type === EpiStockMovementType.ENTRADA) {
-        newQuantity = previousQuantity + dto.quantity;
-      } else if (dto.type === EpiStockMovementType.SAIDA_MANUAL) {
-        newQuantity = previousQuantity - dto.quantity;
-        if (newQuantity < 0) {
-          throw new BadRequestException(
-            `Saldo insuficiente. Disponivel: ${previousQuantity}.`,
-          );
-        }
-      } else {
-        newQuantity = dto.quantity;
-        if (newQuantity < 0) {
-          throw new BadRequestException(
-            'Ajuste nao pode resultar em quantidade negativa.',
-          );
-        }
-      }
-
-      const nextMin =
-        dto.minQuantity === undefined
-          ? existing?.minQuantity ?? null
-          : dto.minQuantity;
-
-      const balance = existing
-        ? await tx.epiStockBalance.update({
-            where: { id: existing.id },
-            data: {
-              quantity: newQuantity,
-              minQuantity: nextMin,
-            },
-            include: balanceInclude,
-          })
-        : await tx.epiStockBalance.create({
-            data: {
-              organizationId,
-              epiItemId: dto.epiItemId,
-              epiVariantId,
-              stockLocationId: dto.stockLocationId,
-              quantity: newQuantity,
-              minQuantity: nextMin,
-            },
-            include: balanceInclude,
-          });
-
-      const movement = await tx.epiStockMovement.create({
-        data: {
-          organizationId,
-          epiItemId: dto.epiItemId,
-          epiVariantId,
-          stockLocationId: dto.stockLocationId,
-          type: dto.type,
-          quantity: dto.quantity,
-          previousQuantity,
-          newQuantity,
-          reason: this.normalizeOptionalText(dto.reason),
-          notes: this.normalizeOptionalText(dto.notes),
-          createdByUserId: userId,
-        },
-        include: movementInclude,
-      });
-
-      return { balance, movement };
+      return this.applyMovementInTx(tx, organizationId, userId, dto);
     });
 
     await this.audit.log({
@@ -426,7 +353,7 @@ export class StockService {
       metadata: {
         type: dto.type,
         epiItemId: dto.epiItemId,
-        epiVariantId,
+        epiVariantId: dto.epiVariantId?.trim() || null,
         stockLocationId: dto.stockLocationId,
         quantity: dto.quantity,
         previousQuantity: result.movement.previousQuantity,
@@ -444,6 +371,138 @@ export class StockService {
         ),
       },
     };
+  }
+
+  /**
+   * Aplica movimento de estoque dentro de uma transacao existente
+   * (usado pela entrega portal para atomicidade com evidencias).
+   */
+  async applyMovementInTx(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    userId: string,
+    dto: CreateStockMovementDto,
+  ) {
+    const location = await tx.stockLocation.findFirst({
+      where: { id: dto.stockLocationId, organizationId },
+    });
+    if (!location) {
+      throw new NotFoundException('Local de estoque nao encontrado.');
+    }
+    if (!location.isActive) {
+      throw new BadRequestException(
+        'Nao e possivel movimentar estoque em local inativo.',
+      );
+    }
+
+    const epi = await tx.epiItem.findFirst({
+      where: { id: dto.epiItemId, organizationId },
+      select: { id: true, name: true, isActive: true },
+    });
+    if (!epi) {
+      throw new NotFoundException('EPI nao encontrado neste tenant.');
+    }
+
+    const epiVariantId = dto.epiVariantId?.trim() || null;
+    if (epiVariantId) {
+      const variant = await tx.epiVariant.findFirst({
+        where: {
+          id: epiVariantId,
+          organizationId,
+          epiItemId: dto.epiItemId,
+        },
+        select: { id: true },
+      });
+      if (!variant) {
+        throw new BadRequestException(
+          'Variacao nao pertence a este EPI neste tenant.',
+        );
+      }
+    }
+
+    if (!Number.isInteger(dto.quantity) || dto.quantity < 0) {
+      throw new BadRequestException(
+        'Quantidade deve ser um inteiro maior ou igual a zero.',
+      );
+    }
+
+    const existing = await tx.epiStockBalance.findFirst({
+      where: {
+        organizationId,
+        epiItemId: dto.epiItemId,
+        stockLocationId: dto.stockLocationId,
+        ...(epiVariantId ? { epiVariantId } : { epiVariantId: null }),
+      },
+    });
+
+    const previousQuantity = existing?.quantity ?? 0;
+    let newQuantity = previousQuantity;
+
+    if (dto.type === EpiStockMovementType.ENTRADA) {
+      newQuantity = previousQuantity + dto.quantity;
+    } else if (
+      dto.type === EpiStockMovementType.SAIDA_MANUAL ||
+      dto.type === EpiStockMovementType.ENTREGA
+    ) {
+      newQuantity = previousQuantity - dto.quantity;
+      if (newQuantity < 0) {
+        throw new BadRequestException(
+          `Saldo insuficiente. Disponivel: ${previousQuantity}.`,
+        );
+      }
+    } else {
+      newQuantity = dto.quantity;
+      if (newQuantity < 0) {
+        throw new BadRequestException(
+          'Ajuste nao pode resultar em quantidade negativa.',
+        );
+      }
+    }
+
+    const nextMin =
+      dto.minQuantity === undefined
+        ? existing?.minQuantity ?? null
+        : dto.minQuantity;
+
+    const balance = existing
+      ? await tx.epiStockBalance.update({
+          where: { id: existing.id },
+          data: {
+            quantity: newQuantity,
+            minQuantity: nextMin,
+          },
+          include: balanceInclude,
+        })
+      : await tx.epiStockBalance.create({
+          data: {
+            organizationId,
+            epiItemId: dto.epiItemId,
+            epiVariantId,
+            stockLocationId: dto.stockLocationId,
+            quantity: newQuantity,
+            minQuantity: nextMin,
+          },
+          include: balanceInclude,
+        });
+
+    const movement = await tx.epiStockMovement.create({
+      data: {
+        organizationId,
+        epiItemId: dto.epiItemId,
+        epiVariantId,
+        stockLocationId: dto.stockLocationId,
+        type: dto.type,
+        quantity: dto.quantity,
+        previousQuantity,
+        newQuantity,
+        reason: this.normalizeOptionalText(dto.reason),
+        notes: this.normalizeOptionalText(dto.notes),
+        createdByUserId: userId,
+      },
+      include: movementInclude,
+    });
+
+    return { balance, movement };
   }
 
   private async getLocation(organizationId: string, id: string) {

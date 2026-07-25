@@ -1,6 +1,8 @@
 'use client';
 
 import type {
+  PortalDeliveryDetail,
+  PortalDeliveryListItem,
   PortalEpiCoverageNeedRow,
   PortalEpiCoverageResponse,
   PortalEpiCoverageStatus,
@@ -8,12 +10,21 @@ import type {
   PortalEntregasPreparacaoResponse,
 } from '@gestao-epi/shared';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
 import {
+  createPortalDelivery,
+  fetchPortalDeliveries,
   fetchPortalEntregasPreparacao,
   fetchPortalWorkerEpiCoverage,
 } from '../../../lib/client-auth';
+
+type ItemSelection = {
+  selected: boolean;
+  epiItemId: string;
+  stockLocationId: string;
+  quantity: number;
+};
 
 function stripDiacritics(value: string) {
   return value
@@ -43,16 +54,66 @@ function statusPillClass(status: PortalEpiCoverageStatus) {
   return 'status-pill status-pill--inactive';
 }
 
-function NeedCard({ row }: { row: PortalEpiCoverageNeedRow }) {
+function defaultSelection(row: PortalEpiCoverageNeedRow): ItemSelection {
+  const epiId =
+    row.suggestedEpiItemId ??
+    row.linkedEpis.find((e) => e.totalQuantity > 0)?.epiItemId ??
+    row.linkedEpis[0]?.epiItemId ??
+    '';
+  const epi = row.linkedEpis.find((e) => e.epiItemId === epiId);
+  const balance =
+    epi?.balances.find((b) => b.quantity > 0) ?? epi?.balances[0];
+  return {
+    selected: row.status === 'DISPONIVEL',
+    epiItemId: epiId,
+    stockLocationId: balance?.stockLocationId ?? '',
+    quantity: Math.max(1, row.quantity || 1),
+  };
+}
+
+function formatDateTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleString('pt-BR');
+  } catch {
+    return iso;
+  }
+}
+
+function NeedSelectCard({
+  row,
+  selection,
+  onChange,
+}: {
+  row: PortalEpiCoverageNeedRow;
+  selection: ItemSelection;
+  onChange: (next: ItemSelection) => void;
+}) {
+  const canSelect = row.status === 'DISPONIVEL';
+  const epi =
+    row.linkedEpis.find((e) => e.epiItemId === selection.epiItemId) ??
+    row.linkedEpis[0];
+  const balances = epi?.balances ?? [];
+
   return (
-    <article className="portal-coverage-need">
+    <article
+      className={`portal-coverage-need${selection.selected ? ' is-selected' : ''}`}
+    >
       <header className="portal-coverage-need__header">
         <div>
-          <h3 className="portal-coverage-need__title">{row.needName}</h3>
+          <label className="portal-need-select">
+            <input
+              type="checkbox"
+              checked={selection.selected && canSelect}
+              disabled={!canSelect}
+              onChange={(e) =>
+                onChange({ ...selection, selected: e.target.checked })
+              }
+            />
+            <h3 className="portal-coverage-need__title">{row.needName}</h3>
+          </label>
           <p className="table-sub">
             {row.isRequired ? 'Obrigatorio' : 'Recomendado'}
             {row.riskName ? ` · Risco: ${row.riskName}` : ''}
-            {row.quantity > 1 ? ` · Qtd ${row.quantity}` : ''}
             {row.replacementLabel
               ? ` · Periodicidade: ${row.replacementLabel}`
               : ''}
@@ -66,39 +127,263 @@ function NeedCard({ row }: { row: PortalEpiCoverageNeedRow }) {
       {row.guidance ? (
         <p className="field-hint" role="status">
           {row.guidance}
+          {row.status === 'SEM_ESTOQUE' ? (
+            <>
+              {' '}
+              <Link href="/portal/estoque">Registrar entrada</Link>
+            </>
+          ) : null}
         </p>
       ) : null}
 
-      {row.linkedEpis.length > 0 ? (
-        <ul className="portal-coverage-epis">
-          {row.linkedEpis.map((epi) => (
-            <li key={epi.epiItemId}>
-              <strong>
-                {epi.name}
-                {row.suggestedEpiItemId === epi.epiItemId
-                  ? ' (sugerido)'
-                  : ''}
-              </strong>
-              <span className="table-sub">
-                CA {epi.caNumber ?? '—'}
-                {epi.usefulLifeLabel ? ` · Vida util ${epi.usefulLifeLabel}` : ''}
-                {' · '}
-                Saldo total: {epi.totalQuantity}
-              </span>
-              {epi.balances.length > 0 ? (
-                <span className="table-sub">
-                  {epi.balances
-                    .map((b) => `${b.locationName}: ${b.quantity}`)
-                    .join(' · ')}
-                </span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="field-hint">Nenhum EPI real vinculado a esta necessidade.</p>
-      )}
+      {canSelect && selection.selected ? (
+        <div className="form-grid form-grid--compact">
+          <div className="field">
+            <label>EPI real</label>
+            <select
+              value={selection.epiItemId}
+              onChange={(e) => {
+                const nextEpi = row.linkedEpis.find(
+                  (item) => item.epiItemId === e.target.value,
+                );
+                const bal =
+                  nextEpi?.balances.find((b) => b.quantity > 0) ??
+                  nextEpi?.balances[0];
+                onChange({
+                  ...selection,
+                  epiItemId: e.target.value,
+                  stockLocationId: bal?.stockLocationId ?? '',
+                });
+              }}
+            >
+              {row.linkedEpis.map((item) => (
+                <option
+                  key={item.epiItemId}
+                  value={item.epiItemId}
+                  disabled={item.totalQuantity <= 0}
+                >
+                  {item.name} (saldo {item.totalQuantity})
+                  {row.suggestedEpiItemId === item.epiItemId
+                    ? ' — sugerido'
+                    : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>Local de estoque</label>
+            <select
+              value={selection.stockLocationId}
+              onChange={(e) =>
+                onChange({ ...selection, stockLocationId: e.target.value })
+              }
+            >
+              {balances.length === 0 ? (
+                <option value="">Sem saldo</option>
+              ) : (
+                balances.map((b) => (
+                  <option
+                    key={b.stockLocationId}
+                    value={b.stockLocationId}
+                    disabled={b.quantity <= 0}
+                  >
+                    {b.locationName} ({b.quantity})
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
+          <div className="field">
+            <label>Quantidade</label>
+            <input
+              type="number"
+              min={1}
+              max={
+                balances.find((b) => b.stockLocationId === selection.stockLocationId)
+                  ?.quantity ?? undefined
+              }
+              value={selection.quantity}
+              onChange={(e) =>
+                onChange({
+                  ...selection,
+                  quantity: Math.max(1, Number(e.target.value) || 1),
+                })
+              }
+            />
+          </div>
+        </div>
+      ) : null}
     </article>
+  );
+}
+
+function FacialCapture({
+  blob,
+  onCaptured,
+  onClear,
+}: {
+  blob: Blob | null;
+  onCaptured: (next: Blob) => void;
+  onClear: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [cameraOn, setCameraOn] = useState(false);
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraOn(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [stopCamera, previewUrl]);
+
+  useEffect(() => {
+    if (!blob) {
+      setPreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return url;
+    });
+  }, [blob]);
+
+  async function startCamera() {
+    setCameraError(null);
+    setStarting(true);
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error(
+          'Camera indisponivel neste navegador. Use HTTPS ou um dispositivo com camera.',
+        );
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setCameraOn(true);
+    } catch (err) {
+      setCameraError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel acessar a camera. Verifique a permissao do navegador.',
+      );
+      stopCamera();
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  function capture() {
+    const video = videoRef.current;
+    if (!video || !cameraOn) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+      (next) => {
+        if (!next) {
+          setCameraError('Falha ao capturar a imagem facial.');
+          return;
+        }
+        onCaptured(next);
+        stopCamera();
+      },
+      'image/jpeg',
+      0.92,
+    );
+  }
+
+  return (
+    <section className="portal-facial" aria-labelledby="facial-title">
+      <h2 id="facial-title" className="page-title page-title--sm">
+        Evidencia facial
+      </h2>
+      <p className="field-hint" role="note">
+        A imagem facial sera registrada como evidencia da entrega de EPI.
+      </p>
+
+      {cameraError ? (
+        <p className="error" role="alert">
+          {cameraError}
+        </p>
+      ) : null}
+
+      <div className="portal-facial__stage">
+        {previewUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={previewUrl}
+            alt="Captura facial da entrega"
+            className="portal-facial__preview"
+          />
+        ) : (
+          <video
+            ref={videoRef}
+            className="portal-facial__preview"
+            playsInline
+            muted
+            aria-label="Preview da camera"
+          />
+        )}
+      </div>
+
+      <div className="btn-row">
+        {!previewUrl ? (
+          <>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void startCamera()}
+              disabled={starting || cameraOn}
+            >
+              {starting ? 'Abrindo camera...' : cameraOn ? 'Camera ativa' : 'Abrir camera'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={capture}
+              disabled={!cameraOn}
+            >
+              Capturar foto
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              onClear();
+              void startCamera();
+            }}
+          >
+            Refazer foto
+          </button>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -109,6 +394,14 @@ function PortalEntregasContent() {
   const [coverage, setCoverage] = useState<PortalEpiCoverageResponse | null>(
     null,
   );
+  const [history, setHistory] = useState<PortalDeliveryListItem[]>([]);
+  const [receipt, setReceipt] = useState<PortalDeliveryDetail | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
+  const [selections, setSelections] = useState<Record<string, ItemSelection>>(
+    {},
+  );
+  const [facialBlob, setFacialBlob] = useState<Blob | null>(null);
+  const [notes, setNotes] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [unitId, setUnitId] = useState('');
@@ -116,14 +409,25 @@ function PortalEntregasContent() {
   const [jobId, setJobId] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingCoverage, setLoadingCoverage] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const reloadHistory = useCallback(async () => {
+    try {
+      const res = await fetchPortalDeliveries();
+      setHistory(res.deliveries);
+    } catch {
+      // historico e secundario; nao bloquear a tela
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    void fetchPortalEntregasPreparacao()
-      .then((res) => {
+    void Promise.all([fetchPortalEntregasPreparacao(), fetchPortalDeliveries()])
+      .then(([prepRes, histRes]) => {
         if (!cancelled) {
-          setPrep(res);
+          setPrep(prepRes);
+          setHistory(histRes.deliveries);
           setLoading(false);
         }
       })
@@ -141,6 +445,12 @@ function PortalEntregasContent() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+    };
+  }, [receiptPreview]);
 
   const filteredWorkers = useMemo(() => {
     if (!prep) return [];
@@ -170,15 +480,43 @@ function PortalEntregasContent() {
     return prep.filters.jobs.filter((job) => job.sectorId === sectorId);
   }, [prep, sectorId]);
 
+  const selectedItems = useMemo(() => {
+    if (!coverage) return [];
+    return coverage.needs
+      .filter((need) => selections[need.epiNeedId]?.selected)
+      .map((need) => ({ need, sel: selections[need.epiNeedId]! }));
+  }, [coverage, selections]);
+
+  const canSubmit =
+    Boolean(selectedId) &&
+    selectedItems.length > 0 &&
+    selectedItems.every(
+      (row) =>
+        row.sel.epiItemId &&
+        row.sel.stockLocationId &&
+        row.sel.quantity > 0,
+    ) &&
+    Boolean(facialBlob) &&
+    !submitting;
+
   async function selectWorker(worker: PortalEntregaWorkerOption) {
     setSelectedId(worker.id);
+    setReceipt(null);
+    setFacialBlob(null);
+    setNotes('');
     setLoadingCoverage(true);
     setError(null);
     try {
       const res = await fetchPortalWorkerEpiCoverage(worker.id);
       setCoverage(res);
+      const next: Record<string, ItemSelection> = {};
+      for (const need of res.needs) {
+        next[need.epiNeedId] = defaultSelection(need);
+      }
+      setSelections(next);
     } catch (err) {
       setCoverage(null);
+      setSelections({});
       setError(
         err instanceof Error
           ? err.message
@@ -189,16 +527,65 @@ function PortalEntregasContent() {
     }
   }
 
+  async function submitDelivery() {
+    if (!selectedId || !facialBlob) {
+      setError('Capture a evidencia facial antes de confirmar a entrega.');
+      return;
+    }
+    if (selectedItems.length === 0) {
+      setError('Selecione ao menos um EPI disponivel para entregar.');
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const detail = await createPortalDelivery(
+        {
+          workerId: selectedId,
+          notes: notes.trim() || null,
+          items: selectedItems.map(({ need, sel }) => ({
+            epiNeedId: need.epiNeedId,
+            epiItemId: sel.epiItemId,
+            stockLocationId: sel.stockLocationId,
+            quantity: sel.quantity,
+          })),
+        },
+        facialBlob,
+      );
+      setReceipt(detail);
+      const url = URL.createObjectURL(facialBlob);
+      setReceiptPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return url;
+      });
+      setFacialBlob(null);
+      const refreshed = await fetchPortalWorkerEpiCoverage(selectedId);
+      setCoverage(refreshed);
+      const next: Record<string, ItemSelection> = {};
+      for (const need of refreshed.needs) {
+        next[need.epiNeedId] = defaultSelection(need);
+      }
+      setSelections(next);
+      await reloadHistory();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Falha ao registrar a entrega.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <div className="portal-home">
       <header className="portal-home-header">
         <div>
           <p className="page-kicker">Dia a dia</p>
-          <h1 className="page-title page-title--sm">Preparar entrega de EPI</h1>
+          <h1 className="page-title page-title--sm">Entrega de EPI</h1>
           <p className="page-lead">
-            Selecione um trabalhador para ver os EPIs necessarios. Esta tela so
-            prepara a operacao — o registro da entrega e a baixa de estoque
-            entram na proxima etapa.
+            Selecione o trabalhador, os EPIs disponiveis, capture a evidencia
+            facial e confirme a entrega com baixa automatica de estoque.
           </p>
         </div>
       </header>
@@ -210,7 +597,68 @@ function PortalEntregasContent() {
       ) : null}
       {loading ? <p className="page-lead">Carregando trabalhadores...</p> : null}
 
-      {prep ? (
+      {receipt ? (
+        <section className="portal-card" aria-labelledby="receipt-title">
+          <h2 id="receipt-title" className="page-title page-title--sm">
+            Entrega registrada
+          </h2>
+          <p>
+            <strong>{receipt.worker.name}</strong>
+            {receipt.worker.registration
+              ? ` · Mat. ${receipt.worker.registration}`
+              : ''}
+          </p>
+          <p className="table-sub">
+            {formatDateTime(receipt.deliveredAt)} · Operador:{' '}
+            {receipt.deliveredBy.name}
+          </p>
+          <ul className="portal-coverage-epis">
+            {receipt.items.map((item) => (
+              <li key={item.id}>
+                <strong>
+                  {item.needName} → {item.epiName}
+                </strong>
+                <span className="table-sub">
+                  Qtd {item.quantity} · {item.locationName}
+                  {item.stockMovement
+                    ? ` · Saldo ${item.stockMovement.previousQuantity} → ${item.stockMovement.newQuantity}`
+                    : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {receiptPreview ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={receiptPreview}
+              alt="Evidencia facial capturada"
+              className="portal-facial__preview portal-facial__preview--receipt"
+            />
+          ) : (
+            <p className="field-hint">Evidencia facial capturada e arquivada.</p>
+          )}
+          <div className="btn-row" style={{ marginTop: '1rem' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setReceipt(null);
+                setReceiptPreview((prev) => {
+                  if (prev) URL.revokeObjectURL(prev);
+                  return null;
+                });
+              }}
+            >
+              Nova entrega
+            </button>
+            <Link className="btn btn-secondary" href="/portal/estoque">
+              Ver estoque
+            </Link>
+          </div>
+        </section>
+      ) : null}
+
+      {prep && !receipt ? (
         <>
           <section className="quota-summary" aria-label="Resumo">
             <div className="quota-summary-item">
@@ -235,7 +683,7 @@ function PortalEntregasContent() {
 
           <section className="portal-card" aria-labelledby="worker-select-title">
             <h2 id="worker-select-title" className="page-title page-title--sm">
-              Trabalhadores
+              1. Trabalhador
             </h2>
             <div className="form-grid">
               <div className="field">
@@ -362,7 +810,7 @@ function PortalEntregasContent() {
 
           <section className="portal-card" aria-labelledby="coverage-title">
             <h2 id="coverage-title" className="page-title page-title--sm">
-              EPIs necessarios
+              2. EPIs a entregar
             </h2>
             {!selectedId ? (
               <p className="page-lead">
@@ -396,42 +844,13 @@ function PortalEntregasContent() {
                     className={
                       coverage.summary.status === 'OK'
                         ? 'notice notice--info'
-                        : coverage.summary.status === 'ATENCAO'
-                          ? 'notice notice--warn'
-                          : 'notice notice--warn'
+                        : 'notice notice--warn'
                     }
                     role="status"
                   >
                     {coverage.summary.message}
                   </p>
                 ) : null}
-
-                <section className="quota-summary" aria-label="Cobertura">
-                  <div className="quota-summary-item">
-                    <span className="quota-summary-label">Necessidades</span>
-                    <strong className="quota-summary-value">
-                      {coverage.summary.totalNeeds}
-                    </strong>
-                  </div>
-                  <div className="quota-summary-item">
-                    <span className="quota-summary-label">Disponiveis</span>
-                    <strong className="quota-summary-value">
-                      {coverage.summary.disponivel}
-                    </strong>
-                  </div>
-                  <div className="quota-summary-item">
-                    <span className="quota-summary-label">Sem estoque</span>
-                    <strong className="quota-summary-value">
-                      {coverage.summary.semEstoque}
-                    </strong>
-                  </div>
-                  <div className="quota-summary-item">
-                    <span className="quota-summary-label">Sem EPI real</span>
-                    <strong className="quota-summary-value">
-                      {coverage.summary.semEpiReal}
-                    </strong>
-                  </div>
-                </section>
 
                 {coverage.needs.length === 0 ? (
                   <p className="page-lead">
@@ -441,27 +860,123 @@ function PortalEntregasContent() {
                 ) : (
                   <div className="portal-coverage-list">
                     {coverage.needs.map((need) => (
-                      <NeedCard key={need.requirementId} row={need} />
+                      <NeedSelectCard
+                        key={need.requirementId}
+                        row={need}
+                        selection={
+                          selections[need.epiNeedId] ?? defaultSelection(need)
+                        }
+                        onChange={(next) =>
+                          setSelections((prev) => ({
+                            ...prev,
+                            [need.epiNeedId]: next,
+                          }))
+                        }
+                      />
                     ))}
                   </div>
                 )}
 
-                <div className="btn-row" style={{ marginTop: '1rem' }}>
-                  <button type="button" className="btn btn-primary" disabled>
-                    Registrar entrega (proxima etapa)
-                  </button>
-                  <Link className="btn btn-secondary" href="/portal/estoque">
-                    Ir ao estoque
-                  </Link>
-                  <Link className="btn btn-secondary" href="/portal">
-                    Voltar ao painel
-                  </Link>
+                <div className="field" style={{ marginTop: '1rem' }}>
+                  <label htmlFor="entrega-notes">Observacoes (opcional)</label>
+                  <textarea
+                    id="entrega-notes"
+                    rows={2}
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    maxLength={2000}
+                  />
                 </div>
               </>
             ) : null}
           </section>
+
+          {coverage && coverage.needs.some((n) => n.status === 'DISPONIVEL') ? (
+            <>
+              <section className="portal-card">
+                <FacialCapture
+                  blob={facialBlob}
+                  onCaptured={setFacialBlob}
+                  onClear={() => setFacialBlob(null)}
+                />
+              </section>
+
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={!canSubmit}
+                  onClick={() => void submitDelivery()}
+                >
+                  {submitting
+                    ? 'Registrando...'
+                    : 'Registrar entrega com facial'}
+                </button>
+                <Link className="btn btn-secondary" href="/portal/estoque">
+                  Ir ao estoque
+                </Link>
+                <Link className="btn btn-secondary" href="/portal">
+                  Voltar ao painel
+                </Link>
+              </div>
+              {!facialBlob ? (
+                <p className="field-hint">
+                  A confirmacao exige captura facial obrigatoria.
+                </p>
+              ) : null}
+            </>
+          ) : null}
         </>
       ) : null}
+
+      <section
+        className="portal-card"
+        aria-labelledby="history-title"
+        style={{ marginTop: '1.25rem' }}
+      >
+        <h2 id="history-title" className="page-title page-title--sm">
+          Historico recente
+        </h2>
+        {history.length === 0 ? (
+          <p className="page-lead">Nenhuma entrega registrada ainda.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Trabalhador</th>
+                  <th>Itens</th>
+                  <th>Operador</th>
+                  <th>Metodo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((row) => (
+                  <tr key={row.id}>
+                    <td>{formatDateTime(row.deliveredAt)}</td>
+                    <td>
+                      <strong>{row.worker.name}</strong>
+                      {row.worker.registration ? (
+                        <span className="table-sub">
+                          Mat. {row.worker.registration}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td>
+                      {row.items
+                        .map((item) => `${item.needName} (${item.quantity})`)
+                        .join(', ')}
+                    </td>
+                    <td>{row.deliveredBy.name}</td>
+                    <td>{row.method}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -3,6 +3,9 @@ import type {
   ClientPortalUser,
   CaCertificateSearchResponse,
   PortalDashboardResponse,
+  PortalDeliveryDetail,
+  PortalDeliveriesListResponse,
+  PortalCreateDeliveryPayload,
   PortalEpiByCaResponse,
   PortalEpiCoverageResponse,
   PortalEpiSearchItem,
@@ -35,7 +38,9 @@ async function clientApiFetch<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const headers = new Headers(options.headers);
-  headers.set('Content-Type', 'application/json');
+  if (!(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   const token = getClientAccessToken();
   if (token) {
@@ -121,6 +126,43 @@ export async function fetchPortalWorkerEpiCoverage(workerId: string) {
   return clientApiFetch<PortalEpiCoverageResponse>(
     `/portal/trabalhadores/${workerId}/epi-coverage`,
   );
+}
+
+export async function fetchPortalDeliveries() {
+  return clientApiFetch<PortalDeliveriesListResponse>('/portal/entregas');
+}
+
+export async function fetchPortalDelivery(id: string) {
+  return clientApiFetch<PortalDeliveryDetail>(`/portal/entregas/${id}`);
+}
+
+export async function createPortalDelivery(
+  payload: PortalCreateDeliveryPayload,
+  facialBlob: Blob,
+  facialFileName = 'facial-capture.jpg',
+) {
+  const form = new FormData();
+  form.append('payload', JSON.stringify(payload));
+  form.append('facial', facialBlob, facialFileName);
+  return clientApiFetch<PortalDeliveryDetail>('/portal/entregas', {
+    method: 'POST',
+    body: form,
+  });
+}
+
+/** Fetch autenticado da evidencia facial (blob; nao logar conteudo). */
+export async function fetchPortalDeliveryFacialBlob(deliveryId: string) {
+  const headers = new Headers();
+  const token = getClientAccessToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(
+    `${getApiUrl()}/portal/entregas/${deliveryId}/evidence/facial`,
+    { headers },
+  );
+  if (!response.ok) {
+    throw new Error('Nao foi possivel carregar a evidencia facial.');
+  }
+  return response.blob();
 }
 
 export async function fetchPortalEstoque() {

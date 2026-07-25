@@ -1292,5 +1292,113 @@ export interface PortalEpiCoverageResponse {
   needs: PortalEpiCoverageNeedRow[];
 }
 
+export type PortalDeliveryStatus = 'COMPLETED' | 'CANCELLED';
+
+export type PortalDeliveryEvidenceVerificationStatus =
+  | 'CAPTURED'
+  | 'NOT_VERIFIED';
+
+export interface PortalDeliveryListItem {
+  id: string;
+  status: PortalDeliveryStatus;
+  deliveredAt: string;
+  notes: string | null;
+  worker: {
+    id: string;
+    name: string;
+    registration: string | null;
+  };
+  deliveredBy: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  itemCount: number;
+  items: Array<{
+    id: string;
+    needName: string;
+    epiName: string;
+    caNumber: string | null;
+    locationName: string;
+    quantity: number;
+  }>;
+  method: 'Facial capturada' | 'Sem evidencia';
+  evidence: {
+    id: string;
+    type: 'FACIAL_CAPTURE';
+    capturedAt: string;
+    verificationStatus: PortalDeliveryEvidenceVerificationStatus;
+  } | null;
+}
+
+export interface PortalDeliveriesListResponse {
+  deliveries: PortalDeliveryListItem[];
+}
+
+export interface PortalDeliveryDetail {
+  id: string;
+  status: PortalDeliveryStatus;
+  deliveredAt: string;
+  notes: string | null;
+  worker: {
+    id: string;
+    name: string;
+    registration: string | null;
+    cpfMasked: string | null;
+  };
+  deliveredBy: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  items: Array<{
+    id: string;
+    epiNeedId: string;
+    needName: string;
+    epiItemId: string;
+    epiName: string;
+    caNumber: string | null;
+    epiVariantId: string | null;
+    variantName: string | null;
+    stockLocationId: string;
+    locationName: string;
+    quantity: number;
+    nextReplacementAt: string | null;
+    stockMovement: {
+      id: string;
+      type: string;
+      quantity: number;
+      previousQuantity: number;
+      newQuantity: number;
+    };
+  }>;
+  evidence: {
+    id: string;
+    type: 'FACIAL_CAPTURE';
+    method: 'Facial capturada';
+    capturedAt: string;
+    verificationStatus: PortalDeliveryEvidenceVerificationStatus;
+    mimeType: string | null;
+    byteSize: number | null;
+    hasFile: boolean;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PortalCreateDeliveryItemInput {
+  epiNeedId: string;
+  epiItemId: string;
+  epiVariantId?: string | null;
+  stockLocationId: string;
+  quantity: number;
+}
+
+export interface PortalCreateDeliveryPayload {
+  workerId: string;
+  items: PortalCreateDeliveryItemInput[];
+  notes?: string | null;
+}
+
 
 

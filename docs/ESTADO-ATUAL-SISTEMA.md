@@ -2,7 +2,7 @@
 
 Documento de **onde o sistema esta hoje**, para um GPT/agente retomar o projeto com o mapa mental certo.
 
-**Data:** 2026-07-24  
+**Data:** 2026-07-25  
 **Nao e** um prompt de tarefa. E o retrato da arquitetura e do que ja foi entregue.
 
 Leitura complementar (mais antiga / permanente):
@@ -47,7 +47,7 @@ Tudo tendia a viver no ambiente da Consultoria: cadastro de cliente, estrutura, 
 | Quem | Faz |
 |---|---|
 | **Consultoria** | Cadastra cliente (CNPJ), cotas/vidas, PGRO, estrutura (setores/funcoes/riscos/necessidades), base CAEPI, catalogo mestre de EPIs, usuarios do cliente, trabalhadores na implantacao |
-| **Painel do Cliente** | Dia a dia da empresa: painel/dashboard, estoque operacional, consulta de estrutura/validade/trabalhadores, conta do gestor/operador; proximos fluxos (entregas, CRUD operacional, etc.) |
+| **Painel do Cliente** | Dia a dia da empresa: painel/dashboard, estoque operacional, consulta de estrutura/validade/trabalhadores, **entrega de EPI com evidencia facial e baixa de estoque**, conta do gestor/operador |
 
 ### Regras que nao podem ser quebradas
 
@@ -116,7 +116,7 @@ Login: `/portal/login` · Shell: `PortalShell` · Nav: `PORTAL_NAV`
 | `/portal/trabalhadores` | Vidas da empresa | **Somente leitura** (lista + cotas). CRUD operacional ainda nao esta no portal |
 | `/portal/estrutura` | Leitura da estrutura implantada | Consulta |
 | `/portal/validade` | Validades | Consulta / parcial |
-| `/portal/entregas` | Entregas | Ainda nao operacional completo (placeholder / base) |
+| `/portal/entregas` | Entregas | Entrega real com facial + baixa de estoque + historico (07.2) |
 | `/portal/custos` | Custos | Ainda nao operacional completo |
 | `/portal/conta` | Conta / troca de senha | Ativo |
 | `/portal/login` | Auth do cliente | Ativo |
@@ -181,10 +181,10 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
-| Portal: entregas / ficha / biometria | Preparacao (07.1): selecionar trabalhador e ver cobertura de EPIs — sem registrar entrega |
+| Portal: entregas / ficha / biometria | **07.2 feito:** entrega com facial (evidencia CAPTURED/NOT_VERIFIED), baixa ENTREGA, historico. Sem PDF/ficha, sem devolucao, sem match biometrico automatico |
 | Portal: custos / relatorios ricos | Ainda nao |
 
-Proximo passo natural combinado com o usuario: evoluir **Trabalhadores no Painel do Cliente** (hoje so leitura; na Consultoria o CRUD ja existe em `/clientes/[id]/trabalhadores`).
+Proximo passo natural: evoluir reconhecimento facial real (match biometrico), PDF/ficha de entrega, e/ou CRUD operacional de trabalhadores no portal — conforme prioridade do usuario.
 
 ---
 
