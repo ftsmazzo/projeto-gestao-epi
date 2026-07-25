@@ -181,7 +181,7 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
-| Portal: entregas / ficha / biometria | **07.4:** cancelamento controlado + devolucao (parcial/total, reutilizavel ou descartada) com impacto no estoque e auditoria. Sem PDF backend / match biometrico |
+| Portal: entregas / ficha / biometria | **07.4** + **07.2.1:** cobertura agrupa por `epiNeedId` (riscos em chips; sem produto cartesiano risco x necessidade) |
 | Portal: custos / relatorios ricos | Ainda nao |
 
 ### Evidencia facial — storage e EasyPanel

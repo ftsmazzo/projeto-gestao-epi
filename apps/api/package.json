@@ -10,6 +10,7 @@
     "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
     "lint": "eslint \"src/**/*.ts\" --max-warnings=0",
     "test:cnpj": "npx --yes tsx src/common/cnpj.selftest.ts",
+    "test:epi-coverage": "npx --yes tsx src/portal/portal-epi-coverage.selftest.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",

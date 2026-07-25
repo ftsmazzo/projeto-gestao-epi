@@ -33,6 +33,10 @@ import {
   resolveEvidenceAbsolutePath,
   saveFacialEvidenceFile,
 } from './facial-evidence.storage';
+import {
+  groupCoverageRequirementsByNeed,
+  resolveRestrictiveReplacementDays,
+} from './portal-epi-coverage.utils';
 
 const VALIDITY_SOON_DAYS = 90;
 const DEFAULT_LOCATION_NAME = 'Estoque principal';
@@ -1395,8 +1399,30 @@ export class PortalService {
       balancesByEpi.set(row.epiItemId, list);
     }
 
-    const needs = requirements.map((req) => {
-      const linkedEpis = req.epiNeed.itemLinks
+    const grouped = groupCoverageRequirementsByNeed(
+      requirements.map((req) => ({
+        id: req.id,
+        epiNeedId: req.epiNeedId,
+        needName: req.epiNeed.name,
+        isRequired: req.isRequired,
+        quantity: req.quantity,
+        replacementIntervalDays: req.replacementIntervalDays,
+        riskId: req.riskId,
+        riskName: req.risk?.name ?? null,
+      })),
+    );
+
+    // Links de EPI real: uma vez por necessidade (nao por requisito/risco).
+    const linksByNeed = new Map<string, (typeof requirements)[0]['epiNeed']>();
+    for (const req of requirements) {
+      if (!linksByNeed.has(req.epiNeedId)) {
+        linksByNeed.set(req.epiNeedId, req.epiNeed);
+      }
+    }
+
+    const needs = grouped.map((group) => {
+      const epiNeed = linksByNeed.get(group.epiNeedId)!;
+      const linkedEpis = epiNeed.itemLinks
         .filter((link) => link.epiItem?.isActive)
         .map((link) => {
           const item = link.epiItem!;
@@ -1443,20 +1469,30 @@ export class PortalService {
         linkedEpis[0] ??
         null;
 
+      const availableStock = linkedEpis.reduce(
+        (sum, item) => sum + item.totalQuantity,
+        0,
+      );
+
       return {
-        requirementId: req.id,
-        epiNeedId: req.epiNeedId,
-        needName: req.epiNeed.name,
-        riskId: req.riskId,
-        riskName: req.risk?.name ?? null,
-        isRequired: req.isRequired,
-        quantity: req.quantity,
-        replacementIntervalDays: req.replacementIntervalDays,
+        requirementId: group.requirementId,
+        requirementIds: group.requirementIds,
+        epiNeedId: group.epiNeedId,
+        needName: group.needName,
+        epiNeedName: group.needName,
+        riskId: group.riskId,
+        riskName: group.riskName,
+        risks: group.risks,
+        isRequired: group.isRequired,
+        quantity: group.quantity,
+        replacementIntervalDays: group.replacementIntervalDays,
         replacementLabel: this.formatReplacementInterval(
-          req.replacementIntervalDays,
+          group.replacementIntervalDays,
         ),
         status,
         guidance,
+        warnings: group.warnings,
+        availableStock,
         linkedEpis: linkedEpis.map((item) => ({
           epiItemId: item.epiItemId,
           name: item.name,
@@ -1911,6 +1947,12 @@ export class PortalService {
     const reqByNeed = new Map(
       requirements.map((req) => [req.epiNeedId, req] as const),
     );
+    const intervalsByNeed = new Map<string, Array<number | null>>();
+    for (const req of requirements) {
+      const list = intervalsByNeed.get(req.epiNeedId) ?? [];
+      list.push(req.replacementIntervalDays);
+      intervalsByNeed.set(req.epiNeedId, list);
+    }
 
     const locationIds = [
       ...new Set(payload.items.map((i) => i.stockLocationId)),
@@ -2057,7 +2099,9 @@ export class PortalService {
 
           const nextReplacementAt = this.computeNextReplacementAt(
             deliveredAt,
-            req.replacementIntervalDays,
+            resolveRestrictiveReplacementDays(
+              intervalsByNeed.get(item.epiNeedId) ?? [],
+            ),
             epi.usefulLifeValue,
             epi.usefulLifeUnit,
           );

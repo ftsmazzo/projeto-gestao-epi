@@ -1254,16 +1254,27 @@ export interface PortalEpiCoverageLinkedItem {
 
 export interface PortalEpiCoverageNeedRow {
   requirementId: string;
+  /** Todos os JobFunctionEpiRequirement ids agrupados nesta necessidade. */
+  requirementIds: string[];
   epiNeedId: string;
   needName: string;
+  /** Alias de needName. */
+  epiNeedName: string;
+  /** @deprecated use risks */
   riskId: string | null;
+  /** @deprecated use risks — nomes concatenados para compat */
   riskName: string | null;
+  risks: Array<{ id: string; name: string }>;
   isRequired: boolean;
   quantity: number;
   replacementIntervalDays: number | null;
   replacementLabel: string | null;
   status: PortalEpiCoverageStatus;
   guidance: string | null;
+  /** Avisos de criterio restritivo (qtd/periodicidade conflitantes). */
+  warnings: string[];
+  /** Soma dos saldos dos EPIs reais vinculados no cliente. */
+  availableStock: number;
   linkedEpis: PortalEpiCoverageLinkedItem[];
   suggestedEpiItemId: string | null;
 }

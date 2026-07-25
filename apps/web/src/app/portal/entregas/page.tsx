@@ -114,16 +114,32 @@ function NeedSelectCard({
           </label>
           <p className="table-sub">
             {row.isRequired ? 'Obrigatorio' : 'Recomendado'}
-            {row.riskName ? ` · Risco: ${row.riskName}` : ''}
             {row.replacementLabel
               ? ` · Periodicidade: ${row.replacementLabel}`
               : ''}
+            {row.quantity > 1 ? ` · Qtd ${row.quantity}` : ''}
           </p>
+          {row.risks.length > 0 ? (
+            <p className="portal-risk-chips" aria-label="Riscos associados">
+              <span className="table-sub">Riscos:</span>{' '}
+              {row.risks.map((risk) => (
+                <span key={risk.id} className="portal-risk-chip">
+                  {risk.name}
+                </span>
+              ))}
+            </p>
+          ) : null}
         </div>
         <span className={statusPillClass(row.status)}>
           {statusLabel(row.status)}
         </span>
       </header>
+
+      {row.warnings.length > 0 ? (
+        <p className="field-hint" role="status">
+          {row.warnings[0]}
+        </p>
+      ) : null}
 
       {row.guidance ? (
         <p className="field-hint" role="status">

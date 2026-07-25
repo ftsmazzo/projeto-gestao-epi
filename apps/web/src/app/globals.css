@@ -2049,6 +2049,24 @@ a.btn-danger:hover {
   margin: 0;
 }
 
+.portal-risk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0;
+}
+
+.portal-risk-chip {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  background: var(--color-surface-muted, #f8fafc);
+}
+
 .form-grid--compact {
   margin-top: 0.65rem;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
