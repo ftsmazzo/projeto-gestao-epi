@@ -413,19 +413,23 @@ function PortalEntregasContent() {
   const [loadingCoverage, setLoadingCoverage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyStatus, setHistoryStatus] = useState('');
 
   const reloadHistory = useCallback(async () => {
     try {
-      const res = await fetchPortalDeliveries();
+      const res = await fetchPortalDeliveries(historyStatus || undefined);
       setHistory(res.deliveries);
     } catch {
       // historico e secundario; nao bloquear a tela
     }
-  }, []);
+  }, [historyStatus]);
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([fetchPortalEntregasPreparacao(), fetchPortalDeliveries()])
+    void Promise.all([
+      fetchPortalEntregasPreparacao(),
+      fetchPortalDeliveries(historyStatus || undefined),
+    ])
       .then(([prepRes, histRes]) => {
         if (!cancelled) {
           setPrep(prepRes);
@@ -446,7 +450,7 @@ function PortalEntregasContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [historyStatus]);
 
   useEffect(() => {
     return () => {
@@ -991,6 +995,20 @@ function PortalEntregasContent() {
         <h2 id="history-title" className="page-title page-title--sm">
           Historico recente
         </h2>
+        <div className="field" style={{ maxWidth: 260, marginBottom: '0.75rem' }}>
+          <label htmlFor="history-status">Filtrar status</label>
+          <select
+            id="history-status"
+            value={historyStatus}
+            onChange={(e) => setHistoryStatus(e.target.value)}
+          >
+            <option value="">Todos</option>
+            <option value="COMPLETED">Concluida</option>
+            <option value="CANCELLED">Cancelada</option>
+            <option value="PARTIALLY_RETURNED">Parcialmente devolvida</option>
+            <option value="RETURNED">Devolvida</option>
+          </select>
+        </div>
         {history.length === 0 ? (
           <p className="page-lead">Nenhuma entrega registrada ainda.</p>
         ) : (
@@ -999,6 +1017,7 @@ function PortalEntregasContent() {
               <thead>
                 <tr>
                   <th>Comprovante</th>
+                  <th>Status</th>
                   <th>Data</th>
                   <th>Trabalhador</th>
                   <th>Itens</th>
@@ -1011,6 +1030,7 @@ function PortalEntregasContent() {
                 {history.map((row) => (
                   <tr key={row.id}>
                     <td className="mono">{row.receiptNumber}</td>
+                    <td>{row.statusLabel}</td>
                     <td>{formatDateTime(row.deliveredAt)}</td>
                     <td>
                       <strong>{row.worker.name}</strong>

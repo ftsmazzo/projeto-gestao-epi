@@ -22,7 +22,7 @@ import { memoryStorage } from 'multer';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ClientJwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { ClientJwtPayload } from '../auth/types/jwt-payload';
-import { PortalCreateDeliveryPayloadDto } from './dto/portal-delivery.dto';
+import { PortalCreateDeliveryPayloadDto, PortalCancelDeliveryDto, PortalCreateReturnDto } from './dto/portal-delivery.dto';
 import { PortalStockEntradasDto } from './dto/portal-stock.dto';
 import { PortalService } from './portal.service';
 
@@ -59,11 +59,15 @@ export class PortalController {
   }
 
   @Get('entregas')
-  listEntregas(@CurrentUser() user: ClientJwtPayload) {
+  listEntregas(
+    @CurrentUser() user: ClientJwtPayload,
+    @Query('status') status?: string,
+  ) {
     this.assertClient(user);
     return this.portal.listDeliveries(
       user.organizationId,
       user.servedClientId,
+      status,
     );
   }
 
@@ -74,6 +78,38 @@ export class PortalController {
       user.organizationId,
       user.servedClientId,
       id,
+    );
+  }
+
+  @Post('entregas/:id/cancel')
+  cancelEntrega(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+    @Body() dto: PortalCancelDeliveryDto,
+  ) {
+    this.assertClient(user);
+    return this.portal.cancelDelivery(
+      user.organizationId,
+      user.servedClientId,
+      user.sub,
+      id,
+      dto,
+    );
+  }
+
+  @Post('entregas/:id/returns')
+  returnEntrega(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+    @Body() dto: PortalCreateReturnDto,
+  ) {
+    this.assertClient(user);
+    return this.portal.createDeliveryReturn(
+      user.organizationId,
+      user.servedClientId,
+      user.sub,
+      id,
+      dto,
     );
   }
 

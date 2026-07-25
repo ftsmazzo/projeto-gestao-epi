@@ -1292,7 +1292,23 @@ export interface PortalEpiCoverageResponse {
   needs: PortalEpiCoverageNeedRow[];
 }
 
-export type PortalDeliveryStatus = 'COMPLETED' | 'CANCELLED';
+export type PortalDeliveryStatus =
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'PARTIALLY_RETURNED'
+  | 'RETURNED';
+
+export type PortalDeliveryItemStatus =
+  | 'DELIVERED'
+  | 'CANCELLED'
+  | 'RETURNED'
+  | 'PARTIALLY_RETURNED';
+
+export type PortalDeliveryReturnCondition =
+  | 'REUSABLE'
+  | 'DAMAGED'
+  | 'DISCARDED'
+  | 'LOST';
 
 export type PortalDeliveryEvidenceVerificationStatus =
   | 'CAPTURED'
@@ -1311,6 +1327,7 @@ export interface PortalDeliveryListItem {
   id: string;
   receiptNumber: string;
   status: PortalDeliveryStatus;
+  statusLabel: string;
   deliveredAt: string;
   notes: string | null;
   worker: {
@@ -1350,6 +1367,7 @@ export interface PortalDeliveryDetail {
   id: string;
   receiptNumber: string;
   status: PortalDeliveryStatus;
+  statusLabel: string;
   deliveredAt: string;
   notes: string | null;
   worker: {
@@ -1369,6 +1387,15 @@ export interface PortalDeliveryDetail {
     name: string;
     email: string;
   };
+  cancellation: {
+    cancelledAt: string;
+    reason: string | null;
+    cancelledBy: {
+      id: string;
+      name: string;
+      email: string;
+    } | null;
+  } | null;
   items: Array<{
     id: string;
     epiNeedId: string;
@@ -1382,6 +1409,11 @@ export interface PortalDeliveryDetail {
     stockLocationId: string;
     locationName: string;
     quantity: number;
+    returnedQuantity: number;
+    cancelledQuantity: number;
+    availableQuantity: number;
+    status: PortalDeliveryItemStatus;
+    statusLabel: string;
     nextReplacementAt: string | null;
     stockMovement: {
       id: string;
@@ -1391,6 +1423,37 @@ export interface PortalDeliveryDetail {
       newQuantity: number;
     };
   }>;
+  returns: Array<{
+    id: string;
+    returnedAt: string;
+    reason: string;
+    notes: string | null;
+    returnedBy: {
+      id: string;
+      name: string;
+      email: string;
+    };
+    items: Array<{
+      id: string;
+      deliveryItemId: string;
+      needName: string;
+      epiName: string;
+      quantity: number;
+      condition: PortalDeliveryReturnCondition;
+      returnsToStock: boolean;
+      stockMovementId: string | null;
+      stockMovement: {
+        id: string;
+        type: string;
+        quantity: number;
+        newQuantity: number;
+      } | null;
+    }>;
+  }>;
+  actions: {
+    canCancel: boolean;
+    canReturn: boolean;
+  };
   evidence: {
     id: string;
     type: 'FACIAL_CAPTURE';
@@ -1423,6 +1486,20 @@ export interface PortalCreateDeliveryPayload {
   items: PortalCreateDeliveryItemInput[];
   notes?: string | null;
   facialEvidenceConsentAccepted: true;
+}
+
+export interface PortalCancelDeliveryPayload {
+  reason: string;
+}
+
+export interface PortalCreateReturnPayload {
+  reason: string;
+  notes?: string | null;
+  items: Array<{
+    deliveryItemId: string;
+    quantity: number;
+    condition: PortalDeliveryReturnCondition;
+  }>;
 }
 
 

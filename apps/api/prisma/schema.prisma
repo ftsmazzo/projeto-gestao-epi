@@ -99,6 +99,7 @@ model Organization {
   jobFunctionEpiRequirements JobFunctionEpiRequirement[]
   pgroImportRuns    PgroImportRun[]
   epiDeliveries     EpiDelivery[]
+  epiDeliveryReturns EpiDeliveryReturn[]
 }
 
 model User {
@@ -115,7 +116,9 @@ model User {
   caepiImportRuns CaepiImportRun[]
   epiStockMovements EpiStockMovement[]
   pgroImportRuns  PgroImportRun[]
-  epiDeliveries   EpiDelivery[]
+  epiDeliveries   EpiDelivery[]                 @relation("EpiDeliveryDeliveredBy")
+  cancelledDeliveries EpiDelivery[]             @relation("EpiDeliveryCancelledBy")
+  epiDeliveryReturns EpiDeliveryReturn[]        @relation("EpiDeliveryReturnBy")
 }
 
 model Membership {
@@ -156,6 +159,7 @@ model ServedClient {
   clientUsers      ClientUserMembership[]
   stockLocations   StockLocation[]
   epiDeliveries    EpiDelivery[]
+  epiDeliveryReturns EpiDeliveryReturn[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -528,6 +532,8 @@ enum EpiStockMovementType {
   SAIDA_MANUAL
   AJUSTE
   ENTREGA
+  DEVOLUCAO
+  CANCELAMENTO_ENTREGA
 }
 
 /// Local fisico/logico de armazenamento de EPI.
@@ -600,6 +606,7 @@ model EpiStockMovement {
   stockLocation StockLocation @relation(fields: [stockLocationId], references: [id], onDelete: Restrict)
   createdByUser User          @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
   deliveryItems EpiDeliveryItem[]
+  deliveryReturnItems EpiDeliveryReturnItem[]
 
   @@index([organizationId])
   @@index([epiItemId])
@@ -754,6 +761,15 @@ model PgroImportRun {
 enum EpiDeliveryStatus {
   COMPLETED
   CANCELLED
+  PARTIALLY_RETURNED
+  RETURNED
+}
+
+enum EpiDeliveryItemStatus {
+  DELIVERED
+  CANCELLED
+  RETURNED
+  PARTIALLY_RETURNED
 }
 
 enum DeliveryEvidenceType {
@@ -763,6 +779,13 @@ enum DeliveryEvidenceType {
 enum DeliveryEvidenceVerificationStatus {
   CAPTURED
   NOT_VERIFIED
+}
+
+enum EpiDeliveryReturnCondition {
+  REUSABLE
+  DAMAGED
+  DISCARDED
+  LOST
 }
 
 /// Entrega de EPI ao trabalhador (Painel do Cliente).
@@ -783,37 +806,48 @@ model EpiDelivery {
   evidenceConsentAcceptedAt  DateTime?
   operatorIp                 String?
   userAgent                  String?
+  cancelledAt                DateTime?
+  cancelledByUserId          String?
+  cancelReason               String?
   createdAt                  DateTime          @default(now())
   updatedAt                  DateTime          @updatedAt
 
   organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   servedClient    ServedClient         @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
   worker          Worker               @relation(fields: [workerId], references: [id], onDelete: Restrict)
-  deliveredByUser User                 @relation(fields: [deliveredByUserId], references: [id], onDelete: Restrict)
+  deliveredByUser User                 @relation("EpiDeliveryDeliveredBy", fields: [deliveredByUserId], references: [id], onDelete: Restrict)
+  cancelledByUser User?                @relation("EpiDeliveryCancelledBy", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
   items           EpiDeliveryItem[]
   evidences       DeliveryEvidence[]
+  returns         EpiDeliveryReturn[]
 
   @@unique([servedClientId, receiptNumber])
   @@index([organizationId])
   @@index([servedClientId])
   @@index([workerId])
   @@index([deliveredByUserId])
+  @@index([cancelledByUserId])
   @@index([deliveredAt])
   @@index([status])
   @@index([receiptNumber])
 }
 
 model EpiDeliveryItem {
-  id                String    @id @default(cuid())
-  deliveryId        String
-  epiNeedId         String
-  epiItemId         String
-  epiVariantId      String?
-  stockLocationId   String
-  stockMovementId   String
-  quantity          Int
-  nextReplacementAt DateTime?
-  createdAt         DateTime  @default(now())
+  id                 String                @id @default(cuid())
+  deliveryId         String
+  epiNeedId          String
+  epiItemId          String
+  epiVariantId       String?
+  stockLocationId    String
+  stockMovementId    String
+  quantity           Int
+  /// Quantidade ja devolvida (soma das devolucoes).
+  returnedQuantity   Int                   @default(0)
+  /// Quantidade revertida por cancelamento da entrega.
+  cancelledQuantity  Int                   @default(0)
+  status             EpiDeliveryItemStatus @default(DELIVERED)
+  nextReplacementAt  DateTime?
+  createdAt          DateTime              @default(now())
 
   delivery      EpiDelivery     @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
   epiNeed       EpiNeed         @relation(fields: [epiNeedId], references: [id], onDelete: Restrict)
@@ -821,12 +855,59 @@ model EpiDeliveryItem {
   epiVariant    EpiVariant?     @relation(fields: [epiVariantId], references: [id], onDelete: SetNull)
   stockLocation StockLocation   @relation(fields: [stockLocationId], references: [id], onDelete: Restrict)
   stockMovement EpiStockMovement @relation(fields: [stockMovementId], references: [id], onDelete: Restrict)
+  returnItems   EpiDeliveryReturnItem[]
 
   @@index([deliveryId])
   @@index([epiNeedId])
   @@index([epiItemId])
   @@index([stockLocationId])
   @@index([stockMovementId])
+  @@index([status])
+}
+
+/// Devolucao de itens de uma entrega (parcial ou total).
+model EpiDeliveryReturn {
+  id                String   @id @default(cuid())
+  organizationId    String
+  servedClientId    String
+  deliveryId        String
+  returnedByUserId  String
+  returnedAt        DateTime @default(now())
+  reason            String
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient   ServedClient          @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  delivery       EpiDelivery           @relation(fields: [deliveryId], references: [id], onDelete: Restrict)
+  returnedByUser User                  @relation("EpiDeliveryReturnBy", fields: [returnedByUserId], references: [id], onDelete: Restrict)
+  items          EpiDeliveryReturnItem[]
+
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([deliveryId])
+  @@index([returnedByUserId])
+  @@index([returnedAt])
+}
+
+model EpiDeliveryReturnItem {
+  id              String                     @id @default(cuid())
+  returnId        String
+  deliveryItemId  String
+  quantity        Int
+  condition       EpiDeliveryReturnCondition
+  /// Preenchido apenas quando a condicao devolve ao estoque (REUSABLE).
+  stockMovementId String?
+  createdAt       DateTime                   @default(now())
+
+  returnEvent   EpiDeliveryReturn  @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  deliveryItem  EpiDeliveryItem    @relation(fields: [deliveryItemId], references: [id], onDelete: Restrict)
+  stockMovement EpiStockMovement?  @relation(fields: [stockMovementId], references: [id], onDelete: SetNull)
+
+  @@index([returnId])
+  @@index([deliveryItemId])
+  @@index([stockMovementId])
+  @@index([condition])
 }
 
 /// Evidencia da entrega (captura facial nesta etapa; verificacao biometrica futura).

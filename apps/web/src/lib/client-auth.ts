@@ -128,12 +128,43 @@ export async function fetchPortalWorkerEpiCoverage(workerId: string) {
   );
 }
 
-export async function fetchPortalDeliveries() {
-  return clientApiFetch<PortalDeliveriesListResponse>('/portal/entregas');
+export async function fetchPortalDeliveries(status?: string) {
+  const params = status ? `?status=${encodeURIComponent(status)}` : '';
+  return clientApiFetch<PortalDeliveriesListResponse>(
+    `/portal/entregas${params}`,
+  );
 }
 
 export async function fetchPortalDelivery(id: string) {
   return clientApiFetch<PortalDeliveryDetail>(`/portal/entregas/${id}`);
+}
+
+export async function cancelPortalDelivery(id: string, reason: string) {
+  return clientApiFetch<PortalDeliveryDetail>(`/portal/entregas/${id}/cancel`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function createPortalDeliveryReturn(
+  id: string,
+  payload: {
+    reason: string;
+    notes?: string | null;
+    items: Array<{
+      deliveryItemId: string;
+      quantity: number;
+      condition: 'REUSABLE' | 'DAMAGED' | 'DISCARDED' | 'LOST';
+    }>;
+  },
+) {
+  return clientApiFetch<PortalDeliveryDetail>(
+    `/portal/entregas/${id}/returns`,
+    {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export async function createPortalDelivery(

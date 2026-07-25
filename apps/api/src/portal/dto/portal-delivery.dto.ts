@@ -4,6 +4,7 @@ import {
   Equals,
   IsArray,
   IsBoolean,
+  IsEnum,
   IsInt,
   IsOptional,
   IsString,
@@ -12,6 +13,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { EpiDeliveryReturnCondition } from '@prisma/client';
 
 export const FACIAL_EVIDENCE_CONSENT_VERSION = 'v1-2026-07';
 
@@ -63,4 +65,42 @@ export class PortalCreateDeliveryPayloadDto {
       'E necessario aceitar o aviso de registro da imagem facial como evidencia.',
   })
   facialEvidenceConsentAccepted!: boolean;
+}
+
+export class PortalCancelDeliveryDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(1000)
+  reason!: string;
+}
+
+export class PortalReturnItemDto {
+  @IsString()
+  @MinLength(1)
+  deliveryItemId!: string;
+
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+
+  @IsEnum(EpiDeliveryReturnCondition)
+  condition!: EpiDeliveryReturnCondition;
+}
+
+export class PortalCreateReturnDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(1000)
+  reason!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  notes?: string | null;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => PortalReturnItemDto)
+  items!: PortalReturnItemDto[];
 }

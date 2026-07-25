@@ -6,6 +6,8 @@ import {
 import {
   DeliveryEvidenceType,
   DeliveryEvidenceVerificationStatus,
+  EpiDeliveryItemStatus,
+  EpiDeliveryReturnCondition,
   EpiDeliveryStatus,
   EpiStockMovementType,
   EpiUsefulLifeUnit,
@@ -22,7 +24,9 @@ import { StockService } from '../stock/stock.service';
 import {
   FACIAL_EVIDENCE_CONSENT_TEXT,
   FACIAL_EVIDENCE_CONSENT_VERSION,
+  type PortalCancelDeliveryDto,
   type PortalCreateDeliveryPayloadDto,
+  type PortalCreateReturnDto,
 } from './dto/portal-delivery.dto';
 import type { PortalStockEntradasDto } from './dto/portal-stock.dto';
 import {
@@ -1499,11 +1503,27 @@ export class PortalService {
   }
 
   /** Historico de entregas do cliente (sem imagem facial). */
-  async listDeliveries(organizationId: string, servedClientId: string) {
+  async listDeliveries(
+    organizationId: string,
+    servedClientId: string,
+    statusFilter?: string,
+  ) {
     await this.requireClient(organizationId, servedClientId);
 
+    const status =
+      statusFilter &&
+      Object.values(EpiDeliveryStatus).includes(
+        statusFilter as EpiDeliveryStatus,
+      )
+        ? (statusFilter as EpiDeliveryStatus)
+        : undefined;
+
     const rows = await this.prisma.epiDelivery.findMany({
-      where: { organizationId, servedClientId },
+      where: {
+        organizationId,
+        servedClientId,
+        ...(status ? { status } : {}),
+      },
       orderBy: { deliveredAt: 'desc' },
       take: 50,
       include: {
@@ -1566,6 +1586,7 @@ export class PortalService {
           },
         },
         deliveredByUser: { select: { id: true, name: true, email: true } },
+        cancelledByUser: { select: { id: true, name: true, email: true } },
         items: {
           include: {
             epiNeed: { select: { id: true, name: true } },
@@ -1608,6 +1629,31 @@ export class PortalService {
             byteSize: true,
           },
         },
+        returns: {
+          orderBy: { returnedAt: 'desc' },
+          include: {
+            returnedByUser: { select: { id: true, name: true, email: true } },
+            items: {
+              include: {
+                deliveryItem: {
+                  select: {
+                    id: true,
+                    epiNeed: { select: { name: true } },
+                    epiItem: { select: { name: true } },
+                  },
+                },
+                stockMovement: {
+                  select: {
+                    id: true,
+                    type: true,
+                    quantity: true,
+                    newQuantity: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -1621,6 +1667,7 @@ export class PortalService {
       id: row.id,
       receiptNumber: row.receiptNumber,
       status: row.status,
+      statusLabel: this.deliveryStatusLabel(row.status),
       deliveredAt: row.deliveredAt.toISOString(),
       notes: row.notes,
       worker: {
@@ -1642,32 +1689,93 @@ export class PortalService {
         name: row.deliveredByUser.name,
         email: row.deliveredByUser.email,
       },
-      items: row.items.map((item) => ({
-        id: item.id,
-        epiNeedId: item.epiNeedId,
-        needName: item.epiNeed.name,
-        epiItemId: item.epiItemId,
-        epiName: item.epiItem.name,
-        caNumber: item.epiItem.caNumber,
-        caExpiresAt: item.epiItem.caExpiresAt?.toISOString() ?? null,
-        epiVariantId: item.epiVariantId,
-        variantName: item.epiVariant
-          ? [item.epiVariant.size, item.epiVariant.color, item.epiVariant.model]
-              .filter(Boolean)
-              .join(' / ') || null
-          : null,
-        stockLocationId: item.stockLocationId,
-        locationName: item.stockLocation.name,
-        quantity: item.quantity,
-        nextReplacementAt: item.nextReplacementAt?.toISOString() ?? null,
-        stockMovement: {
-          id: item.stockMovement.id,
-          type: item.stockMovement.type,
-          quantity: item.stockMovement.quantity,
-          previousQuantity: item.stockMovement.previousQuantity,
-          newQuantity: item.stockMovement.newQuantity,
+      cancellation: row.cancelledAt
+        ? {
+            cancelledAt: row.cancelledAt.toISOString(),
+            reason: row.cancelReason,
+            cancelledBy: row.cancelledByUser
+              ? {
+                  id: row.cancelledByUser.id,
+                  name: row.cancelledByUser.name,
+                  email: row.cancelledByUser.email,
+                }
+              : null,
+          }
+        : null,
+      items: row.items.map((item) => {
+        const availableQuantity = Math.max(
+          0,
+          item.quantity - item.returnedQuantity - item.cancelledQuantity,
+        );
+        return {
+          id: item.id,
+          epiNeedId: item.epiNeedId,
+          needName: item.epiNeed.name,
+          epiItemId: item.epiItemId,
+          epiName: item.epiItem.name,
+          caNumber: item.epiItem.caNumber,
+          caExpiresAt: item.epiItem.caExpiresAt?.toISOString() ?? null,
+          epiVariantId: item.epiVariantId,
+          variantName: item.epiVariant
+            ? [item.epiVariant.size, item.epiVariant.color, item.epiVariant.model]
+                .filter(Boolean)
+                .join(' / ') || null
+            : null,
+          stockLocationId: item.stockLocationId,
+          locationName: item.stockLocation.name,
+          quantity: item.quantity,
+          returnedQuantity: item.returnedQuantity,
+          cancelledQuantity: item.cancelledQuantity,
+          availableQuantity,
+          status: item.status,
+          statusLabel: this.itemStatusLabel(item.status),
+          nextReplacementAt: item.nextReplacementAt?.toISOString() ?? null,
+          stockMovement: {
+            id: item.stockMovement.id,
+            type: item.stockMovement.type,
+            quantity: item.stockMovement.quantity,
+            previousQuantity: item.stockMovement.previousQuantity,
+            newQuantity: item.stockMovement.newQuantity,
+          },
+        };
+      }),
+      returns: row.returns.map((ret) => ({
+        id: ret.id,
+        returnedAt: ret.returnedAt.toISOString(),
+        reason: ret.reason,
+        notes: ret.notes,
+        returnedBy: {
+          id: ret.returnedByUser.id,
+          name: ret.returnedByUser.name,
+          email: ret.returnedByUser.email,
         },
+        items: ret.items.map((ri) => ({
+          id: ri.id,
+          deliveryItemId: ri.deliveryItemId,
+          needName: ri.deliveryItem.epiNeed.name,
+          epiName: ri.deliveryItem.epiItem.name,
+          quantity: ri.quantity,
+          condition: ri.condition,
+          returnsToStock: ri.condition === EpiDeliveryReturnCondition.REUSABLE,
+          stockMovementId: ri.stockMovementId,
+          stockMovement: ri.stockMovement
+            ? {
+                id: ri.stockMovement.id,
+                type: ri.stockMovement.type,
+                quantity: ri.stockMovement.quantity,
+                newQuantity: ri.stockMovement.newQuantity,
+              }
+            : null,
+        })),
       })),
+      actions: {
+        canCancel:
+          row.status === EpiDeliveryStatus.COMPLETED ||
+          row.status === EpiDeliveryStatus.PARTIALLY_RETURNED,
+        canReturn:
+          row.status === EpiDeliveryStatus.COMPLETED ||
+          row.status === EpiDeliveryStatus.PARTIALLY_RETURNED,
+      },
       evidence: facial
         ? {
             id: facial.id,
@@ -1679,7 +1787,6 @@ export class PortalService {
             capturedAt: facial.capturedAt.toISOString(),
             verificationStatus: facial.verificationStatus,
             hasFile: true,
-            // Sem mime/size/path na API do comprovante (LGPD minima).
           }
         : null,
       consent: {
@@ -1964,6 +2071,9 @@ export class PortalService {
               stockLocationId: item.stockLocationId,
               stockMovementId: movementResult.movement.id,
               quantity: item.quantity,
+              returnedQuantity: 0,
+              cancelledQuantity: 0,
+              status: EpiDeliveryItemStatus.DELIVERED,
               nextReplacementAt,
             },
           });
@@ -2036,6 +2146,253 @@ export class PortalService {
     }
   }
 
+  /** Cancela entrega por erro operacional e reverte estoque restante. */
+  async cancelDelivery(
+    organizationId: string,
+    servedClientId: string,
+    userId: string,
+    deliveryId: string,
+    dto: PortalCancelDeliveryDto,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    const reason = dto.reason.trim();
+    if (reason.length < 3) {
+      throw new BadRequestException('Informe o motivo do cancelamento.');
+    }
+
+    const delivery = await this.prisma.epiDelivery.findFirst({
+      where: { id: deliveryId, organizationId, servedClientId },
+      include: { items: true },
+    });
+    if (!delivery) {
+      throw new NotFoundException('Entrega nao encontrada.');
+    }
+    if (delivery.status === EpiDeliveryStatus.CANCELLED) {
+      throw new BadRequestException('Esta entrega ja esta cancelada.');
+    }
+    if (delivery.status === EpiDeliveryStatus.RETURNED) {
+      throw new BadRequestException(
+        'Entrega totalmente devolvida nao pode ser cancelada.',
+      );
+    }
+
+    const cancelledAt = new Date();
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const item of delivery.items) {
+        const remaining =
+          item.quantity - item.returnedQuantity - item.cancelledQuantity;
+        if (remaining <= 0) continue;
+
+        await this.stock.applyMovementInTx(tx, organizationId, userId, {
+          type: EpiStockMovementType.CANCELAMENTO_ENTREGA,
+          stockLocationId: item.stockLocationId,
+          epiItemId: item.epiItemId,
+          epiVariantId: item.epiVariantId ?? undefined,
+          quantity: remaining,
+          reason: `Cancelamento ${delivery.receiptNumber}: ${reason}`,
+          notes: `deliveryItemId=${item.id}`,
+        });
+
+        const cancelledQuantity = item.cancelledQuantity + remaining;
+        await tx.epiDeliveryItem.update({
+          where: { id: item.id },
+          data: {
+            cancelledQuantity,
+            status: this.deriveItemStatus(
+              item.quantity,
+              item.returnedQuantity,
+              cancelledQuantity,
+            ),
+          },
+        });
+      }
+
+      await tx.epiDelivery.update({
+        where: { id: delivery.id },
+        data: {
+          status: EpiDeliveryStatus.CANCELLED,
+          cancelledAt,
+          cancelledByUserId: userId,
+          cancelReason: reason,
+        },
+      });
+    });
+
+    await this.audit.log({
+      action: 'portal.epi_delivery.cancelled',
+      organizationId,
+      userId,
+      entityType: 'EpiDelivery',
+      entityId: delivery.id,
+      metadata: {
+        servedClientId,
+        receiptNumber: delivery.receiptNumber,
+        reason,
+      },
+    });
+
+    return this.getDelivery(organizationId, servedClientId, delivery.id);
+  }
+
+  /** Registra devolucao parcial/total de itens da entrega. */
+  async createDeliveryReturn(
+    organizationId: string,
+    servedClientId: string,
+    userId: string,
+    deliveryId: string,
+    dto: PortalCreateReturnDto,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    const reason = dto.reason.trim();
+    if (reason.length < 3) {
+      throw new BadRequestException('Informe o motivo da devolucao.');
+    }
+
+    const delivery = await this.prisma.epiDelivery.findFirst({
+      where: { id: deliveryId, organizationId, servedClientId },
+      include: { items: true },
+    });
+    if (!delivery) {
+      throw new NotFoundException('Entrega nao encontrada.');
+    }
+    if (
+      delivery.status !== EpiDeliveryStatus.COMPLETED &&
+      delivery.status !== EpiDeliveryStatus.PARTIALLY_RETURNED
+    ) {
+      throw new BadRequestException(
+        'So e possivel devolver entregas concluidas ou parcialmente devolvidas.',
+      );
+    }
+
+    const itemIds = dto.items.map((i) => i.deliveryItemId);
+    if (new Set(itemIds).size !== itemIds.length) {
+      throw new BadRequestException(
+        'Nao e permitido repetir o mesmo item na devolucao.',
+      );
+    }
+
+    const itemsById = new Map(delivery.items.map((i) => [i.id, i] as const));
+
+    for (const row of dto.items) {
+      if (!Number.isInteger(row.quantity) || row.quantity <= 0) {
+        throw new BadRequestException(
+          'Quantidade devolvida deve ser inteiro maior que zero.',
+        );
+      }
+      const item = itemsById.get(row.deliveryItemId);
+      if (!item) {
+        throw new BadRequestException(
+          'Item nao pertence a esta entrega.',
+        );
+      }
+      const available =
+        item.quantity - item.returnedQuantity - item.cancelledQuantity;
+      if (row.quantity > available) {
+        throw new BadRequestException(
+          `Quantidade devolvida excede o disponivel (${available}) para um dos itens.`,
+        );
+      }
+    }
+
+    const returnedAt = new Date();
+
+    await this.prisma.$transaction(async (tx) => {
+      const ret = await tx.epiDeliveryReturn.create({
+        data: {
+          organizationId,
+          servedClientId,
+          deliveryId: delivery.id,
+          returnedByUserId: userId,
+          returnedAt,
+          reason,
+          notes: dto.notes?.trim() || null,
+        },
+      });
+
+      for (const row of dto.items) {
+        const item = itemsById.get(row.deliveryItemId)!;
+        let stockMovementId: string | null = null;
+
+        if (row.condition === EpiDeliveryReturnCondition.REUSABLE) {
+          const movement = await this.stock.applyMovementInTx(
+            tx,
+            organizationId,
+            userId,
+            {
+              type: EpiStockMovementType.DEVOLUCAO,
+              stockLocationId: item.stockLocationId,
+              epiItemId: item.epiItemId,
+              epiVariantId: item.epiVariantId ?? undefined,
+              quantity: row.quantity,
+              reason: `Devolucao ${delivery.receiptNumber}: ${reason}`,
+              notes: `deliveryItemId=${item.id}; condition=REUSABLE`,
+            },
+          );
+          stockMovementId = movement.movement.id;
+        }
+
+        await tx.epiDeliveryReturnItem.create({
+          data: {
+            returnId: ret.id,
+            deliveryItemId: item.id,
+            quantity: row.quantity,
+            condition: row.condition,
+            stockMovementId,
+          },
+        });
+
+        const returnedQuantity = item.returnedQuantity + row.quantity;
+        // Keep local map in sync for multi-line same delivery item not allowed,
+        // but update for status derivation of delivery after loop.
+        item.returnedQuantity = returnedQuantity;
+
+        await tx.epiDeliveryItem.update({
+          where: { id: item.id },
+          data: {
+            returnedQuantity,
+            status: this.deriveItemStatus(
+              item.quantity,
+              returnedQuantity,
+              item.cancelledQuantity,
+            ),
+          },
+        });
+      }
+
+      const refreshed = await tx.epiDeliveryItem.findMany({
+        where: { deliveryId: delivery.id },
+        select: {
+          quantity: true,
+          returnedQuantity: true,
+          cancelledQuantity: true,
+        },
+      });
+      const nextStatus = this.deriveDeliveryStatusAfterReturn(refreshed);
+      await tx.epiDelivery.update({
+        where: { id: delivery.id },
+        data: { status: nextStatus },
+      });
+    });
+
+    await this.audit.log({
+      action: 'portal.epi_delivery.returned',
+      organizationId,
+      userId,
+      entityType: 'EpiDelivery',
+      entityId: delivery.id,
+      metadata: {
+        servedClientId,
+        receiptNumber: delivery.receiptNumber,
+        reason,
+        itemCount: dto.items.length,
+        // Nao logar imagem/path.
+      },
+    });
+
+    return this.getDelivery(organizationId, servedClientId, delivery.id);
+  }
+
   /** Caminho absoluto da evidencia facial (uso autenticado; nao logar conteudo). */
   async getFacialEvidenceAbsolutePath(
     organizationId: string,
@@ -2060,6 +2417,82 @@ export class PortalService {
       absolutePath: resolveEvidenceAbsolutePath(evidence.filePath),
       mimeType: evidence.mimeType ?? 'image/jpeg',
     };
+  }
+
+  private deriveItemStatus(
+    quantity: number,
+    returnedQuantity: number,
+    cancelledQuantity: number,
+  ): EpiDeliveryItemStatus {
+    if (cancelledQuantity >= quantity) return EpiDeliveryItemStatus.CANCELLED;
+    if (returnedQuantity >= quantity) return EpiDeliveryItemStatus.RETURNED;
+    if (returnedQuantity > 0 || cancelledQuantity > 0) {
+      return EpiDeliveryItemStatus.PARTIALLY_RETURNED;
+    }
+    return EpiDeliveryItemStatus.DELIVERED;
+  }
+
+  private deriveDeliveryStatusAfterReturn(
+    items: Array<{
+      quantity: number;
+      returnedQuantity: number;
+      cancelledQuantity: number;
+    }>,
+  ): EpiDeliveryStatus {
+    const allFullyReturned = items.every(
+      (i) => i.returnedQuantity >= i.quantity,
+    );
+    if (allFullyReturned) return EpiDeliveryStatus.RETURNED;
+
+    const anyReturned = items.some((i) => i.returnedQuantity > 0);
+    if (anyReturned) return EpiDeliveryStatus.PARTIALLY_RETURNED;
+
+    return EpiDeliveryStatus.COMPLETED;
+  }
+
+  private deliveryStatusLabel(status: EpiDeliveryStatus): string {
+    switch (status) {
+      case EpiDeliveryStatus.CANCELLED:
+        return 'Cancelada';
+      case EpiDeliveryStatus.PARTIALLY_RETURNED:
+        return 'Parcialmente devolvida';
+      case EpiDeliveryStatus.RETURNED:
+        return 'Devolvida';
+      default:
+        return 'Concluida';
+    }
+  }
+
+  private itemStatusLabel(status: EpiDeliveryItemStatus): string {
+    switch (status) {
+      case EpiDeliveryItemStatus.CANCELLED:
+        return 'Cancelado';
+      case EpiDeliveryItemStatus.RETURNED:
+        return 'Devolvido';
+      case EpiDeliveryItemStatus.PARTIALLY_RETURNED:
+        return 'Parcialmente devolvido';
+      default:
+        return 'Entregue';
+    }
+  }
+
+  private mapEvidenceStatusLabel(
+    status: DeliveryEvidenceVerificationStatus,
+  ): 'FACIAL_CAPTURED' | 'NOT_VERIFIED' {
+    if (status === DeliveryEvidenceVerificationStatus.NOT_VERIFIED) {
+      return 'NOT_VERIFIED';
+    }
+    return 'FACIAL_CAPTURED';
+  }
+
+  private normalizeMetaText(
+    value: string | null | undefined,
+    maxLen: number,
+  ): string | null {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return trimmed.slice(0, maxLen);
   }
 
   private async nextReceiptNumber(
@@ -2090,25 +2523,6 @@ export class PortalService {
     }
 
     return `${prefix}${String(seq).padStart(4, '0')}`;
-  }
-
-  private mapEvidenceStatusLabel(
-    status: DeliveryEvidenceVerificationStatus,
-  ): 'FACIAL_CAPTURED' | 'NOT_VERIFIED' {
-    if (status === DeliveryEvidenceVerificationStatus.NOT_VERIFIED) {
-      return 'NOT_VERIFIED';
-    }
-    return 'FACIAL_CAPTURED';
-  }
-
-  private normalizeMetaText(
-    value: string | null | undefined,
-    maxLen: number,
-  ): string | null {
-    if (!value) return null;
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    return trimmed.slice(0, maxLen);
   }
 
   private computeNextReplacementAt(
@@ -2163,6 +2577,7 @@ export class PortalService {
       id: row.id,
       receiptNumber: row.receiptNumber,
       status: row.status,
+      statusLabel: this.deliveryStatusLabel(row.status),
       deliveredAt: row.deliveredAt.toISOString(),
       notes: row.notes,
       worker: {

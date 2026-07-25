@@ -331,7 +331,9 @@ export class StockService {
     if (
       dto.type === EpiStockMovementType.ENTRADA ||
       dto.type === EpiStockMovementType.SAIDA_MANUAL ||
-      dto.type === EpiStockMovementType.ENTREGA
+      dto.type === EpiStockMovementType.ENTREGA ||
+      dto.type === EpiStockMovementType.DEVOLUCAO ||
+      dto.type === EpiStockMovementType.CANCELAMENTO_ENTREGA
     ) {
       if (dto.quantity <= 0) {
         throw new BadRequestException(
@@ -438,7 +440,11 @@ export class StockService {
     const previousQuantity = existing?.quantity ?? 0;
     let newQuantity = previousQuantity;
 
-    if (dto.type === EpiStockMovementType.ENTRADA) {
+    if (
+      dto.type === EpiStockMovementType.ENTRADA ||
+      dto.type === EpiStockMovementType.DEVOLUCAO ||
+      dto.type === EpiStockMovementType.CANCELAMENTO_ENTREGA
+    ) {
       newQuantity = previousQuantity + dto.quantity;
     } else if (
       dto.type === EpiStockMovementType.SAIDA_MANUAL ||

@@ -47,7 +47,9 @@ function PortalEntregaDetailContent() {
           {error}
         </p>
       ) : null}
-      {detail ? <DeliveryReceiptView detail={detail} /> : null}
+      {detail ? (
+        <DeliveryReceiptView detail={detail} onUpdated={setDetail} />
+      ) : null}
     </div>
   );
 }
