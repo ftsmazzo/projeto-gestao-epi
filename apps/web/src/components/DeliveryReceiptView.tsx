@@ -335,64 +335,32 @@ export function DeliveryReceiptView({
       <section className="portal-receipt__block">
         <h2 className="page-title page-title--sm">Evidencia facial</h2>
         {detail.evidence ? (
-          <dl className="portal-receipt__dl">
-            <div>
-              <dt>Status</dt>
-              <dd>
-                {detail.evidence.verificationStatus === 'MATCHED'
-                  ? 'Biometria facial aprovada'
-                  : detail.evidence.verificationStatus === 'REJECTED'
-                    ? 'Biometria facial rejeitada'
-                    : detail.evidence.verificationStatus === 'HUMAN_CONFIRMED'
-                      ? 'Conferencia visual confirmada (legado)'
-                      : detail.evidence.verificationStatus === 'NOT_VERIFIED'
-                        ? 'Nao verificada'
-                        : 'Facial capturada'}
-              </dd>
-            </div>
-            <div>
-              <dt>Metodo</dt>
-              <dd>{detail.evidence.method}</dd>
-            </div>
-            {detail.evidence.verificationStatus === 'MATCHED' ? (
+          <>
+            <p className="portal-receipt__biometric" role="status">
+              {detail.evidence.verificationStatus === 'MATCHED'
+                ? 'Biometria facial: aprovada automaticamente'
+                : detail.evidence.verificationStatus === 'REJECTED'
+                  ? 'Biometria facial: nao correspondente'
+                  : detail.evidence.statusLabel}
+            </p>
+            <dl className="portal-receipt__dl">
               <div>
-                <dt>Biometria</dt>
-                <dd>Aprovada automaticamente</dd>
+                <dt>Capturada em</dt>
+                <dd>{formatDateTime(detail.evidence.capturedAt)}</dd>
               </div>
-            ) : null}
-            {detail.evidence.matchDistance != null ? (
               <div>
-                <dt>Distancia</dt>
-                <dd className="mono">
-                  {detail.evidence.matchDistance.toFixed(4)}
-                  {detail.evidence.matchThreshold != null
-                    ? ` / limiar ${detail.evidence.matchThreshold.toFixed(2)}`
-                    : ''}
+                <dt>Arquivo</dt>
+                <dd>
+                  {detail.evidence.hasFile
+                    ? 'Registrado (acesso autenticado; nao exibido neste comprovante)'
+                    : 'Ausente'}
                 </dd>
               </div>
-            ) : null}
-            <div>
-              <dt>Capturada em</dt>
-              <dd>{formatDateTime(detail.evidence.capturedAt)}</dd>
-            </div>
-            <div>
-              <dt>Arquivo</dt>
-              <dd>
-                {detail.evidence.hasFile
-                  ? 'Registrado (acesso autenticado; nao exibido neste comprovante)'
-                  : 'Ausente'}
-              </dd>
-            </div>
-          </dl>
+            </dl>
+          </>
         ) : (
           <p className="field-hint">Sem evidencia facial registrada.</p>
         )}
-        {detail.evidence?.verificationStatus === 'MATCHED' ? (
-          <p className="notice notice--info" role="status">
-            Biometria facial: aprovada automaticamente. Sem liveness; motor
-            face-api (descritor 128-d).
-          </p>
-        ) : null}
       </section>
 
       <section className="portal-receipt__block">

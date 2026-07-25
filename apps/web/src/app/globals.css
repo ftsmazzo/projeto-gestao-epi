@@ -2081,31 +2081,6 @@ a.btn-danger:hover {
   overflow: hidden;
 }
 
-.portal-facial__compare {
-  display: grid;
-  gap: 0.85rem;
-  margin: 0.75rem 0;
-}
-
-@media (min-width: 720px) {
-  .portal-facial__compare {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-.portal-facial__compare-item .portal-facial__stage {
-  max-width: none;
-  margin: 0.35rem 0 0;
-}
-
-.portal-facial__compare-item .portal-facial__preview {
-  max-width: none;
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  border-radius: var(--radius-sm);
-  object-fit: cover;
-}
-
 .portal-facial__preview {
   width: 100%;
   height: 100%;
@@ -2120,6 +2095,294 @@ a.btn-danger:hover {
   aspect-ratio: 4 / 3;
   margin-top: 0.75rem;
   border-radius: var(--radius-sm);
+}
+
+/* —— Validacao facial (UX 09.1.2) —— */
+.portal-card--face {
+  max-width: 420px;
+}
+
+.face-ux {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.face-ux__header {
+  margin: 0;
+}
+
+.face-ux__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.face-ux__subtitle,
+.face-ux__hint,
+.face-ux__consent,
+.face-ux__capture-note,
+.face-ux__ready {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--color-muted, #64748b);
+}
+
+.face-ux__frame {
+  display: flex;
+  justify-content: center;
+}
+
+.face-ux__stage {
+  position: relative;
+  width: min(280px, 100%);
+  aspect-ratio: 3 / 4;
+  border-radius: 1.15rem;
+  overflow: hidden;
+  background: #0b1220;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.face-ux__stage--enroll {
+  width: min(220px, 100%);
+}
+
+.face-ux__media {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transform: scaleX(-1);
+}
+
+.face-ux__media--thumb {
+  transform: none;
+  filter: saturate(0.92);
+}
+
+.face-ux__placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.5rem;
+  color: rgba(226, 232, 240, 0.72);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 1rem;
+}
+
+.face-ux__placeholder-icon {
+  width: 3rem;
+  height: 3.6rem;
+  margin: 0 auto;
+  border: 2px solid rgba(226, 232, 240, 0.35);
+  border-radius: 50% / 42%;
+}
+
+.face-ux__oval {
+  pointer-events: none;
+  position: absolute;
+  inset: 10% 14%;
+  border: 2px solid rgba(255, 255, 255, 0.72);
+  border-radius: 50% / 42%;
+  box-shadow:
+    0 0 0 999px rgba(2, 6, 23, 0.42),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.2);
+}
+
+.face-ux__overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 6, 23, 0.55);
+  color: #f8fafc;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.face-ux__status {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted, #f8fafc);
+}
+
+.face-ux__status p {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  color: var(--color-muted, #64748b);
+}
+
+.face-ux__status-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  margin-top: 0.35rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: #94a3b8;
+}
+
+.face-ux__status--matched {
+  border-color: color-mix(in srgb, #16a34a 35%, var(--color-border));
+  background: color-mix(in srgb, #16a34a 8%, #fff);
+}
+
+.face-ux__status--matched .face-ux__status-dot {
+  background: #16a34a;
+}
+
+.face-ux__status--rejected,
+.face-ux__status--noFace,
+.face-ux__status--multipleFaces,
+.face-ux__status--error,
+.face-ux__status--needsReenrollment {
+  border-color: color-mix(in srgb, #dc2626 30%, var(--color-border));
+  background: color-mix(in srgb, #dc2626 7%, #fff);
+}
+
+.face-ux__status--rejected .face-ux__status-dot,
+.face-ux__status--noFace .face-ux__status-dot,
+.face-ux__status--multipleFaces .face-ux__status-dot,
+.face-ux__status--error .face-ux__status-dot,
+.face-ux__status--needsReenrollment .face-ux__status-dot {
+  background: #dc2626;
+}
+
+.face-ux__status--needsReenrollment {
+  border-color: color-mix(in srgb, #d97706 35%, var(--color-border));
+  background: color-mix(in srgb, #d97706 8%, #fff);
+}
+
+.face-ux__status--needsReenrollment .face-ux__status-dot {
+  background: #d97706;
+}
+
+.face-ux__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.face-ux__capture-note {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.face-ux__ready {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.face-enroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface, #fff);
+}
+
+.face-enroll__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+
+.face-enroll__subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-muted, #64748b);
+}
+
+.face-enroll__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: fit-content;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+}
+
+.face-enroll__badge-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+.face-enroll__badge--ok {
+  border-color: color-mix(in srgb, #16a34a 35%, var(--color-border));
+  background: color-mix(in srgb, #16a34a 8%, #fff);
+  color: #166534;
+}
+
+.face-enroll__badge--ok .face-enroll__badge-dot {
+  background: #16a34a;
+}
+
+.face-enroll__badge--warn {
+  border-color: color-mix(in srgb, #d97706 35%, var(--color-border));
+  background: color-mix(in srgb, #d97706 8%, #fff);
+  color: #9a3412;
+}
+
+.face-enroll__badge--warn .face-enroll__badge-dot {
+  background: #d97706;
+}
+
+.face-enroll__badge-meta {
+  font-weight: 500;
+  color: var(--color-muted, #64748b);
+  font-size: 0.78rem;
+}
+
+.face-enroll__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.face-enroll__ref,
+.face-enroll__capture {
+  margin: 0;
+}
+
+.face-enroll__img {
+  width: 140px;
+  height: 180px;
+  object-fit: cover;
+  border-radius: 0.85rem;
+  display: block;
+  background: #0b1220;
+}
+
+.face-enroll__ref figcaption,
+.face-enroll__caption {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--color-muted, #64748b);
+  text-align: center;
+}
+
+.portal-receipt__biometric {
+  margin: 0.35rem 0 0.75rem;
+  font-weight: 600;
 }
 
 .portal-receipt {

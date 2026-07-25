@@ -25,7 +25,6 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
-  const [consentAccepted, setConsentAccepted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [engineReady, setEngineReady] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -94,6 +93,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
     setPendingBlob(blob);
     setPendingPreview(blob ? URL.createObjectURL(blob) : null);
     setDetectStatus(null);
+    setError(null);
   }
 
   async function startCamera() {
@@ -147,10 +147,6 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       setError('Capture ou envie uma imagem antes de salvar.');
       return;
     }
-    if (!consentAccepted) {
-      setError('Confirme o aviso de uso da biometria facial.');
-      return;
-    }
     if (meta?.hasActiveReference) {
       const ok = window.confirm(
         `Substituir a biometria facial de ${workerName}? A referencia anterior sera revogada.`,
@@ -160,15 +156,23 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
 
     setSaving(true);
     setError(null);
-    setDetectStatus('Detectando face e gerando template...');
+    setDetectStatus('Detectando face...');
     try {
       const detection = await extractFaceDescriptorFromBlob(pendingBlob);
       if (!detection.ok) {
-        setDetectStatus(detection.message);
-        setError(detection.message);
+        if (detection.reason === 'NO_FACE') {
+          setDetectStatus(null);
+          setError('Nenhuma face detectada. Use uma foto com o rosto centralizado.');
+        } else if (detection.reason === 'MULTIPLE_FACES') {
+          setDetectStatus(null);
+          setError('Mais de uma face detectada. Capture apenas uma pessoa.');
+        } else {
+          setDetectStatus(null);
+          setError(detection.message);
+        }
         return;
       }
-      setDetectStatus('Face unica detectada. Salvando biometria...');
+      setDetectStatus('Salvando biometria...');
       await uploadWorkerFacialReference(workerId, pendingBlob, {
         consentAccepted: true,
         faceDescriptor: detection.descriptor,
@@ -177,8 +181,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
         qualityScore: detection.detectionScore,
       });
       setPending(null);
-      setConsentAccepted(false);
-      setDetectStatus('Biometria facial cadastrada.');
+      setDetectStatus('Biometria cadastrada');
       await reload();
     } catch (err) {
       setError(
@@ -200,6 +203,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
     setError(null);
     try {
       await revokeWorkerFacialReference(workerId);
+      setDetectStatus(null);
       await reload();
     } catch (err) {
       setError(
@@ -212,37 +216,36 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
     }
   }
 
-  const statusLabel =
-    meta?.status === 'ACTIVE'
-      ? meta.hasBiometricTemplate
-        ? `Biometria cadastrada em ${
-            meta.reference?.uploadedAt
-              ? new Date(meta.reference.uploadedAt).toLocaleString('pt-BR')
-              : '—'
-          }`
-        : 'Ativa sem template — recadastre'
-      : meta?.status === 'NEEDS_REENROLLMENT'
-        ? 'Precisa recadastrar biometria (foto antiga sem template)'
-        : meta?.status === 'REVOKED'
-          ? `Revogada${
-              meta.reference?.revokedAt
-                ? ` em ${new Date(meta.reference.revokedAt).toLocaleString('pt-BR')}`
-                : ''
-            }`
-          : 'Nao cadastrada';
+  const enrolled =
+    meta?.status === 'ACTIVE' && Boolean(meta.hasBiometricTemplate);
+  const needsReenrollment =
+    meta?.status === 'NEEDS_REENROLLMENT' ||
+    (meta?.status === 'ACTIVE' && !meta.hasBiometricTemplate);
+
+  const statusLabel = enrolled
+    ? 'Biometria cadastrada'
+    : needsReenrollment
+      ? 'Precisa recadastrar'
+      : meta?.status === 'REVOKED'
+        ? 'Revogada'
+        : 'Nao cadastrada';
 
   return (
-    <section className="notice notice--info" aria-labelledby="facial-ref-title">
-      <h3 id="facial-ref-title" className="page-title page-title--sm">
-        Biometria facial
-      </h3>
-      <p className="field-hint">
-        Cadastre uma foto com exatamente um rosto. O sistema gera um template
-        biometrico para matching automatico na entrega (motor face-api). Nao e
-        confirmacao visual humana.
-      </p>
+    <section className="face-enroll" aria-labelledby="facial-ref-title">
+      <header className="face-enroll__header">
+        <h3 id="facial-ref-title" className="face-enroll__title">
+          Biometria facial
+        </h3>
+        <p className="face-enroll__subtitle">
+          Centralize o rosto na foto. O sistema detecta a face e cadastra a
+          biometria para validacao automatica nas entregas.
+        </p>
+      </header>
+
       {!engineReady ? (
-        <p className="table-sub">Carregando motor facial...</p>
+        <p className="face-ux__hint" role="status">
+          Preparando validacao...
+        </p>
       ) : null}
       {loading ? <p className="page-lead">Carregando...</p> : null}
       {error ? (
@@ -250,46 +253,66 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
           {error}
         </p>
       ) : null}
+
+      {!loading && meta ? (
+        <div
+          className={`face-enroll__badge face-enroll__badge--${
+            enrolled ? 'ok' : needsReenrollment ? 'warn' : 'muted'
+          }`}
+          role="status"
+        >
+          <span className="face-enroll__badge-dot" aria-hidden />
+          {statusLabel}
+          {enrolled && meta.reference?.uploadedAt ? (
+            <span className="face-enroll__badge-meta">
+              {new Date(meta.reference.uploadedAt).toLocaleString('pt-BR')}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       {detectStatus ? (
-        <p className="table-sub" role="status">
+        <p className="face-ux__hint" role="status">
           {detectStatus}
         </p>
       ) : null}
-      {!loading && meta ? (
-        <p>
-          Status: <strong>{statusLabel}</strong>
-        </p>
-      ) : null}
 
-      {previewUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={previewUrl}
-          alt={`Biometria facial de ${workerName}`}
-          className="portal-facial__preview"
-          style={{ maxWidth: 220, marginTop: '0.75rem' }}
-        />
-      ) : null}
-
-      <div className="portal-facial__compare" style={{ marginTop: '0.75rem' }}>
-        <div>
-          <p className="table-sub">Nova captura / upload</p>
-          {pendingPreview ? (
-            // eslint-disable-next-line @next/next/no-img-element
+      <div className="face-enroll__grid">
+        {previewUrl ? (
+          <figure className="face-enroll__ref">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={pendingPreview}
-              alt="Preview da nova biometria"
-              className="portal-facial__preview"
+              src={previewUrl}
+              alt={`Biometria cadastrada de ${workerName}`}
+              className="face-enroll__img"
             />
-          ) : (
-            <video
-              ref={videoRef}
-              className="portal-facial__preview"
-              playsInline
-              muted
-              aria-label="Preview da camera"
-            />
-          )}
+            <figcaption>Referencia atual</figcaption>
+          </figure>
+        ) : null}
+
+        <div className="face-enroll__capture">
+          <div className="face-ux__stage face-ux__stage--enroll">
+            {pendingPreview ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={pendingPreview}
+                alt="Nova captura"
+                className="face-ux__media"
+              />
+            ) : (
+              <video
+                ref={videoRef}
+                className="face-ux__media"
+                playsInline
+                muted
+                aria-label="Preview da camera"
+              />
+            )}
+            <div className="face-ux__oval" aria-hidden />
+          </div>
+          <p className="face-enroll__caption">
+            {pendingPreview ? 'Nova captura' : 'Camera / upload'}
+          </p>
         </div>
       </div>
 
@@ -299,19 +322,9 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
         </p>
       ) : null}
 
-      <p className="table-sub" style={{ marginTop: '0.75rem' }}>
-        {WORKER_FACE_REFERENCE_CONSENT_TEXT}
-      </p>
-      <label className="portal-need-select" style={{ margin: '0.5rem 0' }}>
-        <input
-          type="checkbox"
-          checked={consentAccepted}
-          onChange={(e) => setConsentAccepted(e.target.checked)}
-        />
-        <span>Confirmo o cadastro desta biometria facial.</span>
-      </label>
+      <p className="face-ux__consent">{WORKER_FACE_REFERENCE_CONSENT_TEXT}</p>
 
-      <div className="btn-row">
+      <div className="face-ux__actions">
         {!pendingPreview ? (
           <>
             <button
@@ -356,13 +369,13 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
               type="button"
               className="btn btn-primary"
               onClick={() => void saveReference()}
-              disabled={saving || !consentAccepted || !engineReady}
+              disabled={saving || !engineReady}
             >
               {saving
                 ? 'Processando...'
                 : meta?.hasActiveReference
-                  ? 'Substituir biometria'
-                  : 'Salvar biometria'}
+                  ? 'Recadastrar biometria'
+                  : 'Cadastrar biometria'}
             </button>
             <button
               type="button"
