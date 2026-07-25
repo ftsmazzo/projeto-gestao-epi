@@ -180,14 +180,32 @@ export class WorkersController {
     @Param('id') id: string,
     @UploadedFile() facial: Express.Multer.File | undefined,
     @Body('consentAccepted') consentAcceptedRaw?: string,
+    @Body('faceDescriptor') faceDescriptorRaw?: string,
+    @Body('faceEngine') faceEngine?: string,
+    @Body('faceEngineVersion') faceEngineVersion?: string,
+    @Body('qualityScore') qualityScoreRaw?: string,
   ) {
     if (!facial?.buffer?.length) {
       throw new BadRequestException(
         'Envie a imagem no campo multipart "facial".',
       );
     }
+    if (!faceDescriptorRaw?.trim()) {
+      throw new BadRequestException(
+        'Descritor facial obrigatorio (campo "faceDescriptor" em JSON).',
+      );
+    }
+    let faceDescriptor: unknown;
+    try {
+      faceDescriptor = JSON.parse(faceDescriptorRaw) as unknown;
+    } catch {
+      throw new BadRequestException('faceDescriptor JSON invalido.');
+    }
     const consentAccepted =
       consentAcceptedRaw === 'true' || consentAcceptedRaw === '1';
+    const qualityScore = qualityScoreRaw
+      ? Number.parseFloat(qualityScoreRaw)
+      : null;
     return this.facialReference.upload(
       user.organizationId,
       user.sub,
@@ -196,7 +214,13 @@ export class WorkersController {
         buffer: facial.buffer,
         mimeType: facial.mimetype,
       },
-      { consentAccepted },
+      {
+        consentAccepted,
+        faceDescriptor: faceDescriptor as number[],
+        faceEngine,
+        faceEngineVersion,
+        qualityScore: Number.isFinite(qualityScore) ? qualityScore : null,
+      },
     );
   }
 

@@ -2,6 +2,8 @@ export const APP_NAME = 'Gestao Digital de Entrega de EPI';
 
 export const API_DEFAULT_PORT = 3001;
 
+export * from './face-biometrics';
+
 export type HealthStatus = 'ok' | 'degraded' | 'down';
 
 export interface HealthResponse {
@@ -1293,8 +1295,12 @@ export interface PortalEpiCoverageResponse {
     jobFunctionName: string | null;
   };
   workerHasFacialReference: boolean;
+  /** Template biometrico ACTIVE com descritor — exigido para entrega. */
+  workerHasBiometricTemplate: boolean;
   facialReference: {
     hasActive: boolean;
+    hasDescriptor: boolean;
+    needsReenrollment: boolean;
     uploadedAt: string | null;
   };
   summary: {
@@ -1329,11 +1335,19 @@ export type PortalDeliveryReturnCondition =
 export type PortalDeliveryEvidenceVerificationStatus =
   | 'CAPTURED'
   | 'HUMAN_CONFIRMED'
+  | 'MATCHED'
+  | 'REJECTED'
+  | 'NO_FACE_DETECTED'
+  | 'MULTIPLE_FACES_DETECTED'
   | 'NOT_VERIFIED';
 
 export type PortalDeliveryEvidenceStatusLabel =
   | 'FACIAL_CAPTURED'
   | 'HUMAN_CONFIRMED'
+  | 'MATCHED'
+  | 'REJECTED'
+  | 'NO_FACE_DETECTED'
+  | 'MULTIPLE_FACES_DETECTED'
   | 'NOT_VERIFIED';
 
 export const FACIAL_EVIDENCE_CONSENT_VERSION = 'v1-2026-07';
@@ -1344,23 +1358,32 @@ export const FACIAL_EVIDENCE_CONSENT_TEXT =
 export const WORKER_FACE_REFERENCE_CONSENT_VERSION = 'v1-2026-07';
 
 export const WORKER_FACE_REFERENCE_CONSENT_TEXT =
-  'Esta imagem sera usada como referencia visual na entrega de EPI. Nao constitui reconhecimento facial automatico.';
+  'Esta imagem sera usada como biometria facial de referencia do trabalhador para validacao automatica na entrega de EPI.';
 
-export type WorkerFacialReferenceStatus = 'ACTIVE' | 'REVOKED' | 'MISSING';
+export type WorkerFacialReferenceStatus =
+  | 'ACTIVE'
+  | 'REVOKED'
+  | 'MISSING'
+  | 'NEEDS_REENROLLMENT';
 
 export interface WorkerFacialReferenceMeta {
   workerId: string;
   workerName?: string;
   hasActiveReference: boolean;
+  hasBiometricTemplate: boolean;
   status: WorkerFacialReferenceStatus;
   reference: {
     id: string;
-    status: 'ACTIVE' | 'REVOKED';
+    status: 'ACTIVE' | 'REVOKED' | 'NEEDS_REENROLLMENT';
     uploadedAt: string;
     revokedAt: string | null;
     mimeType: string | null;
     byteSize: number | null;
     consentAcceptedAt: string | null;
+    hasDescriptor: boolean;
+    faceEngine: string | null;
+    faceEngineVersion: string | null;
+    qualityScore: number | null;
     imagePath: string | null;
   } | null;
   notice: string;
@@ -1392,7 +1415,11 @@ export interface PortalDeliveryListItem {
     locationName: string;
     quantity: number;
   }>;
-  method: 'Facial capturada' | 'Conferencia visual confirmada' | 'Sem evidencia';
+  method:
+    | 'Facial capturada'
+    | 'Conferencia visual confirmada'
+    | 'Biometria facial aprovada'
+    | 'Sem evidencia';
   evidence: {
     id: string;
     type: 'FACIAL_CAPTURE';
@@ -1503,11 +1530,16 @@ export interface PortalDeliveryDetail {
     method:
       | 'Facial capturada'
       | 'Conferencia visual confirmada'
+      | 'Biometria facial aprovada'
+      | 'Biometria facial rejeitada'
       | 'Sem verificacao';
     statusLabel: PortalDeliveryEvidenceStatusLabel;
     capturedAt: string;
     verificationStatus: PortalDeliveryEvidenceVerificationStatus;
-    visualCheckConfirmed: boolean;
+    matchDistance: number | null;
+    matchThreshold: number | null;
+    faceEngine: string | null;
+    verifiedAt: string | null;
     hasFile: boolean;
   } | null;
   consent: {
@@ -1533,7 +1565,11 @@ export interface PortalCreateDeliveryPayload {
   items: PortalCreateDeliveryItemInput[];
   notes?: string | null;
   facialEvidenceConsentAccepted: true;
-  visualCheckConfirmed: true;
+  /** Descritor 128-d extraido no browser (face-api). Matching no backend. */
+  faceDescriptor: number[];
+  faceEngine?: string;
+  faceEngineVersion?: string;
+  faceDetectionScore?: number;
 }
 
 export interface PortalCancelDeliveryPayload {

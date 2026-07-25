@@ -3,7 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { WorkerFacialReferenceStatus } from '@prisma/client';
+import { Prisma, WorkerFacialReferenceStatus } from '@prisma/client';
+import {
+  FACE_ENGINE,
+  FACE_ENGINE_VERSION,
+  isValidFaceDescriptor,
+} from '@gestao-epi/shared';
 import { createReadStream, existsSync } from 'fs';
 import { unlink } from 'fs/promises';
 import type { Response } from 'express';
@@ -17,7 +22,7 @@ import {
 export const WORKER_FACE_REFERENCE_CONSENT_VERSION = 'v1-2026-07';
 
 export const WORKER_FACE_REFERENCE_CONSENT_TEXT =
-  'Esta imagem sera usada como referencia visual na entrega de EPI. Nao constitui reconhecimento facial automatico.';
+  'Esta imagem sera usada como biometria facial de referencia do trabalhador para validacao automatica na entrega de EPI.';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 
@@ -45,61 +50,93 @@ export class WorkerFacialReferenceService {
         mimeType: true,
         byteSize: true,
         consentAcceptedAt: true,
+        faceDescriptor: true,
+        faceEngine: true,
+        faceEngineVersion: true,
+        qualityScore: true,
       },
     });
 
-    const latestRevoked = active
-      ? null
-      : await this.prisma.workerFacialReference.findFirst({
+    const needsReenroll = !active
+      ? await this.prisma.workerFacialReference.findFirst({
           where: {
             organizationId,
             workerId,
-            status: WorkerFacialReferenceStatus.REVOKED,
+            status: WorkerFacialReferenceStatus.NEEDS_REENROLLMENT,
           },
-          orderBy: { revokedAt: 'desc' },
+          orderBy: { uploadedAt: 'desc' },
           select: {
             id: true,
             status: true,
             uploadedAt: true,
             revokedAt: true,
           },
-        });
+        })
+      : null;
+
+    const latestRevoked =
+      !active && !needsReenroll
+        ? await this.prisma.workerFacialReference.findFirst({
+            where: {
+              organizationId,
+              workerId,
+              status: WorkerFacialReferenceStatus.REVOKED,
+            },
+            orderBy: { revokedAt: 'desc' },
+            select: {
+              id: true,
+              status: true,
+              uploadedAt: true,
+              revokedAt: true,
+            },
+          })
+        : null;
+
+    const hasDescriptor = Boolean(
+      active?.faceDescriptor &&
+        isValidFaceDescriptor(active.faceDescriptor),
+    );
+
+    const status = active
+      ? ('ACTIVE' as const)
+      : needsReenroll
+        ? ('NEEDS_REENROLLMENT' as const)
+        : latestRevoked
+          ? ('REVOKED' as const)
+          : ('MISSING' as const);
+
+    const refRow = active ?? needsReenroll ?? latestRevoked;
 
     return {
       workerId: worker.id,
       workerName: worker.name,
       hasActiveReference: Boolean(active),
-      status: active
-        ? ('ACTIVE' as const)
-        : latestRevoked
-          ? ('REVOKED' as const)
-          : ('MISSING' as const),
-      reference: active
+      hasBiometricTemplate: hasDescriptor,
+      status,
+      reference: refRow
         ? {
-            id: active.id,
-            status: active.status,
-            uploadedAt: active.uploadedAt.toISOString(),
-            revokedAt: null,
-            mimeType: active.mimeType,
-            byteSize: active.byteSize,
-            consentAcceptedAt: active.consentAcceptedAt?.toISOString() ?? null,
-            // URL relativa protegida (nao path fisico)
-            imagePath: `/workers/${worker.id}/facial-reference/image`,
+            id: refRow.id,
+            status: refRow.status,
+            uploadedAt: refRow.uploadedAt.toISOString(),
+            revokedAt:
+              'revokedAt' in refRow && refRow.revokedAt
+                ? refRow.revokedAt.toISOString()
+                : null,
+            mimeType: active?.mimeType ?? null,
+            byteSize: active?.byteSize ?? null,
+            consentAcceptedAt:
+              active?.consentAcceptedAt?.toISOString() ?? null,
+            hasDescriptor,
+            faceEngine: active?.faceEngine ?? null,
+            faceEngineVersion: active?.faceEngineVersion ?? null,
+            qualityScore: active?.qualityScore ?? null,
+            imagePath: active
+              ? `/workers/${worker.id}/facial-reference/image`
+              : null,
           }
-        : latestRevoked
-          ? {
-              id: latestRevoked.id,
-              status: latestRevoked.status,
-              uploadedAt: latestRevoked.uploadedAt.toISOString(),
-              revokedAt: latestRevoked.revokedAt?.toISOString() ?? null,
-              mimeType: null,
-              byteSize: null,
-              consentAcceptedAt: null,
-              imagePath: null,
-            }
-          : null,
+        : null,
       notice:
-        'Referencia visual para conferencia humana na entrega. Nao e reconhecimento facial automatico.',
+        'Biometria facial de referencia para matching automatico na entrega. Templates nao sao expostos na API.',
     };
   }
 
@@ -108,7 +145,13 @@ export class WorkerFacialReferenceService {
     userId: string,
     workerId: string,
     file: { buffer: Buffer; mimeType?: string },
-    options?: { consentAccepted?: boolean },
+    options: {
+      consentAccepted?: boolean;
+      faceDescriptor: number[];
+      faceEngine?: string;
+      faceEngineVersion?: string;
+      qualityScore?: number | null;
+    },
   ) {
     const worker = await this.requireWorker(organizationId, workerId);
 
@@ -126,6 +169,11 @@ export class WorkerFacialReferenceService {
         'Imagem de referencia facial excede o limite de 5 MB.',
       );
     }
+    if (!isValidFaceDescriptor(options.faceDescriptor)) {
+      throw new BadRequestException(
+        'Descritor facial invalido. Detecte exatamente uma face antes de salvar.',
+      );
+    }
 
     const saved = await saveWorkerFaceReferenceFile({
       organizationId,
@@ -135,7 +183,7 @@ export class WorkerFacialReferenceService {
     });
 
     const now = new Date();
-    const consentAccepted = options?.consentAccepted === true;
+    const consentAccepted = options.consentAccepted === true;
 
     try {
       const created = await this.prisma.$transaction(async (tx) => {
@@ -143,7 +191,12 @@ export class WorkerFacialReferenceService {
           where: {
             organizationId,
             workerId: worker.id,
-            status: WorkerFacialReferenceStatus.ACTIVE,
+            status: {
+              in: [
+                WorkerFacialReferenceStatus.ACTIVE,
+                WorkerFacialReferenceStatus.NEEDS_REENROLLMENT,
+              ],
+            },
           },
           data: {
             status: WorkerFacialReferenceStatus.REVOKED,
@@ -160,6 +213,15 @@ export class WorkerFacialReferenceService {
             fileHash: saved.fileHash,
             mimeType: saved.mimeType,
             byteSize: saved.byteSize,
+            faceDescriptor: options.faceDescriptor as unknown as Prisma.InputJsonValue,
+            faceEngine: options.faceEngine?.trim() || FACE_ENGINE,
+            faceEngineVersion:
+              options.faceEngineVersion?.trim() || FACE_ENGINE_VERSION,
+            qualityScore:
+              typeof options.qualityScore === 'number' &&
+              Number.isFinite(options.qualityScore)
+                ? options.qualityScore
+                : null,
             status: WorkerFacialReferenceStatus.ACTIVE,
             uploadedAt: now,
             createdByUserId: userId,
@@ -175,6 +237,9 @@ export class WorkerFacialReferenceService {
             mimeType: true,
             byteSize: true,
             consentAcceptedAt: true,
+            faceEngine: true,
+            faceEngineVersion: true,
+            qualityScore: true,
           },
         });
       });
@@ -190,13 +255,16 @@ export class WorkerFacialReferenceService {
           servedClientId: worker.servedClientId,
           mimeType: created.mimeType,
           byteSize: created.byteSize,
-          // Nao logar imagem, hash ou path fisico.
+          faceEngine: created.faceEngine,
+          hasDescriptor: true,
+          // Nao logar imagem, descritor, hash ou path fisico.
         },
       });
 
       return {
         workerId: worker.id,
         hasActiveReference: true,
+        hasBiometricTemplate: true,
         status: 'ACTIVE' as const,
         reference: {
           id: created.id,
@@ -206,10 +274,13 @@ export class WorkerFacialReferenceService {
           mimeType: created.mimeType,
           byteSize: created.byteSize,
           consentAcceptedAt: created.consentAcceptedAt?.toISOString() ?? null,
+          hasDescriptor: true,
+          faceEngine: created.faceEngine,
+          faceEngineVersion: created.faceEngineVersion,
+          qualityScore: created.qualityScore,
           imagePath: `/workers/${worker.id}/facial-reference/image`,
         },
-        notice:
-          'Referencia visual cadastrada. Nao e reconhecimento facial automatico.',
+        notice: 'Biometria facial cadastrada. Matching automatico habilitado na entrega.',
       };
     } catch (err) {
       try {
@@ -227,7 +298,12 @@ export class WorkerFacialReferenceService {
       where: {
         organizationId,
         workerId: worker.id,
-        status: WorkerFacialReferenceStatus.ACTIVE,
+        status: {
+          in: [
+            WorkerFacialReferenceStatus.ACTIVE,
+            WorkerFacialReferenceStatus.NEEDS_REENROLLMENT,
+          ],
+        },
       },
     });
     if (!active) {
@@ -260,6 +336,7 @@ export class WorkerFacialReferenceService {
     return {
       workerId: worker.id,
       hasActiveReference: false,
+      hasBiometricTemplate: false,
       status: 'REVOKED' as const,
       reference: {
         id: active.id,
@@ -269,9 +346,14 @@ export class WorkerFacialReferenceService {
         mimeType: null,
         byteSize: null,
         consentAcceptedAt: null,
+        hasDescriptor: false,
+        faceEngine: null,
+        faceEngineVersion: null,
+        qualityScore: null,
         imagePath: null,
       },
-      notice: 'Referencia facial revogada. Entregas com facial ficam bloqueadas ate novo cadastro.',
+      notice:
+        'Biometria facial revogada. Entregas ficam bloqueadas ate novo cadastro.',
     };
   }
 

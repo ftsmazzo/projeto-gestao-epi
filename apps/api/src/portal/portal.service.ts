@@ -15,6 +15,13 @@ import {
   WorkerFacialReferenceStatus,
   WorkerStatus,
 } from '@prisma/client';
+import {
+  decideFaceMatch,
+  FACE_ENGINE,
+  FACE_ENGINE_VERSION,
+  isValidFaceDescriptor,
+  resolveFaceMatchThreshold,
+} from '@gestao-epi/shared';
 import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { unlink } from 'fs/promises';
@@ -1291,11 +1298,40 @@ export class PortalService {
         organizationId,
         servedClientId,
         workerId: worker.id,
-        status: WorkerFacialReferenceStatus.ACTIVE,
+        status: {
+          in: [
+            WorkerFacialReferenceStatus.ACTIVE,
+            WorkerFacialReferenceStatus.NEEDS_REENROLLMENT,
+          ],
+        },
       },
-      select: { id: true, uploadedAt: true },
+      orderBy: { uploadedAt: 'desc' },
+      select: {
+        id: true,
+        uploadedAt: true,
+        status: true,
+        faceDescriptor: true,
+      },
     });
-    const workerHasFacialReference = Boolean(facialRef);
+    const hasDescriptor = Boolean(
+      facialRef?.status === WorkerFacialReferenceStatus.ACTIVE &&
+        facialRef.faceDescriptor &&
+        isValidFaceDescriptor(facialRef.faceDescriptor),
+    );
+    const workerHasFacialReference = Boolean(
+      facialRef?.status === WorkerFacialReferenceStatus.ACTIVE,
+    );
+    const workerHasBiometricTemplate = hasDescriptor;
+    const needsReenrollment =
+      facialRef?.status === WorkerFacialReferenceStatus.NEEDS_REENROLLMENT ||
+      (facialRef?.status === WorkerFacialReferenceStatus.ACTIVE &&
+        !hasDescriptor);
+    const facialReferenceDto = {
+      hasActive: workerHasFacialReference,
+      hasDescriptor,
+      needsReenrollment,
+      uploadedAt: facialRef?.uploadedAt.toISOString() ?? null,
+    };
 
     const workerDto = {
       id: worker.id,
@@ -1314,12 +1350,8 @@ export class PortalService {
       return {
         worker: workerDto,
         workerHasFacialReference,
-        facialReference: workerHasFacialReference
-          ? {
-              hasActive: true,
-              uploadedAt: facialRef!.uploadedAt.toISOString(),
-            }
-          : { hasActive: false, uploadedAt: null },
+        workerHasBiometricTemplate,
+        facialReference: facialReferenceDto,
         summary: {
           totalNeeds: 0,
           disponivel: 0,
@@ -1372,12 +1404,8 @@ export class PortalService {
       return {
         worker: workerDto,
         workerHasFacialReference,
-        facialReference: workerHasFacialReference
-          ? {
-              hasActive: true,
-              uploadedAt: facialRef!.uploadedAt.toISOString(),
-            }
-          : { hasActive: false, uploadedAt: null },
+        workerHasBiometricTemplate,
+        facialReference: facialReferenceDto,
         summary: {
           totalNeeds: 0,
           disponivel: 0,
@@ -1544,10 +1572,11 @@ export class PortalService {
 
     let summaryStatus: 'OK' | 'ATENCAO' | 'BLOQUEADO' = 'OK';
     let message: string | null = null;
-    if (!workerHasFacialReference) {
+    if (!workerHasBiometricTemplate) {
       summaryStatus = 'BLOQUEADO';
-      message =
-        'Trabalhador sem referencia facial cadastrada. Solicite a Consultoria o cadastro antes da entrega.';
+      message = needsReenrollment
+        ? 'Biometria facial desatualizada. Solicite a Consultoria o recadastro da biometria (template).'
+        : 'Trabalhador sem biometria facial cadastrada. Solicite a Consultoria o cadastro antes da entrega.';
     } else if (semEpiReal > 0) {
       summaryStatus = 'BLOQUEADO';
       message = `${semEpiReal} necessidade(s) sem EPI real vinculado.`;
@@ -1561,12 +1590,8 @@ export class PortalService {
     return {
       worker: workerDto,
       workerHasFacialReference,
-      facialReference: workerHasFacialReference
-        ? {
-            hasActive: true,
-            uploadedAt: facialRef!.uploadedAt.toISOString(),
-          }
-        : { hasActive: false, uploadedAt: null },
+      workerHasBiometricTemplate,
+      facialReference: facialReferenceDto,
       summary: {
         totalNeeds: needs.length,
         disponivel,
@@ -1624,6 +1649,10 @@ export class PortalService {
             type: true,
             capturedAt: true,
             verificationStatus: true,
+            matchDistance: true,
+            matchThreshold: true,
+            faceEngine: true,
+            verifiedAt: true,
           },
           take: 1,
         },
@@ -1702,6 +1731,10 @@ export class PortalService {
             type: true,
             capturedAt: true,
             verificationStatus: true,
+            matchDistance: true,
+            matchThreshold: true,
+            faceEngine: true,
+            verifiedAt: true,
             mimeType: true,
             byteSize: true,
           },
@@ -1863,9 +1896,10 @@ export class PortalService {
             ),
             capturedAt: facial.capturedAt.toISOString(),
             verificationStatus: facial.verificationStatus,
-            visualCheckConfirmed:
-              facial.verificationStatus ===
-              DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED,
+            matchDistance: facial.matchDistance ?? null,
+            matchThreshold: facial.matchThreshold ?? null,
+            faceEngine: facial.faceEngine ?? null,
+            verifiedAt: facial.verifiedAt?.toISOString() ?? null,
             hasFile: true,
           }
         : null,
@@ -1881,8 +1915,8 @@ export class PortalService {
   }
 
   /**
-   * Cria entrega com baixa de estoque (ENTREGA) e evidencia facial obrigatoria.
-   * Sem reconhecimento biometrico automatico nesta etapa.
+   * Cria entrega com baixa de estoque (ENTREGA) e matching biometrico automatico.
+   * Descritor 128-d (face-api) comparado no backend; sem liveness.
    */
   async createDelivery(
     organizationId: string,
@@ -1905,9 +1939,9 @@ export class PortalService {
       );
     }
 
-    if (payload.visualCheckConfirmed !== true) {
+    if (!isValidFaceDescriptor(payload.faceDescriptor)) {
       throw new BadRequestException(
-        'E necessario confirmar visualmente que a captura corresponde ao trabalhador selecionado.',
+        'Descritor facial da captura invalido. Detecte exatamente uma face e tente novamente.',
       );
     }
 
@@ -1963,11 +1997,47 @@ export class PortalService {
         workerId: worker.id,
         status: WorkerFacialReferenceStatus.ACTIVE,
       },
-      select: { id: true },
+      select: {
+        id: true,
+        faceDescriptor: true,
+        faceEngine: true,
+        faceEngineVersion: true,
+      },
     });
     if (!facialReference) {
+      const needsReenroll =
+        await this.prisma.workerFacialReference.findFirst({
+          where: {
+            organizationId,
+            servedClientId,
+            workerId: worker.id,
+            status: WorkerFacialReferenceStatus.NEEDS_REENROLLMENT,
+          },
+          select: { id: true },
+        });
       throw new BadRequestException(
-        'Trabalhador sem referencia facial cadastrada. Solicite a Consultoria o cadastro antes da entrega.',
+        needsReenroll
+          ? 'Biometria facial desatualizada (sem template). Solicite a Consultoria o recadastro antes da entrega.'
+          : 'Trabalhador sem biometria facial cadastrada. Solicite a Consultoria o cadastro antes da entrega.',
+      );
+    }
+    if (!isValidFaceDescriptor(facialReference.faceDescriptor)) {
+      throw new BadRequestException(
+        'Biometria facial desatualizada (sem template). Solicite a Consultoria o recadastro antes da entrega.',
+      );
+    }
+
+    const matchThreshold = resolveFaceMatchThreshold(
+      process.env.FACE_MATCH_THRESHOLD,
+    );
+    const match = decideFaceMatch(
+      facialReference.faceDescriptor,
+      payload.faceDescriptor,
+      matchThreshold,
+    );
+    if (!match.matched) {
+      throw new BadRequestException(
+        'Face nao corresponde ao trabalhador selecionado.',
       );
     }
 
@@ -2207,16 +2277,20 @@ export class PortalService {
             fileHash: savedFile!.fileHash,
             mimeType: savedFile!.mimeType,
             byteSize: savedFile!.byteSize,
-            verificationStatus:
-              DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED,
+            verificationStatus: DeliveryEvidenceVerificationStatus.MATCHED,
+            matchDistance: match.distance,
+            matchThreshold: match.threshold,
+            faceEngine: payload.faceEngine?.trim() || FACE_ENGINE,
+            verifiedAt: deliveredAt,
             metadata: {
               captureSource: 'portal_camera',
               consentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
-              biometricMatch: false,
-              visualCheckConfirmed: true,
-              visualCheckConfirmedAt: deliveredAt.toISOString(),
+              biometricMatch: true,
+              faceEngineVersion:
+                payload.faceEngineVersion?.trim() || FACE_ENGINE_VERSION,
+              faceDetectionScore: payload.faceDetectionScore ?? null,
               workerFacialReferenceId: facialReference.id,
-              note: 'Conferencia visual humana com referencia facial cadastrada; sem verificacao biometrica automatica.',
+              note: 'Matching biometrico automatico aprovado (face-api descritor 128-d). Sem liveness.',
             } as Prisma.InputJsonValue,
           },
         });
@@ -2237,9 +2311,11 @@ export class PortalService {
           itemCount: created.createdItems.length,
           stockMovementIds: created.createdItems.map((i) => i.stockMovementId),
           facialEvidence: true,
-          visualCheckConfirmed: true,
+          biometricMatched: true,
+          matchDistance: match.distance,
+          matchThreshold: match.threshold,
           consentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
-          // Nao logar imagem, hash de arquivo ou caminhos.
+          // Nao logar imagem, descritor, hash ou caminhos.
         },
       });
 
@@ -2507,6 +2583,63 @@ export class PortalService {
     return this.getDelivery(organizationId, servedClientId, delivery.id);
   }
 
+  /** Preview de matching biometrico (sem concluir entrega; nao expoe template). */
+  async previewFacialMatch(
+    organizationId: string,
+    servedClientId: string,
+    workerId: string,
+    faceDescriptor: number[],
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    if (!isValidFaceDescriptor(faceDescriptor)) {
+      throw new BadRequestException('Descritor facial invalido.');
+    }
+
+    const worker = await this.prisma.worker.findFirst({
+      where: { id: workerId, organizationId, servedClientId },
+      select: { id: true },
+    });
+    if (!worker) {
+      throw new NotFoundException('Trabalhador nao encontrado neste cliente.');
+    }
+
+    const facialReference = await this.prisma.workerFacialReference.findFirst({
+      where: {
+        organizationId,
+        servedClientId,
+        workerId: worker.id,
+        status: WorkerFacialReferenceStatus.ACTIVE,
+      },
+      select: { faceDescriptor: true },
+    });
+    if (!facialReference || !isValidFaceDescriptor(facialReference.faceDescriptor)) {
+      throw new BadRequestException(
+        'Trabalhador sem biometria facial com template. Solicite o cadastro/recadastro na Consultoria.',
+      );
+    }
+
+    const threshold = resolveFaceMatchThreshold(
+      process.env.FACE_MATCH_THRESHOLD,
+    );
+    const match = decideFaceMatch(
+      facialReference.faceDescriptor,
+      faceDescriptor,
+      threshold,
+    );
+
+    return {
+      matched: match.matched,
+      distance: Number(match.distance.toFixed(4)),
+      threshold: match.threshold,
+      status: match.matched
+        ? ('MATCHED' as const)
+        : ('REJECTED' as const),
+      message: match.matched
+        ? 'Face validada'
+        : 'Face nao corresponde ao trabalhador selecionado.',
+    };
+  }
+
   /** Caminho absoluto da evidencia facial (uso autenticado; nao logar conteudo). */
   async getFacialEvidenceAbsolutePath(
     organizationId: string,
@@ -2639,14 +2772,30 @@ export class PortalService {
 
   private mapEvidenceStatusLabel(
     status: DeliveryEvidenceVerificationStatus,
-  ): 'FACIAL_CAPTURED' | 'HUMAN_CONFIRMED' | 'NOT_VERIFIED' {
-    if (status === DeliveryEvidenceVerificationStatus.NOT_VERIFIED) {
-      return 'NOT_VERIFIED';
+  ):
+    | 'FACIAL_CAPTURED'
+    | 'HUMAN_CONFIRMED'
+    | 'MATCHED'
+    | 'REJECTED'
+    | 'NO_FACE_DETECTED'
+    | 'MULTIPLE_FACES_DETECTED'
+    | 'NOT_VERIFIED' {
+    switch (status) {
+      case DeliveryEvidenceVerificationStatus.MATCHED:
+        return 'MATCHED';
+      case DeliveryEvidenceVerificationStatus.REJECTED:
+        return 'REJECTED';
+      case DeliveryEvidenceVerificationStatus.NO_FACE_DETECTED:
+        return 'NO_FACE_DETECTED';
+      case DeliveryEvidenceVerificationStatus.MULTIPLE_FACES_DETECTED:
+        return 'MULTIPLE_FACES_DETECTED';
+      case DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED:
+        return 'HUMAN_CONFIRMED';
+      case DeliveryEvidenceVerificationStatus.NOT_VERIFIED:
+        return 'NOT_VERIFIED';
+      default:
+        return 'FACIAL_CAPTURED';
     }
-    if (status === DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED) {
-      return 'HUMAN_CONFIRMED';
-    }
-    return 'FACIAL_CAPTURED';
   }
 
   private mapEvidenceMethod(
@@ -2654,7 +2803,15 @@ export class PortalService {
   ):
     | 'Facial capturada'
     | 'Conferencia visual confirmada'
+    | 'Biometria facial aprovada'
+    | 'Biometria facial rejeitada'
     | 'Sem verificacao' {
+    if (status === DeliveryEvidenceVerificationStatus.MATCHED) {
+      return 'Biometria facial aprovada';
+    }
+    if (status === DeliveryEvidenceVerificationStatus.REJECTED) {
+      return 'Biometria facial rejeitada';
+    }
     if (status === DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED) {
       return 'Conferencia visual confirmada';
     }
@@ -2780,9 +2937,12 @@ export class PortalService {
       })),
       method: facial
         ? facial.verificationStatus ===
-          DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED
-          ? ('Conferencia visual confirmada' as const)
-          : ('Facial capturada' as const)
+          DeliveryEvidenceVerificationStatus.MATCHED
+          ? ('Biometria facial aprovada' as const)
+          : facial.verificationStatus ===
+              DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED
+            ? ('Conferencia visual confirmada' as const)
+            : ('Facial capturada' as const)
         : ('Sem evidencia' as const),
       evidence: facial
         ? {

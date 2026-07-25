@@ -4,6 +4,11 @@ import type { WorkerFacialReferenceMeta } from '@gestao-epi/shared';
 import { WORKER_FACE_REFERENCE_CONSENT_TEXT } from '@gestao-epi/shared';
 import { useEffect, useRef, useState } from 'react';
 import {
+  extractFaceDescriptorFromBlob,
+  FACE_ENGINE_META,
+  loadFaceModels,
+} from '../lib/face-biometrics.client';
+import {
   fetchWorkerFacialReferenceBlob,
   getWorkerFacialReference,
   revokeWorkerFacialReference,
@@ -22,8 +27,10 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [engineReady, setEngineReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detectStatus, setDetectStatus] = useState<string | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -55,7 +62,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       setError(
         err instanceof Error
           ? err.message
-          : 'Falha ao carregar referencia facial.',
+          : 'Falha ao carregar biometria facial.',
       );
     } finally {
       setLoading(false);
@@ -64,6 +71,16 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
 
   useEffect(() => {
     void reload();
+    void loadFaceModels()
+      .then(() => setEngineReady(true))
+      .catch((err: unknown) => {
+        setEngineReady(false);
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Falha ao carregar motor facial.',
+        );
+      });
     return () => {
       stopCamera();
       if (previewUrl) URL.revokeObjectURL(previewUrl);
@@ -76,6 +93,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
     if (pendingPreview) URL.revokeObjectURL(pendingPreview);
     setPendingBlob(blob);
     setPendingPreview(blob ? URL.createObjectURL(blob) : null);
+    setDetectStatus(null);
   }
 
   async function startCamera() {
@@ -130,30 +148,43 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       return;
     }
     if (!consentAccepted) {
-      setError('Confirme o aviso de uso da referencia visual.');
+      setError('Confirme o aviso de uso da biometria facial.');
       return;
     }
     if (meta?.hasActiveReference) {
       const ok = window.confirm(
-        `Substituir a referencia facial de ${workerName}? A referencia anterior sera revogada.`,
+        `Substituir a biometria facial de ${workerName}? A referencia anterior sera revogada.`,
       );
       if (!ok) return;
     }
 
     setSaving(true);
     setError(null);
+    setDetectStatus('Detectando face e gerando template...');
     try {
+      const detection = await extractFaceDescriptorFromBlob(pendingBlob);
+      if (!detection.ok) {
+        setDetectStatus(detection.message);
+        setError(detection.message);
+        return;
+      }
+      setDetectStatus('Face unica detectada. Salvando biometria...');
       await uploadWorkerFacialReference(workerId, pendingBlob, {
         consentAccepted: true,
+        faceDescriptor: detection.descriptor,
+        faceEngine: FACE_ENGINE_META.engine,
+        faceEngineVersion: FACE_ENGINE_META.version,
+        qualityScore: detection.detectionScore,
       });
       setPending(null);
       setConsentAccepted(false);
+      setDetectStatus('Biometria facial cadastrada.');
       await reload();
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : 'Falha ao salvar referencia facial.',
+          : 'Falha ao salvar biometria facial.',
       );
     } finally {
       setSaving(false);
@@ -162,7 +193,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
 
   async function revoke() {
     const ok = window.confirm(
-      `Revogar a referencia facial de ${workerName}? Entregas com facial ficarao bloqueadas ate novo cadastro.`,
+      `Revogar a biometria facial de ${workerName}? Entregas ficarao bloqueadas ate novo cadastro.`,
     );
     if (!ok) return;
     setSaving(true);
@@ -174,7 +205,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       setError(
         err instanceof Error
           ? err.message
-          : 'Falha ao revogar referencia facial.',
+          : 'Falha ao revogar biometria facial.',
       );
     } finally {
       setSaving(false);
@@ -183,45 +214,50 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
 
   const statusLabel =
     meta?.status === 'ACTIVE'
-      ? `Cadastrada em ${
-          meta.reference?.uploadedAt
-            ? new Date(meta.reference.uploadedAt).toLocaleString('pt-BR')
-            : '—'
-        }`
-      : meta?.status === 'REVOKED'
-        ? `Revogada${
-            meta.reference?.revokedAt
-              ? ` em ${new Date(meta.reference.revokedAt).toLocaleString('pt-BR')}`
-              : ''
+      ? meta.hasBiometricTemplate
+        ? `Biometria cadastrada em ${
+            meta.reference?.uploadedAt
+              ? new Date(meta.reference.uploadedAt).toLocaleString('pt-BR')
+              : '—'
           }`
-        : 'Nao cadastrada';
+        : 'Ativa sem template — recadastre'
+      : meta?.status === 'NEEDS_REENROLLMENT'
+        ? 'Precisa recadastrar biometria (foto antiga sem template)'
+        : meta?.status === 'REVOKED'
+          ? `Revogada${
+              meta.reference?.revokedAt
+                ? ` em ${new Date(meta.reference.revokedAt).toLocaleString('pt-BR')}`
+                : ''
+            }`
+          : 'Nao cadastrada';
 
   return (
     <section className="notice notice--info" aria-labelledby="facial-ref-title">
       <h3 id="facial-ref-title" className="page-title page-title--sm">
-        Referencia facial
+        Biometria facial
       </h3>
       <p className="field-hint">
-        Esta imagem sera usada como referencia visual na entrega de EPI. Nao e
-        reconhecimento facial automatico.
+        Cadastre uma foto com exatamente um rosto. O sistema gera um template
+        biometrico para matching automatico na entrega (motor face-api). Nao e
+        confirmacao visual humana.
       </p>
+      {!engineReady ? (
+        <p className="table-sub">Carregando motor facial...</p>
+      ) : null}
       {loading ? <p className="page-lead">Carregando...</p> : null}
       {error ? (
         <p className="error" role="alert">
           {error}
         </p>
       ) : null}
+      {detectStatus ? (
+        <p className="table-sub" role="status">
+          {detectStatus}
+        </p>
+      ) : null}
       {!loading && meta ? (
         <p>
-          Status:{' '}
-          <strong>
-            {meta.status === 'ACTIVE'
-              ? 'Cadastrada'
-              : meta.status === 'REVOKED'
-                ? 'Revogada'
-                : 'Nao cadastrada'}
-          </strong>{' '}
-          <span className="table-sub">({statusLabel})</span>
+          Status: <strong>{statusLabel}</strong>
         </p>
       ) : null}
 
@@ -229,7 +265,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={previewUrl}
-          alt={`Referencia facial de ${workerName}`}
+          alt={`Biometria facial de ${workerName}`}
           className="portal-facial__preview"
           style={{ maxWidth: 220, marginTop: '0.75rem' }}
         />
@@ -242,7 +278,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={pendingPreview}
-              alt="Preview da nova referencia"
+              alt="Preview da nova biometria"
               className="portal-facial__preview"
             />
           ) : (
@@ -272,7 +308,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
           checked={consentAccepted}
           onChange={(e) => setConsentAccepted(e.target.checked)}
         />
-        <span>Confirmo o uso desta imagem como referencia visual.</span>
+        <span>Confirmo o cadastro desta biometria facial.</span>
       </label>
 
       <div className="btn-row">
@@ -282,7 +318,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
               type="button"
               className="btn btn-secondary"
               onClick={() => void startCamera()}
-              disabled={cameraOn || saving}
+              disabled={cameraOn || saving || !engineReady}
             >
               {cameraOn ? 'Camera ativa' : 'Abrir camera'}
             </button>
@@ -298,7 +334,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
               type="button"
               className="btn btn-secondary"
               onClick={() => fileInputRef.current?.click()}
-              disabled={saving}
+              disabled={saving || !engineReady}
             >
               Enviar imagem
             </button>
@@ -320,13 +356,13 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
               type="button"
               className="btn btn-primary"
               onClick={() => void saveReference()}
-              disabled={saving || !consentAccepted}
+              disabled={saving || !consentAccepted || !engineReady}
             >
               {saving
-                ? 'Salvando...'
+                ? 'Processando...'
                 : meta?.hasActiveReference
-                  ? 'Substituir referencia'
-                  : 'Salvar referencia'}
+                  ? 'Substituir biometria'
+                  : 'Salvar biometria'}
             </button>
             <button
               type="button"
@@ -341,14 +377,14 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
             </button>
           </>
         )}
-        {meta?.hasActiveReference ? (
+        {meta?.hasActiveReference || meta?.status === 'NEEDS_REENROLLMENT' ? (
           <button
             type="button"
             className="btn btn-secondary"
             onClick={() => void revoke()}
             disabled={saving}
           >
-            Revogar referencia
+            Revogar
           </button>
         ) : null}
       </div>

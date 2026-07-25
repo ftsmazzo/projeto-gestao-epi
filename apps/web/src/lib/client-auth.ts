@@ -188,6 +188,23 @@ export async function createPortalDelivery(
   });
 }
 
+/** Preview de matching biometrico (sem concluir entrega). */
+export async function previewPortalFacialMatch(
+  workerId: string,
+  faceDescriptor: number[],
+) {
+  return clientApiFetch<{
+    matched: boolean;
+    distance: number;
+    threshold: number;
+    status: 'MATCHED' | 'REJECTED';
+    message: string;
+  }>(`/portal/trabalhadores/${workerId}/facial-match`, {
+    method: 'POST',
+    body: JSON.stringify({ faceDescriptor }),
+  });
+}
+
 /** Fetch autenticado da evidencia facial (blob; nao logar conteudo). */
 export async function fetchPortalDeliveryFacialBlob(deliveryId: string) {
   const headers = new Headers();

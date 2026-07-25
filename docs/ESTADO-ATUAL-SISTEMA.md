@@ -184,34 +184,30 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
-| Portal: entregas / ficha / biometria | **09.1:** referencia facial (Consultoria) + conferencia visual humana na entrega (`HUMAN_CONFIRMED`); sem match biometrico automatico |
+| Portal: entregas / ficha / biometria | **09.1.1:** matching biometrico automatico (`MATCHED`) com face-api (descritor 128-d); conferencia visual humana removida do fluxo principal |
 | Portal: relatorios operacionais basicos | **08.1** — feito (consulta; sem PDF/export avancado; sem custo unitario ainda) |
 | Portal: custos / exportacoes ricas | Ainda nao |
 
 ### Evidencia facial — storage e EasyPanel
 
 Arquivos faciais **nao** ficam no banco; sao gravados em disco privado da API.
+Templates biometricos (`faceDescriptor`) ficam no banco como JSON sensivel — **nunca** expostos na API.
 
 - Evidencia da entrega: `DELIVERY_EVIDENCE_DIR` (ex.: `/app/files/delivery-evidence`).
 - Referencia do trabalhador: `WORKER_FACE_REFERENCE_DIR` (ex.: `/app/files/worker-face-references`).
-- Se omitidas, fallback local sob `{cwd}/files/...`.
-- Diretorios criados automaticamente.
-- No **EasyPanel**, monte volumes persistentes nos paths das envs.
-- Leitura autenticada:
-  - Portal evidencia: `GET /portal/entregas/:id/evidence/facial`
-  - Portal referencia: `GET /portal/trabalhadores/:id/facial-reference`
-  - Consultoria referencia: `GET /workers/:id/facial-reference/image`
-- Comprovante/listagem **nao** expoem caminho fisico nem imagem facial na listagem.
-- Entrega exige referencia ACTIVE + captura + `visualCheckConfirmed` (conferencia humana).
+- Motor MVP: `@vladmandic/face-api` no browser (`/vendor/face-api.js` + `/models`); matching definitivo no backend (distancia euclidiana, limiar `FACE_MATCH_THRESHOLD` padrao 0.55).
+- Referencias antigas so com foto -> status `NEEDS_REENROLLMENT`.
+- Entrega exige template ACTIVE + match aprovado (`verificationStatus=MATCHED`).
+- Preview de match: `POST /portal/trabalhadores/:id/facial-match` (sem expor template).
 
 ### Pendencias LGPD / evidencia (documentadas)
 
 - Consentimento LGPD completo (base legal, titular, revogacao).
-- Politica de retencao e exclusao das imagens.
+- Politica de retencao e exclusao das imagens/templates.
 - Storage definitivo / backup (hoje volume local).
-- Match biometrico automatico futuro (ainda **nao** implementado; 09.1 e so conferencia visual).
+- Liveness / anti-spoofing e provider biometrico certificado (D03 — adapter futuro).
 
-Proximo passo natural: PDF/ficha exportavel, match biometrico (quando houver provider), e/ou CRUD operacional de trabalhadores no portal — conforme prioridade do usuario.
+Proximo passo natural: PDF/ficha exportavel, liveness, e/ou CRUD operacional de trabalhadores no portal — conforme prioridade do usuario.
 
 ---
 

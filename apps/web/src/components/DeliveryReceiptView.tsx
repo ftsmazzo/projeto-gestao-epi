@@ -339,25 +339,38 @@ export function DeliveryReceiptView({
             <div>
               <dt>Status</dt>
               <dd>
-                {detail.evidence.verificationStatus === 'HUMAN_CONFIRMED'
-                  ? 'Conferencia visual confirmada'
-                  : detail.evidence.verificationStatus === 'NOT_VERIFIED'
-                    ? 'Nao verificada'
-                    : 'Facial capturada'}
+                {detail.evidence.verificationStatus === 'MATCHED'
+                  ? 'Biometria facial aprovada'
+                  : detail.evidence.verificationStatus === 'REJECTED'
+                    ? 'Biometria facial rejeitada'
+                    : detail.evidence.verificationStatus === 'HUMAN_CONFIRMED'
+                      ? 'Conferencia visual confirmada (legado)'
+                      : detail.evidence.verificationStatus === 'NOT_VERIFIED'
+                        ? 'Nao verificada'
+                        : 'Facial capturada'}
               </dd>
             </div>
             <div>
               <dt>Metodo</dt>
               <dd>{detail.evidence.method}</dd>
             </div>
-            <div>
-              <dt>Conferencia visual</dt>
-              <dd>
-                {detail.evidence.visualCheckConfirmed
-                  ? 'Confirmada pelo operador'
-                  : 'Nao confirmada'}
-              </dd>
-            </div>
+            {detail.evidence.verificationStatus === 'MATCHED' ? (
+              <div>
+                <dt>Biometria</dt>
+                <dd>Aprovada automaticamente</dd>
+              </div>
+            ) : null}
+            {detail.evidence.matchDistance != null ? (
+              <div>
+                <dt>Distancia</dt>
+                <dd className="mono">
+                  {detail.evidence.matchDistance.toFixed(4)}
+                  {detail.evidence.matchThreshold != null
+                    ? ` / limiar ${detail.evidence.matchThreshold.toFixed(2)}`
+                    : ''}
+                </dd>
+              </div>
+            ) : null}
             <div>
               <dt>Capturada em</dt>
               <dd>{formatDateTime(detail.evidence.capturedAt)}</dd>
@@ -374,10 +387,10 @@ export function DeliveryReceiptView({
         ) : (
           <p className="field-hint">Sem evidencia facial registrada.</p>
         )}
-        {detail.evidence?.visualCheckConfirmed ? (
+        {detail.evidence?.verificationStatus === 'MATCHED' ? (
           <p className="notice notice--info" role="status">
-            Conferencia visual: confirmada pelo operador (referencia facial +
-            captura). Sem reconhecimento biometrico automatico.
+            Biometria facial: aprovada automaticamente. Sem liveness; motor
+            face-api (descritor 128-d).
           </p>
         ) : null}
       </section>

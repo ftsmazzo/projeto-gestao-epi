@@ -109,12 +109,30 @@ export function getWorkerFacialReference(workerId: string) {
 export async function uploadWorkerFacialReference(
   workerId: string,
   file: Blob,
-  options?: { consentAccepted?: boolean; fileName?: string },
+  options: {
+    consentAccepted?: boolean;
+    fileName?: string;
+    faceDescriptor: number[];
+    faceEngine?: string;
+    faceEngineVersion?: string;
+    qualityScore?: number | null;
+  },
 ) {
   const form = new FormData();
-  form.append('facial', file, options?.fileName ?? 'facial-reference.jpg');
-  if (options?.consentAccepted) {
+  form.append('facial', file, options.fileName ?? 'facial-reference.jpg');
+  if (options.consentAccepted) {
     form.append('consentAccepted', 'true');
+  }
+  form.append('faceDescriptor', JSON.stringify(options.faceDescriptor));
+  if (options.faceEngine) form.append('faceEngine', options.faceEngine);
+  if (options.faceEngineVersion) {
+    form.append('faceEngineVersion', options.faceEngineVersion);
+  }
+  if (
+    typeof options.qualityScore === 'number' &&
+    Number.isFinite(options.qualityScore)
+  ) {
+    form.append('qualityScore', String(options.qualityScore));
   }
 
   const headers = new Headers();

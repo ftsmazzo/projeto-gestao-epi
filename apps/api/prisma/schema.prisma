@@ -783,16 +783,22 @@ enum DeliveryEvidenceType {
 enum DeliveryEvidenceVerificationStatus {
   CAPTURED
   HUMAN_CONFIRMED
+  MATCHED
+  REJECTED
+  NO_FACE_DETECTED
+  MULTIPLE_FACES_DETECTED
   NOT_VERIFIED
 }
 
 enum WorkerFacialReferenceStatus {
   ACTIVE
   REVOKED
+  /// Referencia antiga so com foto, sem template biometrico — exige recadastro.
+  NEEDS_REENROLLMENT
 }
 
-/// Foto facial de referencia do trabalhador (cadastro pela Consultoria).
-/// Usada apenas para conferencia visual humana na entrega — sem match biometrico.
+/// Foto + template biometrico do trabalhador (Consultoria).
+/// Matching automatico na entrega via descritor 128-d (face-api); nao e liveness.
 model WorkerFacialReference {
   id                 String                       @id @default(cuid())
   organizationId     String
@@ -803,6 +809,11 @@ model WorkerFacialReference {
   fileHash           String?
   mimeType           String?
   byteSize           Int?
+  /// Descritor facial 128-d (JSON number[]). Sensivel — nunca expor na API.
+  faceDescriptor     Json?
+  faceEngine         String?
+  faceEngineVersion  String?
+  qualityScore       Float?
   status             WorkerFacialReferenceStatus  @default(ACTIVE)
   uploadedAt         DateTime                     @default(now())
   createdByUserId    String?
@@ -953,7 +964,7 @@ model EpiDeliveryReturnItem {
   @@index([condition])
 }
 
-/// Evidencia da entrega (captura facial nesta etapa; verificacao biometrica futura).
+/// Evidencia da entrega (captura facial + resultado do matching biometrico).
 model DeliveryEvidence {
   id                 String                             @id @default(cuid())
   deliveryId         String
@@ -965,6 +976,11 @@ model DeliveryEvidence {
   mimeType           String?
   byteSize           Int?
   verificationStatus DeliveryEvidenceVerificationStatus @default(CAPTURED)
+  /// Distancia euclidiana entre descritores (menor = mais similar).
+  matchDistance      Float?
+  matchThreshold     Float?
+  faceEngine         String?
+  verifiedAt         DateTime?
   metadata           Json?
   createdAt          DateTime                           @default(now())
 
@@ -973,6 +989,7 @@ model DeliveryEvidence {
   @@index([deliveryId])
   @@index([type])
   @@index([capturedAt])
+  @@index([verificationStatus])
 }
 
 model AuditLog {

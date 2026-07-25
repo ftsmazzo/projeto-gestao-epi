@@ -19,7 +19,13 @@ import {
   fetchPortalEntregasPreparacao,
   fetchPortalWorkerEpiCoverage,
   fetchPortalWorkerFacialReferenceBlob,
+  previewPortalFacialMatch,
 } from '../../../lib/client-auth';
+import {
+  extractFaceDescriptorFromBlob,
+  FACE_ENGINE_META,
+  loadFaceModels,
+} from '../../../lib/face-biometrics.client';
 
 type ItemSelection = {
   selected: boolean;
@@ -339,11 +345,12 @@ function FacialCapture({
   return (
     <section className="portal-facial" aria-labelledby="facial-title">
       <h2 id="facial-title" className="page-title page-title--sm">
-        Conferencia visual
+        Validacao facial automatica
       </h2>
       <p className="field-hint" role="note">
-        Compare a referencia cadastrada com a captura atual. Nao ha
-        reconhecimento facial automatico — a confirmacao e humana.
+        Capture o rosto do trabalhador. O sistema compara automaticamente com a
+        biometria cadastrada (matching biometrico). Nao e confirmacao visual
+        humana.
       </p>
 
       {cameraError ? (
@@ -441,7 +448,19 @@ function PortalEntregasContent() {
   );
   const [facialBlob, setFacialBlob] = useState<Blob | null>(null);
   const [facialConsentAccepted, setFacialConsentAccepted] = useState(false);
-  const [visualCheckConfirmed, setVisualCheckConfirmed] = useState(false);
+  const [faceDescriptor, setFaceDescriptor] = useState<number[] | null>(null);
+  const [matchStatus, setMatchStatus] = useState<
+    | 'idle'
+    | 'detecting'
+    | 'MATCHED'
+    | 'REJECTED'
+    | 'NO_FACE'
+    | 'MULTIPLE_FACES'
+    | 'ERROR'
+  >('idle');
+  const [matchMessage, setMatchMessage] = useState<string | null>(null);
+  const [matchDistance, setMatchDistance] = useState<number | null>(null);
+  const [engineReady, setEngineReady] = useState(false);
   const [referenceUrl, setReferenceUrl] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -533,9 +552,15 @@ function PortalEntregasContent() {
       .map((need) => ({ need, sel: selections[need.epiNeedId]! }));
   }, [coverage, selections]);
 
+  useEffect(() => {
+    void loadFaceModels()
+      .then(() => setEngineReady(true))
+      .catch(() => setEngineReady(false));
+  }, []);
+
   const canSubmit =
     Boolean(selectedId) &&
-    Boolean(coverage?.workerHasFacialReference) &&
+    Boolean(coverage?.workerHasBiometricTemplate) &&
     selectedItems.length > 0 &&
     selectedItems.every(
       (row) =>
@@ -544,16 +569,62 @@ function PortalEntregasContent() {
         row.sel.quantity > 0,
     ) &&
     facialConsentAccepted &&
-    visualCheckConfirmed &&
+    matchStatus === 'MATCHED' &&
     Boolean(facialBlob) &&
+    Boolean(faceDescriptor) &&
     !submitting;
+
+  async function runFacialValidation(blob: Blob, workerId: string) {
+    setMatchStatus('detecting');
+    setMatchMessage('Detectando face...');
+    setMatchDistance(null);
+    setFaceDescriptor(null);
+    try {
+      const detection = await extractFaceDescriptorFromBlob(blob);
+      if (!detection.ok) {
+        setMatchStatus(
+          detection.reason === 'MULTIPLE_FACES'
+            ? 'MULTIPLE_FACES'
+            : detection.reason === 'NO_FACE'
+              ? 'NO_FACE'
+              : 'ERROR',
+        );
+        setMatchMessage(detection.message);
+        return;
+      }
+      setFaceDescriptor(detection.descriptor);
+      setMatchMessage('Comparando com biometria cadastrada...');
+      const preview = await previewPortalFacialMatch(
+        workerId,
+        detection.descriptor,
+      );
+      setMatchDistance(preview.distance);
+      if (preview.matched) {
+        setMatchStatus('MATCHED');
+        setMatchMessage('Face validada');
+      } else {
+        setMatchStatus('REJECTED');
+        setMatchMessage(preview.message);
+      }
+    } catch (err) {
+      setMatchStatus('ERROR');
+      setMatchMessage(
+        err instanceof Error
+          ? err.message
+          : 'Falha na validacao facial automatica.',
+      );
+    }
+  }
 
   async function selectWorker(worker: PortalEntregaWorkerOption) {
     setSelectedId(worker.id);
     setReceipt(null);
     setFacialBlob(null);
     setFacialConsentAccepted(false);
-    setVisualCheckConfirmed(false);
+    setFaceDescriptor(null);
+    setMatchStatus('idle');
+    setMatchMessage(null);
+    setMatchDistance(null);
     setNotes('');
     setReferenceUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -591,25 +662,23 @@ function PortalEntregasContent() {
   }
 
   async function submitDelivery() {
-    if (!selectedId || !facialBlob) {
-      setError('Capture a evidencia facial antes de confirmar a entrega.');
+    if (!selectedId || !facialBlob || !faceDescriptor) {
+      setError('Capture e valide a face antes de confirmar a entrega.');
       return;
     }
-    if (!coverage?.workerHasFacialReference) {
+    if (!coverage?.workerHasBiometricTemplate) {
       setError(
-        'Trabalhador sem referencia facial cadastrada. Solicite a Consultoria o cadastro antes da entrega.',
+        'Trabalhador sem biometria facial com template. Solicite o cadastro na Consultoria.',
       );
+      return;
+    }
+    if (matchStatus !== 'MATCHED') {
+      setError('A entrega so e permitida apos match facial aprovado.');
       return;
     }
     if (!facialConsentAccepted) {
       setError(
         'Confirme o aviso de registro da imagem facial antes de continuar.',
-      );
-      return;
-    }
-    if (!visualCheckConfirmed) {
-      setError(
-        'Confirme visualmente que a captura corresponde ao trabalhador selecionado.',
       );
       return;
     }
@@ -626,7 +695,9 @@ function PortalEntregasContent() {
           workerId: selectedId,
           notes: notes.trim() || null,
           facialEvidenceConsentAccepted: true,
-          visualCheckConfirmed: true,
+          faceDescriptor,
+          faceEngine: FACE_ENGINE_META.engine,
+          faceEngineVersion: FACE_ENGINE_META.version,
           items: selectedItems.map(({ need, sel }) => ({
             epiNeedId: need.epiNeedId,
             epiItemId: sel.epiItemId,
@@ -644,7 +715,9 @@ function PortalEntregasContent() {
       });
       setFacialBlob(null);
       setFacialConsentAccepted(false);
-      setVisualCheckConfirmed(false);
+      setFaceDescriptor(null);
+      setMatchStatus('idle');
+      setMatchMessage(null);
       const refreshed = await fetchPortalWorkerEpiCoverage(selectedId);
       setCoverage(refreshed);
       const next: Record<string, ItemSelection> = {};
@@ -738,9 +811,12 @@ function PortalEntregasContent() {
               .
             </p>
           ) : null}
-          {receipt.evidence?.visualCheckConfirmed ? (
+          {receipt.evidence?.verificationStatus === 'MATCHED' ? (
             <p className="notice notice--info" role="status">
-              Conferencia visual: confirmada pelo operador
+              Biometria facial: aprovada automaticamente
+              {receipt.evidence.matchDistance != null
+                ? ` (distancia ${receipt.evidence.matchDistance.toFixed(3)})`
+                : ''}
             </p>
           ) : null}
           <div className="btn-row" style={{ marginTop: '1rem' }}>
@@ -964,14 +1040,15 @@ function PortalEntregasContent() {
                   </p>
                 ) : null}
 
-                {coverage && !coverage.workerHasFacialReference ? (
+                {coverage && !coverage.workerHasBiometricTemplate ? (
                   <div className="notice notice--warn" role="alert">
                     <p>
-                      Este trabalhador ainda nao tem referencia facial
-                      cadastrada. A entrega com facial nao pode ser concluida.
+                      {coverage.facialReference.needsReenrollment
+                        ? 'Este trabalhador precisa recadastrar a biometria facial (referencia antiga sem template).'
+                        : 'Este trabalhador ainda nao tem biometria facial cadastrada. A entrega nao pode ser concluida.'}
                     </p>
                     <p className="table-sub">
-                      Solicite a Consultoria o cadastro da referencia facial
+                      Solicite a Consultoria o cadastro/recadastro biometrico
                       antes de continuar.
                     </p>
                   </div>
@@ -1017,17 +1094,19 @@ function PortalEntregasContent() {
           </section>
 
           {coverage &&
-          coverage.workerHasFacialReference &&
+          coverage.workerHasBiometricTemplate &&
           coverage.needs.some((n) => n.status === 'DISPONIVEL') ? (
             <>
               <section className="portal-card">
                 <div className="notice notice--info" role="note">
                   <p>
-                    A imagem facial sera registrada como evidencia da entrega.
-                    A conferencia e visual e humana — nao e reconhecimento
-                    automatico.
+                    Validacao facial automatica: o sistema compara a captura com
+                    a biometria cadastrada. Sem confirmacao visual humana.
                   </p>
                   <p className="table-sub">{FACIAL_EVIDENCE_CONSENT_TEXT}</p>
+                  {!engineReady ? (
+                    <p className="table-sub">Carregando motor facial...</p>
+                  ) : null}
                 </div>
                 <label className="portal-need-select" style={{ margin: '0.75rem 0' }}>
                   <input
@@ -1045,22 +1124,35 @@ function PortalEntregasContent() {
                 <FacialCapture
                   blob={facialBlob}
                   referenceUrl={referenceUrl}
-                  onCaptured={setFacialBlob}
-                  onClear={() => setFacialBlob(null)}
-                />
-                <label className="portal-need-select" style={{ margin: '0.75rem 0' }}>
-                  <input
-                    type="checkbox"
-                    checked={visualCheckConfirmed}
-                    onChange={(e) =>
-                      setVisualCheckConfirmed(e.target.checked)
+                  onCaptured={(blob) => {
+                    setFacialBlob(blob);
+                    if (selectedId) {
+                      void runFacialValidation(blob, selectedId);
                     }
-                  />
-                  <span>
-                    Confirmo visualmente que a captura corresponde ao
-                    trabalhador selecionado.
-                  </span>
-                </label>
+                  }}
+                  onClear={() => {
+                    setFacialBlob(null);
+                    setFaceDescriptor(null);
+                    setMatchStatus('idle');
+                    setMatchMessage(null);
+                    setMatchDistance(null);
+                  }}
+                />
+                {matchMessage ? (
+                  <p
+                    className={
+                      matchStatus === 'MATCHED'
+                        ? 'notice notice--info'
+                        : 'notice notice--warn'
+                    }
+                    role="status"
+                  >
+                    {matchMessage}
+                    {matchDistance != null
+                      ? ` · distancia ${matchDistance.toFixed(3)}`
+                      : ''}
+                  </p>
+                ) : null}
               </section>
 
               <div className="btn-row">
@@ -1081,12 +1173,10 @@ function PortalEntregasContent() {
                   Voltar ao painel
                 </Link>
               </div>
-              {!facialConsentAccepted ||
-              !facialBlob ||
-              !visualCheckConfirmed ? (
+              {matchStatus !== 'MATCHED' || !facialConsentAccepted ? (
                 <p className="field-hint">
-                  A confirmacao exige aviso aceito, captura facial e
-                  conferencia visual marcada.
+                  A confirmacao exige aviso aceito e match facial aprovado
+                  automaticamente.
                 </p>
               ) : null}
             </>

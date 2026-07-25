@@ -328,6 +328,27 @@ export class PortalController {
     createReadStream(file.absolutePath).pipe(res);
   }
 
+  @Post('trabalhadores/:id/facial-match')
+  trabalhadorFacialMatch(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+    @Body()
+    body: {
+      faceDescriptor?: number[];
+    },
+  ) {
+    this.assertClient(user);
+    if (!Array.isArray(body?.faceDescriptor)) {
+      throw new BadRequestException('faceDescriptor obrigatorio.');
+    }
+    return this.portal.previewFacialMatch(
+      user.organizationId,
+      user.servedClientId,
+      id,
+      body.faceDescriptor,
+    );
+  }
+
   @Get('estoque')
   estoque(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);

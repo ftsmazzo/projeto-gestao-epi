@@ -1,11 +1,13 @@
 import { Type } from 'class-transformer';
 import {
   ArrayMinSize,
+  ArrayMaxSize,
   Equals,
   IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
@@ -14,6 +16,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { EpiDeliveryReturnCondition } from '@prisma/client';
+import { FACE_DESCRIPTOR_LENGTH } from '@gestao-epi/shared';
 
 export const FACIAL_EVIDENCE_CONSENT_VERSION = 'v1-2026-07';
 
@@ -66,16 +69,26 @@ export class PortalCreateDeliveryPayloadDto {
   })
   facialEvidenceConsentAccepted!: boolean;
 
-  /**
-   * Conferencia visual humana: operador confirma que a captura corresponde
-   * ao trabalhador usando a referencia cadastrada (sem match biometrico).
-   */
-  @IsBoolean()
-  @Equals(true, {
-    message:
-      'E necessario confirmar visualmente que a captura corresponde ao trabalhador.',
-  })
-  visualCheckConfirmed!: boolean;
+  /** Descritor 128-d da captura (extraido no browser). Matching no backend. */
+  @IsArray()
+  @ArrayMinSize(FACE_DESCRIPTOR_LENGTH)
+  @ArrayMaxSize(FACE_DESCRIPTOR_LENGTH)
+  @IsNumber({}, { each: true })
+  faceDescriptor!: number[];
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  faceEngine?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  faceEngineVersion?: string;
+
+  @IsOptional()
+  @IsNumber()
+  faceDetectionScore?: number;
 }
 
 export class PortalCancelDeliveryDto {
