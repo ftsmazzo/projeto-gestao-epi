@@ -184,7 +184,7 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
-| Portal: entregas / ficha / biometria | **09.1.3+:** layout mobile em cards no portal e na Consultoria (trabalhadores/biometria, clientes, usuarios, unidades) |
+| Portal: entregas / ficha / biometria | **09.2:** LGPD biométrica mínima (consentimento/revogação/bloqueios); captura automática e matching preservados |
 | Portal: relatorios operacionais basicos | **08.1** — feito (consulta; sem PDF/export avancado; sem custo unitario ainda) |
 | Portal: custos / exportacoes ricas | Ainda nao |
 
@@ -204,9 +204,10 @@ Templates biometricos (`faceDescriptor`) ficam no banco como JSON sensivel — *
 
 ### Pendencias LGPD / evidencia (documentadas)
 
-- Consentimento LGPD completo (base legal, titular, revogacao).
-- Politica de retencao e exclusao das imagens/templates.
-- Storage definitivo / backup (hoje volume local).
+- Consentimento LGPD biométrico mínimo (**09.2**): `WorkerBiometricConsent` (GRANTED/REVOKED), exigido para cadastro facial e entrega.
+- Revogação marca referencias como `REVOKED` e `deletionStatus=PENDING` — **exclusao fisica de arquivos/templates ainda nao implementada**.
+- Politica de retencao definitiva (hoje `retentionUntil` sugerido em +5 anos no aceite).
+- Storage definitivo / backup dos volumes (`WORKER_FACE_REFERENCE_DIR`, `DELIVERY_EVIDENCE_DIR`).
 - Liveness / anti-spoofing e provider biometrico certificado (D03 — adapter futuro).
 
 Proximo passo natural: PDF/ficha exportavel, liveness, e/ou CRUD operacional de trabalhadores no portal — conforme prioridade do usuario.

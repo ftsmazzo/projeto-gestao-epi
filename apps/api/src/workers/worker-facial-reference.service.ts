@@ -18,6 +18,7 @@ import {
   resolveWorkerFaceReferenceAbsolutePath,
   saveWorkerFaceReferenceFile,
 } from './worker-face-reference.storage';
+import { WorkerBiometricConsentService } from './worker-biometric-consent.service';
 
 export const WORKER_FACE_REFERENCE_CONSENT_VERSION = 'v1-2026-07';
 
@@ -31,6 +32,7 @@ export class WorkerFacialReferenceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly biometricConsent: WorkerBiometricConsentService,
   ) {}
 
   async getMeta(organizationId: string, workerId: string) {
@@ -174,6 +176,8 @@ export class WorkerFacialReferenceService {
         'Descritor facial invalido. Detecte exatamente uma face antes de salvar.',
       );
     }
+
+    await this.biometricConsent.assertGranted(organizationId, worker.id);
 
     const saved = await saveWorkerFaceReferenceFile({
       organizationId,

@@ -1,7 +1,13 @@
 'use client';
 
-import type { WorkerFacialReferenceMeta } from '@gestao-epi/shared';
-import { WORKER_FACE_REFERENCE_CONSENT_TEXT } from '@gestao-epi/shared';
+import type {
+  WorkerBiometricConsentMeta,
+  WorkerFacialReferenceMeta,
+} from '@gestao-epi/shared';
+import {
+  WORKER_BIOMETRIC_CONSENT_TEXT,
+  WORKER_FACE_REFERENCE_CONSENT_TEXT,
+} from '@gestao-epi/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AUTO_CAPTURE_STABLE_MS,
@@ -14,7 +20,10 @@ import {
 } from '../lib/face-biometrics.client';
 import {
   fetchWorkerFacialReferenceBlob,
+  getWorkerBiometricConsent,
   getWorkerFacialReference,
+  grantWorkerBiometricConsent,
+  revokeWorkerBiometricConsent,
   revokeWorkerFacialReference,
   uploadWorkerFacialReference,
 } from '../lib/workers';
@@ -50,6 +59,10 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [meta, setMeta] = useState<WorkerFacialReferenceMeta | null>(null);
+  const [consentMeta, setConsentMeta] =
+    useState<WorkerBiometricConsentMeta | null>(null);
+  const [consentAccepted, setConsentAccepted] = useState(false);
+  const [revokeReason, setRevokeReason] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
@@ -90,8 +103,13 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const next = await getWorkerFacialReference(workerId);
+      const [next, consent] = await Promise.all([
+        getWorkerFacialReference(workerId),
+        getWorkerBiometricConsent(workerId),
+      ]);
       setMeta(next);
+      setConsentMeta(consent);
+      setConsentAccepted(consent.status === 'GRANTED');
       setPreviewUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
@@ -102,6 +120,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       }
     } catch (err) {
       setMeta(null);
+      setConsentMeta(null);
       setError(
         err instanceof Error
           ? err.message
@@ -299,6 +318,12 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
   }, [captureFrame, stopLoop]);
 
   async function startCamera() {
+    if (consentMeta?.status !== 'GRANTED') {
+      setError(
+        'Registre o consentimento biometrico LGPD antes de cadastrar a face.',
+      );
+      return;
+    }
     setCameraError(null);
     setError(null);
     setDetectStatus(null);
@@ -344,6 +369,59 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
   async function savePending() {
     if (!pendingBlob) return;
     await saveBlob(pendingBlob, { confirmReplace: true });
+  }
+
+  async function grantConsent() {
+    if (!consentAccepted) {
+      setError('Marque o aceite do consentimento biometrico.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await grantWorkerBiometricConsent(workerId);
+      setConsentMeta(next);
+      setDetectStatus('Consentimento biometrico registrado.');
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao registrar consentimento biometrico.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function revokeConsent() {
+    const ok = window.confirm(
+      `Revogar o consentimento biometrico de ${workerName}? Novas entregas com facial serao bloqueadas. O historico de entregas permanece.`,
+    );
+    if (!ok) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const next = await revokeWorkerBiometricConsent(
+        workerId,
+        revokeReason.trim() || null,
+      );
+      setConsentMeta(next);
+      setRevokeReason('');
+      setDetectStatus(
+        'Consentimento revogado. Exclusao definitiva de arquivos/templates permanece pendente.',
+      );
+      stopCamera();
+      setPhaseSafe('idle');
+      await reload();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao revogar consentimento biometrico.',
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function revoke() {
@@ -406,8 +484,8 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
           Biometria facial
         </h3>
         <p className="face-enroll__subtitle">
-          Toque em iniciar, enquadre o rosto e aguarde a captura automatica. Nao
-          e preciso clicar para capturar.
+          Consentimento LGPD e captura automatica. Sem consentimento ativo nao
+          e possivel cadastrar biometria nem entregar com facial.
         </p>
       </header>
 
@@ -421,6 +499,26 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
         <p className="error" role="alert">
           {error}
         </p>
+      ) : null}
+
+      {!loading && consentMeta ? (
+        <div
+          className={`face-enroll__badge face-enroll__badge--${
+            consentMeta.status === 'GRANTED'
+              ? 'ok'
+              : consentMeta.status === 'REVOKED'
+                ? 'warn'
+                : 'muted'
+          }`}
+          role="status"
+        >
+          <span className="face-enroll__badge-dot" aria-hidden />
+          {consentMeta.status === 'GRANTED'
+            ? 'Consentimento biometrico ativo'
+            : consentMeta.status === 'REVOKED'
+              ? 'Consentimento biometrico revogado'
+              : 'Consentimento biometrico nao registrado'}
+        </div>
       ) : null}
 
       {!loading && meta ? (
@@ -437,6 +535,31 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
               {new Date(meta.reference.uploadedAt).toLocaleString('pt-BR')}
             </span>
           ) : null}
+        </div>
+      ) : null}
+
+      {consentMeta?.status !== 'GRANTED' ? (
+        <div className="notice notice--info" role="group">
+          <p className="face-ux__consent">
+            {consentMeta?.consentTextTemplate ?? WORKER_BIOMETRIC_CONSENT_TEXT}
+          </p>
+          <label className="portal-need-select" style={{ margin: '0.5rem 0' }}>
+            <input
+              type="checkbox"
+              checked={consentAccepted}
+              onChange={(e) => setConsentAccepted(e.target.checked)}
+              disabled={saving}
+            />
+            <span>Confirmo o consentimento biometrico deste trabalhador.</span>
+          </label>
+          <button
+            type="button"
+            className="btn btn-primary face-ux__btn-main"
+            onClick={() => void grantConsent()}
+            disabled={saving || !consentAccepted}
+          >
+            {saving ? 'Registrando...' : 'Registrar consentimento'}
+          </button>
         </div>
       ) : null}
 
@@ -521,7 +644,8 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       <p className="face-ux__consent">{WORKER_FACE_REFERENCE_CONSENT_TEXT}</p>
 
       <div className="face-ux__actions face-ux__actions--stack">
-        {phase === 'idle' || phase === 'saved' ? (
+        {(phase === 'idle' || phase === 'saved') &&
+        consentMeta?.status === 'GRANTED' ? (
           <button
             type="button"
             className="btn btn-primary face-ux__btn-main"
@@ -581,7 +705,9 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
             type="button"
             className="btn btn-secondary face-ux__btn-main"
             onClick={() => fileInputRef.current?.click()}
-            disabled={saving || !engineReady}
+            disabled={
+              saving || !engineReady || consentMeta?.status !== 'GRANTED'
+            }
           >
             Enviar imagem (opcional)
           </button>
@@ -604,6 +730,32 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
           }}
         />
 
+        {consentMeta?.status === 'GRANTED' ? (
+          <>
+            <div className="field" style={{ width: '100%' }}>
+              <label htmlFor="biometric-revoke-reason">
+                Motivo da revogacao (recomendado)
+              </label>
+              <input
+                id="biometric-revoke-reason"
+                value={revokeReason}
+                onChange={(e) => setRevokeReason(e.target.value)}
+                maxLength={1000}
+                disabled={saving || phase === 'scanning' || phase === 'processing'}
+                placeholder="Ex.: pedido do titular, desligamento..."
+              />
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary face-ux__btn-main"
+              onClick={() => void revokeConsent()}
+              disabled={saving || phase === 'scanning' || phase === 'processing'}
+            >
+              Revogar consentimento biometrico
+            </button>
+          </>
+        ) : null}
+
         {meta?.hasActiveReference || meta?.status === 'NEEDS_REENROLLMENT' ? (
           <button
             type="button"
@@ -611,7 +763,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
             onClick={() => void revoke()}
             disabled={saving || phase === 'scanning' || phase === 'processing'}
           >
-            Revogar
+            Revogar apenas referencia facial
           </button>
         ) : null}
       </div>

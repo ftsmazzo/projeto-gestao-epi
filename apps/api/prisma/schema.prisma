@@ -101,6 +101,7 @@ model Organization {
   epiDeliveries     EpiDelivery[]
   epiDeliveryReturns EpiDeliveryReturn[]
   workerFacialReferences WorkerFacialReference[]
+  workerBiometricConsents WorkerBiometricConsent[]
 }
 
 model User {
@@ -121,6 +122,8 @@ model User {
   cancelledDeliveries EpiDelivery[]             @relation("EpiDeliveryCancelledBy")
   epiDeliveryReturns EpiDeliveryReturn[]        @relation("EpiDeliveryReturnBy")
   workerFacialReferences WorkerFacialReference[] @relation("WorkerFacialReferenceCreatedBy")
+  biometricConsentsCreated WorkerBiometricConsent[] @relation("WorkerBiometricConsentCreatedBy")
+  biometricConsentsUpdated WorkerBiometricConsent[] @relation("WorkerBiometricConsentUpdatedBy")
 }
 
 model Membership {
@@ -163,6 +166,7 @@ model ServedClient {
   epiDeliveries    EpiDelivery[]
   epiDeliveryReturns EpiDeliveryReturn[]
   workerFacialReferences WorkerFacialReference[]
+  workerBiometricConsents WorkerBiometricConsent[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -409,6 +413,7 @@ model Worker {
   clientJobFunction ClientJobFunction? @relation(fields: [clientJobFunctionId], references: [id], onDelete: SetNull)
   deliveries        EpiDelivery[]
   facialReferences  WorkerFacialReference[]
+  biometricConsents WorkerBiometricConsent[]
 
   @@unique([organizationId, cpf])
   @@unique([servedClientId, registration])
@@ -797,8 +802,57 @@ enum WorkerFacialReferenceStatus {
   NEEDS_REENROLLMENT
 }
 
+enum WorkerBiometricConsentStatus {
+  GRANTED
+  REVOKED
+}
+
+enum WorkerBiometricDeletionStatus {
+  NONE
+  PENDING
+  DELETED
+}
+
+/// Consentimento LGPD biométrico do trabalhador (Consultoria).
+/// Exigido para cadastrar template facial e para entregas com matching.
+model WorkerBiometricConsent {
+  id               String                        @id @default(cuid())
+  organizationId   String
+  servedClientId   String
+  workerId         String
+  status           WorkerBiometricConsentStatus  @default(GRANTED)
+  consentText      String
+  consentVersion   String
+  grantedAt        DateTime
+  revokedAt        DateTime?
+  revocationReason String?
+  createdByUserId  String?
+  updatedByUserId  String?
+  /// Base para politica de retencao futura (sem job de exclusao nesta etapa).
+  retentionUntil   DateTime?
+  deletedAt        DateTime?
+  deletionStatus   WorkerBiometricDeletionStatus @default(NONE)
+  createdAt        DateTime                      @default(now())
+  updatedAt        DateTime                      @updatedAt
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient  ServedClient  @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  worker        Worker        @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  createdByUser User?         @relation("WorkerBiometricConsentCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  updatedByUser User?         @relation("WorkerBiometricConsentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([workerId])
+  @@index([status])
+  @@index([grantedAt])
+  @@index([retentionUntil])
+  @@index([deletionStatus])
+}
+
 /// Foto + template biometrico do trabalhador (Consultoria).
 /// Matching automatico na entrega via descritor 128-d (face-api); nao e liveness.
+/// Templates sao dados sensiveis — nunca expor na API; exclusao fisica e pendencia LGPD.
 model WorkerFacialReference {
   id                 String                       @id @default(cuid())
   organizationId     String
@@ -820,6 +874,10 @@ model WorkerFacialReference {
   consentText        String?
   consentAcceptedAt  DateTime?
   revokedAt          DateTime?
+  /// Base para retencao/exclusao futura de arquivos/templates.
+  retentionUntil     DateTime?
+  deletedAt          DateTime?
+  deletionStatus     WorkerBiometricDeletionStatus @default(NONE)
   createdAt          DateTime                     @default(now())
   updatedAt          DateTime                     @updatedAt
 
@@ -833,6 +891,8 @@ model WorkerFacialReference {
   @@index([workerId])
   @@index([status])
   @@index([uploadedAt])
+  @@index([retentionUntil])
+  @@index([deletionStatus])
 }
 
 enum EpiDeliveryReturnCondition {
@@ -858,6 +918,10 @@ model EpiDelivery {
   evidenceConsentText        String?
   evidenceConsentVersion     String?
   evidenceConsentAcceptedAt  DateTime?
+  /// Snapshot do consentimento biometrico LGPD vigente no ato da entrega.
+  biometricConsentStatus     WorkerBiometricConsentStatus?
+  biometricConsentVersion    String?
+  biometricConsentGrantedAt  DateTime?
   operatorIp                 String?
   userAgent                  String?
   cancelledAt                DateTime?

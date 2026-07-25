@@ -1,5 +1,6 @@
 import type {
   ClientLifeSummary,
+  WorkerBiometricConsentMeta,
   WorkerFacialReferenceMeta,
   WorkerImportConfirmResponse,
   WorkerImportConfirmRowInput,
@@ -103,6 +104,35 @@ export function confirmWorkerCsvImport(
 export function getWorkerFacialReference(workerId: string) {
   return apiFetch<WorkerFacialReferenceMeta>(
     `/workers/${workerId}/facial-reference`,
+  );
+}
+
+export function getWorkerBiometricConsent(workerId: string) {
+  return apiFetch<WorkerBiometricConsentMeta>(
+    `/workers/${workerId}/biometric-consent`,
+  );
+}
+
+export function grantWorkerBiometricConsent(workerId: string) {
+  return apiFetch<WorkerBiometricConsentMeta>(
+    `/workers/${workerId}/biometric-consent`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ accepted: true }),
+    },
+  );
+}
+
+export function revokeWorkerBiometricConsent(
+  workerId: string,
+  reason?: string | null,
+) {
+  return apiFetch<WorkerBiometricConsentMeta>(
+    `/workers/${workerId}/biometric-consent/revoke`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ reason: reason?.trim() || null }),
+    },
   );
 }
 

@@ -13,6 +13,7 @@ import {
   EpiUsefulLifeUnit,
   Prisma,
   WorkerFacialReferenceStatus,
+  WorkerBiometricConsentStatus,
   WorkerStatus,
 } from '@prisma/client';
 import {
@@ -33,6 +34,7 @@ import { StockService } from '../stock/stock.service';
 import {
   resolveWorkerFaceReferenceAbsolutePath,
 } from '../workers/worker-face-reference.storage';
+import { WorkerBiometricConsentService } from '../workers/worker-biometric-consent.service';
 import {
   FACIAL_EVIDENCE_CONSENT_TEXT,
   FACIAL_EVIDENCE_CONSENT_VERSION,
@@ -118,6 +120,7 @@ export class PortalService {
     private readonly stock: StockService,
     private readonly caepi: CaepiService,
     private readonly audit: AuditService,
+    private readonly biometricConsent: WorkerBiometricConsentService,
   ) {}
 
   async getDashboard(organizationId: string, servedClientId: string) {
@@ -1333,6 +1336,12 @@ export class PortalService {
       uploadedAt: facialRef?.uploadedAt.toISOString() ?? null,
     };
 
+    const consentMeta = await this.biometricConsent.getLatest(
+      organizationId,
+      worker.id,
+    );
+    const biometricConsentStatus = consentMeta.status;
+
     const workerDto = {
       id: worker.id,
       name: worker.name,
@@ -1351,6 +1360,7 @@ export class PortalService {
         worker: workerDto,
         workerHasFacialReference,
         workerHasBiometricTemplate,
+        biometricConsentStatus,
         facialReference: facialReferenceDto,
         summary: {
           totalNeeds: 0,
@@ -1405,6 +1415,7 @@ export class PortalService {
         worker: workerDto,
         workerHasFacialReference,
         workerHasBiometricTemplate,
+        biometricConsentStatus,
         facialReference: facialReferenceDto,
         summary: {
           totalNeeds: 0,
@@ -1572,7 +1583,11 @@ export class PortalService {
 
     let summaryStatus: 'OK' | 'ATENCAO' | 'BLOQUEADO' = 'OK';
     let message: string | null = null;
-    if (!workerHasBiometricTemplate) {
+    if (biometricConsentStatus !== 'GRANTED') {
+      summaryStatus = 'BLOQUEADO';
+      message =
+        'Trabalhador sem consentimento biometrico ativo. Solicite regularizacao a Consultoria.';
+    } else if (!workerHasBiometricTemplate) {
       summaryStatus = 'BLOQUEADO';
       message = needsReenrollment
         ? 'Biometria facial desatualizada. Solicite a Consultoria o recadastro da biometria (template).'
@@ -1591,6 +1606,7 @@ export class PortalService {
       worker: workerDto,
       workerHasFacialReference,
       workerHasBiometricTemplate,
+      biometricConsentStatus,
       facialReference: facialReferenceDto,
       summary: {
         totalNeeds: needs.length,
@@ -1908,6 +1924,11 @@ export class PortalService {
         acceptedAt: row.evidenceConsentAcceptedAt?.toISOString() ?? null,
         version: row.evidenceConsentVersion,
         text: row.evidenceConsentText,
+        biometric: {
+          status: row.biometricConsentStatus ?? null,
+          version: row.biometricConsentVersion ?? null,
+          grantedAt: row.biometricConsentGrantedAt?.toISOString() ?? null,
+        },
       },
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -1987,6 +2008,16 @@ export class PortalService {
     if (!worker.clientJobFunctionId) {
       throw new BadRequestException(
         'Trabalhador sem funcao estruturada. Ajuste o cadastro na Consultoria.',
+      );
+    }
+
+    const grantedConsent = await this.biometricConsent.getGrantedOrNull(
+      organizationId,
+      worker.id,
+    );
+    if (!grantedConsent) {
+      throw new BadRequestException(
+        'Trabalhador sem consentimento biometrico ativo. Solicite regularizacao a Consultoria.',
       );
     }
 
@@ -2197,6 +2228,9 @@ export class PortalService {
             evidenceConsentText: FACIAL_EVIDENCE_CONSENT_TEXT,
             evidenceConsentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
             evidenceConsentAcceptedAt: consentAcceptedAt,
+            biometricConsentStatus: WorkerBiometricConsentStatus.GRANTED,
+            biometricConsentVersion: grantedConsent.consentVersion,
+            biometricConsentGrantedAt: grantedConsent.grantedAt,
             operatorIp,
             userAgent,
           },

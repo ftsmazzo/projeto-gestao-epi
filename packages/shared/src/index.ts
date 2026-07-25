@@ -1281,6 +1281,12 @@ export interface PortalEpiCoverageNeedRow {
   suggestedEpiItemId: string | null;
 }
 
+/** Consentimento LGPD biométrico do trabalhador (09.2). */
+export type WorkerBiometricConsentStatus =
+  | 'GRANTED'
+  | 'REVOKED'
+  | 'NOT_REGISTERED';
+
 export interface PortalEpiCoverageResponse {
   worker: {
     id: string;
@@ -1297,6 +1303,8 @@ export interface PortalEpiCoverageResponse {
   workerHasFacialReference: boolean;
   /** Template biometrico ACTIVE com descritor — exigido para entrega. */
   workerHasBiometricTemplate: boolean;
+  /** Consentimento LGPD biometrico (GRANTED | REVOKED | NOT_REGISTERED). */
+  biometricConsentStatus: WorkerBiometricConsentStatus;
   facialReference: {
     hasActive: boolean;
     hasDescriptor: boolean;
@@ -1359,6 +1367,35 @@ export const WORKER_FACE_REFERENCE_CONSENT_VERSION = 'v1-2026-07';
 
 export const WORKER_FACE_REFERENCE_CONSENT_TEXT =
   'Esta imagem sera usada como biometria facial de referencia do trabalhador para validacao automatica na entrega de EPI.';
+
+/** Consentimento LGPD biométrico do trabalhador (09.2). */
+export const WORKER_BIOMETRIC_CONSENT_VERSION = 'v1-2026-07-lgpd';
+
+export const WORKER_BIOMETRIC_CONSENT_TEXT =
+  'Autorizo o uso da biometria facial deste trabalhador para validacao de entregas de EPI e registro de evidencias.';
+
+export type WorkerBiometricDeletionStatus = 'NONE' | 'PENDING' | 'DELETED';
+
+export interface WorkerBiometricConsentMeta {
+  workerId: string;
+  workerName?: string;
+  status: WorkerBiometricConsentStatus;
+  consent: {
+    id: string;
+    status: 'GRANTED' | 'REVOKED';
+    consentVersion: string;
+    consentText: string;
+    grantedAt: string;
+    revokedAt: string | null;
+    revocationReason: string | null;
+    retentionUntil: string | null;
+    deletionStatus: WorkerBiometricDeletionStatus;
+  } | null;
+  canEnrollBiometrics: boolean;
+  canDeliverWithBiometrics: boolean;
+  consentTextTemplate: string;
+  consentVersionTemplate: string;
+}
 
 export type WorkerFacialReferenceStatus =
   | 'ACTIVE'
@@ -1547,6 +1584,12 @@ export interface PortalDeliveryDetail {
     acceptedAt: string | null;
     version: string | null;
     text: string | null;
+    /** Snapshot LGPD biométrico vigente no ato da entrega. */
+    biometric: {
+      status: 'GRANTED' | 'REVOKED' | null;
+      version: string | null;
+      grantedAt: string | null;
+    };
   };
   createdAt: string;
   updatedAt: string;

@@ -334,15 +334,23 @@ export function DeliveryReceiptView({
 
       <section className="portal-receipt__block">
         <h2 className="page-title page-title--sm">Evidencia facial</h2>
+        {detail.evidence?.verificationStatus === 'MATCHED' ? (
+          <p className="portal-receipt__biometric" role="status">
+            Biometria facial: aprovada automaticamente
+            {detail.consent.biometric.status === 'GRANTED'
+              ? ' · consentimento biometrico ativo no ato'
+              : ''}
+          </p>
+        ) : null}
         {detail.evidence ? (
           <>
-            <p className="portal-receipt__biometric" role="status">
-              {detail.evidence.verificationStatus === 'MATCHED'
-                ? 'Biometria facial: aprovada automaticamente'
-                : detail.evidence.verificationStatus === 'REJECTED'
+            {detail.evidence.verificationStatus !== 'MATCHED' ? (
+              <p className="portal-receipt__biometric" role="status">
+                {detail.evidence.verificationStatus === 'REJECTED'
                   ? 'Biometria facial: nao correspondente'
                   : detail.evidence.statusLabel}
-            </p>
+              </p>
+            ) : null}
             <dl className="portal-receipt__dl">
               <div>
                 <dt>Capturada em</dt>

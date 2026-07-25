@@ -99,6 +99,8 @@ O Dockerfile ja inclui `HEALTHCHECK` em `/health`. No EasyPanel, configure tambe
 | `WORKER_FACE_REFERENCE_DIR` | Recomendado em producao | Diretorio persistente das referencias faciais dos trabalhadores. Ex.: `/app/files/worker-face-references`. Volume sugerido: `worker-face-references -> /app/files/worker-face-references`. Sem a env, usa `{cwd}/files/worker-face-references`. |
 | `FACE_MATCH_THRESHOLD` | Nao | Distancia euclidiana maxima para match biometrico (padrao `0.55`). Menor = mais rigoroso. |
 
+**LGPD / biometria (09.2):** templates e imagens faciais sao dados sensiveis. Volumes acima devem ser persistentes e com backup. Consentimento biométrico fica no banco (`WorkerBiometricConsent`). Revogacao marca exclusao como `PENDING` — job de exclusao fisica ainda nao existe.
+
 Nunca versionar segredos reais. Use o painel de secrets/env do EasyPanel.
 
 ### Comando de start

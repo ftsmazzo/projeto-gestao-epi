@@ -339,6 +339,7 @@ function PortalEntregasContent() {
   const canSubmit =
     Boolean(selectedId) &&
     Boolean(coverage?.workerHasBiometricTemplate) &&
+    coverage?.biometricConsentStatus === 'GRANTED' &&
     selectedItems.length > 0 &&
     selectedItems.every(
       (row) =>
@@ -706,7 +707,18 @@ function PortalEntregasContent() {
                   </p>
                 ) : null}
 
-                {coverage && !coverage.workerHasBiometricTemplate ? (
+                {coverage && coverage.biometricConsentStatus !== 'GRANTED' ? (
+                  <div className="notice notice--warn" role="alert">
+                    <p>
+                      Trabalhador sem consentimento biometrico ativo. Solicite
+                      regularizacao a Consultoria.
+                    </p>
+                  </div>
+                ) : null}
+
+                {coverage &&
+                coverage.biometricConsentStatus === 'GRANTED' &&
+                !coverage.workerHasBiometricTemplate ? (
                   <div className="notice notice--warn" role="alert">
                     <p>
                       {coverage.facialReference.needsReenrollment
@@ -760,6 +772,7 @@ function PortalEntregasContent() {
           </section>
 
           {coverage &&
+          coverage.biometricConsentStatus === 'GRANTED' &&
           coverage.workerHasBiometricTemplate &&
           coverage.needs.some((n) => n.status === 'DISPONIVEL') ? (
             <>

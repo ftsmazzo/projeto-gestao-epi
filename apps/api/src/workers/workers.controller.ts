@@ -27,7 +27,12 @@ import {
 import { WORKER_CSV_TEMPLATE } from './worker-import.utils';
 import { WorkerImportService } from './worker-import.service';
 import { WorkerFacialReferenceService } from './worker-facial-reference.service';
+import { WorkerBiometricConsentService } from './worker-biometric-consent.service';
 import { WorkersService } from './workers.service';
+import {
+  GrantWorkerBiometricConsentDto,
+  RevokeWorkerBiometricConsentDto,
+} from './dto/biometric-consent.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard)
@@ -36,6 +41,7 @@ export class WorkersController {
     private readonly workers: WorkersService,
     private readonly workerImport: WorkerImportService,
     private readonly facialReference: WorkerFacialReferenceService,
+    private readonly biometricConsent: WorkerBiometricConsentService,
   ) {}
 
   @Get('served-clients/:servedClientId/workers')
@@ -157,6 +163,32 @@ export class WorkersController {
     @Param('id') id: string,
   ) {
     return this.facialReference.getMeta(user.organizationId, id);
+  }
+
+  @Get('workers/:id/biometric-consent')
+  getBiometricConsent(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.biometricConsent.getLatest(user.organizationId, id);
+  }
+
+  @Post('workers/:id/biometric-consent')
+  grantBiometricConsent(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: GrantWorkerBiometricConsentDto,
+  ) {
+    return this.biometricConsent.grant(user.organizationId, user.sub, id, dto);
+  }
+
+  @Post('workers/:id/biometric-consent/revoke')
+  revokeBiometricConsent(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: RevokeWorkerBiometricConsentDto,
+  ) {
+    return this.biometricConsent.revoke(user.organizationId, user.sub, id, dto);
   }
 
   @Get('workers/:id/facial-reference/image')
