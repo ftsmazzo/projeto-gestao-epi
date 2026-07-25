@@ -24,17 +24,96 @@ import { ClientJwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { ClientJwtPayload } from '../auth/types/jwt-payload';
 import { PortalCreateDeliveryPayloadDto, PortalCancelDeliveryDto, PortalCreateReturnDto } from './dto/portal-delivery.dto';
 import { PortalStockEntradasDto } from './dto/portal-stock.dto';
+import { PortalReportsService } from './portal-reports.service';
+import type { PortalReportFilters } from './portal-reports.service';
 import { PortalService } from './portal.service';
 
 @Controller('portal')
 @UseGuards(ClientJwtAuthGuard)
 export class PortalController {
-  constructor(private readonly portal: PortalService) {}
+  constructor(
+    private readonly portal: PortalService,
+    private readonly reports: PortalReportsService,
+  ) {}
 
   @Get('dashboard')
   dashboard(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);
     return this.portal.getDashboard(user.organizationId, user.servedClientId);
+  }
+
+  @Get('reports/overview')
+  reportsOverview(
+    @CurrentUser() user: ClientJwtPayload,
+    @Query() query: Record<string, string | undefined>,
+  ) {
+    this.assertClient(user);
+    return this.reports.getOverview(
+      user.organizationId,
+      user.servedClientId,
+      this.parseReportFilters(query),
+    );
+  }
+
+  @Get('reports/deliveries')
+  reportsDeliveries(
+    @CurrentUser() user: ClientJwtPayload,
+    @Query() query: Record<string, string | undefined>,
+  ) {
+    this.assertClient(user);
+    return this.reports.getDeliveriesReport(
+      user.organizationId,
+      user.servedClientId,
+      this.parseReportFilters(query),
+    );
+  }
+
+  @Get('reports/stock')
+  reportsStock(
+    @CurrentUser() user: ClientJwtPayload,
+    @Query() query: Record<string, string | undefined>,
+  ) {
+    this.assertClient(user);
+    return this.reports.getStockReport(
+      user.organizationId,
+      user.servedClientId,
+      this.parseReportFilters(query),
+    );
+  }
+
+  @Get('reports/returns')
+  reportsReturns(
+    @CurrentUser() user: ClientJwtPayload,
+    @Query() query: Record<string, string | undefined>,
+  ) {
+    this.assertClient(user);
+    return this.reports.getReturnsReport(
+      user.organizationId,
+      user.servedClientId,
+      this.parseReportFilters(query),
+    );
+  }
+
+  @Get('reports/coverage')
+  reportsCoverage(
+    @CurrentUser() user: ClientJwtPayload,
+    @Query() query: Record<string, string | undefined>,
+  ) {
+    this.assertClient(user);
+    return this.reports.getCoverageReport(
+      user.organizationId,
+      user.servedClientId,
+      this.parseReportFilters(query),
+    );
+  }
+
+  @Get('reports/filters')
+  reportsFilters(@CurrentUser() user: ClientJwtPayload) {
+    this.assertClient(user);
+    return this.reports.getFiltersMeta(
+      user.organizationId,
+      user.servedClientId,
+    );
   }
 
   @Get('validade')
@@ -307,5 +386,23 @@ export class PortalController {
     if (!user.servedClientId) {
       throw new NotFoundException('Cliente do portal nao identificado.');
     }
+  }
+
+  private parseReportFilters(
+    query: Record<string, string | undefined>,
+  ): PortalReportFilters {
+    return {
+      from: query.from,
+      to: query.to,
+      workerId: query.workerId,
+      unitId: query.unitId,
+      sectorId: query.sectorId,
+      jobFunctionId: query.jobFunctionId,
+      epiNeedId: query.epiNeedId,
+      epiItemId: query.epiItemId,
+      status: query.status,
+      stockLocationId: query.stockLocationId,
+      stockStatus: query.stockStatus,
+    };
   }
 }

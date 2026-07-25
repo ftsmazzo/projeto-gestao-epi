@@ -4,6 +4,7 @@ import Link from 'next/link';
 
 export type PortalDashCardId =
   | 'entregas'
+  | 'relatorios'
   | 'validade'
   | 'custos'
   | 'estoque';
@@ -23,6 +24,13 @@ const CARDS: PortalDashCard[] = [
     title: 'Entregas',
     description: 'Controle de entregas, fichas e pendencias da empresa.',
     metricLabel: 'Pendentes',
+  },
+  {
+    id: 'relatorios',
+    href: '/portal/relatorios',
+    title: 'Relatorios',
+    description: 'Entregas, estoque, devolucoes e cobertura no periodo.',
+    metricLabel: 'Entregas (30d)',
   },
   {
     id: 'validade',

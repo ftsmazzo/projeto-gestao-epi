@@ -1513,5 +1513,151 @@ export interface PortalCreateReturnPayload {
   }>;
 }
 
+/** Filtros comuns dos relatorios operacionais do portal (query string). */
+export interface PortalReportFiltersQuery {
+  from?: string;
+  to?: string;
+  workerId?: string;
+  unitId?: string;
+  sectorId?: string;
+  jobFunctionId?: string;
+  epiNeedId?: string;
+  epiItemId?: string;
+  status?: string;
+  stockLocationId?: string;
+  stockStatus?: string;
+}
+
+export interface PortalReportFiltersMeta {
+  units: Array<{ id: string; name: string }>;
+  sectors: Array<{ id: string; name: string }>;
+  jobs: Array<{ id: string; name: string; sectorId: string | null }>;
+  workers: Array<{ id: string; name: string }>;
+}
+
+export interface PortalReportsOverviewResponse {
+  period: { from: string; to: string };
+  cards: {
+    deliveriesInPeriod: number;
+    itemsDelivered: number;
+    returnsInPeriod: number;
+    cancellationsInPeriod: number;
+    workersActive: number;
+    needsWithoutLinkedEpi: number;
+    needsWithoutStock: number;
+    stockLowOrZero: number;
+    stockLow: number;
+    stockZero: number;
+  };
+  cost: {
+    estimatedDeliveredCost: number | null;
+    available: boolean;
+    message: string;
+  };
+}
+
+export interface PortalReportsDeliveriesResponse {
+  period: { from: string; to: string };
+  rows: Array<{
+    id: string;
+    receiptNumber: string;
+    deliveredAt: string;
+    status: PortalDeliveryStatus;
+    statusLabel: string;
+    worker: {
+      id: string;
+      name: string;
+      registration: string | null;
+      unitName: string | null;
+      sectorName: string | null;
+      jobFunctionName: string | null;
+    };
+    itemsSummary: string;
+    itemCount: number;
+    operatorName: string;
+    hasFacialEvidence: boolean;
+  }>;
+}
+
+export type PortalReportStockStatus = 'ok' | 'baixo' | 'zerado';
+
+export interface PortalReportsStockResponse {
+  summary: {
+    total: number;
+    ok: number;
+    baixo: number;
+    zerado: number;
+  };
+  rows: Array<{
+    epiItemId: string;
+    epiName: string;
+    caNumber: string | null;
+    caExpiresAt: string | null;
+    category: string | null;
+    needs: Array<{ id: string; name: string }>;
+    needsLabel: string;
+    stockLocationId: string;
+    locationName: string;
+    quantity: number;
+    minQuantity: number | null;
+    status: PortalReportStockStatus;
+    statusLabel: string;
+  }>;
+}
+
+export type PortalReportReturnType = 'DEVOLUCAO' | 'CANCELAMENTO';
+
+export interface PortalReportsReturnsResponse {
+  period: { from: string; to: string };
+  rows: Array<{
+    id: string;
+    at: string;
+    type: PortalReportReturnType;
+    typeLabel: string;
+    receiptNumber: string;
+    deliveryId: string;
+    workerName: string;
+    workerRegistration: string | null;
+    itemLabel: string;
+    quantity: number;
+    condition: string | null;
+    returnedToStock: boolean | null;
+    reason: string | null;
+    operatorName: string | null;
+  }>;
+}
+
+export type PortalReportCoverageNeedStatus =
+  | 'DISPONIVEL'
+  | 'SEM_ESTOQUE'
+  | 'SEM_EPI_REAL_VINCULADO';
+
+export interface PortalReportsCoverageResponse {
+  summary: {
+    totalNeeds: number;
+    disponivel: number;
+    semEstoque: number;
+    semEpiReal: number;
+  };
+  byJobFunction: Array<{
+    jobFunctionId: string;
+    jobFunctionName: string;
+    sectorId: string | null;
+    sectorName: string | null;
+    needs: Array<{
+      epiNeedId: string;
+      needName: string;
+      isRequired: boolean;
+      quantity: number;
+      replacementIntervalDays: number | null;
+      risks: Array<{ id: string; name: string }>;
+      warnings: string[];
+      linkedEpiCount: number;
+      availableStock: number;
+      status: PortalReportCoverageNeedStatus;
+      statusLabel: string;
+    }>;
+  }>;
+}
 
 

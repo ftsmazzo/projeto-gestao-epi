@@ -117,6 +117,7 @@ Login: `/portal/login` · Shell: `PortalShell` · Nav: `PORTAL_NAV`
 | `/portal/estrutura` | Leitura da estrutura implantada | Consulta |
 | `/portal/validade` | Validades | Consulta / parcial |
 | `/portal/entregas` | Entregas | Entrega real com facial + baixa de estoque + historico (07.2) |
+| `/portal/relatorios` | Relatorios operacionais | **08.1** — visao geral, entregas, estoque, devolucoes/cancelamentos, cobertura (consulta) |
 | `/portal/custos` | Custos | Ainda nao operacional completo |
 | `/portal/conta` | Conta / troca de senha | Ativo |
 | `/portal/login` | Auth do cliente | Ativo |
@@ -136,6 +137,7 @@ Endpoints portal ja existentes (resumo):
 - `GET /portal/epis/search`, `GET /portal/epis/by-ca`
 - `GET /portal/stock/locations`, `GET /portal/stock/balances`
 - `POST /portal/stock/entradas`
+- `GET /portal/reports/overview|deliveries|stock|returns|coverage|filters` — relatorios 08.1 (escopo `servedClientId`)
 
 ---
 
@@ -149,9 +151,10 @@ Endpoints portal ja existentes (resumo):
 
 ### 6.2 Painel (dia a dia)
 
-- Menu operacional: Painel, Entregas, Validade, Custos, Estoque, Estrutura, Trabalhadores, Conta.
+- Menu operacional: Painel, Entregas, Relatorios, Validade, Custos, Estoque, Estrutura, Trabalhadores, Conta.
 - Dashboard com cards ligados a APIs reais (nao so mock).
 - Estrutura/validade/trabalhadores em modo consulta no portal.
+- Relatorios operacionais basicos (08.1): overview, entregas (link comprovante), estoque, devolucoes/cancelamentos, cobertura por `epiNeedId`.
 
 ### 6.3 Estoque no portal (ultima frente entregue)
 
@@ -182,7 +185,8 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
 | Portal: entregas / ficha / biometria | **07.4** + **07.2.1:** cobertura agrupa por `epiNeedId` (riscos em chips; sem produto cartesiano risco x necessidade) |
-| Portal: custos / relatorios ricos | Ainda nao |
+| Portal: relatorios operacionais basicos | **08.1** — feito (consulta; sem PDF/export avancado; sem custo unitario ainda) |
+| Portal: custos / exportacoes ricas | Ainda nao |
 
 ### Evidencia facial — storage e EasyPanel
 

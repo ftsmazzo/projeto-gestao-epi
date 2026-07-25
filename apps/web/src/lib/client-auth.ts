@@ -12,6 +12,13 @@ import type {
   PortalEntregasPreparacaoResponse,
   PortalEstoqueResponse,
   PortalEstruturaResponse,
+  PortalReportFiltersMeta,
+  PortalReportFiltersQuery,
+  PortalReportsCoverageResponse,
+  PortalReportsDeliveriesResponse,
+  PortalReportsOverviewResponse,
+  PortalReportsReturnsResponse,
+  PortalReportsStockResponse,
   PortalStockEntradasResult,
   PortalTrabalhadoresResponse,
   PortalValidadeResponse,
@@ -236,4 +243,59 @@ export async function createPortalStockEntradas(
     method: 'POST',
     body: JSON.stringify({ items }),
   });
+}
+
+function portalReportQuery(filters: PortalReportFiltersQuery = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value != null && String(value).trim() !== '') {
+      params.set(key, String(value));
+    }
+  }
+  const qs = params.toString();
+  return qs ? `?${qs}` : '';
+}
+
+export async function fetchPortalReportFilters() {
+  return clientApiFetch<PortalReportFiltersMeta>('/portal/reports/filters');
+}
+
+export async function fetchPortalReportsOverview(
+  filters: PortalReportFiltersQuery = {},
+) {
+  return clientApiFetch<PortalReportsOverviewResponse>(
+    `/portal/reports/overview${portalReportQuery(filters)}`,
+  );
+}
+
+export async function fetchPortalReportsDeliveries(
+  filters: PortalReportFiltersQuery = {},
+) {
+  return clientApiFetch<PortalReportsDeliveriesResponse>(
+    `/portal/reports/deliveries${portalReportQuery(filters)}`,
+  );
+}
+
+export async function fetchPortalReportsStock(
+  filters: PortalReportFiltersQuery = {},
+) {
+  return clientApiFetch<PortalReportsStockResponse>(
+    `/portal/reports/stock${portalReportQuery(filters)}`,
+  );
+}
+
+export async function fetchPortalReportsReturns(
+  filters: PortalReportFiltersQuery = {},
+) {
+  return clientApiFetch<PortalReportsReturnsResponse>(
+    `/portal/reports/returns${portalReportQuery(filters)}`,
+  );
+}
+
+export async function fetchPortalReportsCoverage(
+  filters: PortalReportFiltersQuery = {},
+) {
+  return clientApiFetch<PortalReportsCoverageResponse>(
+    `/portal/reports/coverage${portalReportQuery(filters)}`,
+  );
 }

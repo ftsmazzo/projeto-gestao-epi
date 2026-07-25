@@ -9,22 +9,35 @@ import { useEffect, useState } from 'react';
 import { PortalDashboardCards } from '../../components/PortalDashboardCards';
 import { RequireClientAuth } from '../../components/RequireClientAuth';
 import { formatCnpj } from '../../lib/cnpj';
-import { fetchPortalDashboard } from '../../lib/client-auth';
+import { fetchPortalDashboard, fetchPortalReportsOverview } from '../../lib/client-auth';
 import { clientUserRoleLabel } from '../../lib/served-clients';
 
 function PortalHome({ user }: { user: ClientPortalUser }) {
   const clientName =
     user.servedClient.tradeName || user.servedClient.legalName;
   const [dash, setDash] = useState<PortalDashboardResponse | null>(null);
+  const [reportCards, setReportCards] = useState<{
+    deliveriesInPeriod: number;
+    stockLowOrZero: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    void fetchPortalDashboard()
-      .then((data) => {
+    void Promise.all([
+      fetchPortalDashboard(),
+      fetchPortalReportsOverview().catch(() => null),
+    ])
+      .then(([data, overview]) => {
         if (!cancelled) {
           setDash(data);
+          if (overview) {
+            setReportCards({
+              deliveriesInPeriod: overview.cards.deliveriesInPeriod,
+              stockLowOrZero: overview.cards.stockLowOrZero,
+            });
+          }
           setLoading(false);
         }
       })
@@ -127,9 +140,11 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
           dash
             ? {
                 entregas: dash.metrics.entregas,
+                relatorios: reportCards?.deliveriesInPeriod ?? null,
                 validade: dash.metrics.validade,
                 custos: dash.metrics.custos,
-                estoque: dash.metrics.estoque,
+                estoque:
+                  reportCards?.stockLowOrZero ?? dash.metrics.estoque,
               }
             : undefined
         }
@@ -137,6 +152,7 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
           dash
             ? {
                 entregas: dash.modules.entregas.ready,
+                relatorios: true,
                 validade: dash.modules.validade.ready,
                 custos: dash.modules.custos.ready,
                 estoque: dash.modules.estoque.ready,
