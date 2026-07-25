@@ -184,6 +184,16 @@ Ultimo commit dessa frente: `714206a`.
 | Portal: entregas / ficha / biometria | **07.2 feito:** entrega com facial (evidencia CAPTURED/NOT_VERIFIED), baixa ENTREGA, historico. Sem PDF/ficha, sem devolucao, sem match biometrico automatico |
 | Portal: custos / relatorios ricos | Ainda nao |
 
+### Evidencia facial — storage e EasyPanel
+
+Arquivos faciais **nao** ficam no banco; sao gravados em disco privado da API.
+
+- Variavel: `DELIVERY_EVIDENCE_DIR` (ex.: `/app/files/delivery-evidence`).
+- Se omitida, fallback local: `{cwd}/files/delivery-evidence`.
+- O diretorio (e subpastas por `organizationId`) e criado automaticamente.
+- No **EasyPanel**, monte um **volume persistente** no servico da API apontando para o mesmo path da env (ex. mount `/app/files/delivery-evidence`). Sem volume, o redeploy apaga as evidencias no filesystem do container.
+- Leitura autenticada: `GET /portal/entregas/:id/evidence/facial` (nao expor URL publica).
+
 Proximo passo natural: evoluir reconhecimento facial real (match biometrico), PDF/ficha de entrega, e/ou CRUD operacional de trabalhadores no portal — conforme prioridade do usuario.
 
 ---

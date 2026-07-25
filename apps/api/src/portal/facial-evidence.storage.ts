@@ -1,11 +1,25 @@
 import { createHash, randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { isAbsolute, join } from 'path';
 
-const EVIDENCE_ROOT = join(process.cwd(), 'files', 'delivery-evidence');
+/**
+ * Raiz do storage de evidencia facial.
+ * Preferir DELIVERY_EVIDENCE_DIR (ex.: /app/files/delivery-evidence no EasyPanel).
+ * Fallback local: {cwd}/files/delivery-evidence
+ */
+export function getDeliveryEvidenceRoot(): string {
+  const fromEnv = process.env.DELIVERY_EVIDENCE_DIR?.trim();
+  if (fromEnv) {
+    return isAbsolute(fromEnv) ? fromEnv : join(process.cwd(), fromEnv);
+  }
+  return join(process.cwd(), 'files', 'delivery-evidence');
+}
 
 export type SavedFacialEvidence = {
-  /** Caminho relativo a partir de files/ (ex.: delivery-evidence/org/xxx.jpg). */
+  /**
+   * Caminho relativo a getDeliveryEvidenceRoot()
+   * (ex.: {organizationId}/{deliveryId}-{uuid}.jpg).
+   */
   relativePath: string;
   absolutePath: string;
   fileHash: string;
@@ -31,18 +45,15 @@ export async function saveFacialEvidenceFile(input: {
         ? 'webp'
         : 'jpg';
 
-  const dir = join(EVIDENCE_ROOT, input.organizationId);
+  const root = getDeliveryEvidenceRoot();
+  const dir = join(root, input.organizationId);
   await mkdir(dir, { recursive: true });
 
   const fileName = `${input.deliveryId}-${randomUUID()}.${ext}`;
   const absolutePath = join(dir, fileName);
   await writeFile(absolutePath, input.buffer);
 
-  const relativePath = join(
-    'delivery-evidence',
-    input.organizationId,
-    fileName,
-  ).replace(/\\/g, '/');
+  const relativePath = `${input.organizationId}/${fileName}`;
 
   return {
     relativePath,
@@ -53,7 +64,12 @@ export async function saveFacialEvidenceFile(input: {
   };
 }
 
+/** Resolve caminho absoluto a partir do filePath gravado no banco (sem path traversal). */
 export function resolveEvidenceAbsolutePath(relativePath: string): string {
-  const safe = relativePath.replace(/\\/g, '/').replace(/\.\./g, '');
-  return join(process.cwd(), 'files', safe);
+  let safe = relativePath.replace(/\\/g, '/').replace(/\.\./g, '');
+  // Compat com gravações anteriores: delivery-evidence/org/...
+  if (safe.startsWith('delivery-evidence/')) {
+    safe = safe.slice('delivery-evidence/'.length);
+  }
+  return join(getDeliveryEvidenceRoot(), safe);
 }
