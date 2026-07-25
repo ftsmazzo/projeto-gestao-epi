@@ -30,6 +30,12 @@ export const OPS_NAV: OpsNavItem[] = [
     status: 'ready',
     description: 'Base oficial de CAs (global).',
   },
+  {
+    href: '/biometria-retencao',
+    label: 'Retencao biometrica',
+    status: 'ready',
+    description: 'Exclusao segura de referencias e evidencias faciais (LGPD).',
+  },
 ];
 
 export type PortalNavItem = {

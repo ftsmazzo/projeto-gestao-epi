@@ -14,6 +14,7 @@ import {
   Prisma,
   WorkerFacialReferenceStatus,
   WorkerBiometricConsentStatus,
+  WorkerBiometricDeletionStatus,
   WorkerStatus,
 } from '@prisma/client';
 import {
@@ -1753,6 +1754,9 @@ export class PortalService {
             verifiedAt: true,
             mimeType: true,
             byteSize: true,
+            filePath: true,
+            deletionStatus: true,
+            deletedAt: true,
           },
         },
         returns: {
@@ -1916,7 +1920,18 @@ export class PortalService {
             matchThreshold: facial.matchThreshold ?? null,
             faceEngine: facial.faceEngine ?? null,
             verifiedAt: facial.verifiedAt?.toISOString() ?? null,
-            hasFile: true,
+            hasFile: Boolean(
+              facial.filePath &&
+                facial.deletionStatus !==
+                  WorkerBiometricDeletionStatus.DELETED,
+            ),
+            deletionStatus: facial.deletionStatus as
+              | 'NONE'
+              | 'PENDING'
+              | 'DELETED'
+              | 'FAILED',
+            fileRemovedByRetention:
+              facial.deletionStatus === WorkerBiometricDeletionStatus.DELETED,
           }
         : null,
       consent: {
@@ -2316,6 +2331,12 @@ export class PortalService {
             matchThreshold: match.threshold,
             faceEngine: payload.faceEngine?.trim() || FACE_ENGINE,
             verifiedAt: deliveredAt,
+            retentionUntil: (() => {
+              const until = new Date(deliveredAt);
+              until.setFullYear(until.getFullYear() + 5);
+              return until;
+            })(),
+            deletionStatus: WorkerBiometricDeletionStatus.NONE,
             metadata: {
               captureSource: 'portal_camera',
               consentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
@@ -2688,10 +2709,12 @@ export class PortalService {
         type: DeliveryEvidenceType.FACIAL_CAPTURE,
         delivery: { organizationId, servedClientId },
       },
-      select: { filePath: true, mimeType: true },
+      select: { filePath: true, mimeType: true, deletionStatus: true },
     });
-    if (!evidence) {
-      throw new NotFoundException('Evidencia facial nao encontrada.');
+    if (!evidence?.filePath || evidence.deletionStatus === WorkerBiometricDeletionStatus.DELETED) {
+      throw new NotFoundException(
+        'Evidencia facial nao disponivel (removida por retencao ou ausente).',
+      );
     }
 
     return {
@@ -2725,10 +2748,12 @@ export class PortalService {
         servedClientId,
         workerId: worker.id,
         status: WorkerFacialReferenceStatus.ACTIVE,
+        deletionStatus: { not: WorkerBiometricDeletionStatus.DELETED },
+        filePath: { not: null },
       },
       select: { filePath: true, mimeType: true },
     });
-    if (!ref) {
+    if (!ref?.filePath) {
       throw new NotFoundException(
         'Referencia facial ativa nao encontrada para este trabalhador.',
       );

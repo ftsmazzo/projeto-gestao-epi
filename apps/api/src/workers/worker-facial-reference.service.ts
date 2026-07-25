@@ -3,7 +3,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, WorkerFacialReferenceStatus } from '@prisma/client';
+import {
+  Prisma,
+  WorkerBiometricDeletionStatus,
+  WorkerFacialReferenceStatus,
+} from '@prisma/client';
 import {
   FACE_ENGINE,
   FACE_ENGINE_VERSION,
@@ -56,6 +60,11 @@ export class WorkerFacialReferenceService {
         faceEngine: true,
         faceEngineVersion: true,
         qualityScore: true,
+        deletionStatus: true,
+        deletedAt: true,
+        deletionError: true,
+        retentionUntil: true,
+        filePath: true,
       },
     });
 
@@ -72,6 +81,11 @@ export class WorkerFacialReferenceService {
             status: true,
             uploadedAt: true,
             revokedAt: true,
+            deletionStatus: true,
+            deletedAt: true,
+            deletionError: true,
+            retentionUntil: true,
+            filePath: true,
           },
         })
       : null;
@@ -90,6 +104,11 @@ export class WorkerFacialReferenceService {
               status: true,
               uploadedAt: true,
               revokedAt: true,
+              deletionStatus: true,
+              deletedAt: true,
+              deletionError: true,
+              retentionUntil: true,
+              filePath: true,
             },
           })
         : null;
@@ -108,6 +127,21 @@ export class WorkerFacialReferenceService {
           : ('MISSING' as const);
 
     const refRow = active ?? needsReenroll ?? latestRevoked;
+    const deletionStatus =
+      refRow && 'deletionStatus' in refRow
+        ? (refRow.deletionStatus as
+            | 'NONE'
+            | 'PENDING'
+            | 'DELETED'
+            | 'FAILED')
+        : ('NONE' as const);
+    const hasFile = Boolean(
+      active?.filePath ||
+        (refRow &&
+          'filePath' in refRow &&
+          refRow.filePath &&
+          deletionStatus !== 'DELETED'),
+    );
 
     return {
       workerId: worker.id,
@@ -132,9 +166,27 @@ export class WorkerFacialReferenceService {
             faceEngine: active?.faceEngine ?? null,
             faceEngineVersion: active?.faceEngineVersion ?? null,
             qualityScore: active?.qualityScore ?? null,
-            imagePath: active
-              ? `/workers/${worker.id}/facial-reference/image`
-              : null,
+            imagePath:
+              active && active.filePath
+                ? `/workers/${worker.id}/facial-reference/image`
+                : null,
+            deletionStatus,
+            deletedAt:
+              'deletedAt' in refRow && refRow.deletedAt
+                ? refRow.deletedAt.toISOString()
+                : null,
+            deletionError:
+              'deletionError' in refRow ? (refRow.deletionError ?? null) : null,
+            retentionUntil:
+              'retentionUntil' in refRow && refRow.retentionUntil
+                ? refRow.retentionUntil.toISOString()
+                : null,
+            hasFile,
+            canRequestDeletion:
+              !active &&
+              deletionStatus !== 'PENDING' &&
+              deletionStatus !== 'DELETED' &&
+              (status === 'REVOKED' || status === 'NEEDS_REENROLLMENT'),
           }
         : null,
       notice:
@@ -188,6 +240,8 @@ export class WorkerFacialReferenceService {
 
     const now = new Date();
     const consentAccepted = options.consentAccepted === true;
+    const retentionUntil = new Date(now);
+    retentionUntil.setFullYear(retentionUntil.getFullYear() + 5);
 
     try {
       const created = await this.prisma.$transaction(async (tx) => {
@@ -205,6 +259,7 @@ export class WorkerFacialReferenceService {
           data: {
             status: WorkerFacialReferenceStatus.REVOKED,
             revokedAt: now,
+            deletionStatus: WorkerBiometricDeletionStatus.PENDING,
           },
         });
 
@@ -233,6 +288,8 @@ export class WorkerFacialReferenceService {
               ? WORKER_FACE_REFERENCE_CONSENT_TEXT
               : null,
             consentAcceptedAt: consentAccepted ? now : null,
+            retentionUntil,
+            deletionStatus: WorkerBiometricDeletionStatus.NONE,
           },
           select: {
             id: true,
@@ -244,6 +301,7 @@ export class WorkerFacialReferenceService {
             faceEngine: true,
             faceEngineVersion: true,
             qualityScore: true,
+            retentionUntil: true,
           },
         });
       });
@@ -283,6 +341,12 @@ export class WorkerFacialReferenceService {
           faceEngineVersion: created.faceEngineVersion,
           qualityScore: created.qualityScore,
           imagePath: `/workers/${worker.id}/facial-reference/image`,
+          deletionStatus: 'NONE' as const,
+          deletedAt: null,
+          deletionError: null,
+          retentionUntil: (created.retentionUntil ?? retentionUntil).toISOString(),
+          hasFile: true,
+          canRequestDeletion: false,
         },
         notice: 'Biometria facial cadastrada. Matching automatico habilitado na entrega.',
       };
@@ -322,6 +386,8 @@ export class WorkerFacialReferenceService {
       data: {
         status: WorkerFacialReferenceStatus.REVOKED,
         revokedAt: now,
+        deletionStatus: WorkerBiometricDeletionStatus.PENDING,
+        deletionError: null,
       },
     });
 
@@ -334,6 +400,7 @@ export class WorkerFacialReferenceService {
       metadata: {
         workerId: worker.id,
         servedClientId: worker.servedClientId,
+        deletionPending: true,
       },
     });
 
@@ -355,9 +422,15 @@ export class WorkerFacialReferenceService {
         faceEngineVersion: null,
         qualityScore: null,
         imagePath: null,
+        deletionStatus: 'PENDING' as const,
+        deletedAt: null,
+        deletionError: null,
+        retentionUntil: active.retentionUntil?.toISOString() ?? null,
+        hasFile: Boolean(active.filePath),
+        canRequestDeletion: false,
       },
       notice:
-        'Biometria facial revogada. Entregas ficam bloqueadas ate novo cadastro.',
+        'Biometria facial revogada. Exclusao fisica pendente. Entregas ficam bloqueadas ate novo cadastro.',
     };
   }
 
@@ -372,10 +445,12 @@ export class WorkerFacialReferenceService {
         organizationId,
         workerId,
         status: WorkerFacialReferenceStatus.ACTIVE,
+        deletionStatus: { not: WorkerBiometricDeletionStatus.DELETED },
+        filePath: { not: null },
       },
       select: { filePath: true, mimeType: true },
     });
-    if (!active) {
+    if (!active?.filePath) {
       throw new NotFoundException(
         'Referencia facial ativa nao encontrada para este trabalhador.',
       );

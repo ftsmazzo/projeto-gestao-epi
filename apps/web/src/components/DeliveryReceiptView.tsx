@@ -359,9 +359,11 @@ export function DeliveryReceiptView({
               <div>
                 <dt>Arquivo</dt>
                 <dd>
-                  {detail.evidence.hasFile
-                    ? 'Registrado (acesso autenticado; nao exibido neste comprovante)'
-                    : 'Ausente'}
+                  {detail.evidence.fileRemovedByRetention
+                    ? 'Removido por politica de retencao LGPD'
+                    : detail.evidence.hasFile
+                      ? 'Registrado (acesso autenticado; nao exibido neste comprovante)'
+                      : 'Ausente'}
                 </dd>
               </div>
             </dl>

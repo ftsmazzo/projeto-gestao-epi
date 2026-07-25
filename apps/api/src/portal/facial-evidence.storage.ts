@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import { isAbsolute, join } from 'path';
+import { resolveInsideRoot } from '../workers/biometric-storage-path';
 
 /**
  * Raiz do storage de evidencia facial.
@@ -66,10 +67,10 @@ export async function saveFacialEvidenceFile(input: {
 
 /** Resolve caminho absoluto a partir do filePath gravado no banco (sem path traversal). */
 export function resolveEvidenceAbsolutePath(relativePath: string): string {
-  let safe = relativePath.replace(/\\/g, '/').replace(/\.\./g, '');
+  let safe = relativePath.replace(/\\/g, '/');
   // Compat com gravações anteriores: delivery-evidence/org/...
   if (safe.startsWith('delivery-evidence/')) {
     safe = safe.slice('delivery-evidence/'.length);
   }
-  return join(getDeliveryEvidenceRoot(), safe);
+  return resolveInsideRoot(getDeliveryEvidenceRoot(), safe);
 }

@@ -122,8 +122,10 @@ model User {
   cancelledDeliveries EpiDelivery[]             @relation("EpiDeliveryCancelledBy")
   epiDeliveryReturns EpiDeliveryReturn[]        @relation("EpiDeliveryReturnBy")
   workerFacialReferences WorkerFacialReference[] @relation("WorkerFacialReferenceCreatedBy")
+  facialReferencesDeleted WorkerFacialReference[] @relation("WorkerFacialReferenceDeletedBy")
   biometricConsentsCreated WorkerBiometricConsent[] @relation("WorkerBiometricConsentCreatedBy")
   biometricConsentsUpdated WorkerBiometricConsent[] @relation("WorkerBiometricConsentUpdatedBy")
+  deliveryEvidencesDeleted DeliveryEvidence[] @relation("DeliveryEvidenceDeletedBy")
 }
 
 model Membership {
@@ -811,6 +813,7 @@ enum WorkerBiometricDeletionStatus {
   NONE
   PENDING
   DELETED
+  FAILED
 }
 
 /// Consentimento LGPD biométrico do trabalhador (Consultoria).
@@ -852,14 +855,14 @@ model WorkerBiometricConsent {
 
 /// Foto + template biometrico do trabalhador (Consultoria).
 /// Matching automatico na entrega via descritor 128-d (face-api); nao e liveness.
-/// Templates sao dados sensiveis — nunca expor na API; exclusao fisica e pendencia LGPD.
+/// Templates sao dados sensiveis — nunca expor na API; exclusao fisica via 09.3.
 model WorkerFacialReference {
   id                 String                       @id @default(cuid())
   organizationId     String
   servedClientId     String
   workerId           String
-  /// Caminho relativo privado no storage (nao URL publica).
-  filePath           String
+  /// Caminho relativo privado no storage (nao URL publica). Null apos exclusao.
+  filePath           String?
   fileHash           String?
   mimeType           String?
   byteSize           Int?
@@ -874,10 +877,13 @@ model WorkerFacialReference {
   consentText        String?
   consentAcceptedAt  DateTime?
   revokedAt          DateTime?
-  /// Base para retencao/exclusao futura de arquivos/templates.
+  /// Base para retencao/exclusao de arquivos/templates.
   retentionUntil     DateTime?
   deletedAt          DateTime?
   deletionStatus     WorkerBiometricDeletionStatus @default(NONE)
+  /// Mensagem segura (sem path) quando deletionStatus=FAILED.
+  deletionError      String?
+  deletedByUserId    String?
   createdAt          DateTime                     @default(now())
   updatedAt          DateTime                     @updatedAt
 
@@ -885,6 +891,7 @@ model WorkerFacialReference {
   servedClient  ServedClient  @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
   worker        Worker        @relation(fields: [workerId], references: [id], onDelete: Cascade)
   createdByUser User?         @relation("WorkerFacialReferenceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  deletedByUser User?         @relation("WorkerFacialReferenceDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([servedClientId])
@@ -1029,13 +1036,14 @@ model EpiDeliveryReturnItem {
 }
 
 /// Evidencia da entrega (captura facial + resultado do matching biometrico).
+/// Imagem pode ser removida por retencao LGPD (09.3); metadados do match permanecem.
 model DeliveryEvidence {
   id                 String                             @id @default(cuid())
   deliveryId         String
   type               DeliveryEvidenceType               @default(FACIAL_CAPTURE)
   capturedAt         DateTime                           @default(now())
-  /// Caminho relativo privado no storage local da API (nao URL publica).
-  filePath           String
+  /// Caminho relativo privado no storage local da API (nao URL publica). Null apos exclusao.
+  filePath           String?
   fileHash           String?
   mimeType           String?
   byteSize           Int?
@@ -1046,14 +1054,22 @@ model DeliveryEvidence {
   faceEngine         String?
   verifiedAt         DateTime?
   metadata           Json?
+  retentionUntil     DateTime?
+  deletedAt          DateTime?
+  deletionStatus     WorkerBiometricDeletionStatus       @default(NONE)
+  deletionError      String?
+  deletedByUserId    String?
   createdAt          DateTime                           @default(now())
 
-  delivery EpiDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  delivery      EpiDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  deletedByUser User?       @relation("DeliveryEvidenceDeletedBy", fields: [deletedByUserId], references: [id], onDelete: SetNull)
 
   @@index([deliveryId])
   @@index([type])
   @@index([capturedAt])
   @@index([verificationStatus])
+  @@index([retentionUntil])
+  @@index([deletionStatus])
 }
 
 model AuditLog {

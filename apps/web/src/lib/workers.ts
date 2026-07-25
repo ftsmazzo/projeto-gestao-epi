@@ -1,4 +1,6 @@
 import type {
+  BiometricRetentionPendingResponse,
+  BiometricRetentionRunResult,
   ClientLifeSummary,
   WorkerBiometricConsentMeta,
   WorkerFacialReferenceMeta,
@@ -192,6 +194,31 @@ export function revokeWorkerFacialReference(workerId: string) {
     `/workers/${workerId}/facial-reference/revoke`,
     { method: 'PATCH' },
   );
+}
+
+export function requestWorkerFacialReferenceDeletion(
+  workerId: string,
+  referenceId: string,
+) {
+  return apiFetch<{
+    id: string;
+    workerId: string;
+    deletionStatus: string;
+  }>(`/workers/${workerId}/facial-reference/${referenceId}/request-deletion`, {
+    method: 'POST',
+  });
+}
+
+export function getBiometricRetentionPending() {
+  return apiFetch<BiometricRetentionPendingResponse>(
+    '/biometrics/retention/pending',
+  );
+}
+
+export function runBiometricRetention() {
+  return apiFetch<BiometricRetentionRunResult>('/biometrics/retention/run', {
+    method: 'POST',
+  });
 }
 
 /** Blob autenticado da referencia facial (Consultoria). */

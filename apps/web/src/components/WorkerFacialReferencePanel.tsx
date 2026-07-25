@@ -23,6 +23,7 @@ import {
   getWorkerBiometricConsent,
   getWorkerFacialReference,
   grantWorkerBiometricConsent,
+  requestWorkerFacialReferenceDeletion,
   revokeWorkerBiometricConsent,
   revokeWorkerFacialReference,
   uploadWorkerFacialReference,
@@ -424,6 +425,30 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
     }
   }
 
+  async function requestDeletion() {
+    const referenceId = meta?.reference?.id;
+    if (!referenceId) return;
+    const ok = window.confirm(
+      `Solicitar exclusao definitiva da biometria de ${workerName}? Arquivo e template serao removidos na proxima execucao de retencao.`,
+    );
+    if (!ok) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await requestWorkerFacialReferenceDeletion(workerId, referenceId);
+      setDetectStatus('Exclusao solicitada. Status: pendente.');
+      await reload();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao solicitar exclusao biometrica.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function revoke() {
     const ok = window.confirm(
       `Revogar a biometria facial de ${workerName}? Entregas ficarao bloqueadas ate novo cadastro.`,
@@ -535,6 +560,30 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
               {new Date(meta.reference.uploadedAt).toLocaleString('pt-BR')}
             </span>
           ) : null}
+        </div>
+      ) : null}
+
+      {!loading && meta?.reference?.deletionStatus ? (
+        <div
+          className={`face-enroll__badge face-enroll__badge--${
+            meta.reference.deletionStatus === 'DELETED'
+              ? 'ok'
+              : meta.reference.deletionStatus === 'FAILED'
+                ? 'warn'
+                : meta.reference.deletionStatus === 'PENDING'
+                  ? 'warn'
+                  : 'muted'
+          }`}
+          role="status"
+        >
+          <span className="face-enroll__badge-dot" aria-hidden />
+          {meta.reference.deletionStatus === 'PENDING'
+            ? 'Exclusao pendente'
+            : meta.reference.deletionStatus === 'DELETED'
+              ? 'Excluida'
+              : meta.reference.deletionStatus === 'FAILED'
+                ? `Falha na exclusao${meta.reference.deletionError ? `: ${meta.reference.deletionError}` : ''}`
+                : 'Retencao: sem pendencia'}
         </div>
       ) : null}
 
@@ -764,6 +813,17 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
             disabled={saving || phase === 'scanning' || phase === 'processing'}
           >
             Revogar apenas referencia facial
+          </button>
+        ) : null}
+
+        {meta?.reference?.canRequestDeletion ? (
+          <button
+            type="button"
+            className="btn btn-secondary face-ux__btn-main"
+            onClick={() => void requestDeletion()}
+            disabled={saving || phase === 'scanning' || phase === 'processing'}
+          >
+            Solicitar exclusao de biometria
           </button>
         ) : null}
       </div>

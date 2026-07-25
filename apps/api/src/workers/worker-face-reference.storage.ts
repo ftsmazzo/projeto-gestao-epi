@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import { isAbsolute, join } from 'path';
+import { resolveInsideRoot } from './biometric-storage-path';
 
 /**
  * Raiz do storage de referencia facial do trabalhador.
@@ -26,7 +27,6 @@ export type SavedWorkerFaceReference = {
 
 /**
  * Persiste foto de referencia facial em storage local privado.
- * Nao e reconhecimento biometrico — apenas referencia visual para conferencia humana.
  */
 export async function saveWorkerFaceReferenceFile(input: {
   organizationId: string;
@@ -64,6 +64,5 @@ export async function saveWorkerFaceReferenceFile(input: {
 export function resolveWorkerFaceReferenceAbsolutePath(
   relativePath: string,
 ): string {
-  const safe = relativePath.replace(/\\/g, '/').replace(/\.\./g, '');
-  return join(getWorkerFaceReferenceRoot(), safe);
+  return resolveInsideRoot(getWorkerFaceReferenceRoot(), relativePath);
 }

@@ -1374,7 +1374,62 @@ export const WORKER_BIOMETRIC_CONSENT_VERSION = 'v1-2026-07-lgpd';
 export const WORKER_BIOMETRIC_CONSENT_TEXT =
   'Autorizo o uso da biometria facial deste trabalhador para validacao de entregas de EPI e registro de evidencias.';
 
-export type WorkerBiometricDeletionStatus = 'NONE' | 'PENDING' | 'DELETED';
+export type WorkerBiometricDeletionStatus =
+  | 'NONE'
+  | 'PENDING'
+  | 'DELETED'
+  | 'FAILED';
+
+export interface BiometricRetentionPendingReference {
+  id: string;
+  kind: 'FACIAL_REFERENCE';
+  workerId: string;
+  workerName: string;
+  servedClientId: string;
+  status: 'ACTIVE' | 'REVOKED' | 'NEEDS_REENROLLMENT';
+  deletionStatus: WorkerBiometricDeletionStatus;
+  retentionUntil: string | null;
+  deletedAt: string | null;
+  deletionError: string | null;
+  uploadedAt: string;
+  revokedAt: string | null;
+}
+
+export interface BiometricRetentionPendingEvidence {
+  id: string;
+  kind: 'DELIVERY_EVIDENCE';
+  deliveryId: string;
+  receiptNumber: string;
+  servedClientId: string;
+  workerId: string;
+  workerName: string;
+  deletionStatus: WorkerBiometricDeletionStatus;
+  retentionUntil: string | null;
+  deletedAt: string | null;
+  deletionError: string | null;
+  capturedAt: string;
+}
+
+export interface BiometricRetentionPendingResponse {
+  references: BiometricRetentionPendingReference[];
+  evidences: BiometricRetentionPendingEvidence[];
+  summary: {
+    referencesPending: number;
+    referencesFailed: number;
+    evidencesPending: number;
+    evidencesFailed: number;
+  };
+}
+
+export interface BiometricRetentionRunResult {
+  triggeredBy: 'MANUAL' | 'SCHEDULED';
+  referencesProcessed: number;
+  evidencesProcessed: number;
+  referencesDeleted: number;
+  referencesFailed: number;
+  evidencesDeleted: number;
+  evidencesFailed: number;
+}
 
 export interface WorkerBiometricConsentMeta {
   workerId: string;
@@ -1422,6 +1477,12 @@ export interface WorkerFacialReferenceMeta {
     faceEngineVersion: string | null;
     qualityScore: number | null;
     imagePath: string | null;
+    deletionStatus: WorkerBiometricDeletionStatus;
+    deletedAt: string | null;
+    deletionError: string | null;
+    retentionUntil: string | null;
+    hasFile: boolean;
+    canRequestDeletion: boolean;
   } | null;
   notice: string;
 }
@@ -1578,6 +1639,8 @@ export interface PortalDeliveryDetail {
     faceEngine: string | null;
     verifiedAt: string | null;
     hasFile: boolean;
+    deletionStatus: WorkerBiometricDeletionStatus;
+    fileRemovedByRetention: boolean;
   } | null;
   consent: {
     accepted: boolean;

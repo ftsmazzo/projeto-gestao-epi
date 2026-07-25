@@ -98,8 +98,10 @@ O Dockerfile ja inclui `HEALTHCHECK` em `/health`. No EasyPanel, configure tambe
 | `DELIVERY_EVIDENCE_DIR` | Recomendado em producao | Diretorio persistente das evidencias faciais de entrega. Ex.: `/app/files/delivery-evidence`. Monte um **volume** EasyPanel nesse path. Sem a env, usa `{cwd}/files/delivery-evidence` (perdido no redeploy). |
 | `WORKER_FACE_REFERENCE_DIR` | Recomendado em producao | Diretorio persistente das referencias faciais dos trabalhadores. Ex.: `/app/files/worker-face-references`. Volume sugerido: `worker-face-references -> /app/files/worker-face-references`. Sem a env, usa `{cwd}/files/worker-face-references`. |
 | `FACE_MATCH_THRESHOLD` | Nao | Distancia euclidiana maxima para match biometrico (padrao `0.55`). Menor = mais rigoroso. |
+| `BIOMETRIC_RETENTION_ENABLED` | Nao | Se `true`, agenda exclusao fisica de biometria (`PENDING`/`FAILED` e vencidos). Padrao: desligado. |
+| `BIOMETRIC_RETENTION_CRON` | Nao | Cron da rotina (padrao `0 2 * * *` = 02:00 diario). |
 
-**LGPD / biometria (09.2):** templates e imagens faciais sao dados sensiveis. Volumes acima devem ser persistentes e com backup. Consentimento biométrico fica no banco (`WorkerBiometricConsent`). Revogacao marca exclusao como `PENDING` — job de exclusao fisica ainda nao existe.
+**LGPD / biometria (09.2 + 09.3):** templates e imagens faciais sao dados sensiveis. Volumes acima devem ser persistentes e com backup. Consentimento biométrico fica no banco (`WorkerBiometricConsent`). Revogacao marca exclusao como `PENDING`. A rotina/manual (`POST /biometrics/retention/run`) remove arquivo fisico, limpa descriptor e marca `DELETED`. UI admin: `/biometria-retencao`.
 
 Nunca versionar segredos reais. Use o painel de secrets/env do EasyPanel.
 

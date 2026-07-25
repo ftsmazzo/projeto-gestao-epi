@@ -28,6 +28,7 @@ import { WORKER_CSV_TEMPLATE } from './worker-import.utils';
 import { WorkerImportService } from './worker-import.service';
 import { WorkerFacialReferenceService } from './worker-facial-reference.service';
 import { WorkerBiometricConsentService } from './worker-biometric-consent.service';
+import { BiometricRetentionService } from './biometric-retention.service';
 import { WorkersService } from './workers.service';
 import {
   GrantWorkerBiometricConsentDto,
@@ -42,7 +43,24 @@ export class WorkersController {
     private readonly workerImport: WorkerImportService,
     private readonly facialReference: WorkerFacialReferenceService,
     private readonly biometricConsent: WorkerBiometricConsentService,
+    private readonly biometricRetention: BiometricRetentionService,
   ) {}
+
+  @Get('biometrics/retention/pending')
+  listBiometricRetentionPending(@CurrentUser() user: JwtPayload) {
+    this.biometricRetention.assertAdmin(user.membershipRole);
+    return this.biometricRetention.listPending(user.organizationId);
+  }
+
+  @Post('biometrics/retention/run')
+  runBiometricRetention(@CurrentUser() user: JwtPayload) {
+    this.biometricRetention.assertAdmin(user.membershipRole);
+    return this.biometricRetention.run({
+      triggeredBy: 'MANUAL',
+      organizationId: user.organizationId,
+      userId: user.sub,
+    });
+  }
 
   @Get('served-clients/:servedClientId/workers')
   listByServedClient(
@@ -262,5 +280,19 @@ export class WorkersController {
     @Param('id') id: string,
   ) {
     return this.facialReference.revoke(user.organizationId, user.sub, id);
+  }
+
+  @Post('workers/:id/facial-reference/:referenceId/request-deletion')
+  requestFacialReferenceDeletion(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Param('referenceId') referenceId: string,
+  ) {
+    return this.biometricRetention.requestReferenceDeletion(
+      user.organizationId,
+      user.sub,
+      id,
+      referenceId,
+    );
   }
 }
