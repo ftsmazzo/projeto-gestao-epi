@@ -5,8 +5,15 @@ import {
   Param,
   Patch,
   Post,
+  Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
+import { memoryStorage } from 'multer';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtPayload } from '../auth/types/jwt-payload';
@@ -19,6 +26,7 @@ import {
 } from './dto/worker-import.dto';
 import { WORKER_CSV_TEMPLATE } from './worker-import.utils';
 import { WorkerImportService } from './worker-import.service';
+import { WorkerFacialReferenceService } from './worker-facial-reference.service';
 import { WorkersService } from './workers.service';
 
 @Controller()
@@ -27,6 +35,7 @@ export class WorkersController {
   constructor(
     private readonly workers: WorkersService,
     private readonly workerImport: WorkerImportService,
+    private readonly facialReference: WorkerFacialReferenceService,
   ) {}
 
   @Get('served-clients/:servedClientId/workers')
@@ -140,5 +149,62 @@ export class WorkersController {
       id,
       dto.status,
     );
+  }
+
+  @Get('workers/:id/facial-reference')
+  getFacialReference(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.facialReference.getMeta(user.organizationId, id);
+  }
+
+  @Get('workers/:id/facial-reference/image')
+  streamFacialReference(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    return this.facialReference.streamImage(user.organizationId, id, res);
+  }
+
+  @Post('workers/:id/facial-reference')
+  @UseInterceptors(
+    FileInterceptor('facial', {
+      storage: memoryStorage(),
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  uploadFacialReference(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @UploadedFile() facial: Express.Multer.File | undefined,
+    @Body('consentAccepted') consentAcceptedRaw?: string,
+  ) {
+    if (!facial?.buffer?.length) {
+      throw new BadRequestException(
+        'Envie a imagem no campo multipart "facial".',
+      );
+    }
+    const consentAccepted =
+      consentAcceptedRaw === 'true' || consentAcceptedRaw === '1';
+    return this.facialReference.upload(
+      user.organizationId,
+      user.sub,
+      id,
+      {
+        buffer: facial.buffer,
+        mimeType: facial.mimetype,
+      },
+      { consentAccepted },
+    );
+  }
+
+  @Patch('workers/:id/facial-reference/revoke')
+  revokeFacialReference(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.facialReference.revoke(user.organizationId, user.sub, id);
   }
 }

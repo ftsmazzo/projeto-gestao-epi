@@ -203,6 +203,23 @@ export async function fetchPortalDeliveryFacialBlob(deliveryId: string) {
   return response.blob();
 }
 
+/** Referencia facial do trabalhador no portal (stream autenticado). */
+export async function fetchPortalWorkerFacialReferenceBlob(workerId: string) {
+  const headers = new Headers();
+  const token = getClientAccessToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(
+    `${getApiUrl()}/portal/trabalhadores/${workerId}/facial-reference`,
+    { headers },
+  );
+  if (!response.ok) {
+    throw new Error(
+      'Nao foi possivel carregar a referencia facial do trabalhador.',
+    );
+  }
+  return response.blob();
+}
+
 export async function fetchPortalEstoque() {
   return clientApiFetch<PortalEstoqueResponse>('/portal/estoque');
 }

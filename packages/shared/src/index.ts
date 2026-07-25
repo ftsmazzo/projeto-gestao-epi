@@ -1292,6 +1292,11 @@ export interface PortalEpiCoverageResponse {
     jobFunctionId: string | null;
     jobFunctionName: string | null;
   };
+  workerHasFacialReference: boolean;
+  facialReference: {
+    hasActive: boolean;
+    uploadedAt: string | null;
+  };
   summary: {
     totalNeeds: number;
     disponivel: number;
@@ -1323,16 +1328,43 @@ export type PortalDeliveryReturnCondition =
 
 export type PortalDeliveryEvidenceVerificationStatus =
   | 'CAPTURED'
+  | 'HUMAN_CONFIRMED'
   | 'NOT_VERIFIED';
 
 export type PortalDeliveryEvidenceStatusLabel =
   | 'FACIAL_CAPTURED'
+  | 'HUMAN_CONFIRMED'
   | 'NOT_VERIFIED';
 
 export const FACIAL_EVIDENCE_CONSENT_VERSION = 'v1-2026-07';
 
 export const FACIAL_EVIDENCE_CONSENT_TEXT =
   'Declaro que a imagem facial será registrada como evidência da entrega deste EPI e vinculada ao comprovante de fornecimento.';
+
+export const WORKER_FACE_REFERENCE_CONSENT_VERSION = 'v1-2026-07';
+
+export const WORKER_FACE_REFERENCE_CONSENT_TEXT =
+  'Esta imagem sera usada como referencia visual na entrega de EPI. Nao constitui reconhecimento facial automatico.';
+
+export type WorkerFacialReferenceStatus = 'ACTIVE' | 'REVOKED' | 'MISSING';
+
+export interface WorkerFacialReferenceMeta {
+  workerId: string;
+  workerName?: string;
+  hasActiveReference: boolean;
+  status: WorkerFacialReferenceStatus;
+  reference: {
+    id: string;
+    status: 'ACTIVE' | 'REVOKED';
+    uploadedAt: string;
+    revokedAt: string | null;
+    mimeType: string | null;
+    byteSize: number | null;
+    consentAcceptedAt: string | null;
+    imagePath: string | null;
+  } | null;
+  notice: string;
+}
 
 export interface PortalDeliveryListItem {
   id: string;
@@ -1360,7 +1392,7 @@ export interface PortalDeliveryListItem {
     locationName: string;
     quantity: number;
   }>;
-  method: 'Facial capturada' | 'Sem evidencia';
+  method: 'Facial capturada' | 'Conferencia visual confirmada' | 'Sem evidencia';
   evidence: {
     id: string;
     type: 'FACIAL_CAPTURE';
@@ -1468,10 +1500,14 @@ export interface PortalDeliveryDetail {
   evidence: {
     id: string;
     type: 'FACIAL_CAPTURE';
-    method: 'Facial capturada';
+    method:
+      | 'Facial capturada'
+      | 'Conferencia visual confirmada'
+      | 'Sem verificacao';
     statusLabel: PortalDeliveryEvidenceStatusLabel;
     capturedAt: string;
     verificationStatus: PortalDeliveryEvidenceVerificationStatus;
+    visualCheckConfirmed: boolean;
     hasFile: boolean;
   } | null;
   consent: {
@@ -1497,6 +1533,7 @@ export interface PortalCreateDeliveryPayload {
   items: PortalCreateDeliveryItemInput[];
   notes?: string | null;
   facialEvidenceConsentAccepted: true;
+  visualCheckConfirmed: true;
 }
 
 export interface PortalCancelDeliveryPayload {

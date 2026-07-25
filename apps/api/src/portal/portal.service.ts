@@ -12,15 +12,20 @@ import {
   EpiStockMovementType,
   EpiUsefulLifeUnit,
   Prisma,
+  WorkerFacialReferenceStatus,
   WorkerStatus,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
+import { existsSync } from 'fs';
 import { unlink } from 'fs/promises';
 import { AuditService } from '../audit/audit.service';
 import { normalizeCaNumber } from '../caepi/caepi-import.utils';
 import { CaepiService } from '../caepi/caepi.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../stock/stock.service';
+import {
+  resolveWorkerFaceReferenceAbsolutePath,
+} from '../workers/worker-face-reference.storage';
 import {
   FACIAL_EVIDENCE_CONSENT_TEXT,
   FACIAL_EVIDENCE_CONSENT_VERSION,
@@ -1281,6 +1286,17 @@ export class PortalService {
       throw new NotFoundException('Trabalhador nao encontrado neste cliente.');
     }
 
+    const facialRef = await this.prisma.workerFacialReference.findFirst({
+      where: {
+        organizationId,
+        servedClientId,
+        workerId: worker.id,
+        status: WorkerFacialReferenceStatus.ACTIVE,
+      },
+      select: { id: true, uploadedAt: true },
+    });
+    const workerHasFacialReference = Boolean(facialRef);
+
     const workerDto = {
       id: worker.id,
       name: worker.name,
@@ -1297,6 +1313,13 @@ export class PortalService {
     if (!worker.clientJobFunctionId) {
       return {
         worker: workerDto,
+        workerHasFacialReference,
+        facialReference: workerHasFacialReference
+          ? {
+              hasActive: true,
+              uploadedAt: facialRef!.uploadedAt.toISOString(),
+            }
+          : { hasActive: false, uploadedAt: null },
         summary: {
           totalNeeds: 0,
           disponivel: 0,
@@ -1348,6 +1371,13 @@ export class PortalService {
     if (requirements.length === 0) {
       return {
         worker: workerDto,
+        workerHasFacialReference,
+        facialReference: workerHasFacialReference
+          ? {
+              hasActive: true,
+              uploadedAt: facialRef!.uploadedAt.toISOString(),
+            }
+          : { hasActive: false, uploadedAt: null },
         summary: {
           totalNeeds: 0,
           disponivel: 0,
@@ -1514,7 +1544,11 @@ export class PortalService {
 
     let summaryStatus: 'OK' | 'ATENCAO' | 'BLOQUEADO' = 'OK';
     let message: string | null = null;
-    if (semEpiReal > 0) {
+    if (!workerHasFacialReference) {
+      summaryStatus = 'BLOQUEADO';
+      message =
+        'Trabalhador sem referencia facial cadastrada. Solicite a Consultoria o cadastro antes da entrega.';
+    } else if (semEpiReal > 0) {
       summaryStatus = 'BLOQUEADO';
       message = `${semEpiReal} necessidade(s) sem EPI real vinculado.`;
     } else if (semEstoque > 0) {
@@ -1526,6 +1560,13 @@ export class PortalService {
 
     return {
       worker: workerDto,
+      workerHasFacialReference,
+      facialReference: workerHasFacialReference
+        ? {
+            hasActive: true,
+            uploadedAt: facialRef!.uploadedAt.toISOString(),
+          }
+        : { hasActive: false, uploadedAt: null },
       summary: {
         totalNeeds: needs.length,
         disponivel,
@@ -1816,12 +1857,15 @@ export class PortalService {
         ? {
             id: facial.id,
             type: facial.type,
-            method: 'Facial capturada' as const,
+            method: this.mapEvidenceMethod(facial.verificationStatus),
             statusLabel: this.mapEvidenceStatusLabel(
               facial.verificationStatus,
             ),
             capturedAt: facial.capturedAt.toISOString(),
             verificationStatus: facial.verificationStatus,
+            visualCheckConfirmed:
+              facial.verificationStatus ===
+              DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED,
             hasFile: true,
           }
         : null,
@@ -1858,6 +1902,12 @@ export class PortalService {
     if (payload.facialEvidenceConsentAccepted !== true) {
       throw new BadRequestException(
         'E necessario aceitar o aviso de registro da imagem facial como evidencia.',
+      );
+    }
+
+    if (payload.visualCheckConfirmed !== true) {
+      throw new BadRequestException(
+        'E necessario confirmar visualmente que a captura corresponde ao trabalhador selecionado.',
       );
     }
 
@@ -1903,6 +1953,21 @@ export class PortalService {
     if (!worker.clientJobFunctionId) {
       throw new BadRequestException(
         'Trabalhador sem funcao estruturada. Ajuste o cadastro na Consultoria.',
+      );
+    }
+
+    const facialReference = await this.prisma.workerFacialReference.findFirst({
+      where: {
+        organizationId,
+        servedClientId,
+        workerId: worker.id,
+        status: WorkerFacialReferenceStatus.ACTIVE,
+      },
+      select: { id: true },
+    });
+    if (!facialReference) {
+      throw new BadRequestException(
+        'Trabalhador sem referencia facial cadastrada. Solicite a Consultoria o cadastro antes da entrega.',
       );
     }
 
@@ -2142,12 +2207,16 @@ export class PortalService {
             fileHash: savedFile!.fileHash,
             mimeType: savedFile!.mimeType,
             byteSize: savedFile!.byteSize,
-            verificationStatus: DeliveryEvidenceVerificationStatus.CAPTURED,
+            verificationStatus:
+              DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED,
             metadata: {
               captureSource: 'portal_camera',
               consentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
               biometricMatch: false,
-              note: 'Captura registrada como evidencia; sem verificacao biometrica automatica.',
+              visualCheckConfirmed: true,
+              visualCheckConfirmedAt: deliveredAt.toISOString(),
+              workerFacialReferenceId: facialReference.id,
+              note: 'Conferencia visual humana com referencia facial cadastrada; sem verificacao biometrica automatica.',
             } as Prisma.InputJsonValue,
           },
         });
@@ -2168,6 +2237,7 @@ export class PortalService {
           itemCount: created.createdItems.length,
           stockMovementIds: created.createdItems.map((i) => i.stockMovementId),
           facialEvidence: true,
+          visualCheckConfirmed: true,
           consentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
           // Nao logar imagem, hash de arquivo ou caminhos.
         },
@@ -2463,6 +2533,53 @@ export class PortalService {
     };
   }
 
+  /** Referencia facial ACTIVE do trabalhador (portal; isolada por servedClientId). */
+  async getWorkerFacialReferenceAbsolutePath(
+    organizationId: string,
+    servedClientId: string,
+    workerId: string,
+  ) {
+    const client = await this.requireClient(organizationId, servedClientId);
+    if (client.status !== 'ACTIVE') {
+      throw new BadRequestException('Cliente inativo.');
+    }
+
+    const worker = await this.prisma.worker.findFirst({
+      where: { id: workerId, organizationId, servedClientId },
+      select: { id: true },
+    });
+    if (!worker) {
+      throw new NotFoundException('Trabalhador nao encontrado neste cliente.');
+    }
+
+    const ref = await this.prisma.workerFacialReference.findFirst({
+      where: {
+        organizationId,
+        servedClientId,
+        workerId: worker.id,
+        status: WorkerFacialReferenceStatus.ACTIVE,
+      },
+      select: { filePath: true, mimeType: true },
+    });
+    if (!ref) {
+      throw new NotFoundException(
+        'Referencia facial ativa nao encontrada para este trabalhador.',
+      );
+    }
+
+    const absolutePath = resolveWorkerFaceReferenceAbsolutePath(ref.filePath);
+    if (!existsSync(absolutePath)) {
+      throw new NotFoundException(
+        'Arquivo de referencia facial nao encontrado no storage.',
+      );
+    }
+
+    return {
+      absolutePath,
+      mimeType: ref.mimeType ?? 'image/jpeg',
+    };
+  }
+
   private deriveItemStatus(
     quantity: number,
     returnedQuantity: number,
@@ -2522,11 +2639,29 @@ export class PortalService {
 
   private mapEvidenceStatusLabel(
     status: DeliveryEvidenceVerificationStatus,
-  ): 'FACIAL_CAPTURED' | 'NOT_VERIFIED' {
+  ): 'FACIAL_CAPTURED' | 'HUMAN_CONFIRMED' | 'NOT_VERIFIED' {
     if (status === DeliveryEvidenceVerificationStatus.NOT_VERIFIED) {
       return 'NOT_VERIFIED';
     }
+    if (status === DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED) {
+      return 'HUMAN_CONFIRMED';
+    }
     return 'FACIAL_CAPTURED';
+  }
+
+  private mapEvidenceMethod(
+    status: DeliveryEvidenceVerificationStatus,
+  ):
+    | 'Facial capturada'
+    | 'Conferencia visual confirmada'
+    | 'Sem verificacao' {
+    if (status === DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED) {
+      return 'Conferencia visual confirmada';
+    }
+    if (status === DeliveryEvidenceVerificationStatus.NOT_VERIFIED) {
+      return 'Sem verificacao';
+    }
+    return 'Facial capturada';
   }
 
   private normalizeMetaText(
@@ -2643,7 +2778,12 @@ export class PortalService {
         locationName: item.stockLocation.name,
         quantity: item.quantity,
       })),
-      method: facial ? ('Facial capturada' as const) : ('Sem evidencia' as const),
+      method: facial
+        ? facial.verificationStatus ===
+          DeliveryEvidenceVerificationStatus.HUMAN_CONFIRMED
+          ? ('Conferencia visual confirmada' as const)
+          : ('Facial capturada' as const)
+        : ('Sem evidencia' as const),
       evidence: facial
         ? {
             id: facial.id,

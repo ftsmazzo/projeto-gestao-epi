@@ -338,11 +338,25 @@ export function DeliveryReceiptView({
           <dl className="portal-receipt__dl">
             <div>
               <dt>Status</dt>
-              <dd className="mono">{detail.evidence.statusLabel}</dd>
+              <dd>
+                {detail.evidence.verificationStatus === 'HUMAN_CONFIRMED'
+                  ? 'Conferencia visual confirmada'
+                  : detail.evidence.verificationStatus === 'NOT_VERIFIED'
+                    ? 'Nao verificada'
+                    : 'Facial capturada'}
+              </dd>
             </div>
             <div>
               <dt>Metodo</dt>
               <dd>{detail.evidence.method}</dd>
+            </div>
+            <div>
+              <dt>Conferencia visual</dt>
+              <dd>
+                {detail.evidence.visualCheckConfirmed
+                  ? 'Confirmada pelo operador'
+                  : 'Nao confirmada'}
+              </dd>
             </div>
             <div>
               <dt>Capturada em</dt>
@@ -360,6 +374,12 @@ export function DeliveryReceiptView({
         ) : (
           <p className="field-hint">Sem evidencia facial registrada.</p>
         )}
+        {detail.evidence?.visualCheckConfirmed ? (
+          <p className="notice notice--info" role="status">
+            Conferencia visual: confirmada pelo operador (referencia facial +
+            captura). Sem reconhecimento biometrico automatico.
+          </p>
+        ) : null}
       </section>
 
       <section className="portal-receipt__block">

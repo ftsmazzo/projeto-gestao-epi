@@ -18,6 +18,7 @@ import {
   fetchPortalDeliveries,
   fetchPortalEntregasPreparacao,
   fetchPortalWorkerEpiCoverage,
+  fetchPortalWorkerFacialReferenceBlob,
 } from '../../../lib/client-auth';
 
 type ItemSelection = {
@@ -236,10 +237,12 @@ function NeedSelectCard({
 
 function FacialCapture({
   blob,
+  referenceUrl,
   onCaptured,
   onClear,
 }: {
   blob: Blob | null;
+  referenceUrl: string | null;
   onCaptured: (next: Blob) => void;
   onClear: () => void;
 }) {
@@ -336,10 +339,11 @@ function FacialCapture({
   return (
     <section className="portal-facial" aria-labelledby="facial-title">
       <h2 id="facial-title" className="page-title page-title--sm">
-        Evidencia facial
+        Conferencia visual
       </h2>
       <p className="field-hint" role="note">
-        A imagem facial sera registrada como evidencia da entrega de EPI.
+        Compare a referencia cadastrada com a captura atual. Nao ha
+        reconhecimento facial automatico — a confirmacao e humana.
       </p>
 
       {cameraError ? (
@@ -348,23 +352,41 @@ function FacialCapture({
         </p>
       ) : null}
 
-      <div className="portal-facial__stage">
-        {previewUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={previewUrl}
-            alt="Captura facial da entrega"
-            className="portal-facial__preview"
-          />
-        ) : (
-          <video
-            ref={videoRef}
-            className="portal-facial__preview"
-            playsInline
-            muted
-            aria-label="Preview da camera"
-          />
-        )}
+      <div className="portal-facial__compare">
+        <div className="portal-facial__compare-item">
+          <p className="table-sub">Referencia cadastrada</p>
+          {referenceUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={referenceUrl}
+              alt="Referencia facial do trabalhador"
+              className="portal-facial__preview"
+            />
+          ) : (
+            <p className="field-hint">Referencia indisponivel</p>
+          )}
+        </div>
+        <div className="portal-facial__compare-item">
+          <p className="table-sub">Captura atual</p>
+          <div className="portal-facial__stage">
+            {previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={previewUrl}
+                alt="Captura facial da entrega"
+                className="portal-facial__preview"
+              />
+            ) : (
+              <video
+                ref={videoRef}
+                className="portal-facial__preview"
+                playsInline
+                muted
+                aria-label="Preview da camera"
+              />
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="btn-row">
@@ -419,6 +441,8 @@ function PortalEntregasContent() {
   );
   const [facialBlob, setFacialBlob] = useState<Blob | null>(null);
   const [facialConsentAccepted, setFacialConsentAccepted] = useState(false);
+  const [visualCheckConfirmed, setVisualCheckConfirmed] = useState(false);
+  const [referenceUrl, setReferenceUrl] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -511,6 +535,7 @@ function PortalEntregasContent() {
 
   const canSubmit =
     Boolean(selectedId) &&
+    Boolean(coverage?.workerHasFacialReference) &&
     selectedItems.length > 0 &&
     selectedItems.every(
       (row) =>
@@ -519,6 +544,7 @@ function PortalEntregasContent() {
         row.sel.quantity > 0,
     ) &&
     facialConsentAccepted &&
+    visualCheckConfirmed &&
     Boolean(facialBlob) &&
     !submitting;
 
@@ -527,7 +553,12 @@ function PortalEntregasContent() {
     setReceipt(null);
     setFacialBlob(null);
     setFacialConsentAccepted(false);
+    setVisualCheckConfirmed(false);
     setNotes('');
+    setReferenceUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     setLoadingCoverage(true);
     setError(null);
     try {
@@ -538,6 +569,14 @@ function PortalEntregasContent() {
         next[need.epiNeedId] = defaultSelection(need);
       }
       setSelections(next);
+      if (res.workerHasFacialReference) {
+        try {
+          const blob = await fetchPortalWorkerFacialReferenceBlob(worker.id);
+          setReferenceUrl(URL.createObjectURL(blob));
+        } catch {
+          setReferenceUrl(null);
+        }
+      }
     } catch (err) {
       setCoverage(null);
       setSelections({});
@@ -556,9 +595,21 @@ function PortalEntregasContent() {
       setError('Capture a evidencia facial antes de confirmar a entrega.');
       return;
     }
+    if (!coverage?.workerHasFacialReference) {
+      setError(
+        'Trabalhador sem referencia facial cadastrada. Solicite a Consultoria o cadastro antes da entrega.',
+      );
+      return;
+    }
     if (!facialConsentAccepted) {
       setError(
         'Confirme o aviso de registro da imagem facial antes de continuar.',
+      );
+      return;
+    }
+    if (!visualCheckConfirmed) {
+      setError(
+        'Confirme visualmente que a captura corresponde ao trabalhador selecionado.',
       );
       return;
     }
@@ -575,6 +626,7 @@ function PortalEntregasContent() {
           workerId: selectedId,
           notes: notes.trim() || null,
           facialEvidenceConsentAccepted: true,
+          visualCheckConfirmed: true,
           items: selectedItems.map(({ need, sel }) => ({
             epiNeedId: need.epiNeedId,
             epiItemId: sel.epiItemId,
@@ -592,6 +644,7 @@ function PortalEntregasContent() {
       });
       setFacialBlob(null);
       setFacialConsentAccepted(false);
+      setVisualCheckConfirmed(false);
       const refreshed = await fetchPortalWorkerEpiCoverage(selectedId);
       setCoverage(refreshed);
       const next: Record<string, ItemSelection> = {};
@@ -683,6 +736,11 @@ function PortalEntregasContent() {
                 ? ` (${receipt.consent.version})`
                 : ''}
               .
+            </p>
+          ) : null}
+          {receipt.evidence?.visualCheckConfirmed ? (
+            <p className="notice notice--info" role="status">
+              Conferencia visual: confirmada pelo operador
             </p>
           ) : null}
           <div className="btn-row" style={{ marginTop: '1rem' }}>
@@ -906,6 +964,19 @@ function PortalEntregasContent() {
                   </p>
                 ) : null}
 
+                {coverage && !coverage.workerHasFacialReference ? (
+                  <div className="notice notice--warn" role="alert">
+                    <p>
+                      Este trabalhador ainda nao tem referencia facial
+                      cadastrada. A entrega com facial nao pode ser concluida.
+                    </p>
+                    <p className="table-sub">
+                      Solicite a Consultoria o cadastro da referencia facial
+                      antes de continuar.
+                    </p>
+                  </div>
+                ) : null}
+
                 {coverage.needs.length === 0 ? (
                   <p className="page-lead">
                     {coverage.summary.message ??
@@ -945,12 +1016,16 @@ function PortalEntregasContent() {
             ) : null}
           </section>
 
-          {coverage && coverage.needs.some((n) => n.status === 'DISPONIVEL') ? (
+          {coverage &&
+          coverage.workerHasFacialReference &&
+          coverage.needs.some((n) => n.status === 'DISPONIVEL') ? (
             <>
               <section className="portal-card">
                 <div className="notice notice--info" role="note">
                   <p>
                     A imagem facial sera registrada como evidencia da entrega.
+                    A conferencia e visual e humana — nao e reconhecimento
+                    automatico.
                   </p>
                   <p className="table-sub">{FACIAL_EVIDENCE_CONSENT_TEXT}</p>
                 </div>
@@ -969,9 +1044,23 @@ function PortalEntregasContent() {
                 </label>
                 <FacialCapture
                   blob={facialBlob}
+                  referenceUrl={referenceUrl}
                   onCaptured={setFacialBlob}
                   onClear={() => setFacialBlob(null)}
                 />
+                <label className="portal-need-select" style={{ margin: '0.75rem 0' }}>
+                  <input
+                    type="checkbox"
+                    checked={visualCheckConfirmed}
+                    onChange={(e) =>
+                      setVisualCheckConfirmed(e.target.checked)
+                    }
+                  />
+                  <span>
+                    Confirmo visualmente que a captura corresponde ao
+                    trabalhador selecionado.
+                  </span>
+                </label>
               </section>
 
               <div className="btn-row">
@@ -992,10 +1081,12 @@ function PortalEntregasContent() {
                   Voltar ao painel
                 </Link>
               </div>
-              {!facialConsentAccepted || !facialBlob ? (
+              {!facialConsentAccepted ||
+              !facialBlob ||
+              !visualCheckConfirmed ? (
                 <p className="field-hint">
-                  A confirmacao exige checkbox do aviso e captura facial
-                  obrigatoria.
+                  A confirmacao exige aviso aceito, captura facial e
+                  conferencia visual marcada.
                 </p>
               ) : null}
             </>

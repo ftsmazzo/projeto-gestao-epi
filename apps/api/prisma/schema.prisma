@@ -100,6 +100,7 @@ model Organization {
   pgroImportRuns    PgroImportRun[]
   epiDeliveries     EpiDelivery[]
   epiDeliveryReturns EpiDeliveryReturn[]
+  workerFacialReferences WorkerFacialReference[]
 }
 
 model User {
@@ -119,6 +120,7 @@ model User {
   epiDeliveries   EpiDelivery[]                 @relation("EpiDeliveryDeliveredBy")
   cancelledDeliveries EpiDelivery[]             @relation("EpiDeliveryCancelledBy")
   epiDeliveryReturns EpiDeliveryReturn[]        @relation("EpiDeliveryReturnBy")
+  workerFacialReferences WorkerFacialReference[] @relation("WorkerFacialReferenceCreatedBy")
 }
 
 model Membership {
@@ -160,6 +162,7 @@ model ServedClient {
   stockLocations   StockLocation[]
   epiDeliveries    EpiDelivery[]
   epiDeliveryReturns EpiDeliveryReturn[]
+  workerFacialReferences WorkerFacialReference[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -405,6 +408,7 @@ model Worker {
   clientSector     ClientSector?     @relation(fields: [clientSectorId], references: [id], onDelete: SetNull)
   clientJobFunction ClientJobFunction? @relation(fields: [clientJobFunctionId], references: [id], onDelete: SetNull)
   deliveries        EpiDelivery[]
+  facialReferences  WorkerFacialReference[]
 
   @@unique([organizationId, cpf])
   @@unique([servedClientId, registration])
@@ -778,7 +782,46 @@ enum DeliveryEvidenceType {
 
 enum DeliveryEvidenceVerificationStatus {
   CAPTURED
+  HUMAN_CONFIRMED
   NOT_VERIFIED
+}
+
+enum WorkerFacialReferenceStatus {
+  ACTIVE
+  REVOKED
+}
+
+/// Foto facial de referencia do trabalhador (cadastro pela Consultoria).
+/// Usada apenas para conferencia visual humana na entrega — sem match biometrico.
+model WorkerFacialReference {
+  id                 String                       @id @default(cuid())
+  organizationId     String
+  servedClientId     String
+  workerId           String
+  /// Caminho relativo privado no storage (nao URL publica).
+  filePath           String
+  fileHash           String?
+  mimeType           String?
+  byteSize           Int?
+  status             WorkerFacialReferenceStatus  @default(ACTIVE)
+  uploadedAt         DateTime                     @default(now())
+  createdByUserId    String?
+  consentText        String?
+  consentAcceptedAt  DateTime?
+  revokedAt          DateTime?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient  ServedClient  @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  worker        Worker        @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  createdByUser User?         @relation("WorkerFacialReferenceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([workerId])
+  @@index([status])
+  @@index([uploadedAt])
 }
 
 enum EpiDeliveryReturnCondition {

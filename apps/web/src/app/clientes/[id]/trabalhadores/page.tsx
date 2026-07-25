@@ -30,6 +30,7 @@ import {
   updateWorker,
   updateWorkerStatus,
 } from '../../../../lib/workers';
+import { WorkerFacialReferencePanel } from '../../../../components/WorkerFacialReferencePanel';
 
 type FormMode = 'closed' | 'create' | 'edit';
 type PanelMode = 'list' | 'import';
@@ -794,6 +795,14 @@ export default function ClienteTrabalhadoresPage() {
                 }
               />
             </div>
+
+            {mode === 'edit' && editingId ? (
+              <WorkerFacialReferencePanel
+                workerId={editingId}
+                workerName={form.name.trim() || 'Trabalhador'}
+              />
+            ) : null}
+
             {formError ? (
               <p className="error" role="alert">
                 {formError}

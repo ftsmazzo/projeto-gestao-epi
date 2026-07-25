@@ -95,7 +95,8 @@ O Dockerfile ja inclui `HEALTHCHECK` em `/health`. No EasyPanel, configure tambe
 | `API_HOST` | Nao | Padrao `0.0.0.0` |
 | `NODE_ENV` | Recomendado | `production` |
 | `CORS_ORIGIN` | Sim em producao | URL publica do Web, ex. `https://app.seudominio.com`. Varias origens: separar por virgula. `*` apenas para debug. |
-| `DELIVERY_EVIDENCE_DIR` | Recomendado em producao | Diretorio persistente das evidencias faciais. Ex.: `/app/files/delivery-evidence`. Monte um **volume** EasyPanel nesse path. Sem a env, usa `{cwd}/files/delivery-evidence` (perdido no redeploy). |
+| `DELIVERY_EVIDENCE_DIR` | Recomendado em producao | Diretorio persistente das evidencias faciais de entrega. Ex.: `/app/files/delivery-evidence`. Monte um **volume** EasyPanel nesse path. Sem a env, usa `{cwd}/files/delivery-evidence` (perdido no redeploy). |
+| `WORKER_FACE_REFERENCE_DIR` | Recomendado em producao | Diretorio persistente das referencias faciais dos trabalhadores. Ex.: `/app/files/worker-face-references`. Volume sugerido: `worker-face-references -> /app/files/worker-face-references`. Sem a env, usa `{cwd}/files/worker-face-references`. |
 
 Nunca versionar segredos reais. Use o painel de secrets/env do EasyPanel.
 

@@ -184,7 +184,7 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
-| Portal: entregas / ficha / biometria | **07.4** + **07.2.1:** cobertura agrupa por `epiNeedId` (riscos em chips; sem produto cartesiano risco x necessidade) |
+| Portal: entregas / ficha / biometria | **09.1:** referencia facial (Consultoria) + conferencia visual humana na entrega (`HUMAN_CONFIRMED`); sem match biometrico automatico |
 | Portal: relatorios operacionais basicos | **08.1** — feito (consulta; sem PDF/export avancado; sem custo unitario ainda) |
 | Portal: custos / exportacoes ricas | Ainda nao |
 
@@ -192,21 +192,26 @@ Ultimo commit dessa frente: `714206a`.
 
 Arquivos faciais **nao** ficam no banco; sao gravados em disco privado da API.
 
-- Variavel: `DELIVERY_EVIDENCE_DIR` (ex.: `/app/files/delivery-evidence`).
-- Se omitida, fallback local: `{cwd}/files/delivery-evidence`.
-- O diretorio (e subpastas por `organizationId`) e criado automaticamente.
-- No **EasyPanel**, monte um **volume persistente** no servico da API apontando para o mesmo path da env (ex. mount `/app/files/delivery-evidence`). Sem volume, o redeploy apaga as evidencias no filesystem do container.
-- Leitura autenticada: `GET /portal/entregas/:id/evidence/facial` (nao expor URL publica).
-- Comprovante/listagem **nao** expoem caminho fisico nem imagem facial.
+- Evidencia da entrega: `DELIVERY_EVIDENCE_DIR` (ex.: `/app/files/delivery-evidence`).
+- Referencia do trabalhador: `WORKER_FACE_REFERENCE_DIR` (ex.: `/app/files/worker-face-references`).
+- Se omitidas, fallback local sob `{cwd}/files/...`.
+- Diretorios criados automaticamente.
+- No **EasyPanel**, monte volumes persistentes nos paths das envs.
+- Leitura autenticada:
+  - Portal evidencia: `GET /portal/entregas/:id/evidence/facial`
+  - Portal referencia: `GET /portal/trabalhadores/:id/facial-reference`
+  - Consultoria referencia: `GET /workers/:id/facial-reference/image`
+- Comprovante/listagem **nao** expoem caminho fisico nem imagem facial na listagem.
+- Entrega exige referencia ACTIVE + captura + `visualCheckConfirmed` (conferencia humana).
 
 ### Pendencias LGPD / evidencia (documentadas)
 
 - Consentimento LGPD completo (base legal, titular, revogacao).
 - Politica de retencao e exclusao das imagens.
 - Storage definitivo / backup (hoje volume local).
-- Reconhecimento facial futuro (match biometrico).
+- Match biometrico automatico futuro (ainda **nao** implementado; 09.1 e so conferencia visual).
 
-Proximo passo natural: evoluir reconhecimento facial real (match biometrico), PDF/ficha exportavel, e/ou CRUD operacional de trabalhadores no portal — conforme prioridade do usuario.
+Proximo passo natural: PDF/ficha exportavel, match biometrico (quando houver provider), e/ou CRUD operacional de trabalhadores no portal — conforme prioridade do usuario.
 
 ---
 

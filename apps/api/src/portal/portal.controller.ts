@@ -311,6 +311,23 @@ export class PortalController {
     );
   }
 
+  @Get('trabalhadores/:id/facial-reference')
+  async trabalhadorFacialReference(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    this.assertClient(user);
+    const file = await this.portal.getWorkerFacialReferenceAbsolutePath(
+      user.organizationId,
+      user.servedClientId,
+      id,
+    );
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Cache-Control', 'private, no-store');
+    createReadStream(file.absolutePath).pipe(res);
+  }
+
   @Get('estoque')
   estoque(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);

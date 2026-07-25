@@ -65,6 +65,17 @@ export class PortalCreateDeliveryPayloadDto {
       'E necessario aceitar o aviso de registro da imagem facial como evidencia.',
   })
   facialEvidenceConsentAccepted!: boolean;
+
+  /**
+   * Conferencia visual humana: operador confirma que a captura corresponde
+   * ao trabalhador usando a referencia cadastrada (sem match biometrico).
+   */
+  @IsBoolean()
+  @Equals(true, {
+    message:
+      'E necessario confirmar visualmente que a captura corresponde ao trabalhador.',
+  })
+  visualCheckConfirmed!: boolean;
 }
 
 export class PortalCancelDeliveryDto {

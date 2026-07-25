@@ -2081,6 +2081,31 @@ a.btn-danger:hover {
   overflow: hidden;
 }
 
+.portal-facial__compare {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0.75rem 0;
+}
+
+@media (min-width: 720px) {
+  .portal-facial__compare {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.portal-facial__compare-item .portal-facial__stage {
+  max-width: none;
+  margin: 0.35rem 0 0;
+}
+
+.portal-facial__compare-item .portal-facial__preview {
+  max-width: none;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
 .portal-facial__preview {
   width: 100%;
   height: 100%;
