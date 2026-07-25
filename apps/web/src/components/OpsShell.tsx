@@ -3,7 +3,7 @@
 import type { AuthUser } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { OPS_NAV } from '../lib/nav';
 import { Brand } from './Brand';
 
@@ -16,6 +16,10 @@ type OpsShellProps = {
 export function OpsShell({ children, user, onLogout }: OpsShellProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
 
   return (
     <div className="ops-shell">

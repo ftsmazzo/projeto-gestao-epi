@@ -319,61 +319,46 @@ export default function ClienteUnidadesPage() {
             </button>
           </div>
         ) : (
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Unidade</th>
-                  <th>Codigo</th>
-                  <th>CNPJ</th>
-                  <th>Local</th>
-                  <th>Status</th>
-                  <th>Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {units.map((unit) => (
-                  <tr key={unit.id}>
-                    <td>
-                      <strong>{unit.name}</strong>
-                      {unit.addressLine ? (
-                        <span className="table-sub">{unit.addressLine}</span>
-                      ) : null}
-                    </td>
-                    <td className="mono">{unit.code || '—'}</td>
-                    <td className="mono">
-                      {unit.cnpj ? formatCnpj(unit.cnpj) : '—'}
-                    </td>
-                    <td>{locationLabel(unit)}</td>
-                    <td>
-                      <span
-                        className={`status-pill status-pill--${unit.status.toLowerCase()}`}
-                      >
-                        {unit.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="table-actions">
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-compact"
-                          onClick={() => openEdit(unit)}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-compact"
-                          onClick={() => void toggleStatus(unit)}
-                        >
-                          {unit.status === 'ACTIVE' ? 'Inativar' : 'Reativar'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="stack-list" role="list" aria-label="Unidades">
+            {units.map((unit) => (
+              <article key={unit.id} role="listitem" className="stack-card">
+                <div className="stack-card__body stack-card__body--stack">
+                  <div className="stack-card__main">
+                    <strong className="stack-card__title">{unit.name}</strong>
+                    {unit.addressLine ? (
+                      <p className="stack-card__meta">{unit.addressLine}</p>
+                    ) : null}
+                    <p className="stack-card__meta mono">
+                      {unit.code || 'Sem codigo'}
+                      {unit.cnpj ? ` · ${formatCnpj(unit.cnpj)}` : ''}
+                    </p>
+                    <p className="stack-card__meta">{locationLabel(unit)}</p>
+                    <span
+                      className={`status-pill status-pill--${unit.status.toLowerCase()}`}
+                      style={{ marginTop: '0.45rem' }}
+                    >
+                      {unit.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </div>
+                  <div className="stack-card__actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => openEdit(unit)}
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => void toggleStatus(unit)}
+                    >
+                      {unit.status === 'ACTIVE' ? 'Inativar' : 'Reativar'}
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </section>

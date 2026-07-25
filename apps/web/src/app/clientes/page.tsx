@@ -479,76 +479,58 @@ function ClientesContent() {
                 </button>
               </div>
             ) : (
-              <div className="table-wrap">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Cliente</th>
-                      <th scope="col">CNPJ</th>
-                      <th scope="col">Status</th>
-                      <th scope="col">Cota</th>
-                      <th scope="col">Acoes</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {clients.map((client) => (
-                      <tr key={client.id}>
-                        <td>
-                          <strong>
-                            {client.tradeName || client.legalName}
-                          </strong>
-                          {client.tradeName ? (
-                            <span className="table-sub">
-                              {client.legalName}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="mono">{formatCnpj(client.cnpj)}</td>
-                        <td>
-                          <span
-                            className={`status-pill status-pill--${client.status.toLowerCase()}`}
-                          >
-                            {statusLabel(client.status)}
-                          </span>
-                        </td>
-                        <td className="mono">
-                          {client.allocatedLifeQuota}
-                          {client.status === 'INACTIVE' ? (
-                            <span className="table-sub">
-                              nao consome franquia
-                            </span>
-                          ) : null}
-                        </td>
-                        <td>
-                          <div className="table-actions">
-                            <Link
-                              className="btn btn-primary btn-compact"
-                              href={`/clientes/${client.id}`}
-                            >
-                              Abrir
-                            </Link>
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-compact"
-                              onClick={() => openEdit(client)}
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-compact"
-                              onClick={() => void toggleStatus(client)}
-                            >
-                              {client.status === 'ACTIVE'
-                                ? 'Inativar'
-                                : 'Reativar'}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="stack-list" role="list" aria-label="Clientes">
+                {clients.map((client) => (
+                  <article key={client.id} role="listitem" className="stack-card">
+                    <div className="stack-card__body stack-card__body--stack">
+                      <div className="stack-card__main">
+                        <strong className="stack-card__title">
+                          {client.tradeName || client.legalName}
+                        </strong>
+                        {client.tradeName ? (
+                          <p className="stack-card__meta">{client.legalName}</p>
+                        ) : null}
+                        <p className="stack-card__meta mono">
+                          {formatCnpj(client.cnpj)}
+                        </p>
+                        <p className="stack-card__meta">
+                          Cota {client.allocatedLifeQuota}
+                          {client.status === 'INACTIVE'
+                            ? ' · nao consome franquia'
+                            : ''}
+                        </p>
+                        <span
+                          className={`status-pill status-pill--${client.status.toLowerCase()}`}
+                          style={{ marginTop: '0.45rem' }}
+                        >
+                          {statusLabel(client.status)}
+                        </span>
+                      </div>
+                      <div className="stack-card__actions">
+                        <Link
+                          className="btn btn-primary"
+                          href={`/clientes/${client.id}`}
+                        >
+                          Abrir
+                        </Link>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => openEdit(client)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => void toggleStatus(client)}
+                        >
+                          {client.status === 'ACTIVE' ? 'Inativar' : 'Reativar'}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                ))}
               </div>
             )}
           </section>

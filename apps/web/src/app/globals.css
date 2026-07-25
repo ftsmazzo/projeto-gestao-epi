@@ -2120,13 +2120,15 @@ a.btn-danger:hover {
   max-width: 440px;
 }
 
-.portal-pick-list {
+.portal-pick-list,
+.stack-list {
   display: grid;
   gap: 0.65rem;
   margin-top: 0.85rem;
 }
 
-.portal-pick-card {
+.portal-pick-card,
+.stack-card {
   border: 1px solid var(--color-border);
   border-radius: 0.85rem;
   background: var(--color-surface, #fff);
@@ -2136,35 +2138,41 @@ a.btn-danger:hover {
     box-shadow 0.15s ease;
 }
 
-.portal-pick-card.is-selected {
+.portal-pick-card.is-selected,
+.stack-card.is-selected {
   border-color: color-mix(in srgb, var(--color-accent, #1a6bff) 45%, var(--color-border));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #1a6bff) 14%, transparent);
 }
 
-.portal-pick-card__body {
+.portal-pick-card__body,
+.stack-card__body {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.85rem;
 }
 
-.portal-pick-card__body--stack {
+.portal-pick-card__body--stack,
+.stack-card__body--stack {
   align-items: flex-start;
 }
 
-.portal-pick-card__main {
+.portal-pick-card__main,
+.stack-card__main {
   min-width: 0;
   flex: 1;
 }
 
-.portal-pick-card__title {
+.portal-pick-card__title,
+.stack-card__title {
   display: block;
   font-size: 1rem;
   line-height: 1.3;
   word-break: break-word;
 }
 
-.portal-pick-card__meta {
+.portal-pick-card__meta,
+.stack-card__meta {
   margin: 0.2rem 0 0;
   font-size: 0.82rem;
   line-height: 1.4;
@@ -2172,9 +2180,17 @@ a.btn-danger:hover {
   word-break: break-word;
 }
 
-.portal-pick-card__action {
+.portal-pick-card__action,
+.stack-card__action {
   flex-shrink: 0;
   min-width: 7.5rem;
+}
+
+.stack-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  flex-shrink: 0;
 }
 
 .face-ux {
@@ -2472,6 +2488,16 @@ a.btn-danger:hover {
 
 .face-enroll--panel {
   max-width: 520px;
+  width: 100%;
+}
+
+.face-enroll-host {
+  margin-top: 1rem;
+  width: 100%;
+}
+
+.face-enroll-host .face-enroll--panel {
+  max-width: none;
 }
 
 .face-enroll__title {
@@ -2853,14 +2879,27 @@ a.btn-danger:hover {
     padding: 1rem 0.85rem 1.15rem;
   }
 
-  .portal-pick-card__body {
+  .portal-pick-card__body,
+  .stack-card__body {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .portal-pick-card__action {
+  .portal-pick-card__action,
+  .stack-card__action,
+  .stack-card__actions {
     width: 100%;
     min-width: 0;
+  }
+
+  .stack-card__actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .stack-card__actions .btn,
+  .portal-pick-card__action {
+    width: 100%;
     min-height: 48px;
   }
 
@@ -3002,6 +3041,149 @@ a.btn-danger:hover {
   .portal-topbar-right {
     width: auto;
     justify-content: flex-end;
+  }
+}
+
+/* ——— Mobile system-wide (Consultoria + Portal) ——— */
+@media (max-width: 860px) {
+  .ops-main {
+    padding: 0.85rem;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .ops-topbar {
+    padding: 0.65rem 0.85rem;
+  }
+
+  .ops-topbar .btn {
+    min-height: 44px;
+  }
+
+  .module-page,
+  .client-workspace,
+  .client-workspace-body,
+  .workspace-section {
+    gap: 0.95rem;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .module-header,
+  .form-section-header,
+  .client-workspace-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .module-header .btn-row,
+  .form-section-header .btn-row,
+  .client-workspace-header .btn {
+    width: 100%;
+  }
+
+  .module-header .btn-row .btn,
+  .form-section-header .btn-row .btn,
+  .client-workspace-header .btn {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 44px;
+    justify-content: center;
+  }
+
+  .client-workspace-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    gap: 0.3rem;
+    padding: 0.3rem;
+    scrollbar-width: thin;
+  }
+
+  .client-workspace-nav-link {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    min-height: 44px;
+    padding: 0.65rem 0.9rem;
+  }
+
+  .surface {
+    padding: 0.95rem;
+    overflow-x: hidden;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .field input,
+  .field select,
+  .field textarea,
+  .surface input,
+  .surface select,
+  .surface textarea {
+    width: 100%;
+    max-width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .btn-row {
+    width: 100%;
+  }
+
+  .btn-row .btn {
+    min-height: 44px;
+  }
+
+  .table-actions {
+    display: grid;
+    gap: 0.4rem;
+    width: 100%;
+  }
+
+  .table-actions .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .quota-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .face-enroll-host .face-enroll,
+  .face-enroll--panel {
+    max-width: none;
+  }
+
+  /* Tabelas restantes em qualquer superficie */
+  .module-page .table-wrap,
+  .client-workspace .table-wrap,
+  .surface .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+  }
+
+  .module-page .table-wrap::before,
+  .client-workspace .table-wrap::before,
+  .surface .table-wrap::before {
+    content: 'Deslize a tabela →';
+    display: block;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--color-muted);
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface-muted);
+  }
+
+  .module-page .data-table,
+  .client-workspace .data-table,
+  .surface .data-table {
+    min-width: 560px;
+    margin: 0;
   }
 }
 

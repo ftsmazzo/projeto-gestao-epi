@@ -107,59 +107,48 @@ function PortalValidadeContent() {
           </section>
 
           <section className="portal-card">
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th scope="col">EPI / Necessidade</th>
-                    <th scope="col">CA</th>
-                    <th scope="col">Validade</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Funcoes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.length === 0 ? (
-                    <tr>
-                      <td colSpan={5}>
-                        Nenhuma necessidade com EPI vinculado ainda. A
-                        Consultoria define isso na Estrutura / PGRO.
-                      </td>
-                    </tr>
-                  ) : (
-                    data.items.map((item) => (
-                      <tr key={item.epiItemId}>
-                        <td>
-                          <strong>{item.epiName}</strong>
-                          {item.needNames.length > 0 ? (
-                            <span className="table-sub">
-                              {item.needNames.join(', ')}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="mono">{item.caNumber ?? '—'}</td>
-                        <td>
+            {data.items.length === 0 ? (
+              <p className="page-lead">
+                Nenhuma necessidade com EPI vinculado ainda. A Consultoria
+                define isso na Estrutura / PGRO.
+              </p>
+            ) : (
+              <div className="stack-list" role="list" aria-label="Validades">
+                {data.items.map((item) => (
+                  <article key={item.epiItemId} role="listitem" className="stack-card">
+                    <div className="stack-card__body stack-card__body--stack">
+                      <div className="stack-card__main">
+                        <strong className="stack-card__title">{item.epiName}</strong>
+                        {item.needNames.length > 0 ? (
+                          <p className="stack-card__meta">
+                            {item.needNames.join(', ')}
+                          </p>
+                        ) : null}
+                        <p className="stack-card__meta mono">
+                          CA {item.caNumber ?? '—'}
+                          {' · '}
                           {formatDate(item.caExpiresAt)}
-                          {item.daysRemaining != null ? (
-                            <span className="table-sub">
-                              {item.daysRemaining < 0
-                                ? `${Math.abs(item.daysRemaining)} dia(s) atras`
-                                : `${item.daysRemaining} dia(s)`}
-                            </span>
-                          ) : null}
-                        </td>
-                        <td>
-                          <span className={bucketClass(item.bucket)}>
-                            {bucketLabel(item.bucket)}
-                          </span>
-                        </td>
-                        <td>{item.jobNames.join(', ') || '—'}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                          {item.daysRemaining != null
+                            ? item.daysRemaining < 0
+                              ? ` · ${Math.abs(item.daysRemaining)} dia(s) atras`
+                              : ` · ${item.daysRemaining} dia(s)`
+                            : ''}
+                        </p>
+                        <p className="stack-card__meta">
+                          Funcoes: {item.jobNames.join(', ') || '—'}
+                        </p>
+                        <span
+                          className={bucketClass(item.bucket)}
+                          style={{ marginTop: '0.45rem' }}
+                        >
+                          {bucketLabel(item.bucket)}
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
             <div className="btn-row" style={{ marginTop: '1rem' }}>
               <Link className="btn btn-secondary" href="/portal">
                 Voltar ao painel

@@ -797,10 +797,12 @@ export default function ClienteTrabalhadoresPage() {
             </div>
 
             {mode === 'edit' && editingId ? (
-              <WorkerFacialReferencePanel
-                workerId={editingId}
-                workerName={form.name.trim() || 'Trabalhador'}
-              />
+              <div className="face-enroll-host">
+                <WorkerFacialReferencePanel
+                  workerId={editingId}
+                  workerName={form.name.trim() || 'Trabalhador'}
+                />
+              </div>
             ) : null}
 
             {formError ? (
@@ -892,77 +894,64 @@ export default function ClienteTrabalhadoresPage() {
               </div>
             </div>
           ) : (
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Nome</th>
-                    <th>CPF</th>
-                    <th>Matricula</th>
-                    <th>Unidade</th>
-                    <th>Setor</th>
-                    <th>Funcao</th>
-                    <th>EPIs</th>
-                    <th>Status</th>
-                    <th>Acoes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {workers.map((worker) => (
-                    <tr key={worker.id}>
-                      <td>
-                        <strong>{worker.name}</strong>
-                      </td>
-                      <td className="mono">
-                        {worker.cpf ? formatCpf(worker.cpf) : '—'}
-                      </td>
-                      <td className="mono">{worker.registration || '—'}</td>
-                      <td>{worker.unitName ?? '—'}</td>
-                      <td>{worker.sectorName ?? '—'}</td>
-                      <td>{worker.jobFunctionName ?? '—'}</td>
-                      <td>
-                        <span className="mono">{worker.requiredEpiCount}</span>
-                        {worker.requiredEpiNeeds.length > 0 ? (
-                          <span className="table-sub">
-                            {worker.requiredEpiNeeds
-                              .slice(0, 3)
-                              .map((need) => need.name)
-                              .join(', ')}
-                            {worker.requiredEpiNeeds.length > 3 ? '…' : ''}
-                          </span>
-                        ) : null}
-                      </td>
-                      <td>
-                        <span
-                          className={`status-pill status-pill--${worker.status.toLowerCase()}`}
-                        >
-                          {worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
-                        </span>
-                      </td>
-                      <td>
-                        <div className="table-actions">
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-compact"
-                            onClick={() => openEdit(worker)}
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-compact"
-                            onClick={() => void toggleStatus(worker)}
-                          >
-                            {worker.status === 'ACTIVE'
-                              ? 'Inativar'
-                              : 'Reativar'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="stack-list" role="list" aria-label="Trabalhadores">
+              {workers.map((worker) => (
+                <article key={worker.id} role="listitem" className="stack-card">
+                  <div className="stack-card__body stack-card__body--stack">
+                    <div className="stack-card__main">
+                      <strong className="stack-card__title">{worker.name}</strong>
+                      <p className="stack-card__meta mono">
+                        {worker.registration
+                          ? `Mat. ${worker.registration}`
+                          : 'Sem matricula'}
+                        {worker.cpf ? ` · ${formatCpf(worker.cpf)}` : ''}
+                      </p>
+                      <p className="stack-card__meta">
+                        {worker.unitName ?? 'Sem unidade'}
+                        {' · '}
+                        {worker.sectorName ?? 'Sem setor'}
+                      </p>
+                      <p className="stack-card__meta">
+                        {worker.jobFunctionName ?? 'Sem funcao'}
+                        {' · '}
+                        {worker.requiredEpiCount} EPI
+                        {worker.requiredEpiCount === 1 ? '' : 's'}
+                      </p>
+                      {worker.requiredEpiNeeds.length > 0 ? (
+                        <p className="stack-card__meta">
+                          {worker.requiredEpiNeeds
+                            .slice(0, 3)
+                            .map((need) => need.name)
+                            .join(', ')}
+                          {worker.requiredEpiNeeds.length > 3 ? '…' : ''}
+                        </p>
+                      ) : null}
+                      <span
+                        className={`status-pill status-pill--${worker.status.toLowerCase()}`}
+                        style={{ marginTop: '0.45rem' }}
+                      >
+                        {worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </div>
+                    <div className="stack-card__actions">
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => openEdit(worker)}
+                      >
+                        Editar / biometria
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => void toggleStatus(worker)}
+                      >
+                        {worker.status === 'ACTIVE' ? 'Inativar' : 'Reativar'}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              ))}
             </div>
           )}
         </section>

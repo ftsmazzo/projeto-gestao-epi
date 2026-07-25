@@ -308,60 +308,48 @@ export default function ClienteUsuariosPage() {
             Nenhum usuario cadastrado.
           </p>
         ) : (
-          <div className="table-wrap" style={{ marginTop: '1.25rem' }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>E-mail</th>
-                  <th>Papel</th>
-                  <th>Status</th>
-                  <th>Acesso</th>
-                  <th>Acoes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((user) => (
-                  <tr key={user.id}>
-                    <td>{user.name}</td>
-                    <td className="mono">{user.email}</td>
-                    <td>{clientUserRoleLabel(user.role)}</td>
-                    <td>
-                      <span
-                        className={`status-pill status-pill--${user.isActive ? 'active' : 'inactive'}`}
-                      >
-                        {user.isActive ? 'Ativo' : 'Inativo'}
-                      </span>
-                    </td>
-                    <td className="mono">
+          <div className="stack-list" role="list" aria-label="Usuarios" style={{ marginTop: '1.25rem' }}>
+            {users.map((user) => (
+              <article key={user.id} role="listitem" className="stack-card">
+                <div className="stack-card__body stack-card__body--stack">
+                  <div className="stack-card__main">
+                    <strong className="stack-card__title">{user.name}</strong>
+                    <p className="stack-card__meta mono">{user.email}</p>
+                    <p className="stack-card__meta">
+                      {clientUserRoleLabel(user.role)}
+                      {' · '}
                       {clientUserAccessLabel(user.accessStatus)}
-                    </td>
-                    <td>
-                      <div className="table-actions">
-                        {user.role !== 'WORKER' && user.isActive ? (
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            disabled={saving || !canOperate}
-                            onClick={() => void onResetAccess(user)}
-                          >
-                            Redefinir acesso
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          disabled={saving || (!canOperate && !user.isActive)}
-                          onClick={() => void onToggleUser(user)}
-                        >
-                          {user.isActive ? 'Inativar' : 'Reativar'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </p>
+                    <span
+                      className={`status-pill status-pill--${user.isActive ? 'active' : 'inactive'}`}
+                      style={{ marginTop: '0.45rem' }}
+                    >
+                      {user.isActive ? 'Ativo' : 'Inativo'}
+                    </span>
+                  </div>
+                  <div className="stack-card__actions">
+                    {user.role !== 'WORKER' && user.isActive ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={saving || !canOperate}
+                        onClick={() => void onResetAccess(user)}
+                      >
+                        Redefinir acesso
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={saving || (!canOperate && !user.isActive)}
+                      onClick={() => void onToggleUser(user)}
+                    >
+                      {user.isActive ? 'Inativar' : 'Reativar'}
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
           </div>
         )}
       </section>
