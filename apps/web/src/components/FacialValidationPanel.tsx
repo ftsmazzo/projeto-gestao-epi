@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AUTO_CAPTURE_STABLE_MS,
+  evaluateFaceFraming,
   extractFaceDescriptorFromBlob,
   FACE_ENGINE_META,
   loadFaceModels,
+  scanFacesInVideo,
+  type FaceFramingHint,
 } from '../lib/face-biometrics.client';
 import { previewPortalFacialMatch } from '../lib/client-auth';
 
@@ -35,6 +39,8 @@ type Props = {
   onMatched: (result: FacialValidationResult) => void;
   onReset: () => void;
 };
+
+type GuideTone = 'neutral' | 'adjusting' | 'ready' | 'processing' | 'matched' | 'rejected';
 
 const STATUS_COPY: Record<
   Exclude<FacialUxStatus, 'idle' | 'capturing' | 'processing'>,
@@ -68,6 +74,12 @@ const STATUS_COPY: Record<
   },
 };
 
+function toneForHint(hint: FaceFramingHint): GuideTone {
+  if (hint === 'ready') return 'ready';
+  if (hint === 'none') return 'neutral';
+  return 'adjusting';
+}
+
 export function FacialValidationPanel({
   workerId,
   needsReenrollment = false,
@@ -78,20 +90,44 @@ export function FacialValidationPanel({
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const statusRef = useRef<FacialUxStatus>('idle');
+  const capturingLockRef = useRef(false);
+  const stableSinceRef = useRef<number | null>(null);
+  const loopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [engineReady, setEngineReady] = useState(false);
   const [status, setStatus] = useState<FacialUxStatus>(
     !hasBiometricTemplate || needsReenrollment ? 'needsReenrollment' : 'idle',
   );
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [guideMessage, setGuideMessage] = useState(
+    'Posicione o rosto no enquadramento',
+  );
+  const [guideTone, setGuideTone] = useState<GuideTone>('neutral');
   const [statusDetail, setStatusDetail] = useState<string | null>(null);
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [capturedNote, setCapturedNote] = useState(false);
+
+  const setUxStatus = useCallback((next: FacialUxStatus) => {
+    statusRef.current = next;
+    setStatus(next);
+  }, []);
+
+  const stopLoop = useCallback(() => {
+    if (loopTimerRef.current) {
+      clearTimeout(loopTimerRef.current);
+      loopTimerRef.current = null;
+    }
+    stableSinceRef.current = null;
+  }, []);
 
   const stopCamera = useCallback(() => {
+    stopLoop();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
-  }, []);
+  }, [stopLoop]);
 
   useEffect(() => {
     void loadFaceModels()
@@ -99,83 +135,117 @@ export function FacialValidationPanel({
       .catch(() => setEngineReady(false));
     return () => {
       stopCamera();
-      if (thumbUrl) URL.revokeObjectURL(thumbUrl);
+      setThumbUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [stopCamera]);
 
   useEffect(() => {
     stopCamera();
+    capturingLockRef.current = false;
     setThumbUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
     setCameraError(null);
     setStatusDetail(null);
+    setCapturedNote(false);
+    setGuideMessage('Posicione o rosto no enquadramento');
+    setGuideTone('neutral');
     if (!hasBiometricTemplate || needsReenrollment) {
-      setStatus('needsReenrollment');
+      setUxStatus('needsReenrollment');
     } else {
-      setStatus('idle');
+      setUxStatus('idle');
     }
     onReset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId, hasBiometricTemplate, needsReenrollment]);
 
-  async function startCamera() {
-    if (disabled || !hasBiometricTemplate || needsReenrollment) return;
-    setCameraError(null);
-    setStarting(true);
-    setStatusDetail(null);
-    setThumbUrl((prev) => {
-      if (prev) URL.revokeObjectURL(prev);
-      return null;
-    });
-    onReset();
-    try {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        throw new Error(
-          'Camera indisponivel neste navegador. Use HTTPS ou um dispositivo com camera.',
-        );
-      }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setStatus('capturing');
-    } catch (err) {
-      setCameraError(
-        err instanceof Error
-          ? err.message
-          : 'Nao foi possivel acessar a camera. Verifique a permissao do navegador.',
-      );
-      stopCamera();
-      setStatus('idle');
-    } finally {
-      setStarting(false);
-    }
-  }
+  const validateBlob = useCallback(
+    async (blob: Blob) => {
+      setGuideTone('processing');
+      setGuideMessage('Validando biometria...');
+      setUxStatus('processing');
+      setCapturedNote(true);
 
-  async function captureAndValidate() {
+      try {
+        const detection = await extractFaceDescriptorFromBlob(blob);
+        if (!detection.ok) {
+          if (detection.reason === 'MULTIPLE_FACES') {
+            setUxStatus('multipleFaces');
+            setGuideTone('rejected');
+            setStatusDetail(STATUS_COPY.multipleFaces.detail);
+          } else if (detection.reason === 'NO_FACE') {
+            setUxStatus('noFace');
+            setGuideTone('rejected');
+            setStatusDetail(STATUS_COPY.noFace.detail);
+          } else {
+            setUxStatus('error');
+            setGuideTone('rejected');
+            setStatusDetail(detection.message);
+          }
+          return;
+        }
+
+        const preview = await previewPortalFacialMatch(
+          workerId,
+          detection.descriptor,
+        );
+        if (preview.matched) {
+          setUxStatus('matched');
+          setGuideTone('matched');
+          setGuideMessage('Face validada');
+          setStatusDetail(STATUS_COPY.matched.detail);
+          onMatched({
+            blob,
+            descriptor: detection.descriptor,
+            faceEngine: FACE_ENGINE_META.engine,
+            faceEngineVersion: FACE_ENGINE_META.version,
+            consentAccepted: true,
+          });
+        } else {
+          setUxStatus('rejected');
+          setGuideTone('rejected');
+          setGuideMessage('Face nao corresponde');
+          setStatusDetail(STATUS_COPY.rejected.detail);
+        }
+      } catch (err) {
+        setUxStatus('error');
+        setGuideTone('rejected');
+        setStatusDetail(
+          err instanceof Error ? err.message : STATUS_COPY.error.detail,
+        );
+      } finally {
+        capturingLockRef.current = false;
+      }
+    },
+    [onMatched, setUxStatus, workerId],
+  );
+
+  const captureFrame = useCallback(async () => {
     const video = videoRef.current;
-    if (!video || status !== 'capturing' || disabled) return;
+    if (!video || capturingLockRef.current || disabled) return;
+    capturingLockRef.current = true;
+    stopLoop();
 
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
+    if (!ctx) {
+      capturingLockRef.current = false;
+      return;
+    }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, 'image/jpeg', 0.92),
     );
     if (!blob) {
       setCameraError('Falha ao capturar a imagem facial.');
+      capturingLockRef.current = false;
+      setUxStatus('error');
       return;
     }
 
@@ -184,50 +254,100 @@ export function FacialValidationPanel({
       if (prev) URL.revokeObjectURL(prev);
       return URL.createObjectURL(blob);
     });
-    setStatus('processing');
-    setStatusDetail(null);
+    setGuideMessage('Captura automatica realizada');
+    await validateBlob(blob);
+  }, [disabled, setUxStatus, stopCamera, stopLoop, validateBlob]);
 
-    try {
-      const detection = await extractFaceDescriptorFromBlob(blob);
-      if (!detection.ok) {
-        if (detection.reason === 'MULTIPLE_FACES') {
-          setStatus('multipleFaces');
-          setStatusDetail(STATUS_COPY.multipleFaces.detail);
-        } else if (detection.reason === 'NO_FACE') {
-          setStatus('noFace');
-          setStatusDetail(STATUS_COPY.noFace.detail);
-        } else {
-          setStatus('error');
-          setStatusDetail(detection.message);
-        }
+  const runScanLoop = useCallback(() => {
+    stopLoop();
+
+    const tick = async () => {
+      if (statusRef.current !== 'capturing' || capturingLockRef.current) {
+        return;
+      }
+      const video = videoRef.current;
+      if (!video || video.readyState < 2) {
+        loopTimerRef.current = setTimeout(() => void tick(), 280);
         return;
       }
 
-      const preview = await previewPortalFacialMatch(
-        workerId,
-        detection.descriptor,
-      );
-      if (preview.matched) {
-        setStatus('matched');
-        setStatusDetail(STATUS_COPY.matched.detail);
-        onMatched({
-          blob,
-          descriptor: detection.descriptor,
-          faceEngine: FACE_ENGINE_META.engine,
-          faceEngineVersion: FACE_ENGINE_META.version,
-          consentAccepted: true,
-        });
-      } else {
-        setStatus('rejected');
-        setStatusDetail(STATUS_COPY.rejected.detail);
+      try {
+        const scan = await scanFacesInVideo(video);
+        if (statusRef.current !== 'capturing' || capturingLockRef.current) {
+          return;
+        }
+        const { hint, message } = evaluateFaceFraming(scan);
+        setGuideMessage(message);
+        setGuideTone(toneForHint(hint));
+
+        if (hint === 'ready') {
+          const now = Date.now();
+          if (stableSinceRef.current == null) {
+            stableSinceRef.current = now;
+          } else if (now - stableSinceRef.current >= AUTO_CAPTURE_STABLE_MS) {
+            await captureFrame();
+            return;
+          }
+        } else {
+          stableSinceRef.current = null;
+        }
+      } catch {
+        // Mantém o loop; falhas pontuais de deteccao nao derrubam a sessao.
       }
+
+      if (statusRef.current === 'capturing' && !capturingLockRef.current) {
+        loopTimerRef.current = setTimeout(() => void tick(), 280);
+      }
+    };
+
+    loopTimerRef.current = setTimeout(() => void tick(), 200);
+  }, [captureFrame, stopLoop]);
+
+  async function startCamera() {
+    if (disabled || !hasBiometricTemplate || needsReenrollment) return;
+    setCameraError(null);
+    setStarting(true);
+    setStatusDetail(null);
+    setCapturedNote(false);
+    setThumbUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+    onReset();
+    capturingLockRef.current = false;
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error(
+          'Camera indisponivel neste navegador. Use HTTPS ou um dispositivo com camera.',
+        );
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 720 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setUxStatus('capturing');
+      setGuideMessage('Posicione o rosto no enquadramento');
+      setGuideTone('neutral');
+      runScanLoop();
     } catch (err) {
-      setStatus('error');
-      setStatusDetail(
+      setCameraError(
         err instanceof Error
           ? err.message
-          : STATUS_COPY.error.detail,
+          : 'Nao foi possivel acessar a camera. Verifique a permissao do navegador.',
       );
+      stopCamera();
+      setUxStatus('idle');
+    } finally {
+      setStarting(false);
     }
   }
 
@@ -243,6 +363,18 @@ export function FacialValidationPanel({
       ? null
       : STATUS_COPY[status];
 
+  const ovalTone: GuideTone =
+    status === 'processing'
+      ? 'processing'
+      : status === 'matched'
+        ? 'matched'
+        : status === 'rejected' ||
+            status === 'noFace' ||
+            status === 'multipleFaces' ||
+            status === 'error'
+          ? 'rejected'
+          : guideTone;
+
   return (
     <section className="face-ux" aria-labelledby="face-ux-title">
       <header className="face-ux__header">
@@ -250,7 +382,7 @@ export function FacialValidationPanel({
           Validacao facial
         </h2>
         <p className="face-ux__subtitle">
-          Centralize o rosto e capture a imagem para validacao automatica.
+          Posicione o rosto no enquadramento. A captura e automatica.
         </p>
       </header>
 
@@ -266,11 +398,8 @@ export function FacialValidationPanel({
         </p>
       ) : null}
 
-      <div
-        className={`face-ux__frame face-ux__frame--${status}`}
-        aria-live="polite"
-      >
-        <div className="face-ux__stage">
+      <div className="face-ux__frame" aria-live="polite">
+        <div className={`face-ux__stage face-ux__stage--${ovalTone}`}>
           {showLive ? (
             <video
               ref={videoRef}
@@ -289,10 +418,15 @@ export function FacialValidationPanel({
           ) : (
             <div className="face-ux__placeholder">
               <span className="face-ux__placeholder-icon" aria-hidden />
-              <span>Pronto para capturar</span>
+              <span>Pronto para validar</span>
             </div>
           )}
-          <div className="face-ux__oval" aria-hidden />
+          <div className={`face-ux__oval face-ux__oval--${ovalTone}`} aria-hidden />
+          {status === 'capturing' ? (
+            <p className="face-ux__live-hint" role="status">
+              {guideMessage}
+            </p>
+          ) : null}
           {status === 'processing' ? (
             <div className="face-ux__overlay" role="status">
               Validando biometria...
@@ -314,8 +448,8 @@ export function FacialValidationPanel({
         </div>
       ) : null}
 
-      {thumbUrl && status !== 'capturing' && status !== 'idle' ? (
-        <p className="face-ux__capture-note">Captura registrada</p>
+      {capturedNote && status !== 'capturing' && status !== 'idle' ? (
+        <p className="face-ux__capture-note">Captura automatica realizada</p>
       ) : null}
 
       <p className="face-ux__consent">
@@ -324,25 +458,31 @@ export function FacialValidationPanel({
       </p>
 
       <div className="face-ux__actions">
-        {blocked ? null : status === 'idle' || status === 'error' ? (
+        {blocked ? null : status === 'idle' ? (
           <button
             type="button"
             className="btn btn-primary"
             onClick={() => void startCamera()}
             disabled={disabled || starting || !engineReady}
           >
-            {starting ? 'Abrindo camera...' : 'Iniciar camera'}
+            {starting ? 'Abrindo camera...' : 'Iniciar validacao facial'}
           </button>
         ) : null}
 
         {status === 'capturing' ? (
           <button
             type="button"
-            className="btn btn-primary"
-            onClick={() => void captureAndValidate()}
-            disabled={disabled || !engineReady}
+            className="btn btn-secondary"
+            onClick={() => {
+              stopCamera();
+              setUxStatus('idle');
+              setGuideTone('neutral');
+              setGuideMessage('Posicione o rosto no enquadramento');
+              onReset();
+            }}
+            disabled={disabled}
           >
-            Validar face e registrar evidencia
+            Cancelar
           </button>
         ) : null}
 
@@ -369,21 +509,6 @@ export function FacialValidationPanel({
             disabled={disabled}
           >
             Tentar novamente
-          </button>
-        ) : null}
-
-        {status === 'capturing' ? (
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => {
-              stopCamera();
-              setStatus('idle');
-              onReset();
-            }}
-            disabled={disabled}
-          >
-            Cancelar
           </button>
         ) : null}
       </div>

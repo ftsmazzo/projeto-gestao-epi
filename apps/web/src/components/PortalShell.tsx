@@ -3,7 +3,7 @@
 import type { ClientPortalUser } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ReactNode } from 'react';
+import { ReactNode, useEffect, useId, useState } from 'react';
 import { isPortalNavActive, PORTAL_NAV } from '../lib/nav';
 
 type Props = {
@@ -12,13 +12,46 @@ type Props = {
   onLogout?: () => void;
 };
 
+/** Itens fixos na barra inferior (mobile). */
+const BOTTOM_PRIMARY = [
+  '/portal',
+  '/portal/entregas',
+  '/portal/estoque',
+  '/portal/relatorios',
+] as const;
+
 export function PortalShell({ children, user, onLogout }: Props) {
   const pathname = usePathname();
+  const drawerId = useId();
+  const [menuOpen, setMenuOpen] = useState(false);
   const clientName =
     user?.servedClient.tradeName || user?.servedClient.legalName || null;
 
+  const primaryItems = PORTAL_NAV.filter((item) =>
+    (BOTTOM_PRIMARY as readonly string[]).includes(item.href),
+  );
+  const moreItems = PORTAL_NAV.filter(
+    (item) => !(BOTTOM_PRIMARY as readonly string[]).includes(item.href),
+  );
+  const moreActive = moreItems.some((item) =>
+    isPortalNavActive(pathname, item),
+  );
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setMenuOpen(false);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
+
   return (
-    <div className="portal-shell">
+    <div className={`portal-shell${user ? ' portal-shell--authed' : ''}`}>
       <a className="skip-link" href="#portal-conteudo">
         Ir para o conteudo
       </a>
@@ -32,7 +65,7 @@ export function PortalShell({ children, user, onLogout }: Props) {
           </Link>
         </div>
         {user ? (
-          <nav className="portal-nav" aria-label="Dia a dia da empresa">
+          <nav className="portal-nav portal-nav--desktop" aria-label="Dia a dia da empresa">
             {PORTAL_NAV.map((item) => (
               <Link
                 key={item.href}
@@ -59,16 +92,99 @@ export function PortalShell({ children, user, onLogout }: Props) {
               </span>
             </div>
           ) : null}
+          {user ? (
+            <button
+              type="button"
+              className="btn btn-secondary portal-menu-toggle"
+              aria-expanded={menuOpen}
+              aria-controls={drawerId}
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              Menu
+            </button>
+          ) : null}
           {onLogout ? (
-            <button type="button" className="btn btn-secondary" onClick={onLogout}>
+            <button
+              type="button"
+              className="btn btn-secondary portal-logout-desktop"
+              onClick={onLogout}
+            >
               Sair
             </button>
           ) : null}
         </div>
       </header>
+
+      {user && menuOpen ? (
+        <div
+          className="portal-drawer-backdrop"
+          role="presentation"
+          onClick={() => setMenuOpen(false)}
+        />
+      ) : null}
+
+      {user ? (
+        <aside
+          id={drawerId}
+          className={`portal-drawer${menuOpen ? ' is-open' : ''}`}
+          aria-hidden={!menuOpen}
+          aria-label="Menu do portal"
+        >
+          <p className="portal-drawer__title">Navegacao</p>
+          <nav className="portal-drawer__nav">
+            {PORTAL_NAV.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`portal-drawer__link ${
+                  isPortalNavActive(pathname, item) ? 'is-active' : ''
+                }`}
+                onClick={() => setMenuOpen(false)}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+          {onLogout ? (
+            <button
+              type="button"
+              className="btn btn-secondary portal-drawer__logout"
+              onClick={onLogout}
+            >
+              Sair
+            </button>
+          ) : null}
+        </aside>
+      ) : null}
+
       <main id="portal-conteudo" className="portal-main">
         {children}
       </main>
+
+      {user ? (
+        <nav className="portal-bottom-nav" aria-label="Atalhos do portal">
+          {primaryItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`portal-bottom-nav__item ${
+                isPortalNavActive(pathname, item) ? 'is-active' : ''
+              }`}
+            >
+              <span className="portal-bottom-nav__label">{item.label}</span>
+            </Link>
+          ))}
+          <button
+            type="button"
+            className={`portal-bottom-nav__item ${moreActive || menuOpen ? 'is-active' : ''}`}
+            aria-expanded={menuOpen}
+            aria-controls={drawerId}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <span className="portal-bottom-nav__label">Mais</span>
+          </button>
+        </nav>
+      ) : null}
     </div>
   );
 }

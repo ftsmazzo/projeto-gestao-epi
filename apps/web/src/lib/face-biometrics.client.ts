@@ -3,7 +3,7 @@
  * Roda apenas no browser. O matching definitivo ocorre no backend.
  *
  * Modelos: /public/models (TinyFaceDetector + Landmark68 + FaceRecognition).
- * Documentacao: docs/ESTADO-ATUAL-SISTEMA.md (09.1.1).
+ * Documentacao: docs/ESTADO-ATUAL-SISTEMA.md (09.1.1 / 09.1.3).
  */
 
 import {
@@ -21,13 +21,42 @@ export type FaceDetectionOutcome =
       message: string;
     };
 
+export type FaceBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type LiveFaceScan =
+  | { kind: 'none' }
+  | { kind: 'multiple'; count: number }
+  | {
+      kind: 'one';
+      box: FaceBox;
+      score: number;
+      videoWidth: number;
+      videoHeight: number;
+    };
+
+export type FaceFramingHint =
+  | 'none'
+  | 'multiple'
+  | 'too_far'
+  | 'off_center'
+  | 'hold_still'
+  | 'ready';
+
 type FaceApiGlobal = {
   nets: {
     tinyFaceDetector: { loadFromUri: (uri: string) => Promise<void> };
     faceLandmark68Net: { loadFromUri: (uri: string) => Promise<void> };
     faceRecognitionNet: { loadFromUri: (uri: string) => Promise<void> };
   };
-  TinyFaceDetectorOptions: new (opts?: { inputSize?: number; scoreThreshold?: number }) => unknown;
+  TinyFaceDetectorOptions: new (opts?: {
+    inputSize?: number;
+    scoreThreshold?: number;
+  }) => unknown;
   detectAllFaces: (
     input: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement,
     options?: unknown,
@@ -35,11 +64,17 @@ type FaceApiGlobal = {
     withFaceLandmarks: () => {
       withFaceDescriptors: () => Promise<
         Array<{
-          detection: { score: number };
+          detection: { score: number; box: FaceBox };
           descriptor: Float32Array | number[];
         }>
       >;
     };
+    then: Promise<
+      Array<{
+        score: number;
+        box: FaceBox;
+      }>
+    >['then'];
   };
 };
 
@@ -50,6 +85,17 @@ declare global {
 }
 
 let modelsReady: Promise<void> | null = null;
+
+/** Tempo minimo de enquadramento estavel antes da captura automatica. */
+export const AUTO_CAPTURE_STABLE_MS = 900;
+
+/** Face precisa ocupar pelo menos esta fracao da largura do video. */
+const MIN_FACE_WIDTH_RATIO = 0.22;
+/** Centro da face deve ficar nesta faixa relativa do quadro. */
+const CENTER_X_MIN = 0.28;
+const CENTER_X_MAX = 0.72;
+const CENTER_Y_MIN = 0.22;
+const CENTER_Y_MAX = 0.78;
 
 function getFaceApi(): FaceApiGlobal {
   if (typeof window === 'undefined' || !window.faceapi) {
@@ -107,6 +153,74 @@ export async function loadFaceModels(): Promise<void> {
 
 function toNumberArray(descriptor: Float32Array | number[]): number[] {
   return Array.from(descriptor).map((n) => Number(n));
+}
+
+/** Deteccao leve (sem descritor) para loop de enquadramento. */
+export async function scanFacesInVideo(
+  video: HTMLVideoElement,
+): Promise<LiveFaceScan> {
+  await loadFaceModels();
+  const faceapi = getFaceApi();
+  const options = new faceapi.TinyFaceDetectorOptions({
+    inputSize: 320,
+    scoreThreshold: 0.45,
+  });
+  const detections = await faceapi.detectAllFaces(video, options);
+  const vw = video.videoWidth || 1;
+  const vh = video.videoHeight || 1;
+
+  if (!detections.length) return { kind: 'none' };
+  if (detections.length > 1) {
+    return { kind: 'multiple', count: detections.length };
+  }
+
+  const first = detections[0]!;
+  return {
+    kind: 'one',
+    box: first.box,
+    score: first.score,
+    videoWidth: vw,
+    videoHeight: vh,
+  };
+}
+
+export function evaluateFaceFraming(scan: LiveFaceScan): {
+  hint: FaceFramingHint;
+  message: string;
+} {
+  if (scan.kind === 'none') {
+    return {
+      hint: 'none',
+      message: 'Posicione o rosto no enquadramento',
+    };
+  }
+  if (scan.kind === 'multiple') {
+    return {
+      hint: 'multiple',
+      message: 'Capture apenas uma pessoa por vez',
+    };
+  }
+
+  const { box, videoWidth, videoHeight } = scan;
+  const cx = (box.x + box.width / 2) / videoWidth;
+  const cy = (box.y + box.height / 2) / videoHeight;
+  const widthRatio = box.width / videoWidth;
+
+  if (widthRatio < MIN_FACE_WIDTH_RATIO) {
+    return { hint: 'too_far', message: 'Aproxime o rosto' };
+  }
+
+  const centered =
+    cx >= CENTER_X_MIN &&
+    cx <= CENTER_X_MAX &&
+    cy >= CENTER_Y_MIN &&
+    cy <= CENTER_Y_MAX;
+
+  if (!centered) {
+    return { hint: 'off_center', message: 'Centralize o rosto' };
+  }
+
+  return { hint: 'ready', message: 'Mantenha o rosto parado' };
 }
 
 export async function extractFaceDescriptorFromImage(

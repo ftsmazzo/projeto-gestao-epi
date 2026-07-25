@@ -792,7 +792,7 @@ function PortalEntregasContent() {
                 />
               </section>
 
-              <div className="btn-row">
+              <div className="btn-row portal-sticky-actions">
                 <button
                   type="button"
                   className="btn btn-primary"
@@ -804,7 +804,7 @@ function PortalEntregasContent() {
                 <Link className="btn btn-secondary" href="/portal/estoque">
                   Ir ao estoque
                 </Link>
-                <Link className="btn btn-secondary" href="/portal">
+                <Link className="btn btn-secondary portal-hide-mobile" href="/portal">
                   Voltar ao painel
                 </Link>
               </div>
