@@ -196,7 +196,7 @@ Templates biometricos (`faceDescriptor`) ficam no banco como JSON sensivel — *
 - Evidencia da entrega: `DELIVERY_EVIDENCE_DIR` (ex.: `/app/files/delivery-evidence`).
 - Referencia do trabalhador: `WORKER_FACE_REFERENCE_DIR` (ex.: `/app/files/worker-face-references`).
 - Motor MVP: `@vladmandic/face-api` no browser (`/vendor/face-api.js` + `/models`); matching definitivo no backend (distancia euclidiana, limiar `FACE_MATCH_THRESHOLD` padrao 0.55).
-- Captura na entrega: automatica apos enquadramento estavel (~0,9s); sem botao manual de captura.
+- Captura na entrega e no cadastro (Consultoria): automatica apos enquadramento estavel (~0,9s); sem botao manual de captura.
 - Portal mobile: bottom nav + drawer em telas <=860px; desktop mantem top nav.
 - Referencias antigas so com foto -> status `NEEDS_REENROLLMENT`.
 - Entrega exige template ACTIVE + match aprovado (`verificationStatus=MATCHED`).
