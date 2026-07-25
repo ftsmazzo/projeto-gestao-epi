@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Query,
+  Req,
   Res,
   UploadedFile,
   UseGuards,
@@ -15,7 +16,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { plainToInstance } from 'class-transformer';
 import { validateOrReject } from 'class-validator';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { createReadStream } from 'fs';
 import { memoryStorage } from 'multer';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -104,6 +105,7 @@ export class PortalController {
     @CurrentUser() user: ClientJwtPayload,
     @UploadedFile() facial: Express.Multer.File | undefined,
     @Body('payload') payloadRaw?: string,
+    @Req() req?: Request,
   ) {
     this.assertClient(user);
 
@@ -145,6 +147,13 @@ export class PortalController {
       );
     }
 
+    const forwarded = req?.headers?.['x-forwarded-for'];
+    const forwardedIp = Array.isArray(forwarded)
+      ? forwarded[0]
+      : typeof forwarded === 'string'
+        ? forwarded.split(',')[0]?.trim()
+        : undefined;
+
     return this.portal.createDelivery(
       user.organizationId,
       user.servedClientId,
@@ -154,6 +163,13 @@ export class PortalController {
         buffer: facial.buffer,
         mimeType: facial.mimetype,
         originalName: facial.originalname,
+      },
+      {
+        operatorIp: forwardedIp || req?.ip || null,
+        userAgent:
+          typeof req?.headers?.['user-agent'] === 'string'
+            ? req.headers['user-agent']
+            : null,
       },
     );
   }

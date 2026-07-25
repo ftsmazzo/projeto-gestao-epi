@@ -181,7 +181,7 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
-| Portal: entregas / ficha / biometria | **07.2 feito:** entrega com facial (evidencia CAPTURED/NOT_VERIFIED), baixa ENTREGA, historico. Sem PDF/ficha, sem devolucao, sem match biometrico automatico |
+| Portal: entregas / ficha / biometria | **07.3:** comprovante consultavel (`/portal/entregas/:id`), consentimento operacional da facial, `receiptNumber`, audit log minimo. Sem PDF backend, sem match biometrico, sem devolucao |
 | Portal: custos / relatorios ricos | Ainda nao |
 
 ### Evidencia facial — storage e EasyPanel
@@ -193,8 +193,16 @@ Arquivos faciais **nao** ficam no banco; sao gravados em disco privado da API.
 - O diretorio (e subpastas por `organizationId`) e criado automaticamente.
 - No **EasyPanel**, monte um **volume persistente** no servico da API apontando para o mesmo path da env (ex. mount `/app/files/delivery-evidence`). Sem volume, o redeploy apaga as evidencias no filesystem do container.
 - Leitura autenticada: `GET /portal/entregas/:id/evidence/facial` (nao expor URL publica).
+- Comprovante/listagem **nao** expoem caminho fisico nem imagem facial.
 
-Proximo passo natural: evoluir reconhecimento facial real (match biometrico), PDF/ficha de entrega, e/ou CRUD operacional de trabalhadores no portal — conforme prioridade do usuario.
+### Pendencias LGPD / evidencia (documentadas)
+
+- Consentimento LGPD completo (base legal, titular, revogacao).
+- Politica de retencao e exclusao das imagens.
+- Storage definitivo / backup (hoje volume local).
+- Reconhecimento facial futuro (match biometrico).
+
+Proximo passo natural: evoluir reconhecimento facial real (match biometrico), PDF/ficha exportavel, e/ou CRUD operacional de trabalhadores no portal — conforme prioridade do usuario.
 
 ---
 

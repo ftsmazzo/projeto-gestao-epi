@@ -1298,8 +1298,18 @@ export type PortalDeliveryEvidenceVerificationStatus =
   | 'CAPTURED'
   | 'NOT_VERIFIED';
 
+export type PortalDeliveryEvidenceStatusLabel =
+  | 'FACIAL_CAPTURED'
+  | 'NOT_VERIFIED';
+
+export const FACIAL_EVIDENCE_CONSENT_VERSION = 'v1-2026-07';
+
+export const FACIAL_EVIDENCE_CONSENT_TEXT =
+  'Declaro que a imagem facial será registrada como evidência da entrega deste EPI e vinculada ao comprovante de fornecimento.';
+
 export interface PortalDeliveryListItem {
   id: string;
+  receiptNumber: string;
   status: PortalDeliveryStatus;
   deliveredAt: string;
   notes: string | null;
@@ -1326,6 +1336,7 @@ export interface PortalDeliveryListItem {
   evidence: {
     id: string;
     type: 'FACIAL_CAPTURE';
+    statusLabel: PortalDeliveryEvidenceStatusLabel;
     capturedAt: string;
     verificationStatus: PortalDeliveryEvidenceVerificationStatus;
   } | null;
@@ -1337,6 +1348,7 @@ export interface PortalDeliveriesListResponse {
 
 export interface PortalDeliveryDetail {
   id: string;
+  receiptNumber: string;
   status: PortalDeliveryStatus;
   deliveredAt: string;
   notes: string | null;
@@ -1345,6 +1357,12 @@ export interface PortalDeliveryDetail {
     name: string;
     registration: string | null;
     cpfMasked: string | null;
+    unitId: string | null;
+    unitName: string | null;
+    sectorId: string | null;
+    sectorName: string | null;
+    jobFunctionId: string | null;
+    jobFunctionName: string | null;
   };
   deliveredBy: {
     id: string;
@@ -1358,6 +1376,7 @@ export interface PortalDeliveryDetail {
     epiItemId: string;
     epiName: string;
     caNumber: string | null;
+    caExpiresAt: string | null;
     epiVariantId: string | null;
     variantName: string | null;
     stockLocationId: string;
@@ -1376,12 +1395,17 @@ export interface PortalDeliveryDetail {
     id: string;
     type: 'FACIAL_CAPTURE';
     method: 'Facial capturada';
+    statusLabel: PortalDeliveryEvidenceStatusLabel;
     capturedAt: string;
     verificationStatus: PortalDeliveryEvidenceVerificationStatus;
-    mimeType: string | null;
-    byteSize: number | null;
     hasFile: boolean;
   } | null;
+  consent: {
+    accepted: boolean;
+    acceptedAt: string | null;
+    version: string | null;
+    text: string | null;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -1398,6 +1422,7 @@ export interface PortalCreateDeliveryPayload {
   workerId: string;
   items: PortalCreateDeliveryItemInput[];
   notes?: string | null;
+  facialEvidenceConsentAccepted: true;
 }
 
 

@@ -767,16 +767,24 @@ enum DeliveryEvidenceVerificationStatus {
 
 /// Entrega de EPI ao trabalhador (Painel do Cliente).
 model EpiDelivery {
-  id                String            @id @default(cuid())
-  organizationId    String
-  servedClientId    String
-  workerId          String
-  deliveredByUserId String
-  status            EpiDeliveryStatus @default(COMPLETED)
-  deliveredAt       DateTime          @default(now())
-  notes             String?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  id                         String            @id @default(cuid())
+  organizationId             String
+  servedClientId             String
+  workerId                   String
+  deliveredByUserId          String
+  /// Codigo amigavel do comprovante (unico por cliente atendido).
+  receiptNumber              String
+  status                     EpiDeliveryStatus @default(COMPLETED)
+  deliveredAt                DateTime          @default(now())
+  notes                      String?
+  /// Texto do aviso/consentimento operacional aceito no ato (LGPD minima).
+  evidenceConsentText        String?
+  evidenceConsentVersion     String?
+  evidenceConsentAcceptedAt  DateTime?
+  operatorIp                 String?
+  userAgent                  String?
+  createdAt                  DateTime          @default(now())
+  updatedAt                  DateTime          @updatedAt
 
   organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   servedClient    ServedClient         @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
@@ -785,12 +793,14 @@ model EpiDelivery {
   items           EpiDeliveryItem[]
   evidences       DeliveryEvidence[]
 
+  @@unique([servedClientId, receiptNumber])
   @@index([organizationId])
   @@index([servedClientId])
   @@index([workerId])
   @@index([deliveredByUserId])
   @@index([deliveredAt])
   @@index([status])
+  @@index([receiptNumber])
 }
 
 model EpiDeliveryItem {

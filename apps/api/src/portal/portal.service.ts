@@ -14,11 +14,16 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { unlink } from 'fs/promises';
+import { AuditService } from '../audit/audit.service';
 import { normalizeCaNumber } from '../caepi/caepi-import.utils';
 import { CaepiService } from '../caepi/caepi.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../stock/stock.service';
-import type { PortalCreateDeliveryPayloadDto } from './dto/portal-delivery.dto';
+import {
+  FACIAL_EVIDENCE_CONSENT_TEXT,
+  FACIAL_EVIDENCE_CONSENT_VERSION,
+  type PortalCreateDeliveryPayloadDto,
+} from './dto/portal-delivery.dto';
 import type { PortalStockEntradasDto } from './dto/portal-stock.dto';
 import {
   resolveEvidenceAbsolutePath,
@@ -92,6 +97,7 @@ export class PortalService {
     private readonly prisma: PrismaService,
     private readonly stock: StockService,
     private readonly caepi: CaepiService,
+    private readonly audit: AuditService,
   ) {}
 
   async getDashboard(organizationId: string, servedClientId: string) {
@@ -1540,7 +1546,11 @@ export class PortalService {
     await this.requireClient(organizationId, servedClientId);
 
     const row = await this.prisma.epiDelivery.findFirst({
-      where: { id: deliveryId, organizationId, servedClientId },
+      where: {
+        organizationId,
+        servedClientId,
+        OR: [{ id: deliveryId }, { receiptNumber: deliveryId }],
+      },
       include: {
         worker: {
           select: {
@@ -1548,6 +1558,11 @@ export class PortalService {
             name: true,
             registration: true,
             cpf: true,
+            operationalUnit: { select: { id: true, name: true } },
+            clientSector: { select: { id: true, name: true } },
+            clientJobFunction: { select: { id: true, name: true } },
+            department: true,
+            role: true,
           },
         },
         deliveredByUser: { select: { id: true, name: true, email: true } },
@@ -1555,7 +1570,12 @@ export class PortalService {
           include: {
             epiNeed: { select: { id: true, name: true } },
             epiItem: {
-              select: { id: true, name: true, caNumber: true },
+              select: {
+                id: true,
+                name: true,
+                caNumber: true,
+                caExpiresAt: true,
+              },
             },
             epiVariant: {
               select: {
@@ -1586,7 +1606,6 @@ export class PortalService {
             verificationStatus: true,
             mimeType: true,
             byteSize: true,
-            metadata: true,
           },
         },
       },
@@ -1600,6 +1619,7 @@ export class PortalService {
 
     return {
       id: row.id,
+      receiptNumber: row.receiptNumber,
       status: row.status,
       deliveredAt: row.deliveredAt.toISOString(),
       notes: row.notes,
@@ -1608,6 +1628,14 @@ export class PortalService {
         name: row.worker.name,
         registration: row.worker.registration,
         cpfMasked: this.maskCpf(row.worker.cpf),
+        unitId: row.worker.operationalUnit?.id ?? null,
+        unitName: row.worker.operationalUnit?.name ?? null,
+        sectorId: row.worker.clientSector?.id ?? null,
+        sectorName:
+          row.worker.clientSector?.name ?? row.worker.department ?? null,
+        jobFunctionId: row.worker.clientJobFunction?.id ?? null,
+        jobFunctionName:
+          row.worker.clientJobFunction?.name ?? row.worker.role ?? null,
       },
       deliveredBy: {
         id: row.deliveredByUser.id,
@@ -1621,6 +1649,7 @@ export class PortalService {
         epiItemId: item.epiItemId,
         epiName: item.epiItem.name,
         caNumber: item.epiItem.caNumber,
+        caExpiresAt: item.epiItem.caExpiresAt?.toISOString() ?? null,
         epiVariantId: item.epiVariantId,
         variantName: item.epiVariant
           ? [item.epiVariant.size, item.epiVariant.color, item.epiVariant.model]
@@ -1644,14 +1673,21 @@ export class PortalService {
             id: facial.id,
             type: facial.type,
             method: 'Facial capturada' as const,
+            statusLabel: this.mapEvidenceStatusLabel(
+              facial.verificationStatus,
+            ),
             capturedAt: facial.capturedAt.toISOString(),
             verificationStatus: facial.verificationStatus,
-            mimeType: facial.mimeType,
-            byteSize: facial.byteSize,
             hasFile: true,
-            // Sem URL publica; imagem so via endpoint autenticado.
+            // Sem mime/size/path na API do comprovante (LGPD minima).
           }
         : null,
+      consent: {
+        accepted: Boolean(row.evidenceConsentAcceptedAt),
+        acceptedAt: row.evidenceConsentAcceptedAt?.toISOString() ?? null,
+        version: row.evidenceConsentVersion,
+        text: row.evidenceConsentText,
+      },
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -1667,11 +1703,18 @@ export class PortalService {
     userId: string,
     payload: PortalCreateDeliveryPayloadDto,
     facial: { buffer: Buffer; mimeType?: string; originalName?: string },
+    requestMeta?: { operatorIp?: string | null; userAgent?: string | null },
   ) {
     const client = await this.requireClient(organizationId, servedClientId);
     if (client.status !== 'ACTIVE') {
       throw new BadRequestException(
         'Cliente inativo. Nao e possivel registrar entregas.',
+      );
+    }
+
+    if (payload.facialEvidenceConsentAccepted !== true) {
+      throw new BadRequestException(
+        'E necessario aceitar o aviso de registro da imagem facial como evidencia.',
       );
     }
 
@@ -1748,7 +1791,9 @@ export class PortalService {
             id: true,
             name: true,
             itemLinks: {
-              where: { epiItemId: { in: payload.items.map((i) => i.epiItemId) } },
+              where: {
+                epiItemId: { in: payload.items.map((i) => i.epiItemId) },
+              },
               select: { epiItemId: true },
             },
           },
@@ -1760,7 +1805,9 @@ export class PortalService {
       requirements.map((req) => [req.epiNeedId, req] as const),
     );
 
-    const locationIds = [...new Set(payload.items.map((i) => i.stockLocationId))];
+    const locationIds = [
+      ...new Set(payload.items.map((i) => i.stockLocationId)),
+    ];
     const locations = await this.prisma.stockLocation.findMany({
       where: {
         id: { in: locationIds },
@@ -1830,6 +1877,10 @@ export class PortalService {
       throw new BadRequestException('Operador do portal nao encontrado.');
     }
 
+    const consentAcceptedAt = new Date();
+    const operatorIp = this.normalizeMetaText(requestMeta?.operatorIp, 64);
+    const userAgent = this.normalizeMetaText(requestMeta?.userAgent, 400);
+
     let savedFile: Awaited<ReturnType<typeof saveFacialEvidenceFile>> | null =
       null;
 
@@ -1842,6 +1893,12 @@ export class PortalService {
       });
 
       const created = await this.prisma.$transaction(async (tx) => {
+        const receiptNumber = await this.nextReceiptNumber(
+          tx,
+          servedClientId,
+          deliveredAt,
+        );
+
         const delivery = await tx.epiDelivery.create({
           data: {
             id: deliveryId,
@@ -1849,9 +1906,15 @@ export class PortalService {
             servedClientId,
             workerId: worker.id,
             deliveredByUserId: userId,
+            receiptNumber,
             status: EpiDeliveryStatus.COMPLETED,
             deliveredAt,
             notes: payload.notes?.trim() || null,
+            evidenceConsentText: FACIAL_EVIDENCE_CONSENT_TEXT,
+            evidenceConsentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
+            evidenceConsentAcceptedAt: consentAcceptedAt,
+            operatorIp,
+            userAgent,
           },
         });
 
@@ -1881,7 +1944,7 @@ export class PortalService {
               epiVariantId: variantId ?? undefined,
               quantity: item.quantity,
               reason: `Entrega de EPI — ${worker.name}`,
-              notes: `deliveryId=${delivery.id}; need=${req.epiNeed.name}`,
+              notes: `receipt=${receiptNumber}; need=${req.epiNeed.name}`,
             },
           );
 
@@ -1928,10 +1991,9 @@ export class PortalService {
             verificationStatus: DeliveryEvidenceVerificationStatus.CAPTURED,
             metadata: {
               captureSource: 'portal_camera',
-              consentNoticeShown: true,
+              consentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
               biometricMatch: false,
               note: 'Captura registrada como evidencia; sem verificacao biometrica automatica.',
-              originalName: facial.originalName ?? null,
             } as Prisma.InputJsonValue,
           },
         });
@@ -1939,13 +2001,29 @@ export class PortalService {
         return { delivery, createdItems };
       });
 
-      const detail = await this.getDelivery(
+      await this.audit.log({
+        action: 'portal.epi_delivery.created',
+        organizationId,
+        userId,
+        entityType: 'EpiDelivery',
+        entityId: created.delivery.id,
+        metadata: {
+          servedClientId,
+          receiptNumber: created.delivery.receiptNumber,
+          workerId: worker.id,
+          itemCount: created.createdItems.length,
+          stockMovementIds: created.createdItems.map((i) => i.stockMovementId),
+          facialEvidence: true,
+          consentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
+          // Nao logar imagem, hash de arquivo ou caminhos.
+        },
+      });
+
+      return this.getDelivery(
         organizationId,
         servedClientId,
         created.delivery.id,
       );
-
-      return detail;
     } catch (err) {
       if (savedFile) {
         try {
@@ -1984,6 +2062,55 @@ export class PortalService {
     };
   }
 
+  private async nextReceiptNumber(
+    tx: Prisma.TransactionClient,
+    servedClientId: string,
+    deliveredAt: Date,
+  ) {
+    const y = deliveredAt.getUTCFullYear();
+    const m = String(deliveredAt.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(deliveredAt.getUTCDate()).padStart(2, '0');
+    const dayKey = `${y}${m}${d}`;
+    const prefix = `ENT-${dayKey}-`;
+
+    const last = await tx.epiDelivery.findFirst({
+      where: {
+        servedClientId,
+        receiptNumber: { startsWith: prefix },
+      },
+      orderBy: { receiptNumber: 'desc' },
+      select: { receiptNumber: true },
+    });
+
+    let seq = 1;
+    if (last?.receiptNumber) {
+      const tail = last.receiptNumber.slice(prefix.length);
+      const parsed = Number.parseInt(tail, 10);
+      if (Number.isFinite(parsed) && parsed >= 1) seq = parsed + 1;
+    }
+
+    return `${prefix}${String(seq).padStart(4, '0')}`;
+  }
+
+  private mapEvidenceStatusLabel(
+    status: DeliveryEvidenceVerificationStatus,
+  ): 'FACIAL_CAPTURED' | 'NOT_VERIFIED' {
+    if (status === DeliveryEvidenceVerificationStatus.NOT_VERIFIED) {
+      return 'NOT_VERIFIED';
+    }
+    return 'FACIAL_CAPTURED';
+  }
+
+  private normalizeMetaText(
+    value: string | null | undefined,
+    maxLen: number,
+  ): string | null {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return trimmed.slice(0, maxLen);
+  }
+
   private computeNextReplacementAt(
     deliveredAt: Date,
     intervalDays: number | null | undefined,
@@ -2011,6 +2138,7 @@ export class PortalService {
 
   private mapDeliverySummary(row: {
     id: string;
+    receiptNumber: string;
     status: EpiDeliveryStatus;
     deliveredAt: Date;
     notes: string | null;
@@ -2033,6 +2161,7 @@ export class PortalService {
     const facial = row.evidences[0] ?? null;
     return {
       id: row.id,
+      receiptNumber: row.receiptNumber,
       status: row.status,
       deliveredAt: row.deliveredAt.toISOString(),
       notes: row.notes,
@@ -2060,6 +2189,9 @@ export class PortalService {
         ? {
             id: facial.id,
             type: facial.type,
+            statusLabel: this.mapEvidenceStatusLabel(
+              facial.verificationStatus,
+            ),
             capturedAt: facial.capturedAt.toISOString(),
             verificationStatus: facial.verificationStatus,
           }

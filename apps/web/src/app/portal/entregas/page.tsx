@@ -9,6 +9,7 @@ import type {
   PortalEntregaWorkerOption,
   PortalEntregasPreparacaoResponse,
 } from '@gestao-epi/shared';
+import { FACIAL_EVIDENCE_CONSENT_TEXT } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
@@ -401,6 +402,7 @@ function PortalEntregasContent() {
     {},
   );
   const [facialBlob, setFacialBlob] = useState<Blob | null>(null);
+  const [facialConsentAccepted, setFacialConsentAccepted] = useState(false);
   const [notes, setNotes] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -496,6 +498,7 @@ function PortalEntregasContent() {
         row.sel.stockLocationId &&
         row.sel.quantity > 0,
     ) &&
+    facialConsentAccepted &&
     Boolean(facialBlob) &&
     !submitting;
 
@@ -503,6 +506,7 @@ function PortalEntregasContent() {
     setSelectedId(worker.id);
     setReceipt(null);
     setFacialBlob(null);
+    setFacialConsentAccepted(false);
     setNotes('');
     setLoadingCoverage(true);
     setError(null);
@@ -532,6 +536,12 @@ function PortalEntregasContent() {
       setError('Capture a evidencia facial antes de confirmar a entrega.');
       return;
     }
+    if (!facialConsentAccepted) {
+      setError(
+        'Confirme o aviso de registro da imagem facial antes de continuar.',
+      );
+      return;
+    }
     if (selectedItems.length === 0) {
       setError('Selecione ao menos um EPI disponivel para entregar.');
       return;
@@ -544,6 +554,7 @@ function PortalEntregasContent() {
         {
           workerId: selectedId,
           notes: notes.trim() || null,
+          facialEvidenceConsentAccepted: true,
           items: selectedItems.map(({ need, sel }) => ({
             epiNeedId: need.epiNeedId,
             epiItemId: sel.epiItemId,
@@ -560,6 +571,7 @@ function PortalEntregasContent() {
         return url;
       });
       setFacialBlob(null);
+      setFacialConsentAccepted(false);
       const refreshed = await fetchPortalWorkerEpiCoverage(selectedId);
       setCoverage(refreshed);
       const next: Record<string, ItemSelection> = {};
@@ -602,6 +614,7 @@ function PortalEntregasContent() {
           <h2 id="receipt-title" className="page-title page-title--sm">
             Entrega registrada
           </h2>
+          <p className="portal-receipt__code mono">{receipt.receiptNumber}</p>
           <p>
             <strong>{receipt.worker.name}</strong>
             {receipt.worker.registration
@@ -631,16 +644,37 @@ function PortalEntregasContent() {
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={receiptPreview}
-              alt="Evidencia facial capturada"
+              alt="Evidencia facial capturada nesta sessao"
               className="portal-facial__preview portal-facial__preview--receipt"
             />
           ) : (
-            <p className="field-hint">Evidencia facial capturada e arquivada.</p>
+            <p className="field-hint">
+              Evidencia facial capturada
+              {receipt.evidence
+                ? ` · ${receipt.evidence.statusLabel}`
+                : ''}
+              .
+            </p>
           )}
+          {receipt.consent.accepted ? (
+            <p className="field-hint" role="note">
+              Aviso facial aceito
+              {receipt.consent.version
+                ? ` (${receipt.consent.version})`
+                : ''}
+              .
+            </p>
+          ) : null}
           <div className="btn-row" style={{ marginTop: '1rem' }}>
+            <Link
+              className="btn btn-primary"
+              href={`/portal/entregas/${receipt.id}`}
+            >
+              Ver detalhes
+            </Link>
             <button
               type="button"
-              className="btn btn-primary"
+              className="btn btn-secondary"
               onClick={() => {
                 setReceipt(null);
                 setReceiptPreview((prev) => {
@@ -894,6 +928,25 @@ function PortalEntregasContent() {
           {coverage && coverage.needs.some((n) => n.status === 'DISPONIVEL') ? (
             <>
               <section className="portal-card">
+                <div className="notice notice--info" role="note">
+                  <p>
+                    A imagem facial sera registrada como evidencia da entrega.
+                  </p>
+                  <p className="table-sub">{FACIAL_EVIDENCE_CONSENT_TEXT}</p>
+                </div>
+                <label className="portal-need-select" style={{ margin: '0.75rem 0' }}>
+                  <input
+                    type="checkbox"
+                    checked={facialConsentAccepted}
+                    onChange={(e) =>
+                      setFacialConsentAccepted(e.target.checked)
+                    }
+                  />
+                  <span>
+                    Confirmo o registro da imagem facial como evidencia desta
+                    entrega.
+                  </span>
+                </label>
                 <FacialCapture
                   blob={facialBlob}
                   onCaptured={setFacialBlob}
@@ -919,9 +972,10 @@ function PortalEntregasContent() {
                   Voltar ao painel
                 </Link>
               </div>
-              {!facialBlob ? (
+              {!facialConsentAccepted || !facialBlob ? (
                 <p className="field-hint">
-                  A confirmacao exige captura facial obrigatoria.
+                  A confirmacao exige checkbox do aviso e captura facial
+                  obrigatoria.
                 </p>
               ) : null}
             </>
@@ -944,16 +998,19 @@ function PortalEntregasContent() {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th>Comprovante</th>
                   <th>Data</th>
                   <th>Trabalhador</th>
                   <th>Itens</th>
                   <th>Operador</th>
                   <th>Metodo</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {history.map((row) => (
                   <tr key={row.id}>
+                    <td className="mono">{row.receiptNumber}</td>
                     <td>{formatDateTime(row.deliveredAt)}</td>
                     <td>
                       <strong>{row.worker.name}</strong>
@@ -969,7 +1026,20 @@ function PortalEntregasContent() {
                         .join(', ')}
                     </td>
                     <td>{row.deliveredBy.name}</td>
-                    <td>{row.method}</td>
+                    <td>
+                      {row.method}
+                      {row.evidence?.statusLabel
+                        ? ` · ${row.evidence.statusLabel}`
+                        : ''}
+                    </td>
+                    <td>
+                      <Link
+                        className="btn btn-secondary btn-compact"
+                        href={`/portal/entregas/${row.id}`}
+                      >
+                        Ver comprovante
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
