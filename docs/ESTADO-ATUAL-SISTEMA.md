@@ -184,7 +184,7 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
-| Portal: entregas / ficha / biometria | **09.3:** retencao/exclusao segura de biometria; LGPD 09.2 + matching 09.1 preservados |
+| Portal: entregas / ficha / biometria | **09.3** + link de autoenrollment (trabalhador no celular; sem WhatsApp ainda) |
 | Portal: relatorios operacionais basicos | **08.1** — feito (consulta; sem PDF/export avancado; sem custo unitario ainda) |
 | Portal: custos / exportacoes ricas | Ainda nao |
 
@@ -201,6 +201,7 @@ Templates biometricos (`faceDescriptor`) ficam no banco como JSON sensivel — *
 - Referencias antigas so com foto -> status `NEEDS_REENROLLMENT`.
 - Entrega exige template ACTIVE + match aprovado (`verificationStatus=MATCHED`).
 - Preview de match: `POST /portal/trabalhadores/:id/facial-match` (sem expor template).
+- Autoenrollment (link 24h): `POST /workers/:id/facial-enrollment-link` + pagina publica `/enroll/facial/:token` (desbloqueio com 4 digitos do CPF). Sem envio WhatsApp nesta etapa.
 
 ### Pendencias LGPD / evidencia (documentadas)
 

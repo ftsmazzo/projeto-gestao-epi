@@ -20,7 +20,9 @@ import {
 } from '../lib/face-biometrics.client';
 import {
   fetchWorkerFacialReferenceBlob,
+  generateWorkerFacialEnrollmentLink,
   getWorkerBiometricConsent,
+  getWorkerFacialEnrollmentLink,
   getWorkerFacialReference,
   grantWorkerBiometricConsent,
   requestWorkerFacialReferenceDeletion,
@@ -28,6 +30,10 @@ import {
   revokeWorkerFacialReference,
   uploadWorkerFacialReference,
 } from '../lib/workers';
+import type {
+  WorkerFacialEnrollmentLinkGenerated,
+  WorkerFacialEnrollmentLinkStatusResponse,
+} from '@gestao-epi/shared';
 
 type Props = {
   workerId: string;
@@ -64,6 +70,11 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
     useState<WorkerBiometricConsentMeta | null>(null);
   const [consentAccepted, setConsentAccepted] = useState(false);
   const [revokeReason, setRevokeReason] = useState('');
+  const [enrollmentStatus, setEnrollmentStatus] =
+    useState<WorkerFacialEnrollmentLinkStatusResponse | null>(null);
+  const [generatedLink, setGeneratedLink] =
+    useState<WorkerFacialEnrollmentLinkGenerated | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [pendingBlob, setPendingBlob] = useState<Blob | null>(null);
   const [pendingPreview, setPendingPreview] = useState<string | null>(null);
@@ -129,6 +140,16 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       );
     } finally {
       setLoading(false);
+    }
+
+    try {
+      const enrollment = await getWorkerFacialEnrollmentLink(workerId);
+      setEnrollmentStatus(enrollment);
+      if (enrollment.status === 'CONSUMED') {
+        setGeneratedLink(null);
+      }
+    } catch {
+      setEnrollmentStatus(null);
     }
   }
 
@@ -449,6 +470,36 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
     }
   }
 
+  async function generateEnrollmentLink() {
+    setSaving(true);
+    setError(null);
+    setLinkCopied(false);
+    try {
+      const link = await generateWorkerFacialEnrollmentLink(workerId);
+      setGeneratedLink(link);
+      setDetectStatus('Link de cadastro facial gerado (valido por 24h).');
+      await reload();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao gerar link de cadastro facial.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function copyEnrollmentLink() {
+    if (!generatedLink?.url) return;
+    try {
+      await navigator.clipboard.writeText(generatedLink.url);
+      setLinkCopied(true);
+    } catch {
+      setError('Nao foi possivel copiar. Selecione o link manualmente.');
+    }
+  }
+
   async function revoke() {
     const ok = window.confirm(
       `Revogar a biometria facial de ${workerName}? Entregas ficarao bloqueadas ate novo cadastro.`,
@@ -513,6 +564,100 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
           e possivel cadastrar biometria nem entregar com facial.
         </p>
       </header>
+
+      {!loading ? (
+        <div
+          className="notice notice--info"
+          role="region"
+          aria-label="Link de cadastro facial"
+        >
+          <p className="face-ux__consent">
+            <strong>Link para o celular do trabalhador</strong> (valido 24h).
+            Ele confirma com os 4 ultimos digitos do CPF. Copie e envie
+            manualmente (WhatsApp/SMS).
+          </p>
+          {enrollmentStatus ? (
+            <p className="table-sub">
+              Status do link:{' '}
+              {enrollmentStatus.status === 'PENDING'
+                ? 'Aguardando uso'
+                : enrollmentStatus.status === 'CONSUMED'
+                  ? 'Utilizado com sucesso'
+                  : enrollmentStatus.status === 'EXPIRED'
+                    ? 'Expirado'
+                    : enrollmentStatus.status === 'REVOKED'
+                      ? 'Revogado'
+                      : 'Nao gerado'}
+              {enrollmentStatus.link?.expiresAt
+                ? ` · Expira ${new Date(enrollmentStatus.link.expiresAt).toLocaleString('pt-BR')}`
+                : ''}
+            </p>
+          ) : (
+            <p className="table-sub">
+              Gere um link para o trabalhador cadastrar a biometria sozinho.
+            </p>
+          )}
+          {generatedLink?.url ? (
+            <div className="field" style={{ marginTop: '0.5rem' }}>
+              <label htmlFor={`enroll-link-${workerId}`}>Link gerado</label>
+              <input
+                id={`enroll-link-${workerId}`}
+                readOnly
+                value={generatedLink.url}
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <div className="btn-row" style={{ marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void copyEnrollmentLink()}
+                >
+                  {linkCopied ? 'Copiado' : 'Copiar link'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className={`btn face-ux__btn-main ${
+              enrolled ? 'btn-muted' : 'btn-primary'
+            }`}
+            style={{ marginTop: '0.5rem' }}
+            onClick={() => void generateEnrollmentLink()}
+            disabled={
+              saving ||
+              enrolled ||
+              (enrollmentStatus != null && !enrollmentStatus.canGenerate) ||
+              phase === 'scanning' ||
+              phase === 'processing'
+            }
+            title={
+              enrolled
+                ? 'Biometria ja cadastrada. Revogue antes de gerar novo link.'
+                : undefined
+            }
+          >
+            {enrolled
+              ? 'Biometria valida — link indisponivel'
+              : enrollmentStatus?.status === 'PENDING' ||
+                  enrollmentStatus?.status === 'EXPIRED' ||
+                  enrollmentStatus?.status === 'REVOKED'
+                ? 'Gerar novo link'
+                : 'Gerar link de cadastro facial'}
+          </button>
+          {enrolled ? (
+            <p className="field-hint">
+              Para gerar um novo link, revogue a biometria atual primeiro.
+            </p>
+          ) : null}
+          {enrollmentStatus && !enrollmentStatus.canGenerate && !enrolled ? (
+            <p className="field-hint">
+              Informe o CPF do trabalhador (acima, neste formulario) e salve
+              antes de gerar o link.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {!engineReady ? (
         <p className="face-ux__hint" role="status">

@@ -4,7 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, WorkerStatus } from '@prisma/client';
+import { Prisma, WorkerFacialReferenceStatus, WorkerStatus } from '@prisma/client';
+import { isValidFaceDescriptor } from '@gestao-epi/shared';
 import { AuditService } from '../audit/audit.service';
 import { isValidCpf, stripCpf, cpfAuditMeta } from '../common/cpf';
 import { PrismaService } from '../prisma/prisma.service';
@@ -39,6 +40,12 @@ export class WorkersService {
             },
           },
         },
+        facialReferences: {
+          where: { status: WorkerFacialReferenceStatus.ACTIVE },
+          orderBy: { uploadedAt: 'desc' },
+          take: 1,
+          select: { faceDescriptor: true },
+        },
       },
     });
 
@@ -50,6 +57,11 @@ export class WorkersService {
       const requiredEpiNeeds = Array.from(needMap.entries())
         .map(([id, name]) => ({ id, name }))
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+
+      const activeFace = worker.facialReferences[0] ?? null;
+      const hasValidBiometrics = Boolean(
+        activeFace && isValidFaceDescriptor(activeFace.faceDescriptor),
+      );
 
       return {
         id: worker.id,
@@ -76,6 +88,7 @@ export class WorkersService {
           worker.clientJobFunction?.name ?? worker.role ?? null,
         requiredEpiCount: requiredEpiNeeds.length,
         requiredEpiNeeds,
+        hasValidBiometrics,
       };
     });
   }

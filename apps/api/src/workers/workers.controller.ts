@@ -29,6 +29,7 @@ import { WorkerImportService } from './worker-import.service';
 import { WorkerFacialReferenceService } from './worker-facial-reference.service';
 import { WorkerBiometricConsentService } from './worker-biometric-consent.service';
 import { BiometricRetentionService } from './biometric-retention.service';
+import { WorkerFacialEnrollmentService } from './worker-facial-enrollment.service';
 import { WorkersService } from './workers.service';
 import {
   GrantWorkerBiometricConsentDto,
@@ -44,6 +45,7 @@ export class WorkersController {
     private readonly facialReference: WorkerFacialReferenceService,
     private readonly biometricConsent: WorkerBiometricConsentService,
     private readonly biometricRetention: BiometricRetentionService,
+    private readonly facialEnrollment: WorkerFacialEnrollmentService,
   ) {}
 
   @Get('biometrics/retention/pending')
@@ -134,17 +136,31 @@ export class WorkersController {
   }
 
   @Post('served-clients/:servedClientId/workers')
-  create(
+  async create(
     @CurrentUser() user: JwtPayload,
     @Param('servedClientId') servedClientId: string,
     @Body() dto: CreateWorkerDto,
   ) {
-    return this.workers.create(
+    const worker = await this.workers.create(
       user.organizationId,
       user.sub,
       servedClientId,
       dto,
     );
+    let facialEnrollmentLink: Awaited<
+      ReturnType<WorkerFacialEnrollmentService['generate']>
+    > | null = null;
+    try {
+      facialEnrollmentLink = await this.facialEnrollment.generate(
+        user.organizationId,
+        user.sub,
+        worker.id,
+      );
+    } catch {
+      // Sem CPF ou outro bloqueio — cadastro segue; link pode ser gerado depois.
+      facialEnrollmentLink = null;
+    }
+    return { ...worker, facialEnrollmentLink };
   }
 
   @Get('workers/:id')
@@ -293,6 +309,26 @@ export class WorkersController {
       user.sub,
       id,
       referenceId,
+    );
+  }
+
+  @Get('workers/:id/facial-enrollment-link')
+  getFacialEnrollmentLink(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.facialEnrollment.getLatestStatus(user.organizationId, id);
+  }
+
+  @Post('workers/:id/facial-enrollment-link')
+  generateFacialEnrollmentLink(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.facialEnrollment.generate(
+      user.organizationId,
+      user.sub,
+      id,
     );
   }
 }

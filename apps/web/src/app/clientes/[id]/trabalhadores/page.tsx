@@ -6,6 +6,7 @@ import type {
   ClientSector,
   JobFunctionEpiRequirement,
   OperationalUnit,
+  WorkerFacialEnrollmentLinkGenerated,
   WorkerImportPreviewResponse,
   WorkerListItem,
 } from '@gestao-epi/shared';
@@ -23,6 +24,7 @@ import {
   confirmWorkerCsvImport,
   createWorker,
   downloadCsvText,
+  generateWorkerFacialEnrollmentLink,
   getClientLifeSummary,
   getWorkerCsvTemplate,
   listWorkers,
@@ -78,6 +80,12 @@ export default function ClienteTrabalhadoresPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [createdEnrollmentLink, setCreatedEnrollmentLink] =
+    useState<WorkerFacialEnrollmentLinkGenerated | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const [generatingLinkFor, setGeneratingLinkFor] = useState<string | null>(
+    null,
+  );
   const [formError, setFormError] = useState<string | null>(null);
   const [mode, setMode] = useState<FormMode>('closed');
   const [panel, setPanel] = useState<PanelMode>('list');
@@ -318,7 +326,7 @@ export default function ClienteTrabalhadoresPage() {
     };
     try {
       if (mode === 'create') {
-        await createWorker(clientId, {
+        const created = await createWorker(clientId, {
           ...payload,
           cpf: payload.cpf ?? undefined,
           registration: payload.registration ?? undefined,
@@ -328,8 +336,11 @@ export default function ClienteTrabalhadoresPage() {
           admissionDate: payload.admissionDate ?? undefined,
           notes: payload.notes ?? undefined,
         });
+        setCreatedEnrollmentLink(created.facialEnrollmentLink);
+        setLinkCopied(false);
       } else if (mode === 'edit' && editingId) {
         await updateWorker(editingId, payload);
+        setCreatedEnrollmentLink(null);
       }
       closeForm();
       await load();
@@ -339,6 +350,35 @@ export default function ClienteTrabalhadoresPage() {
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function generateLinkFromList(worker: WorkerListItem) {
+    setError(null);
+    if (worker.hasValidBiometrics) {
+      setError(
+        'Este trabalhador ja possui biometria valida. Revogue a biometria em Editar antes de gerar um novo link.',
+      );
+      return;
+    }
+    setGeneratingLinkFor(worker.id);
+    setLinkCopied(false);
+    try {
+      if (!worker.cpf || stripCpf(worker.cpf).length < 4) {
+        throw new Error(
+          'Informe o CPF do trabalhador (Editar) antes de gerar o link.',
+        );
+      }
+      const link = await generateWorkerFacialEnrollmentLink(worker.id);
+      setCreatedEnrollmentLink(link);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel gerar o link facial.',
+      );
+    } finally {
+      setGeneratingLinkFor(null);
     }
   }
 
@@ -827,6 +867,51 @@ export default function ClienteTrabalhadoresPage() {
         </section>
       ) : null}
 
+      {createdEnrollmentLink ? (
+        <section
+          className="notice notice--info enroll-link-banner"
+          role="status"
+        >
+          <p>
+            <strong>Link de cadastro facial gerado</strong> (valido 24h). O
+            trabalhador usara os 4 ultimos digitos do CPF.
+          </p>
+          <div className="field">
+            <label htmlFor="created-enroll-link">Copie e envie ao trabalhador</label>
+            <input
+              id="created-enroll-link"
+              readOnly
+              value={createdEnrollmentLink.url}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+          </div>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                void navigator.clipboard
+                  .writeText(createdEnrollmentLink.url)
+                  .then(() => setLinkCopied(true))
+                  .catch(() => setError('Nao foi possivel copiar o link.'));
+              }}
+            >
+              {linkCopied ? 'Copiado' : 'Copiar link'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setCreatedEnrollmentLink(null);
+                setLinkCopied(false);
+              }}
+            >
+              Fechar
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       {panel === 'list' ? (
         <section className="surface" aria-labelledby="workers-list-title">
           <div className="form-section-header">
@@ -932,11 +1017,47 @@ export default function ClienteTrabalhadoresPage() {
                       >
                         {worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
                       </span>
+                      <span
+                        className={`status-pill ${
+                          worker.hasValidBiometrics
+                            ? 'status-pill--active'
+                            : 'status-pill--inactive'
+                        }`}
+                        style={{ marginTop: '0.35rem', marginLeft: '0.35rem' }}
+                      >
+                        {worker.hasValidBiometrics
+                          ? 'Biometria ok'
+                          : 'Sem biometria'}
+                      </span>
                     </div>
                     <div className="stack-card__actions">
                       <button
                         type="button"
-                        className="btn btn-primary"
+                        className={`btn ${
+                          worker.hasValidBiometrics
+                            ? 'btn-muted'
+                            : 'btn-primary'
+                        }`}
+                        onClick={() => void generateLinkFromList(worker)}
+                        disabled={
+                          worker.hasValidBiometrics ||
+                          generatingLinkFor === worker.id
+                        }
+                        title={
+                          worker.hasValidBiometrics
+                            ? 'Biometria ja cadastrada. Revogue antes de gerar novo link.'
+                            : 'Gera link de 24h para o trabalhador cadastrar no celular'
+                        }
+                      >
+                        {worker.hasValidBiometrics
+                          ? 'Biometria valida'
+                          : generatingLinkFor === worker.id
+                            ? 'Gerando link...'
+                            : 'Gerar link facial'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
                         onClick={() => openEdit(worker)}
                       >
                         Editar / biometria

@@ -112,6 +112,8 @@ export interface WorkerListItem extends Worker {
   jobFunctionName: string | null;
   requiredEpiCount: number;
   requiredEpiNeeds: Array<{ id: string; name: string }>;
+  /** Biometria ACTIVE com template — nao precisa gerar link de cadastro. */
+  hasValidBiometrics: boolean;
 }
 
 export type WorkerImportRowAction = 'create' | 'update';
@@ -1457,6 +1459,56 @@ export type WorkerFacialReferenceStatus =
   | 'REVOKED'
   | 'MISSING'
   | 'NEEDS_REENROLLMENT';
+
+export type WorkerFacialEnrollmentLinkStatus =
+  | 'PENDING'
+  | 'EXPIRED'
+  | 'CONSUMED'
+  | 'REVOKED'
+  | 'MISSING';
+
+export interface WorkerFacialEnrollmentLinkGenerated {
+  id: string;
+  workerId: string;
+  workerName: string;
+  status: 'PENDING';
+  url: string;
+  expiresAt: string;
+  createdAt: string;
+  requiresCpfLast4: boolean;
+  notice: string;
+}
+
+export interface WorkerFacialEnrollmentLinkStatusResponse {
+  workerId: string;
+  workerName: string;
+  hasCpf: boolean;
+  status: WorkerFacialEnrollmentLinkStatus;
+  link: {
+    id: string;
+    status: WorkerFacialEnrollmentLinkStatus;
+    expiresAt: string;
+    consumedAt: string | null;
+    revokedAt: string | null;
+    createdAt: string;
+  } | null;
+  canGenerate: boolean;
+}
+
+export interface PublicFacialEnrollmentUnlockResponse {
+  workerFirstName: string;
+  expiresAt: string;
+  consentText: string;
+  consentVersion: string;
+  notice: string;
+}
+
+export interface PublicFacialEnrollmentCompleteResponse {
+  ok: true;
+  workerFirstName: string;
+  message: string;
+  completedAt: string;
+}
 
 export interface WorkerFacialReferenceMeta {
   workerId: string;

@@ -2,7 +2,10 @@ import type {
   BiometricRetentionPendingResponse,
   BiometricRetentionRunResult,
   ClientLifeSummary,
+  Worker,
   WorkerBiometricConsentMeta,
+  WorkerFacialEnrollmentLinkGenerated,
+  WorkerFacialEnrollmentLinkStatusResponse,
   WorkerFacialReferenceMeta,
   WorkerImportConfirmResponse,
   WorkerImportConfirmRowInput,
@@ -29,6 +32,10 @@ export type WorkerInput = {
   notes?: string | null;
 };
 
+export type WorkerCreateResponse = Worker & {
+  facialEnrollmentLink: WorkerFacialEnrollmentLinkGenerated | null;
+};
+
 export function listWorkers(servedClientId: string) {
   return apiFetch<WorkerListItem[]>(
     `/served-clients/${servedClientId}/workers`,
@@ -46,7 +53,7 @@ export function getWorker(id: string) {
 }
 
 export function createWorker(servedClientId: string, input: WorkerInput) {
-  return apiFetch<WorkerListItem>(
+  return apiFetch<WorkerCreateResponse>(
     `/served-clients/${servedClientId}/workers`,
     {
       method: 'POST',
@@ -219,6 +226,19 @@ export function runBiometricRetention() {
   return apiFetch<BiometricRetentionRunResult>('/biometrics/retention/run', {
     method: 'POST',
   });
+}
+
+export function getWorkerFacialEnrollmentLink(workerId: string) {
+  return apiFetch<WorkerFacialEnrollmentLinkStatusResponse>(
+    `/workers/${workerId}/facial-enrollment-link`,
+  );
+}
+
+export function generateWorkerFacialEnrollmentLink(workerId: string) {
+  return apiFetch<WorkerFacialEnrollmentLinkGenerated>(
+    `/workers/${workerId}/facial-enrollment-link`,
+    { method: 'POST' },
+  );
 }
 
 /** Blob autenticado da referencia facial (Consultoria). */

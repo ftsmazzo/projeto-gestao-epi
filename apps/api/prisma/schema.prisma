@@ -102,6 +102,7 @@ model Organization {
   epiDeliveryReturns EpiDeliveryReturn[]
   workerFacialReferences WorkerFacialReference[]
   workerBiometricConsents WorkerBiometricConsent[]
+  workerFacialEnrollmentLinks WorkerFacialEnrollmentLink[]
 }
 
 model User {
@@ -126,6 +127,7 @@ model User {
   biometricConsentsCreated WorkerBiometricConsent[] @relation("WorkerBiometricConsentCreatedBy")
   biometricConsentsUpdated WorkerBiometricConsent[] @relation("WorkerBiometricConsentUpdatedBy")
   deliveryEvidencesDeleted DeliveryEvidence[] @relation("DeliveryEvidenceDeletedBy")
+  facialEnrollmentLinksCreated WorkerFacialEnrollmentLink[] @relation("WorkerFacialEnrollmentLinkCreatedBy")
 }
 
 model Membership {
@@ -169,6 +171,7 @@ model ServedClient {
   epiDeliveryReturns EpiDeliveryReturn[]
   workerFacialReferences WorkerFacialReference[]
   workerBiometricConsents WorkerBiometricConsent[]
+  workerFacialEnrollmentLinks WorkerFacialEnrollmentLink[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -416,6 +419,7 @@ model Worker {
   deliveries        EpiDelivery[]
   facialReferences  WorkerFacialReference[]
   biometricConsents WorkerBiometricConsent[]
+  facialEnrollmentLinks WorkerFacialEnrollmentLink[]
 
   @@unique([organizationId, cpf])
   @@unique([servedClientId, registration])
@@ -814,6 +818,35 @@ enum WorkerBiometricDeletionStatus {
   PENDING
   DELETED
   FAILED
+}
+
+/// Link temporario (24h) para o trabalhador cadastrar biometria facial no celular.
+/// Token em claro so e devolvido na geracao; no banco fica apenas o hash.
+model WorkerFacialEnrollmentLink {
+  id              String    @id @default(cuid())
+  organizationId  String
+  servedClientId  String
+  workerId        String
+  /// SHA-256 hex do token opaco da URL.
+  tokenHash       String    @unique
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  revokedAt       DateTime?
+  failedAttempts  Int       @default(0)
+  createdByUserId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient  ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  worker        Worker       @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  createdByUser User?        @relation("WorkerFacialEnrollmentLinkCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([workerId])
+  @@index([expiresAt])
+  @@index([consumedAt])
 }
 
 /// Consentimento LGPD biométrico do trabalhador (Consultoria).
