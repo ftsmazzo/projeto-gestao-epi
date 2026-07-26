@@ -11,6 +11,8 @@ import { isValidCpf, stripCpf, cpfAuditMeta } from '../common/cpf';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateWorkerDto } from './dto/create-worker.dto';
 import type { UpdateWorkerDto } from './dto/update-worker.dto';
+import { resolveWorkerFaceReferenceAbsolutePath } from './worker-face-reference.storage';
+import { existsSync } from 'fs';
 
 @Injectable()
 export class WorkersService {
@@ -44,7 +46,7 @@ export class WorkersService {
           where: { status: WorkerFacialReferenceStatus.ACTIVE },
           orderBy: { uploadedAt: 'desc' },
           take: 1,
-          select: { faceDescriptor: true },
+          select: { faceDescriptor: true, filePath: true },
         },
       },
     });
@@ -60,7 +62,11 @@ export class WorkersService {
 
       const activeFace = worker.facialReferences[0] ?? null;
       const hasValidBiometrics = Boolean(
-        activeFace && isValidFaceDescriptor(activeFace.faceDescriptor),
+        activeFace?.filePath &&
+          isValidFaceDescriptor(activeFace.faceDescriptor) &&
+          existsSync(
+            resolveWorkerFaceReferenceAbsolutePath(activeFace.filePath),
+          ),
       );
 
       return {

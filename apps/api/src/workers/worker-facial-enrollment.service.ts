@@ -5,6 +5,11 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
+import { existsSync } from 'fs';
+import {
+  WorkerBiometricDeletionStatus,
+  WorkerFacialReferenceStatus,
+} from '@prisma/client';
 import {
   WORKER_BIOMETRIC_CONSENT_TEXT,
   WORKER_BIOMETRIC_CONSENT_VERSION,
@@ -14,6 +19,7 @@ import { AuditService } from '../audit/audit.service';
 import { stripCpf } from '../common/cpf';
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkerBiometricConsentService } from './worker-biometric-consent.service';
+import { resolveWorkerFaceReferenceAbsolutePath } from './worker-face-reference.storage';
 import { WorkerFacialReferenceService } from './worker-facial-reference.service';
 
 const LINK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -76,14 +82,32 @@ export class WorkerFacialEnrollmentService {
       where: {
         organizationId,
         workerId: worker.id,
-        status: 'ACTIVE',
+        status: WorkerFacialReferenceStatus.ACTIVE,
       },
-      select: { faceDescriptor: true },
+      select: { id: true, faceDescriptor: true, filePath: true },
     });
-    if (activeFace && isValidFaceDescriptor(activeFace.faceDescriptor)) {
+    const hasCompleteBiometrics = Boolean(
+      activeFace?.filePath &&
+        isValidFaceDescriptor(activeFace.faceDescriptor) &&
+        existsSync(
+          resolveWorkerFaceReferenceAbsolutePath(activeFace.filePath),
+        ),
+    );
+    if (hasCompleteBiometrics) {
       throw new BadRequestException(
         'Trabalhador ja possui biometria valida. Revogue a biometria atual antes de gerar um novo link.',
       );
+    }
+    // Referencia ACTIVE quebrada (sem arquivo fisico): revoga para liberar novo cadastro.
+    if (activeFace) {
+      await this.prisma.workerFacialReference.update({
+        where: { id: activeFace.id },
+        data: {
+          status: WorkerFacialReferenceStatus.REVOKED,
+          revokedAt: new Date(),
+          deletionStatus: WorkerBiometricDeletionStatus.PENDING,
+        },
+      });
     }
 
     const now = new Date();

@@ -118,6 +118,11 @@ export class WorkerFacialReferenceService {
         isValidFaceDescriptor(active.faceDescriptor),
     );
 
+    const fileExistsOnDisk = Boolean(
+      active?.filePath &&
+        existsSync(resolveWorkerFaceReferenceAbsolutePath(active.filePath)),
+    );
+
     const status = active
       ? ('ACTIVE' as const)
       : needsReenroll
@@ -136,19 +141,23 @@ export class WorkerFacialReferenceService {
             | 'FAILED')
         : ('NONE' as const);
     const hasFile = Boolean(
-      active?.filePath ||
-        (refRow &&
-          'filePath' in refRow &&
-          refRow.filePath &&
-          deletionStatus !== 'DELETED'),
+      active
+        ? fileExistsOnDisk
+        : refRow &&
+            'filePath' in refRow &&
+            refRow.filePath &&
+            deletionStatus !== 'DELETED',
     );
 
     return {
       workerId: worker.id,
       workerName: worker.name,
-      hasActiveReference: Boolean(active),
-      hasBiometricTemplate: hasDescriptor,
-      status,
+      hasActiveReference: Boolean(active) && fileExistsOnDisk,
+      hasBiometricTemplate: hasDescriptor && fileExistsOnDisk,
+      status:
+        active && !fileExistsOnDisk
+          ? ('NEEDS_REENROLLMENT' as const)
+          : status,
       reference: refRow
         ? {
             id: refRow.id,
@@ -167,7 +176,7 @@ export class WorkerFacialReferenceService {
             faceEngineVersion: active?.faceEngineVersion ?? null,
             qualityScore: active?.qualityScore ?? null,
             imagePath:
-              active && active.filePath
+              active && fileExistsOnDisk
                 ? `/workers/${worker.id}/facial-reference/image`
                 : null,
             deletionStatus,
@@ -183,10 +192,12 @@ export class WorkerFacialReferenceService {
                 : null,
             hasFile,
             canRequestDeletion:
-              !active &&
+              !fileExistsOnDisk &&
               deletionStatus !== 'PENDING' &&
               deletionStatus !== 'DELETED' &&
-              (status === 'REVOKED' || status === 'NEEDS_REENROLLMENT'),
+              (status === 'REVOKED' ||
+                status === 'NEEDS_REENROLLMENT' ||
+                Boolean(active)),
           }
         : null,
       notice:

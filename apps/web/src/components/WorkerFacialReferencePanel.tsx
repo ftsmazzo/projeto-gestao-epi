@@ -126,9 +126,16 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
-      if (next.hasActiveReference) {
-        const blob = await fetchWorkerFacialReferenceBlob(workerId);
-        setPreviewUrl(URL.createObjectURL(blob));
+      if (next.hasActiveReference && next.reference?.imagePath) {
+        try {
+          const blob = await fetchWorkerFacialReferenceBlob(workerId);
+          setPreviewUrl(URL.createObjectURL(blob));
+        } catch {
+          // Meta/consent/revogacao continuam disponiveis mesmo sem preview.
+          setDetectStatus(
+            'Biometria cadastrada, mas a imagem de referencia nao foi encontrada no storage. Revogue e gere um novo link ou recadastre.',
+          );
+        }
       }
     } catch (err) {
       setMeta(null);
@@ -528,6 +535,12 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
   const needsReenrollment =
     meta?.status === 'NEEDS_REENROLLMENT' ||
     (meta?.status === 'ACTIVE' && !meta.hasBiometricTemplate);
+  const canRevokeFacial =
+    Boolean(meta?.reference?.id) &&
+    (meta?.hasActiveReference ||
+      meta?.status === 'NEEDS_REENROLLMENT' ||
+      meta?.reference?.status === 'ACTIVE' ||
+      meta?.reference?.status === 'NEEDS_REENROLLMENT');
 
   const statusLabel = enrolled
     ? 'Biometria cadastrada'
@@ -576,6 +589,12 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
             Ele confirma com os 4 ultimos digitos do CPF. Copie e envie
             manualmente (WhatsApp/SMS).
           </p>
+          {needsReenrollment ? (
+            <p className="notice notice--warn" role="status">
+              Biometria incompleta ou arquivo ausente. Revogue abaixo e gere um
+              novo link (ou recadastre).
+            </p>
+          ) : null}
           {enrollmentStatus ? (
             <p className="table-sub">
               Status do link:{' '}
@@ -617,34 +636,47 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
               </div>
             </div>
           ) : null}
-          <button
-            type="button"
-            className={`btn face-ux__btn-main ${
-              enrolled ? 'btn-muted' : 'btn-primary'
-            }`}
-            style={{ marginTop: '0.5rem' }}
-            onClick={() => void generateEnrollmentLink()}
-            disabled={
-              saving ||
-              enrolled ||
-              (enrollmentStatus != null && !enrollmentStatus.canGenerate) ||
-              phase === 'scanning' ||
-              phase === 'processing'
-            }
-            title={
-              enrolled
-                ? 'Biometria ja cadastrada. Revogue antes de gerar novo link.'
-                : undefined
-            }
-          >
-            {enrolled
-              ? 'Biometria valida — link indisponivel'
-              : enrollmentStatus?.status === 'PENDING' ||
-                  enrollmentStatus?.status === 'EXPIRED' ||
-                  enrollmentStatus?.status === 'REVOKED'
-                ? 'Gerar novo link'
-                : 'Gerar link de cadastro facial'}
-          </button>
+          <div className="btn-row" style={{ marginTop: '0.65rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={`btn face-ux__btn-main ${
+                enrolled ? 'btn-muted' : 'btn-primary'
+              }`}
+              onClick={() => void generateEnrollmentLink()}
+              disabled={
+                saving ||
+                enrolled ||
+                (enrollmentStatus != null && !enrollmentStatus.canGenerate) ||
+                phase === 'scanning' ||
+                phase === 'processing'
+              }
+              title={
+                enrolled
+                  ? 'Biometria ja cadastrada. Revogue antes de gerar novo link.'
+                  : undefined
+              }
+            >
+              {enrolled
+                ? 'Biometria valida — link indisponivel'
+                : enrollmentStatus?.status === 'PENDING' ||
+                    enrollmentStatus?.status === 'EXPIRED' ||
+                    enrollmentStatus?.status === 'REVOKED'
+                  ? 'Gerar novo link'
+                  : 'Gerar link de cadastro facial'}
+            </button>
+            {canRevokeFacial ? (
+              <button
+                type="button"
+                className="btn btn-secondary face-ux__btn-main"
+                onClick={() => void revoke()}
+                disabled={
+                  saving || phase === 'scanning' || phase === 'processing'
+                }
+              >
+                Revogar biometria (desbloquear)
+              </button>
+            ) : null}
+          </div>
           {enrolled ? (
             <p className="field-hint">
               Para gerar um novo link, revogue a biometria atual primeiro.
@@ -950,7 +982,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
           </>
         ) : null}
 
-        {meta?.hasActiveReference || meta?.status === 'NEEDS_REENROLLMENT' ? (
+        {canRevokeFacial ? (
           <button
             type="button"
             className="btn btn-secondary face-ux__btn-main"
