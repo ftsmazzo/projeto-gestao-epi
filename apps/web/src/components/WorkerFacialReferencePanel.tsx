@@ -122,18 +122,24 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       setMeta(next);
       setConsentMeta(consent);
       setConsentAccepted(consent.status === 'GRANTED');
-      setPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return null;
-      });
+      setPreviewUrl(null);
       if (next.hasActiveReference && next.reference?.imagePath) {
         try {
           const blob = await fetchWorkerFacialReferenceBlob(workerId);
-          setPreviewUrl(URL.createObjectURL(blob));
+          const dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              if (typeof reader.result === 'string') resolve(reader.result);
+              else reject(new Error('Falha ao converter imagem.'));
+            };
+            reader.onerror = () => reject(new Error('Falha ao ler imagem.'));
+            reader.readAsDataURL(blob);
+          });
+          setPreviewUrl(dataUrl);
         } catch {
           // Meta/consent/revogacao continuam disponiveis mesmo sem preview.
           setDetectStatus(
-            'Biometria cadastrada, mas a imagem de referencia nao foi encontrada no storage. Revogue e gere um novo link ou recadastre.',
+            'Biometria cadastrada, mas a imagem de referencia nao foi encontrada no storage. Verifique WORKER_FACE_REFERENCE_DIR (volume persistente) ou recadastre a foto.',
           );
         }
       }
@@ -175,11 +181,11 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
     return () => {
       stopCamera();
       setPreviewUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
+        if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
         return null;
       });
       setPendingPreview((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
+        if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev);
         return null;
       });
     };

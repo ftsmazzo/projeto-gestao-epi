@@ -43,6 +43,19 @@ async function bootstrap() {
 
   await app.listen(port, host);
   console.log(`API listening on http://${host}:${port}`);
+  try {
+    const { getWorkerFaceReferenceRoot } = await import(
+      './workers/worker-face-reference.storage'
+    );
+    const { getDeliveryEvidenceRoot } = await import(
+      './portal/facial-evidence.storage'
+    );
+    console.log(
+      `[biometric-storage] references=${getWorkerFaceReferenceRoot()} evidence=${getDeliveryEvidenceRoot()}`,
+    );
+  } catch (err) {
+    console.warn('[biometric-storage] falha ao resolver raizes', err);
+  }
 }
 
 void bootstrap();

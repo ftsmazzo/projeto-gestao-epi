@@ -1,34 +1,89 @@
-import { existsSync } from 'fs';
-import { isAbsolute, join } from 'path';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'fs';
+import { dirname, isAbsolute, join } from 'path';
+
+export type ApiFilesSubdir = 'worker-face-references' | 'delivery-evidence';
 
 /**
- * Resolve raiz local de arquivos da API de forma estavel.
- * Preferencia: env absoluta/relativa → pasta ja existente → apps/api/files/{subdir}.
+ * Sobe diretorios a partir deste modulo ate achar o package @gestao-epi/api.
+ * Funciona em dist/workers e em src/workers.
  */
-export function resolveApiFilesRoot(
-  subdir: 'worker-face-references' | 'delivery-evidence',
-  envValue?: string | null,
-): string {
-  const fromEnv = envValue?.trim();
-  if (fromEnv) {
-    return isAbsolute(fromEnv) ? fromEnv : join(process.cwd(), fromEnv);
+export function findApiPackageRoot(): string {
+  let dir = __dirname;
+  for (let i = 0; i < 8; i += 1) {
+    const pkgPath = join(dir, 'package.json');
+    if (existsSync(pkgPath)) {
+      try {
+        const raw = readFileSync(pkgPath, 'utf8');
+        const pkg = JSON.parse(raw) as { name?: string };
+        if (pkg.name === '@gestao-epi/api') {
+          return dir;
+        }
+      } catch {
+        // continua subindo
+      }
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
+  return process.cwd();
+}
 
-  const candidates = [
-    // Nest build: dist/workers|dist/portal → apps/api/files/...
-    join(__dirname, '..', '..', 'files', subdir),
-    // Execucao via ts-node a partir de src/...
-    join(__dirname, '..', '..', '..', 'files', subdir),
+function envRoot(envValue?: string | null): string | null {
+  const fromEnv = envValue?.trim();
+  if (!fromEnv) return null;
+  return isAbsolute(fromEnv) ? fromEnv : join(process.cwd(), fromEnv);
+}
+
+/**
+ * Lista de raizes candidatas (primaria primeiro) para achar arquivos legados.
+ */
+export function listApiFilesRootCandidates(
+  subdir: ApiFilesSubdir,
+  envValue?: string | null,
+): string[] {
+  const apiRoot = findApiPackageRoot();
+  const list = [
+    envRoot(envValue),
+    join(apiRoot, 'files', subdir),
     join(process.cwd(), 'files', subdir),
     join(process.cwd(), 'apps', 'api', 'files', subdir),
-  ];
+    join('/app', 'files', subdir),
+    join('/data', 'files', subdir),
+  ].filter((v): v is string => Boolean(v));
+
+  return [...new Set(list)];
+}
+
+/**
+ * Resolve raiz canonica de escrita.
+ * Preferencia: env → pasta legada com conteudo → apps/api/files/{subdir}.
+ */
+export function resolveApiFilesRoot(
+  subdir: ApiFilesSubdir,
+  envValue?: string | null,
+): string {
+  const fromEnv = envRoot(envValue);
+  if (fromEnv) {
+    mkdirSync(fromEnv, { recursive: true });
+    return fromEnv;
+  }
+
+  const preferred = join(findApiPackageRoot(), 'files', subdir);
+  const candidates = listApiFilesRootCandidates(subdir, envValue);
 
   for (const candidate of candidates) {
-    if (existsSync(candidate)) {
-      return candidate;
+    if (!existsSync(candidate)) continue;
+    try {
+      if (readdirSync(candidate).length > 0) {
+        mkdirSync(candidate, { recursive: true });
+        return candidate;
+      }
+    } catch {
+      // ignore
     }
   }
 
-  // Default estavel relativo ao pacote compilado (apps/api/files/...).
-  return join(__dirname, '..', '..', 'files', subdir);
+  mkdirSync(preferred, { recursive: true });
+  return preferred;
 }

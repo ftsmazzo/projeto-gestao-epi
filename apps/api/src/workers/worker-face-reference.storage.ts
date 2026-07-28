@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from 'crypto';
+import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { resolveApiFilesRoot } from './api-files-root';
+import {
+  listApiFilesRootCandidates,
+  resolveApiFilesRoot,
+} from './api-files-root';
 import { resolveInsideRoot } from './biometric-storage-path';
 
 /**
@@ -49,6 +53,12 @@ export async function saveWorkerFaceReferenceFile(input: {
   const absolutePath = join(dir, fileName);
   await writeFile(absolutePath, input.buffer);
 
+  if (!existsSync(absolutePath)) {
+    throw new Error(
+      'Falha critica: foto de referencia facial nao persistiu no storage.',
+    );
+  }
+
   const relativePath = `${input.organizationId}/${fileName}`;
 
   return {
@@ -60,9 +70,21 @@ export async function saveWorkerFaceReferenceFile(input: {
   };
 }
 
-/** Resolve caminho absoluto a partir do filePath gravado (sem path traversal). */
+/** Resolve caminho absoluto; procura em raizes candidatas (legado). */
 export function resolveWorkerFaceReferenceAbsolutePath(
   relativePath: string,
 ): string {
+  const candidates = listApiFilesRootCandidates(
+    'worker-face-references',
+    process.env.WORKER_FACE_REFERENCE_DIR,
+  );
+  for (const root of candidates) {
+    try {
+      const absolute = resolveInsideRoot(root, relativePath);
+      if (existsSync(absolute)) return absolute;
+    } catch {
+      // path invalido neste root
+    }
+  }
   return resolveInsideRoot(getWorkerFaceReferenceRoot(), relativePath);
 }

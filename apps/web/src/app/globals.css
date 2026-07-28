@@ -2839,42 +2839,89 @@ a.btn-danger:hover {
 }
 
 @media print {
-  .no-print,
-  .epi-doc-toolbar,
-  .portal-shell-nav,
-  .ops-shell-nav,
-  header.portal-shell-header,
-  .portal-bottom-nav,
-  .portal-drawer,
-  .portal-drawer-backdrop,
-  .portal-menu-toggle {
-    display: none !important;
+  @page {
+    margin: 12mm;
   }
 
-  .epi-doc-wrap {
-    max-width: none;
-  }
-
-  .epi-doc {
-    border: none;
-    box-shadow: none;
-    padding: 0;
-  }
-
-  .epi-doc__section,
-  .epi-doc__section--split {
-    break-inside: avoid;
-  }
-
-  .portal-evidence-thumb__img {
-    max-width: 120px;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
+  html,
   body {
     background: #fff !important;
     color: #000 !important;
+  }
+
+  /* Esconde navegacao / chrome das shells (Consultoria + Portal) */
+  .no-print,
+  .epi-doc-toolbar,
+  .skip-link,
+  .ops-topbar,
+  .ops-sidebar,
+  .ops-backdrop,
+  .ops-menu-toggle,
+  .ops-nav,
+  .portal-topbar,
+  .portal-nav,
+  .portal-nav--desktop,
+  .portal-drawer,
+  .portal-drawer-backdrop,
+  .portal-bottom-nav,
+  .portal-menu-toggle,
+  .portal-logout-desktop,
+  .portal-user,
+  .client-workspace-nav,
+  .btn-row,
+  .portal-modal {
+    display: none !important;
+  }
+
+  .ops-shell,
+  .ops-body,
+  .portal-shell,
+  .portal-shell--authed {
+    display: block !important;
+    min-height: 0 !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  .ops-main,
+  .portal-main,
+  .client-workspace-main,
+  .portal-home {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .epi-doc-wrap {
+    max-width: none !important;
+    margin: 0 !important;
+  }
+
+  .epi-doc {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  .epi-doc__section,
+  .epi-doc__section--split,
+  .portal-epi-sheet__delivery {
+    break-inside: avoid;
+  }
+
+  .portal-evidence-thumb__img,
+  .epi-doc .portal-evidence-thumb__img,
+  img {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .portal-evidence-thumb__img {
+    max-width: 120px !important;
   }
 }
 
@@ -2990,39 +3037,6 @@ a.btn-danger:hover {
 
 .portal-modal__panel--wide {
   width: min(720px, 100%);
-}
-
-@media print {
-  .no-print,
-  .portal-shell-nav,
-  .ops-shell-nav,
-  header.portal-shell-header,
-  .portal-bottom-nav,
-  .portal-drawer,
-  .portal-drawer-backdrop,
-  .portal-menu-toggle,
-  .btn-row.portal-receipt__actions {
-    display: none !important;
-  }
-
-  .portal-receipt {
-    max-width: none;
-  }
-
-  .portal-receipt__block {
-    break-inside: avoid;
-  }
-
-  .portal-evidence-thumb__img {
-    max-width: 160px;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
-
-  body {
-    background: #fff !important;
-    color: #000 !important;
-  }
 }
 
 .data-table tr.is-selected-row td {

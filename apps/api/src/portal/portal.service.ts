@@ -1788,7 +1788,8 @@ export class PortalService {
               hasFile: Boolean(
                 facial.filePath &&
                   facial.deletionStatus !==
-                    WorkerBiometricDeletionStatus.DELETED,
+                    WorkerBiometricDeletionStatus.DELETED &&
+                  existsSync(resolveEvidenceAbsolutePath(facial.filePath)),
               ),
               fileRemovedByRetention:
                 facial.deletionStatus ===
@@ -2087,7 +2088,8 @@ export class PortalService {
             hasFile: Boolean(
               facial.filePath &&
                 facial.deletionStatus !==
-                  WorkerBiometricDeletionStatus.DELETED,
+                  WorkerBiometricDeletionStatus.DELETED &&
+                existsSync(resolveEvidenceAbsolutePath(facial.filePath)),
             ),
             deletionStatus: facial.deletionStatus as
               | 'NONE'
@@ -2920,8 +2922,15 @@ export class PortalService {
       );
     }
 
+    const absolutePath = resolveEvidenceAbsolutePath(evidence.filePath);
+    if (!existsSync(absolutePath)) {
+      throw new NotFoundException(
+        'Arquivo de evidencia facial nao encontrado no storage. Verifique o volume DELIVERY_EVIDENCE_DIR.',
+      );
+    }
+
     return {
-      absolutePath: resolveEvidenceAbsolutePath(evidence.filePath),
+      absolutePath,
       mimeType: evidence.mimeType ?? 'image/jpeg',
     };
   }

@@ -1,7 +1,11 @@
 import { createHash, randomUUID } from 'crypto';
+import { existsSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { resolveApiFilesRoot } from '../workers/api-files-root';
+import {
+  listApiFilesRootCandidates,
+  resolveApiFilesRoot,
+} from '../workers/api-files-root';
 import { resolveInsideRoot } from '../workers/biometric-storage-path';
 
 /**
@@ -27,6 +31,14 @@ export type SavedFacialEvidence = {
   mimeType: string;
   byteSize: number;
 };
+
+function normalizeEvidenceRelativePath(relativePath: string): string {
+  let safe = relativePath.replace(/\\/g, '/');
+  if (safe.startsWith('delivery-evidence/')) {
+    safe = safe.slice('delivery-evidence/'.length);
+  }
+  return safe;
+}
 
 /**
  * Persiste captura facial em storage local privado da API.
@@ -54,6 +66,12 @@ export async function saveFacialEvidenceFile(input: {
   const absolutePath = join(dir, fileName);
   await writeFile(absolutePath, input.buffer);
 
+  if (!existsSync(absolutePath)) {
+    throw new Error(
+      'Falha critica: evidencia facial da entrega nao persistiu no storage.',
+    );
+  }
+
   const relativePath = `${input.organizationId}/${fileName}`;
 
   return {
@@ -65,12 +83,20 @@ export async function saveFacialEvidenceFile(input: {
   };
 }
 
-/** Resolve caminho absoluto a partir do filePath gravado no banco (sem path traversal). */
+/** Resolve caminho absoluto; procura em raizes candidatas (legado). */
 export function resolveEvidenceAbsolutePath(relativePath: string): string {
-  let safe = relativePath.replace(/\\/g, '/');
-  // Compat com gravações anteriores: delivery-evidence/org/...
-  if (safe.startsWith('delivery-evidence/')) {
-    safe = safe.slice('delivery-evidence/'.length);
+  const safe = normalizeEvidenceRelativePath(relativePath);
+  const candidates = listApiFilesRootCandidates(
+    'delivery-evidence',
+    process.env.DELIVERY_EVIDENCE_DIR,
+  );
+  for (const root of candidates) {
+    try {
+      const absolute = resolveInsideRoot(root, safe);
+      if (existsSync(absolute)) return absolute;
+    } catch {
+      // path invalido neste root
+    }
   }
   return resolveInsideRoot(getDeliveryEvidenceRoot(), safe);
 }
