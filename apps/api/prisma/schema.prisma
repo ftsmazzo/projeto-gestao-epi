@@ -1005,6 +1005,11 @@ model EpiDeliveryItem {
   cancelledQuantity  Int                   @default(0)
   status             EpiDeliveryItemStatus @default(DELIVERED)
   nextReplacementAt  DateTime?
+  /// Snapshot da vida util aplicada na entrega (catalogo ou override).
+  usefulLifeValue    Int?
+  usefulLifeUnit     EpiUsefulLifeUnit?
+  /// Dias de uso por semana (1-7). Null = uso diario (7). Incide no calendário da troca.
+  usageDaysPerWeek   Int?
   createdAt          DateTime              @default(now())
 
   delivery      EpiDelivery     @relation(fields: [deliveryId], references: [id], onDelete: Cascade)

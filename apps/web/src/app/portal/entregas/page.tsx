@@ -28,6 +28,9 @@ type ItemSelection = {
   epiItemId: string;
   stockLocationId: string;
   quantity: number;
+  usefulLifeValue: string;
+  usefulLifeUnit: 'DIAS' | 'MESES' | 'ANOS';
+  usageDaysPerWeek: string;
 };
 
 function stripDiacritics(value: string) {
@@ -58,6 +61,35 @@ function statusPillClass(status: PortalEpiCoverageStatus) {
   return 'status-pill status-pill--inactive';
 }
 
+function lifeDefaultsFromRow(
+  row: PortalEpiCoverageNeedRow,
+  epiItemId: string,
+): Pick<
+  ItemSelection,
+  'usefulLifeValue' | 'usefulLifeUnit' | 'usageDaysPerWeek'
+> {
+  const epi = row.linkedEpis.find((e) => e.epiItemId === epiItemId);
+  if (epi?.usefulLifeValue != null && epi.usefulLifeValue > 0) {
+    return {
+      usefulLifeValue: String(epi.usefulLifeValue),
+      usefulLifeUnit: epi.usefulLifeUnit ?? 'DIAS',
+      usageDaysPerWeek: '7',
+    };
+  }
+  if (row.replacementIntervalDays != null && row.replacementIntervalDays > 0) {
+    return {
+      usefulLifeValue: String(row.replacementIntervalDays),
+      usefulLifeUnit: 'DIAS',
+      usageDaysPerWeek: '7',
+    };
+  }
+  return {
+    usefulLifeValue: '',
+    usefulLifeUnit: 'DIAS',
+    usageDaysPerWeek: '7',
+  };
+}
+
 function defaultSelection(row: PortalEpiCoverageNeedRow): ItemSelection {
   const epiId =
     row.suggestedEpiItemId ??
@@ -72,6 +104,7 @@ function defaultSelection(row: PortalEpiCoverageNeedRow): ItemSelection {
     epiItemId: epiId,
     stockLocationId: balance?.stockLocationId ?? '',
     quantity: Math.max(1, row.quantity || 1),
+    ...lifeDefaultsFromRow(row, epiId),
   };
 }
 
@@ -173,6 +206,7 @@ function NeedSelectCard({
                   ...selection,
                   epiItemId: e.target.value,
                   stockLocationId: bal?.stockLocationId ?? '',
+                  ...lifeDefaultsFromRow(row, e.target.value),
                 });
               }}
             >
@@ -230,6 +264,60 @@ function NeedSelectCard({
                 })
               }
             />
+          </div>
+          <div className="field">
+            <label>Vida util</label>
+            <input
+              type="number"
+              min={1}
+              placeholder="Ex.: 90"
+              value={selection.usefulLifeValue}
+              onChange={(e) =>
+                onChange({
+                  ...selection,
+                  usefulLifeValue: e.target.value,
+                })
+              }
+            />
+          </div>
+          <div className="field">
+            <label>Unidade da vida util</label>
+            <select
+              value={selection.usefulLifeUnit}
+              onChange={(e) =>
+                onChange({
+                  ...selection,
+                  usefulLifeUnit: e.target.value as 'DIAS' | 'MESES' | 'ANOS',
+                })
+              }
+            >
+              <option value="DIAS">Dias</option>
+              <option value="MESES">Meses</option>
+              <option value="ANOS">Anos</option>
+            </select>
+          </div>
+          <div className="field">
+            <label>Uso por semana</label>
+            <select
+              value={selection.usageDaysPerWeek}
+              onChange={(e) =>
+                onChange({
+                  ...selection,
+                  usageDaysPerWeek: e.target.value,
+                })
+              }
+            >
+              <option value="7">7 (diario)</option>
+              <option value="6">6 dias</option>
+              <option value="5">5 dias</option>
+              <option value="4">4 dias</option>
+              <option value="3">3 dias</option>
+              <option value="2">2 dias</option>
+              <option value="1">1 dia</option>
+            </select>
+            <p className="field-hint">
+              Ajusta a data de troca: menos dias/semana = troca mais tarde.
+            </p>
           </div>
         </div>
       ) : null}
@@ -411,12 +499,26 @@ function PortalEntregasContent() {
           faceDescriptor: facialResult.descriptor,
           faceEngine: facialResult.faceEngine,
           faceEngineVersion: facialResult.faceEngineVersion,
-          items: selectedItems.map(({ need, sel }) => ({
-            epiNeedId: need.epiNeedId,
-            epiItemId: sel.epiItemId,
-            stockLocationId: sel.stockLocationId,
-            quantity: sel.quantity,
-          })),
+          items: selectedItems.map(({ need, sel }) => {
+            const lifeRaw = Number(sel.usefulLifeValue);
+            const usesRaw = Number(sel.usageDaysPerWeek);
+            return {
+              epiNeedId: need.epiNeedId,
+              epiItemId: sel.epiItemId,
+              stockLocationId: sel.stockLocationId,
+              quantity: sel.quantity,
+              usefulLifeValue:
+                Number.isFinite(lifeRaw) && lifeRaw > 0 ? lifeRaw : null,
+              usefulLifeUnit:
+                Number.isFinite(lifeRaw) && lifeRaw > 0
+                  ? sel.usefulLifeUnit
+                  : null,
+              usageDaysPerWeek:
+                Number.isFinite(usesRaw) && usesRaw >= 1 && usesRaw <= 7
+                  ? usesRaw
+                  : null,
+            };
+          }),
         },
         facialResult.blob,
       );

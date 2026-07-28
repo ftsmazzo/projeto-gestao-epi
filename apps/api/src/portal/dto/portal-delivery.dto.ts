@@ -10,12 +10,13 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { EpiDeliveryReturnCondition } from '@prisma/client';
+import { EpiDeliveryReturnCondition, EpiUsefulLifeUnit } from '@prisma/client';
 import { FACE_DESCRIPTOR_LENGTH } from '@gestao-epi/shared';
 
 export const FACIAL_EVIDENCE_CONSENT_VERSION = 'v1-2026-07';
@@ -43,6 +44,22 @@ export class PortalDeliveryItemDto {
   @IsInt()
   @Min(1)
   quantity!: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  usefulLifeValue?: number | null;
+
+  @IsOptional()
+  @IsEnum(EpiUsefulLifeUnit)
+  usefulLifeUnit?: EpiUsefulLifeUnit | null;
+
+  /** Dias de uso por semana (1-7). Omite ou null = diario. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(7)
+  usageDaysPerWeek?: number | null;
 }
 
 export class PortalCreateDeliveryPayloadDto {

@@ -53,6 +53,11 @@ import {
   saveFacialEvidenceFile,
 } from './facial-evidence.storage';
 import {
+  computeNextReplacementAt,
+  formatUsageFrequencyLabel,
+  formatUsefulLifeSnapshot,
+} from './replacement-schedule.utils';
+import {
   groupCoverageRequirementsByNeed,
   resolveRestrictiveReplacementDays,
 } from './portal-epi-coverage.utils';
@@ -1510,6 +1515,8 @@ export class PortalService {
             name: item.name,
             caNumber: item.caNumber,
             caExpiresAt: item.caExpiresAt?.toISOString() ?? null,
+            usefulLifeValue: item.usefulLifeValue,
+            usefulLifeUnit: item.usefulLifeUnit,
             usefulLifeLabel: formatUsefulLife(
               item.usefulLifeValue,
               item.usefulLifeUnit,
@@ -1764,6 +1771,13 @@ export class PortalService {
           status: item.status,
           statusLabel: this.itemStatusLabel(item.status),
           nextReplacementAt: item.nextReplacementAt?.toISOString() ?? null,
+          usefulLifeLabel: formatUsefulLifeSnapshot(
+            item.usefulLifeValue,
+            item.usefulLifeUnit,
+          ),
+          usageFrequencyLabel: formatUsageFrequencyLabel(
+            item.usageDaysPerWeek,
+          ),
           locationName: item.stockLocation.name,
         })),
         evidence: facial
@@ -2000,6 +2014,16 @@ export class PortalService {
           status: item.status,
           statusLabel: this.itemStatusLabel(item.status),
           nextReplacementAt: item.nextReplacementAt?.toISOString() ?? null,
+          usefulLifeValue: item.usefulLifeValue ?? null,
+          usefulLifeUnit: item.usefulLifeUnit ?? null,
+          usefulLifeLabel: formatUsefulLifeSnapshot(
+            item.usefulLifeValue,
+            item.usefulLifeUnit,
+          ),
+          usageDaysPerWeek: item.usageDaysPerWeek ?? null,
+          usageFrequencyLabel: formatUsageFrequencyLabel(
+            item.usageDaysPerWeek,
+          ),
           stockMovement: {
             id: item.stockMovement.id,
             type: item.stockMovement.type,
@@ -2425,14 +2449,46 @@ export class PortalService {
             },
           );
 
-          const nextReplacementAt = this.computeNextReplacementAt(
-            deliveredAt,
-            resolveRestrictiveReplacementDays(
-              intervalsByNeed.get(item.epiNeedId) ?? [],
-            ),
-            epi.usefulLifeValue,
-            epi.usefulLifeUnit,
+          const lifeValue =
+            item.usefulLifeValue != null && item.usefulLifeValue > 0
+              ? item.usefulLifeValue
+              : epi.usefulLifeValue;
+          const lifeUnit =
+            item.usefulLifeValue != null && item.usefulLifeValue > 0
+              ? (item.usefulLifeUnit ?? EpiUsefulLifeUnit.DIAS)
+              : epi.usefulLifeUnit;
+          const usageDaysPerWeek =
+            item.usageDaysPerWeek != null && item.usageDaysPerWeek > 0
+              ? Math.min(7, Math.max(1, item.usageDaysPerWeek))
+              : null;
+          const intervalDays = resolveRestrictiveReplacementDays(
+            intervalsByNeed.get(item.epiNeedId) ?? [],
           );
+
+          const nextReplacementAt = computeNextReplacementAt({
+            deliveredAt,
+            // Se o operador informou vida util na entrega, ela prevalece sobre a periodicidade.
+            replacementIntervalDays:
+              item.usefulLifeValue != null && item.usefulLifeValue > 0
+                ? null
+                : intervalDays,
+            usefulLifeValue: lifeValue,
+            usefulLifeUnit: lifeUnit,
+            usageDaysPerWeek,
+          });
+
+          const snapshotLifeValue =
+            lifeValue != null && lifeValue > 0
+              ? lifeValue
+              : intervalDays != null && intervalDays > 0
+                ? intervalDays
+                : null;
+          const snapshotLifeUnit =
+            lifeValue != null && lifeValue > 0
+              ? (lifeUnit ?? EpiUsefulLifeUnit.DIAS)
+              : intervalDays != null && intervalDays > 0
+                ? EpiUsefulLifeUnit.DIAS
+                : null;
 
           const deliveryItem = await tx.epiDeliveryItem.create({
             data: {
@@ -2447,6 +2503,9 @@ export class PortalService {
               cancelledQuantity: 0,
               status: EpiDeliveryItemStatus.DELIVERED,
               nextReplacementAt,
+              usefulLifeValue: snapshotLifeValue,
+              usefulLifeUnit: snapshotLifeUnit,
+              usageDaysPerWeek,
             },
           });
 
@@ -3062,31 +3121,6 @@ export class PortalService {
     }
 
     return `${prefix}${String(seq).padStart(4, '0')}`;
-  }
-
-  private computeNextReplacementAt(
-    deliveredAt: Date,
-    intervalDays: number | null | undefined,
-    usefulLifeValue: number | null | undefined,
-    usefulLifeUnit: EpiUsefulLifeUnit | null | undefined,
-  ): Date | null {
-    if (intervalDays != null && intervalDays > 0) {
-      const next = new Date(deliveredAt);
-      next.setUTCDate(next.getUTCDate() + intervalDays);
-      return next;
-    }
-    if (usefulLifeValue != null && usefulLifeValue > 0 && usefulLifeUnit) {
-      const next = new Date(deliveredAt);
-      if (usefulLifeUnit === EpiUsefulLifeUnit.DIAS) {
-        next.setUTCDate(next.getUTCDate() + usefulLifeValue);
-      } else if (usefulLifeUnit === EpiUsefulLifeUnit.MESES) {
-        next.setUTCMonth(next.getUTCMonth() + usefulLifeValue);
-      } else if (usefulLifeUnit === EpiUsefulLifeUnit.ANOS) {
-        next.setUTCFullYear(next.getUTCFullYear() + usefulLifeValue);
-      }
-      return next;
-    }
-    return null;
   }
 
   private mapDeliverySummary(row: {

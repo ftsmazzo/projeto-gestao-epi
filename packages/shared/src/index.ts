@@ -1259,6 +1259,8 @@ export interface PortalEpiCoverageLinkedItem {
   name: string;
   caNumber: string | null;
   caExpiresAt: string | null;
+  usefulLifeValue: number | null;
+  usefulLifeUnit: EpiUsefulLifeUnit | null;
   usefulLifeLabel: string | null;
   totalQuantity: number;
   balances: Array<{
@@ -1667,6 +1669,11 @@ export interface PortalDeliveryDetail {
     status: PortalDeliveryItemStatus;
     statusLabel: string;
     nextReplacementAt: string | null;
+    usefulLifeValue: number | null;
+    usefulLifeUnit: EpiUsefulLifeUnit | null;
+    usefulLifeLabel: string | null;
+    usageDaysPerWeek: number | null;
+    usageFrequencyLabel: string | null;
     stockMovement: {
       id: string;
       type: string;
@@ -1759,6 +1766,8 @@ export interface PortalWorkerEpiSheetDeliveryItem {
   status: PortalDeliveryItemStatus;
   statusLabel: string;
   nextReplacementAt: string | null;
+  usefulLifeLabel: string | null;
+  usageFrequencyLabel: string | null;
   locationName: string;
 }
 
@@ -1813,6 +1822,11 @@ export interface PortalCreateDeliveryItemInput {
   epiVariantId?: string | null;
   stockLocationId: string;
   quantity: number;
+  /** Override opcional da vida util (senao usa catalogo / periodicidade da funcao). */
+  usefulLifeValue?: number | null;
+  usefulLifeUnit?: EpiUsefulLifeUnit | null;
+  /** 1-7 dias de uso por semana. Null/omitido = uso diario. */
+  usageDaysPerWeek?: number | null;
 }
 
 export interface PortalCreateDeliveryPayload {

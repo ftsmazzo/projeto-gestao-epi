@@ -2608,6 +2608,276 @@ a.btn-danger:hover {
   max-width: 260px;
 }
 
+.epi-doc-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.epi-doc-toolbar {
+  margin-bottom: 1rem;
+}
+
+.epi-doc {
+  background: #fff;
+  color: #111827;
+  border: 1px solid #d1d5db;
+  padding: 1.75rem 1.85rem 1.5rem;
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.epi-doc__masthead {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #111827;
+}
+
+.epi-doc__doc-type {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.epi-doc__title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.epi-doc__meta {
+  margin: 0.2rem 0 0;
+  color: #4b5563;
+  font-size: 0.85rem;
+}
+
+.epi-doc__receipt-box {
+  flex: 0 0 auto;
+  min-width: 11rem;
+  text-align: right;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+}
+
+.epi-doc__receipt-label {
+  margin: 0;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+}
+
+.epi-doc__receipt-number {
+  margin: 0.15rem 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.epi-doc__status {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.epi-doc__section {
+  margin-top: 1.15rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.epi-doc__section--warn {
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  padding: 0.75rem 0.85rem;
+}
+
+.epi-doc__section--split {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.epi-doc__section-title {
+  margin: 0 0 0.55rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+.epi-doc__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem 1rem;
+}
+
+.epi-doc__grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.epi-doc__label {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #6b7280;
+}
+
+.epi-doc__sub {
+  display: block;
+  color: #6b7280;
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.epi-doc__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.epi-doc__table th,
+.epi-doc__table td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0.45rem 0.35rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.epi-doc__table th {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  font-weight: 700;
+}
+
+.epi-doc__notes {
+  margin: 0.75rem 0 0;
+}
+
+.epi-doc__list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.epi-doc__list li + li {
+  margin-top: 0.35rem;
+}
+
+.epi-doc__ok {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+  color: #166534;
+}
+
+.epi-doc__term {
+  margin: 0;
+  text-align: justify;
+  font-size: 0.88rem;
+}
+
+.epi-doc__footer {
+  margin-top: 1.25rem;
+  padding-top: 0.85rem;
+  border-top: 2px solid #111827;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-end;
+}
+
+.epi-doc__lgpd {
+  margin: 0;
+  max-width: 22rem;
+  text-align: right;
+  font-size: 0.72rem;
+  color: #6b7280;
+}
+
+.epi-doc .portal-evidence-thumb {
+  max-width: 140px;
+}
+
+.epi-doc .portal-evidence-thumb__img {
+  max-width: 140px;
+  aspect-ratio: 3 / 4;
+}
+
+@media (max-width: 720px) {
+  .epi-doc__masthead,
+  .epi-doc__section--split,
+  .epi-doc__footer,
+  .epi-doc__grid {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .epi-doc__receipt-box {
+    text-align: left;
+  }
+
+  .epi-doc__footer {
+    align-items: flex-start;
+  }
+
+  .epi-doc__lgpd {
+    text-align: left;
+  }
+}
+
+@media print {
+  .no-print,
+  .epi-doc-toolbar,
+  .portal-shell-nav,
+  .ops-shell-nav,
+  header.portal-shell-header,
+  .portal-bottom-nav,
+  .portal-drawer,
+  .portal-drawer-backdrop,
+  .portal-menu-toggle {
+    display: none !important;
+  }
+
+  .epi-doc-wrap {
+    max-width: none;
+  }
+
+  .epi-doc {
+    border: none;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  .epi-doc__section,
+  .epi-doc__section--split {
+    break-inside: avoid;
+  }
+
+  .portal-evidence-thumb__img {
+    max-width: 120px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+}
+
 .portal-receipt__biometric {
   margin: 0.35rem 0 0.75rem;
   font-weight: 600;

@@ -30,23 +30,9 @@ export function WorkerEpiSheetView({
   scope: 'history' | 'open';
   onScopeChange?: (scope: 'history' | 'open') => void;
 }) {
-  const title = `Ficha de EPI — ${data.worker.name}`;
-
   return (
-    <article className="portal-receipt portal-epi-sheet" aria-labelledby="epi-sheet-heading">
-      <header className="portal-receipt__header">
-        <p className="page-kicker">Painel do Cliente</p>
-        <h1 id="epi-sheet-heading" className="page-title page-title--sm">
-          {title}
-        </h1>
-        <p className="table-sub">
-          Gerada em {formatDateTime(data.generatedAt)} ·{' '}
-          {data.summary.deliveryCount} entrega(s) · {data.summary.itemCount}{' '}
-          item(ns)
-        </p>
-      </header>
-
-      <div className="btn-row no-print" style={{ marginBottom: '1rem' }}>
+    <div className="epi-doc-wrap">
+      <div className="btn-row no-print epi-doc-toolbar">
         <button
           type="button"
           className="btn btn-primary"
@@ -73,89 +59,91 @@ export function WorkerEpiSheetView({
         ) : null}
       </div>
 
-      <section className="portal-receipt__block">
-        <h2 className="page-title page-title--sm">Empresa</h2>
-        <dl className="portal-receipt__dl">
-          <div>
-            <dt>Razao social</dt>
-            <dd>{data.client.legalName}</dd>
-          </div>
-          {data.client.tradeName ? (
-            <div>
-              <dt>Nome fantasia</dt>
-              <dd>{data.client.tradeName}</dd>
-            </div>
-          ) : null}
-          <div>
-            <dt>CNPJ</dt>
-            <dd className="mono">{formatCnpj(data.client.cnpj)}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section className="portal-receipt__block">
-        <h2 className="page-title page-title--sm">Trabalhador</h2>
-        <dl className="portal-receipt__dl">
-          <div>
-            <dt>Nome</dt>
-            <dd>{data.worker.name}</dd>
-          </div>
-          <div>
-            <dt>Matricula</dt>
-            <dd>{data.worker.registration ?? '—'}</dd>
-          </div>
-          <div>
-            <dt>CPF</dt>
-            <dd className="mono">{data.worker.cpfMasked ?? '—'}</dd>
-          </div>
-          <div>
-            <dt>Unidade</dt>
-            <dd>{data.worker.unitName ?? '—'}</dd>
-          </div>
-          <div>
-            <dt>Setor</dt>
-            <dd>{data.worker.sectorName ?? '—'}</dd>
-          </div>
-          <div>
-            <dt>Funcao</dt>
-            <dd>{data.worker.jobFunctionName ?? '—'}</dd>
-          </div>
-          <div>
-            <dt>Status</dt>
-            <dd>{data.worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}</dd>
-          </div>
-        </dl>
-      </section>
-
-      {data.deliveries.length === 0 ? (
-        <section className="portal-receipt__block">
-          <p className="page-lead">Nenhuma entrega encontrada para este filtro.</p>
-        </section>
-      ) : (
-        data.deliveries.map((delivery) => (
-          <section
-            key={delivery.id}
-            className="portal-receipt__block portal-epi-sheet__delivery"
-          >
-            <h2 className="page-title page-title--sm">
-              Entrega {delivery.receiptNumber}
-            </h2>
-            <p className="table-sub">
-              {formatDateTime(delivery.deliveredAt)} · {delivery.statusLabel}
+      <article className="epi-doc" aria-labelledby="epi-sheet-heading">
+        <header className="epi-doc__masthead">
+          <div className="epi-doc__brand">
+            <p className="epi-doc__doc-type">Ficha de controle de EPI</p>
+            <h1 id="epi-sheet-heading" className="epi-doc__title">
+              {data.client.legalName}
+            </h1>
+            <p className="epi-doc__meta">
+              CNPJ {formatCnpj(data.client.cnpj)}
+              {data.client.tradeName ? ` · ${data.client.tradeName}` : ''}
             </p>
+          </div>
+          <div className="epi-doc__receipt-box">
+            <p className="epi-doc__receipt-label">Trabalhador</p>
+            <p className="epi-doc__receipt-number">{data.worker.name}</p>
+            <p className="epi-doc__meta">
+              Gerada em {formatDateTime(data.generatedAt)}
+            </p>
+            <p className="epi-doc__status">
+              {data.summary.deliveryCount} entrega(s) · {data.summary.itemCount}{' '}
+              item(ns)
+            </p>
+          </div>
+        </header>
 
-            <div className="table-wrap">
-              <table className="data-table">
+        <section className="epi-doc__section">
+          <h2 className="epi-doc__section-title">Identificacao</h2>
+          <div className="epi-doc__grid">
+            <div>
+              <span className="epi-doc__label">Matricula</span>
+              <span>{data.worker.registration ?? '—'}</span>
+            </div>
+            <div>
+              <span className="epi-doc__label">CPF</span>
+              <span className="mono">{data.worker.cpfMasked ?? '—'}</span>
+            </div>
+            <div>
+              <span className="epi-doc__label">Unidade</span>
+              <span>{data.worker.unitName ?? '—'}</span>
+            </div>
+            <div>
+              <span className="epi-doc__label">Setor</span>
+              <span>{data.worker.sectorName ?? '—'}</span>
+            </div>
+            <div>
+              <span className="epi-doc__label">Funcao</span>
+              <span>{data.worker.jobFunctionName ?? '—'}</span>
+            </div>
+            <div>
+              <span className="epi-doc__label">Status</span>
+              <span>
+                {data.worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {data.deliveries.length === 0 ? (
+          <section className="epi-doc__section">
+            <p className="epi-doc__meta">
+              Nenhuma entrega encontrada para este filtro.
+            </p>
+          </section>
+        ) : (
+          data.deliveries.map((delivery) => (
+            <section
+              key={delivery.id}
+              className="epi-doc__section portal-epi-sheet__delivery"
+            >
+              <h2 className="epi-doc__section-title">
+                Entrega {delivery.receiptNumber} ·{' '}
+                {formatDateTime(delivery.deliveredAt)} · {delivery.statusLabel}
+              </h2>
+
+              <table className="epi-doc__table">
                 <thead>
                   <tr>
                     <th>Necessidade</th>
                     <th>EPI</th>
                     <th>CA</th>
                     <th>Qtd</th>
-                    <th>Dev.</th>
-                    <th>Status</th>
-                    <th>Local</th>
+                    <th>Vida util</th>
+                    <th>Frequencia</th>
                     <th>Prox. troca</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -165,52 +153,57 @@ export function WorkerEpiSheetView({
                       <td>{item.epiName}</td>
                       <td className="mono">{item.caNumber ?? '—'}</td>
                       <td className="mono">{item.quantity}</td>
-                      <td className="mono">{item.returnedQuantity}</td>
-                      <td>{item.statusLabel}</td>
-                      <td>{item.locationName}</td>
+                      <td>{item.usefulLifeLabel ?? '—'}</td>
+                      <td>{item.usageFrequencyLabel ?? '—'}</td>
                       <td>
                         {item.nextReplacementAt
                           ? formatDate(item.nextReplacementAt)
                           : '—'}
                       </td>
+                      <td>{item.statusLabel}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
 
-            <div className="portal-epi-sheet__evidence">
-              <h3 className="page-title page-title--sm">
-                Evidencia facial desta entrega
-              </h3>
-              {delivery.evidence ? (
-                <PortalFacialEvidenceThumb
-                  deliveryId={delivery.id}
-                  hasFile={delivery.evidence.hasFile}
-                  fileRemovedByRetention={
-                    delivery.evidence.fileRemovedByRetention
-                  }
-                  capturedAtLabel={formatDateTime(
-                    delivery.evidence.capturedAt,
-                  )}
-                />
-              ) : (
-                <p className="field-hint">Sem evidencia facial nesta entrega.</p>
-              )}
-            </div>
-          </section>
-        ))
-      )}
+              <div className="portal-epi-sheet__evidence">
+                <h3 className="epi-doc__section-title">
+                  Evidencia facial desta entrega
+                </h3>
+                {delivery.evidence ? (
+                  <PortalFacialEvidenceThumb
+                    deliveryId={delivery.id}
+                    hasFile={delivery.evidence.hasFile}
+                    fileRemovedByRetention={
+                      delivery.evidence.fileRemovedByRetention
+                    }
+                    capturedAtLabel={formatDateTime(
+                      delivery.evidence.capturedAt,
+                    )}
+                  />
+                ) : (
+                  <p className="epi-doc__meta">
+                    Sem evidencia facial nesta entrega.
+                  </p>
+                )}
+              </div>
+            </section>
+          ))
+        )}
 
-      <section className="portal-receipt__block">
-        <h2 className="page-title page-title--sm">Termo da ficha</h2>
-        <p className="portal-receipt__consent">{data.declaration.text}</p>
-        <p className="table-sub">Versao {data.declaration.version}</p>
-        <p className="table-sub portal-receipt__lgpd">
-          Miniaturas faciais sao dados sensiveis (LGPD). Uso destinado a auditoria
-          autenticada do fornecimento de EPI.
-        </p>
-      </section>
-    </article>
+        <section className="epi-doc__section">
+          <h2 className="epi-doc__section-title">Termo da ficha</h2>
+          <p className="epi-doc__term">{data.declaration.text}</p>
+          <p className="epi-doc__meta">Versao {data.declaration.version}</p>
+        </section>
+
+        <footer className="epi-doc__footer">
+          <p className="epi-doc__lgpd">
+            Miniaturas faciais sao dados sensiveis (LGPD). Uso destinado a
+            auditoria autenticada do fornecimento de EPI.
+          </p>
+        </footer>
+      </article>
+    </div>
   );
 }

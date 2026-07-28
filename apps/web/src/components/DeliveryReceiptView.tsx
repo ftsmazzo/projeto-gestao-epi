@@ -160,49 +160,22 @@ export function DeliveryReceiptView({
   }
 
   return (
-    <article className="portal-receipt" aria-labelledby="receipt-heading">
-      <header className="portal-receipt__header">
-        <p className="page-kicker">Painel do Cliente</p>
-        <h1 id="receipt-heading" className="page-title page-title--sm">
-          Comprovante de entrega de EPI
-        </h1>
-        <p className="portal-receipt__code mono">{detail.receiptNumber}</p>
-        <p className="table-sub">
-          Emitido em {formatDateTime(detail.deliveredAt)} ·{' '}
-          <span className="status-pill status-pill--active">
-            {detail.statusLabel}
-          </span>
-        </p>
-      </header>
-
-      <section className="portal-receipt__block">
-        <h2 className="page-title page-title--sm">Empresa</h2>
-        <dl className="portal-receipt__dl">
-          <div>
-            <dt>Razao social</dt>
-            <dd>{detail.client.legalName}</dd>
-          </div>
-          {detail.client.tradeName ? (
-            <div>
-              <dt>Nome fantasia</dt>
-              <dd>{detail.client.tradeName}</dd>
-            </div>
-          ) : null}
-          <div>
-            <dt>CNPJ</dt>
-            <dd className="mono">{formatCnpj(detail.client.cnpj)}</dd>
-          </div>
-        </dl>
-      </section>
-
+    <div className="epi-doc-wrap">
       {actionError ? (
         <p className="error no-print" role="alert">
           {actionError}
         </p>
       ) : null}
 
-      {showActions && (detail.actions.canCancel || detail.actions.canReturn) ? (
-        <div className="btn-row no-print" style={{ marginBottom: '1rem' }}>
+      {showActions ? (
+        <div className="btn-row no-print epi-doc-toolbar">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => window.print()}
+          >
+            Imprimir / salvar PDF
+          </button>
           {detail.actions.canCancel ? (
             <button
               type="button"
@@ -224,112 +197,91 @@ export function DeliveryReceiptView({
               Registrar devolucao
             </button>
           ) : null}
+          <Link className="btn btn-secondary" href="/portal/entregas">
+            Voltar
+          </Link>
         </div>
       ) : null}
 
-      <section className="portal-receipt__block">
-        <h2 className="page-title page-title--sm">Trabalhador</h2>
-        <dl className="portal-receipt__dl">
-          <div>
-            <dt>Nome</dt>
-            <dd>{detail.worker.name}</dd>
+      <article className="epi-doc" aria-labelledby="receipt-heading">
+        <header className="epi-doc__masthead">
+          <div className="epi-doc__brand">
+            <p className="epi-doc__doc-type">Comprovante de entrega de EPI</p>
+            <h1 id="receipt-heading" className="epi-doc__title">
+              {detail.client.legalName}
+            </h1>
+            <p className="epi-doc__meta">
+              CNPJ {formatCnpj(detail.client.cnpj)}
+              {detail.client.tradeName ? ` · ${detail.client.tradeName}` : ''}
+            </p>
           </div>
-          <div>
-            <dt>Matricula</dt>
-            <dd>{detail.worker.registration ?? '—'}</dd>
+          <div className="epi-doc__receipt-box">
+            <p className="epi-doc__receipt-label">Nº do comprovante</p>
+            <p className="epi-doc__receipt-number mono">{detail.receiptNumber}</p>
+            <p className="epi-doc__meta">
+              {formatDateTime(detail.deliveredAt)}
+            </p>
+            <p className="epi-doc__status">{detail.statusLabel}</p>
           </div>
-          <div>
-            <dt>CPF</dt>
-            <dd className="mono">{detail.worker.cpfMasked ?? '—'}</dd>
-          </div>
-          <div>
-            <dt>Unidade</dt>
-            <dd>{detail.worker.unitName ?? '—'}</dd>
-          </div>
-          <div>
-            <dt>Setor</dt>
-            <dd>{detail.worker.sectorName ?? '—'}</dd>
-          </div>
-          <div>
-            <dt>Funcao</dt>
-            <dd>{detail.worker.jobFunctionName ?? '—'}</dd>
-          </div>
-        </dl>
-      </section>
+        </header>
 
-      <section className="portal-receipt__block">
-        <h2 className="page-title page-title--sm">Entrega</h2>
-        <dl className="portal-receipt__dl">
-          <div>
-            <dt>Operador</dt>
-            <dd>
-              {detail.deliveredBy.name}
-              <span className="table-sub">{detail.deliveredBy.email}</span>
-            </dd>
+        <section className="epi-doc__section">
+          <h2 className="epi-doc__section-title">Trabalhador</h2>
+          <div className="epi-doc__grid">
+            <div>
+              <span className="epi-doc__label">Nome</span>
+              <strong>{detail.worker.name}</strong>
+            </div>
+            <div>
+              <span className="epi-doc__label">Matricula</span>
+              <span>{detail.worker.registration ?? '—'}</span>
+            </div>
+            <div>
+              <span className="epi-doc__label">CPF</span>
+              <span className="mono">{detail.worker.cpfMasked ?? '—'}</span>
+            </div>
+            <div>
+              <span className="epi-doc__label">Unidade</span>
+              <span>{detail.worker.unitName ?? '—'}</span>
+            </div>
+            <div>
+              <span className="epi-doc__label">Setor</span>
+              <span>{detail.worker.sectorName ?? '—'}</span>
+            </div>
+            <div>
+              <span className="epi-doc__label">Funcao</span>
+              <span>{detail.worker.jobFunctionName ?? '—'}</span>
+            </div>
           </div>
-          <div>
-            <dt>Status</dt>
-            <dd>{detail.statusLabel}</dd>
-          </div>
-          {detail.notes ? (
-            <div>
-              <dt>Observacoes</dt>
-              <dd>{detail.notes}</dd>
-            </div>
-          ) : null}
-        </dl>
-      </section>
-
-      {detail.cancellation ? (
-        <section className="portal-receipt__block">
-          <h2 className="page-title page-title--sm">Cancelamento</h2>
-          <dl className="portal-receipt__dl">
-            <div>
-              <dt>Quando</dt>
-              <dd>{formatDateTime(detail.cancellation.cancelledAt)}</dd>
-            </div>
-            <div>
-              <dt>Por</dt>
-              <dd>{detail.cancellation.cancelledBy?.name ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>Motivo</dt>
-              <dd>{detail.cancellation.reason ?? '—'}</dd>
-            </div>
-          </dl>
         </section>
-      ) : null}
 
-      <section className="portal-receipt__block">
-        <h2 className="page-title page-title--sm">Itens entregues</h2>
-        <div className="table-wrap">
-          <table className="data-table">
+        <section className="epi-doc__section">
+          <h2 className="epi-doc__section-title">Itens entregues</h2>
+          <table className="epi-doc__table">
             <thead>
               <tr>
-                <th>Necessidade</th>
-                <th>EPI real</th>
+                <th>EPI / necessidade</th>
                 <th>CA</th>
                 <th>Qtd</th>
-                <th>Dev.</th>
-                <th>Canc.</th>
-                <th>Disp.</th>
-                <th>Status</th>
-                <th>Local</th>
+                <th>Vida util</th>
+                <th>Frequencia</th>
                 <th>Prox. troca</th>
               </tr>
             </thead>
             <tbody>
               {detail.items.map((item) => (
                 <tr key={item.id}>
-                  <td>{item.needName}</td>
-                  <td>{item.epiName}</td>
+                  <td>
+                    <strong>{item.epiName}</strong>
+                    <span className="epi-doc__sub">{item.needName}</span>
+                    {item.variantName ? (
+                      <span className="epi-doc__sub">{item.variantName}</span>
+                    ) : null}
+                  </td>
                   <td className="mono">{item.caNumber ?? '—'}</td>
                   <td className="mono">{item.quantity}</td>
-                  <td className="mono">{item.returnedQuantity}</td>
-                  <td className="mono">{item.cancelledQuantity}</td>
-                  <td className="mono">{item.availableQuantity}</td>
-                  <td>{item.statusLabel}</td>
-                  <td>{item.locationName}</td>
+                  <td>{item.usefulLifeLabel ?? '—'}</td>
+                  <td>{item.usageFrequencyLabel ?? 'Uso diario'}</td>
                   <td>
                     {item.nextReplacementAt
                       ? formatDate(item.nextReplacementAt)
@@ -339,128 +291,90 @@ export function DeliveryReceiptView({
               ))}
             </tbody>
           </table>
-        </div>
-      </section>
-
-      {detail.returns.length > 0 ? (
-        <section className="portal-receipt__block">
-          <h2 className="page-title page-title--sm">Historico de devolucoes</h2>
-          <ul className="portal-coverage-epis">
-            {detail.returns.map((ret) => (
-              <li key={ret.id}>
-                <strong>{formatDateTime(ret.returnedAt)}</strong>
-                <span className="table-sub">
-                  {ret.returnedBy.name} · {ret.reason}
-                </span>
-                <span className="table-sub">
-                  {ret.items
-                    .map(
-                      (ri) =>
-                        `${ri.needName}/${ri.epiName}: ${ri.quantity} (${ri.condition}${
-                          ri.returnsToStock ? ', estoque+' : ''
-                        })`,
-                    )
-                    .join(' · ')}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <section className="portal-receipt__block">
-        <h2 className="page-title page-title--sm">Evidencia facial</h2>
-        {detail.evidence?.verificationStatus === 'MATCHED' ? (
-          <p className="portal-receipt__biometric" role="status">
-            Biometria facial: aprovada automaticamente
-            {detail.consent.biometric.status === 'GRANTED'
-              ? ' · consentimento biometrico ativo no ato'
-              : ''}
-          </p>
-        ) : null}
-        {detail.evidence ? (
-          <>
-            {detail.evidence.verificationStatus !== 'MATCHED' ? (
-              <p className="portal-receipt__biometric" role="status">
-                {detail.evidence.verificationStatus === 'REJECTED'
-                  ? 'Biometria facial: nao correspondente'
-                  : detail.evidence.statusLabel}
-              </p>
-            ) : null}
-            <dl className="portal-receipt__dl">
-              <div>
-                <dt>Capturada em</dt>
-                <dd>{formatDateTime(detail.evidence.capturedAt)}</dd>
-              </div>
-            </dl>
-            <PortalFacialEvidenceThumb
-              deliveryId={detail.id}
-              hasFile={detail.evidence.hasFile}
-              fileRemovedByRetention={detail.evidence.fileRemovedByRetention}
-              capturedAtLabel={formatDateTime(detail.evidence.capturedAt)}
-            />
-          </>
-        ) : (
-          <p className="field-hint">Sem evidencia facial registrada.</p>
-        )}
-      </section>
-
-      <section className="portal-receipt__block">
-        <h2 className="page-title page-title--sm">
-          Declaracao / termo de responsabilidade
-        </h2>
-        <p className="portal-receipt__consent">{detail.declaration.text}</p>
-        <p className="table-sub">
-          Versao {detail.declaration.version}
-          {detail.consent.acceptedAt
-            ? ` · Registro operacional em ${formatDateTime(detail.consent.acceptedAt)}`
-            : ''}
-        </p>
-      </section>
-
-      <section className="portal-receipt__block">
-        <h2 className="page-title page-title--sm">Aviso / consentimento</h2>
-        {detail.consent.accepted ? (
-          <>
-            <p className="portal-receipt__consent">
-              {detail.consent.text ??
-                'Aviso de evidencia facial aceito no ato da entrega.'}
+          {detail.notes ? (
+            <p className="epi-doc__notes">
+              <span className="epi-doc__label">Observacoes</span>
+              {detail.notes}
             </p>
-            <p className="table-sub">
-              Aceito em{' '}
+          ) : null}
+        </section>
+
+        {detail.cancellation ? (
+          <section className="epi-doc__section epi-doc__section--warn">
+            <h2 className="epi-doc__section-title">Cancelamento</h2>
+            <p className="epi-doc__meta">
+              {formatDateTime(detail.cancellation.cancelledAt)} ·{' '}
+              {detail.cancellation.cancelledBy?.name ?? '—'}
+            </p>
+            <p>{detail.cancellation.reason ?? '—'}</p>
+          </section>
+        ) : null}
+
+        {detail.returns.length > 0 ? (
+          <section className="epi-doc__section">
+            <h2 className="epi-doc__section-title">Devolucoes</h2>
+            <ul className="epi-doc__list">
+              {detail.returns.map((ret) => (
+                <li key={ret.id}>
+                  <strong>{formatDateTime(ret.returnedAt)}</strong> —{' '}
+                  {ret.returnedBy.name}: {ret.reason}
+                  <span className="epi-doc__sub">
+                    {ret.items
+                      .map(
+                        (ri) =>
+                          `${ri.epiName}: ${ri.quantity} (${ri.condition})`,
+                      )
+                      .join(' · ')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        <section className="epi-doc__section epi-doc__section--split">
+          <div>
+            <h2 className="epi-doc__section-title">Identificacao facial</h2>
+            {detail.evidence?.verificationStatus === 'MATCHED' ? (
+              <p className="epi-doc__ok">Aprovada automaticamente</p>
+            ) : detail.evidence ? (
+              <p>{detail.evidence.statusLabel}</p>
+            ) : (
+              <p className="epi-doc__meta">Sem evidencia facial</p>
+            )}
+            {detail.evidence ? (
+              <PortalFacialEvidenceThumb
+                deliveryId={detail.id}
+                hasFile={detail.evidence.hasFile}
+                fileRemovedByRetention={detail.evidence.fileRemovedByRetention}
+                capturedAtLabel={formatDateTime(detail.evidence.capturedAt)}
+              />
+            ) : null}
+          </div>
+          <div>
+            <h2 className="epi-doc__section-title">Termo de responsabilidade</h2>
+            <p className="epi-doc__term">{detail.declaration.text}</p>
+            <p className="epi-doc__meta">
+              Versao {detail.declaration.version}
               {detail.consent.acceptedAt
-                ? formatDateTime(detail.consent.acceptedAt)
-                : '—'}
-              {detail.consent.version
-                ? ` · Versao ${detail.consent.version}`
+                ? ` · Aceite em ${formatDateTime(detail.consent.acceptedAt)}`
                 : ''}
             </p>
-          </>
-        ) : (
-          <p className="field-hint">
-            Consentimento nao registrado nesta entrega.
-          </p>
-        )}
-        <p className="table-sub portal-receipt__lgpd">
-          A imagem facial e dado sensivel (LGPD). Este comprovante e destinado a
-          uso autenticado e auditoria de fornecimento de EPI.
-        </p>
-      </section>
+          </div>
+        </section>
 
-      {showActions ? (
-        <div className="btn-row portal-receipt__actions no-print">
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => window.print()}
-          >
-            Imprimir comprovante
-          </button>
-          <Link className="btn btn-secondary" href="/portal/entregas">
-            Voltar as entregas
-          </Link>
-        </div>
-      ) : null}
+        <footer className="epi-doc__footer">
+          <div>
+            <span className="epi-doc__label">Operador</span>
+            <strong>{detail.deliveredBy.name}</strong>
+            <span className="epi-doc__sub">{detail.deliveredBy.email}</span>
+          </div>
+          <p className="epi-doc__lgpd">
+            Evidencia facial e dado sensivel (LGPD). Documento para auditoria
+            autenticada do fornecimento de EPI (NR-06).
+          </p>
+        </footer>
+      </article>
 
       {cancelOpen ? (
         <div className="portal-modal no-print" role="dialog" aria-modal="true">
@@ -637,6 +551,6 @@ export function DeliveryReceiptView({
           </div>
         </div>
       ) : null}
-    </article>
+    </div>
   );
 }
