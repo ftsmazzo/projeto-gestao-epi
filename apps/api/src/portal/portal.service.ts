@@ -466,7 +466,7 @@ export class PortalService {
       {
         id: 'replacement' as const,
         title: 'Vida util / trocas',
-        href: '/portal/trabalhadores',
+        href: '/portal/trabalhadores?filtro=trocas',
         count: input.replacement.total,
         tone: replacementTone,
         label:
@@ -625,23 +625,127 @@ export class PortalService {
 
   async getTrabalhadores(organizationId: string, servedClientId: string) {
     const client = await this.requireClient(organizationId, servedClientId);
-    const workers = await this.prisma.worker.findMany({
-      where: { organizationId, servedClientId },
-      orderBy: [{ status: 'asc' }, { name: 'asc' }],
-      include: {
-        operationalUnit: { select: { id: true, name: true } },
-      },
-    });
+    const now = new Date();
+    const warnHorizon = new Date(now);
+    warnHorizon.setUTCDate(warnHorizon.getUTCDate() + REPLACEMENT_WARN_DAYS);
+    warnHorizon.setUTCHours(23, 59, 59, 999);
+    const criticalHorizon = new Date(now);
+    criticalHorizon.setUTCDate(
+      criticalHorizon.getUTCDate() + REPLACEMENT_CRITICAL_DAYS,
+    );
+    criticalHorizon.setUTCHours(23, 59, 59, 999);
+
+    const [workers, dueItems] = await Promise.all([
+      this.prisma.worker.findMany({
+        where: { organizationId, servedClientId },
+        orderBy: [{ status: 'asc' }, { name: 'asc' }],
+        include: {
+          operationalUnit: { select: { id: true, name: true } },
+        },
+      }),
+      this.prisma.epiDeliveryItem.findMany({
+        where: {
+          status: {
+            in: [
+              EpiDeliveryItemStatus.DELIVERED,
+              EpiDeliveryItemStatus.PARTIALLY_RETURNED,
+            ],
+          },
+          nextReplacementAt: { not: null, lte: warnHorizon },
+          delivery: {
+            organizationId,
+            servedClientId,
+            status: {
+              in: [
+                EpiDeliveryStatus.COMPLETED,
+                EpiDeliveryStatus.PARTIALLY_RETURNED,
+              ],
+            },
+          },
+        },
+        include: {
+          delivery: {
+            select: {
+              id: true,
+              receiptNumber: true,
+              workerId: true,
+            },
+          },
+          epiNeed: { select: { name: true } },
+          epiItem: { select: { name: true, caNumber: true } },
+        },
+        orderBy: { nextReplacementAt: 'asc' },
+      }),
+    ]);
+
+    const dueByWorker = new Map<
+      string,
+      Array<{
+        id: string;
+        deliveryId: string;
+        receiptNumber: string;
+        epiName: string;
+        needName: string;
+        caNumber: string | null;
+        nextReplacementAt: string;
+        usefulLifeLabel: string | null;
+        daysRemaining: number;
+        tone: 'warn' | 'critical';
+      }>
+    >();
+
+    for (const item of dueItems) {
+      const at = item.nextReplacementAt;
+      if (!at) continue;
+      const msPerDay = 24 * 60 * 60 * 1000;
+      const daysRemaining = Math.ceil((at.getTime() - now.getTime()) / msPerDay);
+      const tone: 'warn' | 'critical' =
+        at.getTime() <= criticalHorizon.getTime() ? 'critical' : 'warn';
+      const workerId = item.delivery.workerId;
+      const list = dueByWorker.get(workerId) ?? [];
+      list.push({
+        id: item.id,
+        deliveryId: item.delivery.id,
+        receiptNumber: item.delivery.receiptNumber,
+        epiName: item.epiItem.name,
+        needName: item.epiNeed.name,
+        caNumber: item.epiItem.caNumber,
+        nextReplacementAt: at.toISOString(),
+        usefulLifeLabel: formatUsefulLifeSnapshot(
+          item.usefulLifeValue,
+          item.usefulLifeUnit,
+        ),
+        daysRemaining,
+        tone,
+      });
+      dueByWorker.set(workerId, list);
+    }
 
     const active = workers.filter((w) => w.status === WorkerStatus.ACTIVE).length;
 
-    return {
-      lives: {
-        allocated: client.allocatedLifeQuota,
-        used: active,
-        available: Math.max(0, client.allocatedLifeQuota - active),
-      },
-      workers: workers.map((w) => ({
+    const mapped = workers.map((w) => {
+      const items = dueByWorker.get(w.id) ?? [];
+      const overdue = items.filter((i) => i.daysRemaining < 0).length;
+      const critical = items.filter(
+        (i) => i.daysRemaining >= 0 && i.tone === 'critical',
+      ).length;
+      const warn = items.filter((i) => i.tone === 'warn').length;
+      const replacementDue =
+        items.length === 0
+          ? null
+          : {
+              count: items.length,
+              overdue,
+              critical,
+              warn,
+              tone:
+                overdue + critical > 0
+                  ? ('critical' as const)
+                  : ('warn' as const),
+              items,
+            };
+
+      return {
         id: w.id,
         name: w.name,
         registration: w.registration,
@@ -650,7 +754,36 @@ export class PortalService {
         status: w.status,
         unitName: w.operationalUnit?.name ?? null,
         admissionDate: w.admissionDate?.toISOString() ?? null,
-      })),
+        replacementDue,
+      };
+    });
+
+    mapped.sort((a, b) => {
+      const aDue = a.replacementDue ? 1 : 0;
+      const bDue = b.replacementDue ? 1 : 0;
+      if (aDue !== bDue) return bDue - aDue;
+      if (a.replacementDue && b.replacementDue) {
+        if (a.replacementDue.tone !== b.replacementDue.tone) {
+          return a.replacementDue.tone === 'critical' ? -1 : 1;
+        }
+      }
+      return a.name.localeCompare(b.name, 'pt-BR');
+    });
+
+    return {
+      lives: {
+        allocated: client.allocatedLifeQuota,
+        used: active,
+        available: Math.max(0, client.allocatedLifeQuota - active),
+      },
+      replacementHorizon: {
+        warnDays: REPLACEMENT_WARN_DAYS,
+        criticalDays: REPLACEMENT_CRITICAL_DAYS,
+      },
+      summary: {
+        withReplacementDue: mapped.filter((w) => w.replacementDue).length,
+      },
+      workers: mapped,
     };
   }
 

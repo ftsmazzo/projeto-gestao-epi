@@ -1149,11 +1149,40 @@ export interface PortalEstruturaResponse {
   }>;
 }
 
+export interface PortalTrabalhadorReplacementItem {
+  id: string;
+  deliveryId: string;
+  receiptNumber: string;
+  epiName: string;
+  needName: string;
+  caNumber: string | null;
+  nextReplacementAt: string;
+  usefulLifeLabel: string | null;
+  daysRemaining: number;
+  tone: 'warn' | 'critical';
+}
+
+export interface PortalTrabalhadorReplacementDue {
+  count: number;
+  overdue: number;
+  critical: number;
+  warn: number;
+  tone: 'warn' | 'critical';
+  items: PortalTrabalhadorReplacementItem[];
+}
+
 export interface PortalTrabalhadoresResponse {
   lives: {
     allocated: number;
     used: number;
     available: number;
+  };
+  replacementHorizon: {
+    warnDays: number;
+    criticalDays: number;
+  };
+  summary: {
+    withReplacementDue: number;
   };
   workers: Array<{
     id: string;
@@ -1164,6 +1193,7 @@ export interface PortalTrabalhadoresResponse {
     status: 'ACTIVE' | 'INACTIVE';
     unitName: string | null;
     admissionDate: string | null;
+    replacementDue: PortalTrabalhadorReplacementDue | null;
   }>;
 }
 
