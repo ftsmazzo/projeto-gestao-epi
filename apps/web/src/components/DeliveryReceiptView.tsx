@@ -225,7 +225,7 @@ export function DeliveryReceiptView({
           </div>
         </header>
 
-        <section className="epi-doc__section">
+        <section className="epi-doc__section epi-doc__section--keep">
           <h2 className="epi-doc__section-title">Trabalhador</h2>
           <div className="epi-doc__grid">
             <div>

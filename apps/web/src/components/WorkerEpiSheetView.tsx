@@ -155,7 +155,7 @@ export function WorkerEpiSheetView({
           </div>
         </header>
 
-        <section className="epi-doc__section">
+        <section className="epi-doc__section epi-doc__section--keep">
           <h2 className="epi-doc__section-title">Identificacao</h2>
           <div className="epi-doc__grid">
             <div>
@@ -278,7 +278,7 @@ export function WorkerEpiSheetView({
           ))
         )}
 
-        <section className="epi-doc__section">
+        <section className="epi-doc__section epi-doc__section--keep">
           <h2 className="epi-doc__section-title">Termo da ficha</h2>
           <p className="epi-doc__term">{data.declaration.text}</p>
           <p className="epi-doc__meta">Versao {data.declaration.version}</p>

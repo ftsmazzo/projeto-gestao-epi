@@ -3110,17 +3110,106 @@ a.btn-danger:hover {
     width: 12% !important;
   }
 
+  /* --- Quebras de pagina (ficha + comprovante) ---
+     Secoes grandes podem fluir; so pedacos pequenos ficam juntos.
+     Evita paginas quase vazias por break-inside: avoid em blocos altos. */
   .epi-doc__section,
   .epi-doc__section--split,
   .portal-epi-sheet__delivery {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .epi-doc__masthead {
     break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: avoid;
+    page-break-after: avoid;
+    padding-bottom: 0.65rem !important;
+    margin-bottom: 0 !important;
+  }
+
+  .epi-doc__section {
+    margin-top: 0.65rem !important;
+    padding-top: 0.5rem !important;
+  }
+
+  .epi-doc__section-title {
+    break-after: avoid;
+    page-break-after: avoid;
+    margin-bottom: 0.35rem !important;
+  }
+
+  .epi-doc__section--keep,
+  .epi-doc__section--warn,
+  .epi-doc__footer {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .epi-doc__footer {
+    break-before: avoid;
+    page-break-before: avoid;
+    margin-top: 0.75rem !important;
+    padding-top: 0.55rem !important;
+  }
+
+  .epi-doc__table {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  .epi-doc__table thead {
+    display: table-header-group;
+  }
+
+  .epi-doc__table tbody {
+    display: table-row-group;
+  }
+
+  .epi-doc__table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .portal-epi-sheet__evidence {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-top: 0.55rem !important;
+  }
+
+  .epi-doc__section--split > div {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .portal-evidence-thumb__img,
   .epi-doc .portal-evidence-thumb__img {
-    max-width: 100px !important;
+    max-width: 72px !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  .epi-doc .portal-evidence-thumb {
+    max-width: 72px !important;
+  }
+
+  .portal-evidence-thumb__caption,
+  .portal-evidence-thumb__msg {
+    font-size: 7.5pt !important;
+  }
+
+  .epi-doc__term {
+    font-size: 9pt !important;
+    line-height: 1.35 !important;
+  }
+
+  .epi-doc__title {
+    font-size: 14pt !important;
+  }
+
+  .epi-doc__lgpd {
+    font-size: 7.5pt !important;
   }
 }
 
@@ -3176,10 +3265,6 @@ a.btn-danger:hover {
 
 .portal-epi-sheet__evidence {
   margin-top: 0.85rem;
-}
-
-.portal-epi-sheet__delivery {
-  break-inside: avoid;
 }
 
 .portal-receipt {
