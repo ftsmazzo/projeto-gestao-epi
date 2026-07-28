@@ -204,11 +204,19 @@ export function WorkerEpiSheetView({
                 {formatDateTime(delivery.deliveredAt)} · {delivery.statusLabel}
               </h2>
 
-              <table className="epi-doc__table">
+              <table className="epi-doc__table epi-doc__table--sheet">
+                <colgroup>
+                  <col className="epi-col-epi" />
+                  <col className="epi-col-ca" />
+                  <col className="epi-col-qty" />
+                  <col className="epi-col-life" />
+                  <col className="epi-col-freq" />
+                  <col className="epi-col-next" />
+                  <col className="epi-col-status" />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Necessidade</th>
-                    <th>EPI</th>
+                    <th>EPI / necessidade</th>
                     <th>CA</th>
                     <th>Qtd</th>
                     <th>Vida util</th>
@@ -220,18 +228,26 @@ export function WorkerEpiSheetView({
                 <tbody>
                   {delivery.items.map((item) => (
                     <tr key={item.id}>
-                      <td>{item.needName}</td>
-                      <td>{item.epiName}</td>
-                      <td className="mono">{item.caNumber ?? '—'}</td>
-                      <td className="mono">{item.quantity}</td>
-                      <td>{item.usefulLifeLabel ?? '—'}</td>
-                      <td>{item.usageFrequencyLabel ?? '—'}</td>
-                      <td>
+                      <td className="epi-doc__cell-epi">
+                        <strong>{item.epiName}</strong>
+                        <span className="epi-doc__sub">{item.needName}</span>
+                      </td>
+                      <td className="mono epi-doc__cell-num">
+                        {item.caNumber ?? '—'}
+                      </td>
+                      <td className="mono epi-doc__cell-num">{item.quantity}</td>
+                      <td className="epi-doc__cell-meta">
+                        {item.usefulLifeLabel ?? '—'}
+                      </td>
+                      <td className="epi-doc__cell-meta">
+                        {item.usageFrequencyLabel ?? '—'}
+                      </td>
+                      <td className="epi-doc__cell-meta">
                         {item.nextReplacementAt
                           ? formatDate(item.nextReplacementAt)
                           : '—'}
                       </td>
-                      <td>{item.statusLabel}</td>
+                      <td className="epi-doc__cell-meta">{item.statusLabel}</td>
                     </tr>
                   ))}
                 </tbody>

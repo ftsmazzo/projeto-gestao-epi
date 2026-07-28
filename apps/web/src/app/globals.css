@@ -2795,6 +2795,34 @@ a.btn-danger:hover {
   width: 15%;
 }
 
+.epi-doc__table--sheet .epi-col-epi {
+  width: 38%;
+}
+
+.epi-doc__table--sheet .epi-col-ca {
+  width: 7%;
+}
+
+.epi-doc__table--sheet .epi-col-qty {
+  width: 5%;
+}
+
+.epi-doc__table--sheet .epi-col-life {
+  width: 12%;
+}
+
+.epi-doc__table--sheet .epi-col-freq {
+  width: 13%;
+}
+
+.epi-doc__table--sheet .epi-col-next {
+  width: 13%;
+}
+
+.epi-doc__table--sheet .epi-col-status {
+  width: 12%;
+}
+
 .epi-doc__cell-epi strong {
   display: block;
   font-weight: 700;
@@ -3052,6 +3080,34 @@ a.btn-danger:hover {
 
   .epi-doc__table--receipt .epi-col-next {
     width: 15% !important;
+  }
+
+  .epi-doc__table--sheet .epi-col-epi {
+    width: 40% !important;
+  }
+
+  .epi-doc__table--sheet .epi-col-ca {
+    width: 7% !important;
+  }
+
+  .epi-doc__table--sheet .epi-col-qty {
+    width: 5% !important;
+  }
+
+  .epi-doc__table--sheet .epi-col-life {
+    width: 12% !important;
+  }
+
+  .epi-doc__table--sheet .epi-col-freq {
+    width: 12% !important;
+  }
+
+  .epi-doc__table--sheet .epi-col-next {
+    width: 12% !important;
+  }
+
+  .epi-doc__table--sheet .epi-col-status {
+    width: 12% !important;
   }
 
   .epi-doc__section,
