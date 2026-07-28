@@ -257,7 +257,15 @@ export function DeliveryReceiptView({
 
         <section className="epi-doc__section">
           <h2 className="epi-doc__section-title">Itens entregues</h2>
-          <table className="epi-doc__table">
+          <table className="epi-doc__table epi-doc__table--receipt">
+            <colgroup>
+              <col className="epi-col-epi" />
+              <col className="epi-col-ca" />
+              <col className="epi-col-qty" />
+              <col className="epi-col-life" />
+              <col className="epi-col-freq" />
+              <col className="epi-col-next" />
+            </colgroup>
             <thead>
               <tr>
                 <th>EPI / necessidade</th>
@@ -271,18 +279,24 @@ export function DeliveryReceiptView({
             <tbody>
               {detail.items.map((item) => (
                 <tr key={item.id}>
-                  <td>
+                  <td className="epi-doc__cell-epi">
                     <strong>{item.epiName}</strong>
                     <span className="epi-doc__sub">{item.needName}</span>
                     {item.variantName ? (
                       <span className="epi-doc__sub">{item.variantName}</span>
                     ) : null}
                   </td>
-                  <td className="mono">{item.caNumber ?? '—'}</td>
-                  <td className="mono">{item.quantity}</td>
-                  <td>{item.usefulLifeLabel ?? '—'}</td>
-                  <td>{item.usageFrequencyLabel ?? 'Uso diario'}</td>
-                  <td>
+                  <td className="mono epi-doc__cell-num">
+                    {item.caNumber ?? '—'}
+                  </td>
+                  <td className="mono epi-doc__cell-num">{item.quantity}</td>
+                  <td className="epi-doc__cell-meta">
+                    {item.usefulLifeLabel ?? '—'}
+                  </td>
+                  <td className="epi-doc__cell-meta">
+                    {item.usageFrequencyLabel ?? 'Uso diario'}
+                  </td>
+                  <td className="epi-doc__cell-meta">
                     {item.nextReplacementAt
                       ? formatDate(item.nextReplacementAt)
                       : '—'}

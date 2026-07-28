@@ -316,6 +316,8 @@ export class PortalController {
     @CurrentUser() user: ClientJwtPayload,
     @Param('id') id: string,
     @Query('scope') scope?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     this.assertClient(user);
     const normalized =
@@ -325,6 +327,7 @@ export class PortalController {
       user.servedClientId,
       id,
       normalized,
+      { from, to },
     );
   }
 

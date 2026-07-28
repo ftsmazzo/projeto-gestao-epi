@@ -21,15 +21,40 @@ function formatDate(iso: string) {
   }
 }
 
+function formatPeriodLabel(from: string | null, to: string | null) {
+  if (!from && !to) return 'Todo o historico';
+  if (from && to) {
+    return `${formatDate(`${from}T00:00:00.000Z`)} a ${formatDate(`${to}T00:00:00.000Z`)}`;
+  }
+  if (from) return `A partir de ${formatDate(`${from}T00:00:00.000Z`)}`;
+  return `Ate ${formatDate(`${to!}T00:00:00.000Z`)}`;
+}
+
 export function WorkerEpiSheetView({
   data,
   scope,
   onScopeChange,
+  periodFrom = '',
+  periodTo = '',
+  onPeriodFromChange,
+  onPeriodToChange,
+  onApplyPeriod,
+  onClearPeriod,
+  periodLoading = false,
 }: {
   data: PortalWorkerEpiSheetResponse;
   scope: 'history' | 'open';
   onScopeChange?: (scope: 'history' | 'open') => void;
+  periodFrom?: string;
+  periodTo?: string;
+  onPeriodFromChange?: (value: string) => void;
+  onPeriodToChange?: (value: string) => void;
+  onApplyPeriod?: () => void;
+  onClearPeriod?: () => void;
+  periodLoading?: boolean;
 }) {
+  const hasPeriodFilter = Boolean(data.period?.from || data.period?.to);
+
   return (
     <div className="epi-doc-wrap">
       <div className="btn-row no-print epi-doc-toolbar">
@@ -45,7 +70,7 @@ export function WorkerEpiSheetView({
         </Link>
         {onScopeChange ? (
           <label className="portal-epi-sheet__scope">
-            <span className="field-hint">Filtro</span>
+            <span className="field-hint">Status</span>
             <select
               value={scope}
               onChange={(e) =>
@@ -58,6 +83,45 @@ export function WorkerEpiSheetView({
           </label>
         ) : null}
       </div>
+
+      {onApplyPeriod ? (
+        <div className="btn-row no-print portal-epi-sheet__period">
+          <label className="portal-epi-sheet__scope">
+            <span className="field-hint">De</span>
+            <input
+              type="date"
+              value={periodFrom}
+              onChange={(e) => onPeriodFromChange?.(e.target.value)}
+            />
+          </label>
+          <label className="portal-epi-sheet__scope">
+            <span className="field-hint">Ate</span>
+            <input
+              type="date"
+              value={periodTo}
+              onChange={(e) => onPeriodToChange?.(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={onApplyPeriod}
+            disabled={periodLoading}
+          >
+            Filtrar periodo
+          </button>
+          {hasPeriodFilter || periodFrom || periodTo ? (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={onClearPeriod}
+              disabled={periodLoading}
+            >
+              Limpar datas
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <article className="epi-doc" aria-labelledby="epi-sheet-heading">
         <header className="epi-doc__masthead">
@@ -76,6 +140,13 @@ export function WorkerEpiSheetView({
             <p className="epi-doc__receipt-number">{data.worker.name}</p>
             <p className="epi-doc__meta">
               Gerada em {formatDateTime(data.generatedAt)}
+            </p>
+            <p className="epi-doc__meta">
+              Periodo:{' '}
+              {formatPeriodLabel(
+                data.period?.from ?? null,
+                data.period?.to ?? null,
+              )}
             </p>
             <p className="epi-doc__status">
               {data.summary.deliveryCount} entrega(s) · {data.summary.itemCount}{' '}

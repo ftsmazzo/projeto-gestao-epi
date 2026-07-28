@@ -127,10 +127,15 @@ export async function fetchPortalTrabalhadores() {
 export async function fetchPortalWorkerEpiSheet(
   workerId: string,
   scope: 'history' | 'open' = 'history',
+  period?: { from?: string; to?: string },
 ) {
-  const query = scope === 'open' ? '?scope=open' : '';
+  const params = new URLSearchParams();
+  if (scope === 'open') params.set('scope', 'open');
+  if (period?.from?.trim()) params.set('from', period.from.trim());
+  if (period?.to?.trim()) params.set('to', period.to.trim());
+  const query = params.toString();
   return clientApiFetch<PortalWorkerEpiSheetResponse>(
-    `/portal/trabalhadores/${workerId}/ficha-epi${query}`,
+    `/portal/trabalhadores/${workerId}/ficha-epi${query ? `?${query}` : ''}`,
   );
 }
 

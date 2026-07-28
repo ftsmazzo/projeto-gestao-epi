@@ -1697,6 +1697,7 @@ export class PortalService {
     servedClientId: string,
     workerId: string,
     scope: 'history' | 'open' = 'history',
+    period?: { from?: string; to?: string },
   ) {
     const client = await this.requireClient(organizationId, servedClientId);
 
@@ -1722,12 +1723,29 @@ export class PortalService {
           }
         : { not: EpiDeliveryStatus.CANCELLED };
 
+    const fromDate = this.parseSheetDayStart(period?.from);
+    const toDate = this.parseSheetDayEnd(period?.to);
+    if (fromDate && toDate && fromDate > toDate) {
+      throw new BadRequestException(
+        'Data inicial nao pode ser maior que a data final.',
+      );
+    }
+
+    const deliveredAtFilter =
+      fromDate || toDate
+        ? {
+            ...(fromDate ? { gte: fromDate } : {}),
+            ...(toDate ? { lte: toDate } : {}),
+          }
+        : undefined;
+
     const deliveries = await this.prisma.epiDelivery.findMany({
       where: {
         organizationId,
         servedClientId,
         workerId: worker.id,
         status: statusFilter,
+        ...(deliveredAtFilter ? { deliveredAt: deliveredAtFilter } : {}),
       },
       orderBy: { deliveredAt: 'desc' },
       include: {
@@ -1801,6 +1819,10 @@ export class PortalService {
 
     return {
       generatedAt: new Date().toISOString(),
+      period: {
+        from: fromDate ? fromDate.toISOString().slice(0, 10) : null,
+        to: toDate ? toDate.toISOString().slice(0, 10) : null,
+      },
       client: {
         id: client.id,
         legalName: client.legalName,
@@ -1828,6 +1850,28 @@ export class PortalService {
         text: EPI_SHEET_DECLARATION_TEXT,
       },
     };
+  }
+
+  private parseSheetDayStart(value?: string): Date | null {
+    if (!value?.trim()) return null;
+    const d = new Date(`${value.trim()}T00:00:00.000Z`);
+    if (Number.isNaN(d.getTime())) {
+      throw new BadRequestException(
+        'Data inicial invalida. Use o formato AAAA-MM-DD.',
+      );
+    }
+    return d;
+  }
+
+  private parseSheetDayEnd(value?: string): Date | null {
+    if (!value?.trim()) return null;
+    const d = new Date(`${value.trim()}T23:59:59.999Z`);
+    if (Number.isNaN(d.getTime())) {
+      throw new BadRequestException(
+        'Data final invalida. Use o formato AAAA-MM-DD.',
+      );
+    }
+    return d;
   }
 
   async getDelivery(

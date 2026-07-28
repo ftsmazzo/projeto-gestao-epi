@@ -1789,6 +1789,10 @@ export interface PortalWorkerEpiSheetDelivery {
 
 export interface PortalWorkerEpiSheetResponse {
   generatedAt: string;
+  period: {
+    from: string | null;
+    to: string | null;
+  };
   client: {
     id: string;
     legalName: string;

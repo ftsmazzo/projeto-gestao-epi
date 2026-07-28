@@ -9,15 +9,26 @@ import { fetchPortalWorkerEpiSheet } from '../../../../../lib/client-auth';
 
 function PortalWorkerEpiSheetContent({ workerId }: { workerId: string }) {
   const [scope, setScope] = useState<'history' | 'open'>('history');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [appliedFrom, setAppliedFrom] = useState('');
+  const [appliedTo, setAppliedTo] = useState('');
   const [data, setData] = useState<PortalWorkerEpiSheetResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(
-    (nextScope: 'history' | 'open') => {
+    (
+      nextScope: 'history' | 'open',
+      nextFrom: string,
+      nextTo: string,
+    ) => {
       setLoading(true);
       setError(null);
-      void fetchPortalWorkerEpiSheet(workerId, nextScope)
+      void fetchPortalWorkerEpiSheet(workerId, nextScope, {
+        from: nextFrom || undefined,
+        to: nextTo || undefined,
+      })
         .then((res) => {
           setData(res);
           setLoading(false);
@@ -35,8 +46,20 @@ function PortalWorkerEpiSheetContent({ workerId }: { workerId: string }) {
   );
 
   useEffect(() => {
-    load(scope);
-  }, [load, scope]);
+    load(scope, appliedFrom, appliedTo);
+  }, [load, scope, appliedFrom, appliedTo]);
+
+  const applyPeriod = () => {
+    setAppliedFrom(from.trim());
+    setAppliedTo(to.trim());
+  };
+
+  const clearPeriod = () => {
+    setFrom('');
+    setTo('');
+    setAppliedFrom('');
+    setAppliedTo('');
+  };
 
   return (
     <div className="portal-home">
@@ -53,6 +76,13 @@ function PortalWorkerEpiSheetContent({ workerId }: { workerId: string }) {
           data={data}
           scope={scope}
           onScopeChange={(next) => setScope(next)}
+          periodFrom={from}
+          periodTo={to}
+          onPeriodFromChange={setFrom}
+          onPeriodToChange={setTo}
+          onApplyPeriod={applyPeriod}
+          onClearPeriod={clearPeriod}
+          periodLoading={loading}
         />
       ) : null}
     </div>
