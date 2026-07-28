@@ -22,6 +22,7 @@ import type {
   PortalStockEntradasResult,
   PortalTrabalhadoresResponse,
   PortalValidadeResponse,
+  PortalWorkerEpiSheetResponse,
 } from '@gestao-epi/shared';
 import { getApiUrl } from './auth';
 
@@ -121,6 +122,16 @@ export async function fetchPortalEstrutura() {
 
 export async function fetchPortalTrabalhadores() {
   return clientApiFetch<PortalTrabalhadoresResponse>('/portal/trabalhadores');
+}
+
+export async function fetchPortalWorkerEpiSheet(
+  workerId: string,
+  scope: 'history' | 'open' = 'history',
+) {
+  const query = scope === 'open' ? '?scope=open' : '';
+  return clientApiFetch<PortalWorkerEpiSheetResponse>(
+    `/portal/trabalhadores/${workerId}/ficha-epi${query}`,
+  );
 }
 
 export async function fetchPortalEntregasPreparacao() {

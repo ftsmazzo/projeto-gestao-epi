@@ -184,9 +184,17 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: importacao CSV de trabalhadores (unidade/setor/funcao) | Feito |
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
-| Portal: entregas / ficha / biometria | **09.3** + link de autoenrollment (trabalhador no celular; sem WhatsApp ainda) |
-| Portal: relatorios operacionais basicos | **08.1** — feito (consulta; sem PDF/export avancado; sem custo unitario ainda) |
+| Portal: entregas / ficha / biometria | **09.3** + link de autoenrollment; **comprovante e ficha imprimiveis** (HTML → PDF) com evidencia facial autenticada |
+| Portal: relatorios operacionais basicos | **08.1** — feito (consulta; sem PDF/export avancado de custos; sem custo unitario ainda) |
 | Portal: custos / exportacoes ricas | Ainda nao |
+
+### Documentos imprimiveis (comprovante + ficha)
+
+MVP: HTML otimizado para impressao / “Salvar como PDF” no browser (sem PDF binario no backend).
+
+- **Comprovante de entrega:** `DeliveryReceiptView` — empresa, trabalhador, itens (CA, prox. troca), termo versionado (`EPI_DELIVERY_DECLARATION_*`), evidencia facial via `GET /portal/entregas/:id/evidence/facial`.
+- **Ficha de EPI do trabalhador:** `GET /portal/trabalhadores/:id/ficha-epi` + `/portal/trabalhadores/[id]/ficha-epi` — historico cronologico com miniatura facial por entrega; filtro `scope=history|open`; termo `EPI_SHEET_DECLARATION_*`.
+- LGPD: foto so autenticada; se removida por retencao, texto padrao sem quebrar layout; sem template/`faceDescriptor` no JSON.
 
 ### Evidencia facial — storage e EasyPanel
 
@@ -202,6 +210,7 @@ Templates biometricos (`faceDescriptor`) ficam no banco como JSON sensivel — *
 - Entrega exige template ACTIVE + match aprovado (`verificationStatus=MATCHED`).
 - Preview de match: `POST /portal/trabalhadores/:id/facial-match` (sem expor template).
 - Autoenrollment (link 24h): `POST /workers/:id/facial-enrollment-link` + pagina publica `/enroll/facial/:token` (desbloqueio com 4 digitos do CPF). Sem envio WhatsApp nesta etapa.
+- Documentos print/PDF: comprovante de entrega e ficha individual de EPI (ver secao acima).
 
 ### Pendencias LGPD / evidencia (documentadas)
 
@@ -211,7 +220,7 @@ Templates biometricos (`faceDescriptor`) ficam no banco como JSON sensivel — *
 - Storage definitivo / backup dos volumes (`WORKER_FACE_REFERENCE_DIR`, `DELIVERY_EVIDENCE_DIR`).
 - Liveness / anti-spoofing e provider biometrico certificado (D03 — adapter futuro).
 
-Proximo passo natural: PDF/ficha exportavel, liveness, e/ou CRUD operacional de trabalhadores no portal — conforme prioridade do usuario.
+Proximo passo natural: liveness, CRUD operacional de trabalhadores no portal, e/ou PDF binario no servidor (lote/e-mail) — conforme prioridade do usuario.
 
 ---
 
@@ -233,7 +242,10 @@ apps/api/src/portal/portal.service.ts
 apps/web/src/app/portal/estoque/page.tsx
 
 # Trabalhadores
-apps/web/src/app/portal/trabalhadores/page.tsx          # portal (leitura)
+apps/web/src/app/portal/trabalhadores/page.tsx          # portal (leitura + link ficha)
+apps/web/src/app/portal/trabalhadores/[id]/ficha-epi/page.tsx
+apps/web/src/components/DeliveryReceiptView.tsx
+apps/web/src/components/WorkerEpiSheetView.tsx
 apps/web/src/app/clientes/[id]/trabalhadores/page.tsx   # consultoria (CRUD)
 apps/api/src/workers/workers.service.ts
 

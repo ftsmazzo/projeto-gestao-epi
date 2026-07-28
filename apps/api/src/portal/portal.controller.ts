@@ -311,6 +311,23 @@ export class PortalController {
     );
   }
 
+  @Get('trabalhadores/:id/ficha-epi')
+  trabalhadorFichaEpi(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+    @Query('scope') scope?: string,
+  ) {
+    this.assertClient(user);
+    const normalized =
+      scope === 'open' ? ('open' as const) : ('history' as const);
+    return this.portal.getWorkerEpiSheet(
+      user.organizationId,
+      user.servedClientId,
+      id,
+      normalized,
+    );
+  }
+
   @Get('trabalhadores/:id/facial-reference')
   async trabalhadorFacialReference(
     @CurrentUser() user: ClientJwtPayload,

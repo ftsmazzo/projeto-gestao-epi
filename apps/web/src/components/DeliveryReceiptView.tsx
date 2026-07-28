@@ -10,10 +10,20 @@ import {
   cancelPortalDelivery,
   createPortalDeliveryReturn,
 } from '../lib/client-auth';
+import { formatCnpj } from '../lib/cnpj';
+import { PortalFacialEvidenceThumb } from './PortalFacialEvidenceThumb';
 
 function formatDateTime(iso: string) {
   try {
     return new Date(iso).toLocaleString('pt-BR');
+  } catch {
+    return iso;
+  }
+}
+
+function formatDate(iso: string) {
+  try {
+    return new Date(iso).toLocaleDateString('pt-BR');
   } catch {
     return iso;
   }
@@ -165,6 +175,26 @@ export function DeliveryReceiptView({
         </p>
       </header>
 
+      <section className="portal-receipt__block">
+        <h2 className="page-title page-title--sm">Empresa</h2>
+        <dl className="portal-receipt__dl">
+          <div>
+            <dt>Razao social</dt>
+            <dd>{detail.client.legalName}</dd>
+          </div>
+          {detail.client.tradeName ? (
+            <div>
+              <dt>Nome fantasia</dt>
+              <dd>{detail.client.tradeName}</dd>
+            </div>
+          ) : null}
+          <div>
+            <dt>CNPJ</dt>
+            <dd className="mono">{formatCnpj(detail.client.cnpj)}</dd>
+          </div>
+        </dl>
+      </section>
+
       {actionError ? (
         <p className="error no-print" role="alert">
           {actionError}
@@ -285,6 +315,7 @@ export function DeliveryReceiptView({
                 <th>Disp.</th>
                 <th>Status</th>
                 <th>Local</th>
+                <th>Prox. troca</th>
               </tr>
             </thead>
             <tbody>
@@ -299,6 +330,11 @@ export function DeliveryReceiptView({
                   <td className="mono">{item.availableQuantity}</td>
                   <td>{item.statusLabel}</td>
                   <td>{item.locationName}</td>
+                  <td>
+                    {item.nextReplacementAt
+                      ? formatDate(item.nextReplacementAt)
+                      : '—'}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -356,21 +392,30 @@ export function DeliveryReceiptView({
                 <dt>Capturada em</dt>
                 <dd>{formatDateTime(detail.evidence.capturedAt)}</dd>
               </div>
-              <div>
-                <dt>Arquivo</dt>
-                <dd>
-                  {detail.evidence.fileRemovedByRetention
-                    ? 'Removido por politica de retencao LGPD'
-                    : detail.evidence.hasFile
-                      ? 'Registrado (acesso autenticado; nao exibido neste comprovante)'
-                      : 'Ausente'}
-                </dd>
-              </div>
             </dl>
+            <PortalFacialEvidenceThumb
+              deliveryId={detail.id}
+              hasFile={detail.evidence.hasFile}
+              fileRemovedByRetention={detail.evidence.fileRemovedByRetention}
+              capturedAtLabel={formatDateTime(detail.evidence.capturedAt)}
+            />
           </>
         ) : (
           <p className="field-hint">Sem evidencia facial registrada.</p>
         )}
+      </section>
+
+      <section className="portal-receipt__block">
+        <h2 className="page-title page-title--sm">
+          Declaracao / termo de responsabilidade
+        </h2>
+        <p className="portal-receipt__consent">{detail.declaration.text}</p>
+        <p className="table-sub">
+          Versao {detail.declaration.version}
+          {detail.consent.acceptedAt
+            ? ` · Registro operacional em ${formatDateTime(detail.consent.acceptedAt)}`
+            : ''}
+        </p>
       </section>
 
       <section className="portal-receipt__block">
@@ -396,6 +441,10 @@ export function DeliveryReceiptView({
             Consentimento nao registrado nesta entrega.
           </p>
         )}
+        <p className="table-sub portal-receipt__lgpd">
+          A imagem facial e dado sensivel (LGPD). Este comprovante e destinado a
+          uso autenticado e auditoria de fornecimento de EPI.
+        </p>
       </section>
 
       {showActions ? (

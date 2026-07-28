@@ -107,6 +107,14 @@ function PortalTrabalhadoresContent() {
                       >
                         {worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
                       </span>
+                      <div className="btn-row" style={{ marginTop: '0.65rem' }}>
+                        <Link
+                          className="btn btn-secondary"
+                          href={`/portal/trabalhadores/${worker.id}/ficha-epi`}
+                        >
+                          Ficha de EPI (PDF/imprimir)
+                        </Link>
+                      </div>
                     </div>
                   </article>
                 ))

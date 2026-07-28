@@ -112,8 +112,20 @@ export interface WorkerListItem extends Worker {
   jobFunctionName: string | null;
   requiredEpiCount: number;
   requiredEpiNeeds: Array<{ id: string; name: string }>;
-  /** Biometria ACTIVE com template — nao precisa gerar link de cadastro. */
+  /**
+   * Biometria operacionalmente valida (ACTIVE + template).
+   * Foto de referencia ausente no disco nao invalida o matching.
+   */
   hasValidBiometrics: boolean;
+  /** Arquivo de foto de referencia presente no storage. */
+  hasFaceImage: boolean;
+  biometricStatus:
+    | 'OK'
+    | 'OK_MISSING_IMAGE'
+    | 'NEEDS_REENROLLMENT'
+    | 'REVOKED'
+    | 'MISSING'
+    | 'INCOMPLETE';
 }
 
 export type WorkerImportRowAction = 'create' | 'update';
@@ -1365,6 +1377,18 @@ export const FACIAL_EVIDENCE_CONSENT_VERSION = 'v1-2026-07';
 export const FACIAL_EVIDENCE_CONSENT_TEXT =
   'Declaro que a imagem facial será registrada como evidência da entrega deste EPI e vinculada ao comprovante de fornecimento.';
 
+/** Declaracao / termo de responsabilidade do recibo de entrega (placeholder; trocavel). */
+export const EPI_DELIVERY_DECLARATION_VERSION = 'v1-2026-07-declaracao';
+
+export const EPI_DELIVERY_DECLARATION_TEXT =
+  'Declaro ter recebido os Equipamentos de Protecao Individual relacionados neste comprovante, em perfeitas condicoes de uso, e comprometo-me a utiliza-los corretamente, guarda-los e conserva-los, bem como a comunicar imediatamente qualquer dano, extravio ou alteracao que os torne improprios para uso, conforme a NR-06.';
+
+/** Termo consolidado da ficha individual de EPI (placeholder; trocavel). */
+export const EPI_SHEET_DECLARATION_VERSION = 'v1-2026-07-ficha';
+
+export const EPI_SHEET_DECLARATION_TEXT =
+  'Esta ficha consolida o historico de fornecimento de EPI ao trabalhador. Declaro ciência das entregas registradas e das responsabilidades de uso, guarda e conservacao dos equipamentos, nos termos da NR-06.';
+
 export const WORKER_FACE_REFERENCE_CONSENT_VERSION = 'v1-2026-07';
 
 export const WORKER_FACE_REFERENCE_CONSENT_TEXT =
@@ -1535,6 +1559,8 @@ export interface WorkerFacialReferenceMeta {
     retentionUntil: string | null;
     hasFile: boolean;
     canRequestDeletion: boolean;
+    /** Template ok, mas arquivo de foto ausente no storage. */
+    imageMissing?: boolean;
   } | null;
   notice: string;
 }
@@ -1590,6 +1616,12 @@ export interface PortalDeliveryDetail {
   statusLabel: string;
   deliveredAt: string;
   notes: string | null;
+  client: {
+    id: string;
+    legalName: string;
+    tradeName: string | null;
+    cnpj: string;
+  };
   worker: {
     id: string;
     name: string;
@@ -1706,8 +1738,73 @@ export interface PortalDeliveryDetail {
       grantedAt: string | null;
     };
   };
+  /** Declaracao/termo NR-06 exibido no recibo (texto versionado). */
+  declaration: {
+    version: string;
+    text: string;
+  };
   createdAt: string;
   updatedAt: string;
+}
+
+/** Ficha individual de EPI do trabalhador (historico imprimivel). */
+export interface PortalWorkerEpiSheetDeliveryItem {
+  id: string;
+  needName: string;
+  epiName: string;
+  caNumber: string | null;
+  quantity: number;
+  returnedQuantity: number;
+  cancelledQuantity: number;
+  status: PortalDeliveryItemStatus;
+  statusLabel: string;
+  nextReplacementAt: string | null;
+  locationName: string;
+}
+
+export interface PortalWorkerEpiSheetDelivery {
+  id: string;
+  receiptNumber: string;
+  status: PortalDeliveryStatus;
+  statusLabel: string;
+  deliveredAt: string;
+  items: PortalWorkerEpiSheetDeliveryItem[];
+  evidence: {
+    id: string;
+    capturedAt: string;
+    verificationStatus: PortalDeliveryEvidenceVerificationStatus;
+    hasFile: boolean;
+    fileRemovedByRetention: boolean;
+  } | null;
+}
+
+export interface PortalWorkerEpiSheetResponse {
+  generatedAt: string;
+  client: {
+    id: string;
+    legalName: string;
+    tradeName: string | null;
+    cnpj: string;
+  };
+  worker: {
+    id: string;
+    name: string;
+    registration: string | null;
+    cpfMasked: string | null;
+    unitName: string | null;
+    sectorName: string | null;
+    jobFunctionName: string | null;
+    status: 'ACTIVE' | 'INACTIVE';
+  };
+  summary: {
+    deliveryCount: number;
+    itemCount: number;
+  };
+  deliveries: PortalWorkerEpiSheetDelivery[];
+  declaration: {
+    version: string;
+    text: string;
+  };
 }
 
 export interface PortalCreateDeliveryItemInput {

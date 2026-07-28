@@ -1,14 +1,14 @@
 :root {
   color-scheme: light;
 
-  /* Brand / accent — azul eletrico */
+  /* Brand / accent ? azul eletrico */
   --color-accent: #1a6bff;
   --color-accent-hover: #0f57e0;
   --color-accent-active: #0a46bc;
   --color-accent-muted: #e8f0ff;
   --color-accent-ink: #ffffff;
 
-  /* Surfaces — grafite, prata, branco */
+  /* Surfaces ? grafite, prata, branco */
   --color-bg: #eef1f6;
   --color-bg-elevated: #f7f8fb;
   --color-surface: #ffffff;
@@ -1560,7 +1560,7 @@ a.btn-danger:hover {
   color: var(--color-danger);
 }
 
-/* ——— Workspace do cliente (Consultoria) ——— */
+/* ??? Workspace do cliente (Consultoria) ??? */
 .client-workspace {
   display: grid;
   gap: 1.25rem;
@@ -1735,7 +1735,7 @@ a.btn-danger:hover {
   }
 }
 
-/* ——— Portal do cliente ——— */
+/* ??? Portal do cliente ??? */
 .portal-shell {
   min-height: 100vh;
   min-height: 100dvh;
@@ -2129,7 +2129,7 @@ a.btn-danger:hover {
   border-radius: var(--radius-sm);
 }
 
-/* —— Validacao facial (UX 09.1.2) —— */
+/* ?? Validacao facial (UX 09.1.2) ?? */
 .portal-card--face {
   max-width: 440px;
 }
@@ -2613,6 +2613,48 @@ a.btn-danger:hover {
   font-weight: 600;
 }
 
+.portal-receipt__lgpd {
+  margin-top: 0.75rem;
+}
+
+.portal-evidence-thumb {
+  margin: 0.75rem 0 0;
+  max-width: 220px;
+}
+
+.portal-evidence-thumb__img {
+  display: block;
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  border: 1px solid var(--color-border);
+  object-fit: cover;
+  aspect-ratio: 3 / 4;
+  background: #f8fafc;
+}
+
+.portal-evidence-thumb__caption,
+.portal-evidence-thumb__msg {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-muted, #64748b);
+}
+
+.portal-epi-sheet__scope {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 220px;
+}
+
+.portal-epi-sheet__evidence {
+  margin-top: 0.85rem;
+}
+
+.portal-epi-sheet__delivery {
+  break-inside: avoid;
+}
+
 .portal-receipt {
   max-width: 920px;
 }
@@ -2699,6 +2741,12 @@ a.btn-danger:hover {
 
   .portal-receipt__block {
     break-inside: avoid;
+  }
+
+  .portal-evidence-thumb__img {
+    max-width: 160px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   body {
@@ -2949,7 +2997,7 @@ a.btn-danger:hover {
   }
 
   .table-wrap::before {
-    content: 'Deslize a tabela →';
+    content: 'Deslize a tabela ?';
     display: block;
     padding: 0.35rem 0.65rem;
     font-size: 0.72rem;
@@ -3058,7 +3106,7 @@ a.btn-danger:hover {
   }
 }
 
-/* ——— Mobile system-wide (Consultoria + Portal) ——— */
+/* ??? Mobile system-wide (Consultoria + Portal) ??? */
 @media (max-width: 860px) {
   .ops-main {
     padding: 0.85rem;
@@ -3183,7 +3231,7 @@ a.btn-danger:hover {
   .module-page .table-wrap::before,
   .client-workspace .table-wrap::before,
   .surface .table-wrap::before {
-    content: 'Deslize a tabela →';
+    content: 'Deslize a tabela ?';
     display: block;
     padding: 0.35rem 0.65rem;
     font-size: 0.72rem;
@@ -3203,7 +3251,7 @@ a.btn-danger:hover {
 
 
 
-/* ��� Autoenrollment facial (trabalhador / mobile) ��� */
+/* ??? Autoenrollment facial (trabalhador / mobile) ??? */
 .enroll-page {
   --enroll-ink: #10241c;
   --enroll-muted: #3d5a4c;

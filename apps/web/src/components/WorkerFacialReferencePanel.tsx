@@ -532,6 +532,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
 
   const enrolled =
     meta?.status === 'ACTIVE' && Boolean(meta.hasBiometricTemplate);
+  const imageMissing = Boolean(meta?.reference?.imageMissing);
   const needsReenrollment =
     meta?.status === 'NEEDS_REENROLLMENT' ||
     (meta?.status === 'ACTIVE' && !meta.hasBiometricTemplate);
@@ -543,7 +544,9 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       meta?.reference?.status === 'NEEDS_REENROLLMENT');
 
   const statusLabel = enrolled
-    ? 'Biometria cadastrada'
+    ? imageMissing
+      ? 'Biometria ok (foto ausente)'
+      : 'Biometria cadastrada'
     : needsReenrollment
       ? 'Precisa recadastrar'
       : meta?.status === 'REVOKED'
@@ -591,8 +594,14 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
           </p>
           {needsReenrollment ? (
             <p className="notice notice--warn" role="status">
-              Biometria incompleta ou arquivo ausente. Revogue abaixo e gere um
-              novo link (ou recadastre).
+              Biometria incompleta (sem template). Revogue abaixo e gere um novo
+              link (ou recadastre).
+            </p>
+          ) : null}
+          {enrolled && imageMissing ? (
+            <p className="notice notice--warn" role="status">
+              Matching ativo, mas a foto de referencia nao esta no storage.
+              Revogue e recadastre se precisar exibir a imagem.
             </p>
           ) : null}
           {enrollmentStatus ? (

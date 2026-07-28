@@ -243,9 +243,10 @@ function DashboardContent({
               Hard reset (dados de teste)
             </h2>
             <p className="page-lead">
-              Apaga clientes, estrutura, trabalhadores, EPIs, estoque, PGRO e
-              usuarios do cliente deste tenant. Mantem seu login, a organizacao
-              e a base CAEPI. Digite <strong>RESETAR</strong> para confirmar.
+              Apaga clientes, estrutura, trabalhadores, entregas, biometria,
+              EPIs, estoque, PGRO e usuarios do cliente deste tenant. Mantem seu
+              login, a organizacao e a base CAEPI. Digite{' '}
+              <strong>RESETAR</strong> para confirmar.
             </p>
             <form className="form-grid" onSubmit={onHardReset}>
               <label>

@@ -1,19 +1,19 @@
 import { createHash, randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
-import { isAbsolute, join } from 'path';
+import { join } from 'path';
+import { resolveApiFilesRoot } from '../workers/api-files-root';
 import { resolveInsideRoot } from '../workers/biometric-storage-path';
 
 /**
  * Raiz do storage de evidencia facial.
  * Preferir DELIVERY_EVIDENCE_DIR (ex.: /app/files/delivery-evidence no EasyPanel).
- * Fallback local: {cwd}/files/delivery-evidence
+ * Fallback local estavel: apps/api/files/delivery-evidence
  */
 export function getDeliveryEvidenceRoot(): string {
-  const fromEnv = process.env.DELIVERY_EVIDENCE_DIR?.trim();
-  if (fromEnv) {
-    return isAbsolute(fromEnv) ? fromEnv : join(process.cwd(), fromEnv);
-  }
-  return join(process.cwd(), 'files', 'delivery-evidence');
+  return resolveApiFilesRoot(
+    'delivery-evidence',
+    process.env.DELIVERY_EVIDENCE_DIR,
+  );
 }
 
 export type SavedFacialEvidence = {

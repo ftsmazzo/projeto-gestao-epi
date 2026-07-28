@@ -34,6 +34,52 @@ import {
 } from '../../../../lib/workers';
 import { WorkerFacialReferencePanel } from '../../../../components/WorkerFacialReferencePanel';
 
+function biometricStatusLabel(worker: WorkerListItem): {
+  label: string;
+  ok: boolean;
+  title: string;
+} {
+  switch (worker.biometricStatus) {
+    case 'OK':
+      return {
+        label: 'Biometria ok',
+        ok: true,
+        title: 'Template e foto de referencia disponiveis',
+      };
+    case 'OK_MISSING_IMAGE':
+      return {
+        label: 'Biometria ok (sem foto)',
+        ok: true,
+        title:
+          'Matching ativo. Foto de referencia ausente no storage — recadastre se precisar exibir a imagem.',
+      };
+    case 'NEEDS_REENROLLMENT':
+      return {
+        label: 'Recadastrar biometria',
+        ok: false,
+        title: 'Biometria desatualizada ou incompleta. Gere um novo link facial.',
+      };
+    case 'REVOKED':
+      return {
+        label: 'Biometria revogada',
+        ok: false,
+        title: 'Biometria revogada. Gere um novo link facial.',
+      };
+    case 'INCOMPLETE':
+      return {
+        label: 'Biometria incompleta',
+        ok: false,
+        title: 'Cadastro facial incompleto. Gere um novo link facial.',
+      };
+    default:
+      return {
+        label: 'Sem biometria',
+        ok: false,
+        title: 'Nenhuma biometria cadastrada',
+      };
+  }
+}
+
 type FormMode = 'closed' | 'create' | 'edit';
 type PanelMode = 'list' | 'import';
 
@@ -980,7 +1026,9 @@ export default function ClienteTrabalhadoresPage() {
             </div>
           ) : (
             <div className="stack-list" role="list" aria-label="Trabalhadores">
-              {workers.map((worker) => (
+              {workers.map((worker) => {
+                const bio = biometricStatusLabel(worker);
+                return (
                 <article key={worker.id} role="listitem" className="stack-card">
                   <div className="stack-card__body stack-card__body--stack">
                     <div className="stack-card__main">
@@ -1019,15 +1067,14 @@ export default function ClienteTrabalhadoresPage() {
                       </span>
                       <span
                         className={`status-pill ${
-                          worker.hasValidBiometrics
+                          bio.ok
                             ? 'status-pill--active'
                             : 'status-pill--inactive'
                         }`}
                         style={{ marginTop: '0.35rem', marginLeft: '0.35rem' }}
+                        title={bio.title}
                       >
-                        {worker.hasValidBiometrics
-                          ? 'Biometria ok'
-                          : 'Sem biometria'}
+                        {bio.label}
                       </span>
                     </div>
                     <div className="stack-card__actions">
@@ -1072,7 +1119,8 @@ export default function ClienteTrabalhadoresPage() {
                     </div>
                   </div>
                 </article>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>

@@ -10,6 +10,8 @@ export type HardResetSummary = {
   pgroImportRuns: number;
   clientUsers: number;
   auditLogs: number;
+  epiDeliveries: number;
+  facialReferences: number;
 };
 
 export function hardResetOrganization(confirmation: string) {

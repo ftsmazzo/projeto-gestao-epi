@@ -1,19 +1,19 @@
 import { createHash, randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
-import { isAbsolute, join } from 'path';
+import { join } from 'path';
+import { resolveApiFilesRoot } from './api-files-root';
 import { resolveInsideRoot } from './biometric-storage-path';
 
 /**
  * Raiz do storage de referencia facial do trabalhador.
  * Preferir WORKER_FACE_REFERENCE_DIR (ex.: /app/files/worker-face-references).
- * Fallback local: {cwd}/files/worker-face-references
+ * Fallback local estavel: apps/api/files/worker-face-references
  */
 export function getWorkerFaceReferenceRoot(): string {
-  const fromEnv = process.env.WORKER_FACE_REFERENCE_DIR?.trim();
-  if (fromEnv) {
-    return isAbsolute(fromEnv) ? fromEnv : join(process.cwd(), fromEnv);
-  }
-  return join(process.cwd(), 'files', 'worker-face-references');
+  return resolveApiFilesRoot(
+    'worker-face-references',
+    process.env.WORKER_FACE_REFERENCE_DIR,
+  );
 }
 
 export type SavedWorkerFaceReference = {

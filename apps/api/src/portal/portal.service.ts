@@ -19,6 +19,10 @@ import {
 } from '@prisma/client';
 import {
   decideFaceMatch,
+  EPI_DELIVERY_DECLARATION_TEXT,
+  EPI_DELIVERY_DECLARATION_VERSION,
+  EPI_SHEET_DECLARATION_TEXT,
+  EPI_SHEET_DECLARATION_VERSION,
   FACE_ENGINE,
   FACE_ENGINE_VERSION,
   isValidFaceDescriptor,
@@ -1681,12 +1685,142 @@ export class PortalService {
     };
   }
 
+  async getWorkerEpiSheet(
+    organizationId: string,
+    servedClientId: string,
+    workerId: string,
+    scope: 'history' | 'open' = 'history',
+  ) {
+    const client = await this.requireClient(organizationId, servedClientId);
+
+    const worker = await this.prisma.worker.findFirst({
+      where: { id: workerId, organizationId, servedClientId },
+      include: {
+        operationalUnit: { select: { name: true } },
+        clientSector: { select: { name: true } },
+        clientJobFunction: { select: { name: true } },
+      },
+    });
+    if (!worker) {
+      throw new NotFoundException('Trabalhador nao encontrado neste cliente.');
+    }
+
+    const statusFilter =
+      scope === 'open'
+        ? {
+            in: [
+              EpiDeliveryStatus.COMPLETED,
+              EpiDeliveryStatus.PARTIALLY_RETURNED,
+            ] as EpiDeliveryStatus[],
+          }
+        : { not: EpiDeliveryStatus.CANCELLED };
+
+    const deliveries = await this.prisma.epiDelivery.findMany({
+      where: {
+        organizationId,
+        servedClientId,
+        workerId: worker.id,
+        status: statusFilter,
+      },
+      orderBy: { deliveredAt: 'desc' },
+      include: {
+        items: {
+          include: {
+            epiNeed: { select: { name: true } },
+            epiItem: { select: { name: true, caNumber: true } },
+            stockLocation: { select: { name: true } },
+          },
+        },
+        evidences: {
+          where: { type: DeliveryEvidenceType.FACIAL_CAPTURE },
+          select: {
+            id: true,
+            capturedAt: true,
+            verificationStatus: true,
+            filePath: true,
+            deletionStatus: true,
+          },
+          take: 1,
+        },
+      },
+    });
+
+    const mapped = deliveries.map((row) => {
+      const facial = row.evidences[0] ?? null;
+      return {
+        id: row.id,
+        receiptNumber: row.receiptNumber,
+        status: row.status,
+        statusLabel: this.deliveryStatusLabel(row.status),
+        deliveredAt: row.deliveredAt.toISOString(),
+        items: row.items.map((item) => ({
+          id: item.id,
+          needName: item.epiNeed.name,
+          epiName: item.epiItem.name,
+          caNumber: item.epiItem.caNumber,
+          quantity: item.quantity,
+          returnedQuantity: item.returnedQuantity,
+          cancelledQuantity: item.cancelledQuantity,
+          status: item.status,
+          statusLabel: this.itemStatusLabel(item.status),
+          nextReplacementAt: item.nextReplacementAt?.toISOString() ?? null,
+          locationName: item.stockLocation.name,
+        })),
+        evidence: facial
+          ? {
+              id: facial.id,
+              capturedAt: facial.capturedAt.toISOString(),
+              verificationStatus: facial.verificationStatus,
+              hasFile: Boolean(
+                facial.filePath &&
+                  facial.deletionStatus !==
+                    WorkerBiometricDeletionStatus.DELETED,
+              ),
+              fileRemovedByRetention:
+                facial.deletionStatus ===
+                WorkerBiometricDeletionStatus.DELETED,
+            }
+          : null,
+      };
+    });
+
+    return {
+      generatedAt: new Date().toISOString(),
+      client: {
+        id: client.id,
+        legalName: client.legalName,
+        tradeName: client.tradeName,
+        cnpj: client.cnpj,
+      },
+      worker: {
+        id: worker.id,
+        name: worker.name,
+        registration: worker.registration,
+        cpfMasked: this.maskCpf(worker.cpf),
+        unitName: worker.operationalUnit?.name ?? null,
+        sectorName: worker.clientSector?.name ?? worker.department ?? null,
+        jobFunctionName:
+          worker.clientJobFunction?.name ?? worker.role ?? null,
+        status: worker.status,
+      },
+      summary: {
+        deliveryCount: mapped.length,
+        itemCount: mapped.reduce((acc, d) => acc + d.items.length, 0),
+      },
+      deliveries: mapped,
+      declaration: {
+        version: EPI_SHEET_DECLARATION_VERSION,
+        text: EPI_SHEET_DECLARATION_TEXT,
+      },
+    };
+  }
+
   async getDelivery(
     organizationId: string,
     servedClientId: string,
     deliveryId: string,
   ) {
-    await this.requireClient(organizationId, servedClientId);
+    const client = await this.requireClient(organizationId, servedClientId);
 
     const row = await this.prisma.epiDelivery.findFirst({
       where: {
@@ -1800,6 +1934,12 @@ export class PortalService {
       statusLabel: this.deliveryStatusLabel(row.status),
       deliveredAt: row.deliveredAt.toISOString(),
       notes: row.notes,
+      client: {
+        id: client.id,
+        legalName: client.legalName,
+        tradeName: client.tradeName,
+        cnpj: client.cnpj,
+      },
       worker: {
         id: row.worker.id,
         name: row.worker.name,
@@ -1944,6 +2084,10 @@ export class PortalService {
           version: row.biometricConsentVersion ?? null,
           grantedAt: row.biometricConsentGrantedAt?.toISOString() ?? null,
         },
+      },
+      declaration: {
+        version: EPI_DELIVERY_DECLARATION_VERSION,
+        text: EPI_DELIVERY_DECLARATION_TEXT,
       },
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),

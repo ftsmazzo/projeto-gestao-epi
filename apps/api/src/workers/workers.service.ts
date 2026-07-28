@@ -5,14 +5,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, WorkerFacialReferenceStatus, WorkerStatus } from '@prisma/client';
-import { isValidFaceDescriptor } from '@gestao-epi/shared';
 import { AuditService } from '../audit/audit.service';
 import { isValidCpf, stripCpf, cpfAuditMeta } from '../common/cpf';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateWorkerDto } from './dto/create-worker.dto';
 import type { UpdateWorkerDto } from './dto/update-worker.dto';
-import { resolveWorkerFaceReferenceAbsolutePath } from './worker-face-reference.storage';
-import { existsSync } from 'fs';
+import { evaluateWorkerBiometrics } from './worker-biometrics.utils';
 
 @Injectable()
 export class WorkersService {
@@ -43,15 +41,31 @@ export class WorkersService {
           },
         },
         facialReferences: {
-          where: { status: WorkerFacialReferenceStatus.ACTIVE },
-          orderBy: { uploadedAt: 'desc' },
-          take: 1,
-          select: { faceDescriptor: true, filePath: true },
+          where: {
+            status: {
+              in: [
+                WorkerFacialReferenceStatus.ACTIVE,
+                WorkerFacialReferenceStatus.NEEDS_REENROLLMENT,
+                WorkerFacialReferenceStatus.REVOKED,
+              ],
+            },
+          },
+          orderBy: [{ uploadedAt: 'desc' }],
+          take: 3,
+          select: {
+            id: true,
+            status: true,
+            faceDescriptor: true,
+            filePath: true,
+            uploadedAt: true,
+          },
         },
       },
     });
 
-    return workers.map((worker) => {
+    const brokenActiveIds: string[] = [];
+
+    const mapped = workers.map((worker) => {
       const needMap = new Map<string, string>();
       for (const req of worker.clientJobFunction?.epiRequirements ?? []) {
         needMap.set(req.epiNeed.id, req.epiNeed.name);
@@ -60,14 +74,30 @@ export class WorkersService {
         .map(([id, name]) => ({ id, name }))
         .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 
-      const activeFace = worker.facialReferences[0] ?? null;
-      const hasValidBiometrics = Boolean(
-        activeFace?.filePath &&
-          isValidFaceDescriptor(activeFace.faceDescriptor) &&
-          existsSync(
-            resolveWorkerFaceReferenceAbsolutePath(activeFace.filePath),
-          ),
-      );
+      const activeFace =
+        worker.facialReferences.find(
+          (ref) => ref.status === WorkerFacialReferenceStatus.ACTIVE,
+        ) ?? null;
+      const needsFace =
+        worker.facialReferences.find(
+          (ref) =>
+            ref.status === WorkerFacialReferenceStatus.NEEDS_REENROLLMENT,
+        ) ?? null;
+      const revokedFace =
+        worker.facialReferences.find(
+          (ref) => ref.status === WorkerFacialReferenceStatus.REVOKED,
+        ) ?? null;
+
+      const refForEval = activeFace ?? needsFace ?? revokedFace;
+      const evaluation = evaluateWorkerBiometrics({
+        status: refForEval?.status,
+        faceDescriptor: refForEval?.faceDescriptor,
+        filePath: refForEval?.filePath,
+      });
+
+      if (activeFace && !evaluation.hasDescriptor) {
+        brokenActiveIds.push(activeFace.id);
+      }
 
       return {
         id: worker.id,
@@ -94,9 +124,30 @@ export class WorkersService {
           worker.clientJobFunction?.name ?? worker.role ?? null,
         requiredEpiCount: requiredEpiNeeds.length,
         requiredEpiNeeds,
-        hasValidBiometrics,
+        hasValidBiometrics: evaluation.hasValidBiometrics,
+        hasFaceImage: evaluation.hasFaceImage,
+        biometricStatus: evaluation.hasValidBiometrics
+          ? evaluation.biometricStatus
+          : activeFace && !evaluation.hasDescriptor
+            ? 'NEEDS_REENROLLMENT'
+            : evaluation.biometricStatus,
       };
     });
+
+    if (brokenActiveIds.length > 0) {
+      await this.prisma.workerFacialReference.updateMany({
+        where: {
+          organizationId,
+          id: { in: brokenActiveIds },
+          status: WorkerFacialReferenceStatus.ACTIVE,
+        },
+        data: {
+          status: WorkerFacialReferenceStatus.NEEDS_REENROLLMENT,
+        },
+      });
+    }
+
+    return mapped;
   }
 
   async getById(organizationId: string, id: string) {

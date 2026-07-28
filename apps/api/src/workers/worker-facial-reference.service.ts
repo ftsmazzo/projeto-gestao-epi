@@ -123,15 +123,29 @@ export class WorkerFacialReferenceService {
         existsSync(resolveWorkerFaceReferenceAbsolutePath(active.filePath)),
     );
 
-    const status = active
-      ? ('ACTIVE' as const)
-      : needsReenroll
-        ? ('NEEDS_REENROLLMENT' as const)
-        : latestRevoked
-          ? ('REVOKED' as const)
-          : ('MISSING' as const);
+    // ACTIVE sem template operacional: heal para recadastro.
+    if (active && !hasDescriptor) {
+      await this.prisma.workerFacialReference.update({
+        where: { id: active.id },
+        data: { status: WorkerFacialReferenceStatus.NEEDS_REENROLLMENT },
+      });
+    }
 
-    const refRow = active ?? needsReenroll ?? latestRevoked;
+    const status =
+      active && hasDescriptor
+        ? ('ACTIVE' as const)
+        : active && !hasDescriptor
+          ? ('NEEDS_REENROLLMENT' as const)
+          : needsReenroll
+            ? ('NEEDS_REENROLLMENT' as const)
+            : latestRevoked
+              ? ('REVOKED' as const)
+              : ('MISSING' as const);
+
+    const refRow =
+      active && hasDescriptor
+        ? active
+        : needsReenroll ?? (active && !hasDescriptor ? active : null) ?? latestRevoked;
     const deletionStatus =
       refRow && 'deletionStatus' in refRow
         ? (refRow.deletionStatus as
@@ -141,7 +155,7 @@ export class WorkerFacialReferenceService {
             | 'FAILED')
         : ('NONE' as const);
     const hasFile = Boolean(
-      active
+      active && hasDescriptor
         ? fileExistsOnDisk
         : refRow &&
             'filePath' in refRow &&
@@ -152,16 +166,19 @@ export class WorkerFacialReferenceService {
     return {
       workerId: worker.id,
       workerName: worker.name,
-      hasActiveReference: Boolean(active) && fileExistsOnDisk,
-      hasBiometricTemplate: hasDescriptor && fileExistsOnDisk,
+      hasActiveReference: Boolean(active) && hasDescriptor,
+      hasBiometricTemplate: hasDescriptor,
       status:
-        active && !fileExistsOnDisk
-          ? ('NEEDS_REENROLLMENT' as const)
+        active && hasDescriptor && !fileExistsOnDisk
+          ? ('ACTIVE' as const)
           : status,
       reference: refRow
         ? {
             id: refRow.id,
-            status: refRow.status,
+            status:
+              active && !hasDescriptor
+                ? WorkerFacialReferenceStatus.NEEDS_REENROLLMENT
+                : refRow.status,
             uploadedAt: refRow.uploadedAt.toISOString(),
             revokedAt:
               'revokedAt' in refRow && refRow.revokedAt
@@ -176,7 +193,7 @@ export class WorkerFacialReferenceService {
             faceEngineVersion: active?.faceEngineVersion ?? null,
             qualityScore: active?.qualityScore ?? null,
             imagePath:
-              active && fileExistsOnDisk
+              active && hasDescriptor && fileExistsOnDisk
                 ? `/workers/${worker.id}/facial-reference/image`
                 : null,
             deletionStatus,
@@ -192,16 +209,19 @@ export class WorkerFacialReferenceService {
                 : null,
             hasFile,
             canRequestDeletion:
-              !fileExistsOnDisk &&
+              (!fileExistsOnDisk || !hasDescriptor) &&
               deletionStatus !== 'PENDING' &&
               deletionStatus !== 'DELETED' &&
               (status === 'REVOKED' ||
                 status === 'NEEDS_REENROLLMENT' ||
                 Boolean(active)),
+            imageMissing: Boolean(active && hasDescriptor && !fileExistsOnDisk),
           }
         : null,
       notice:
-        'Biometria facial de referencia para matching automatico na entrega. Templates nao sao expostos na API.',
+        active && hasDescriptor && !fileExistsOnDisk
+          ? 'Template biometrico ativo (matching ok). Foto de referencia ausente no storage — recadastre a imagem se precisar exibi-la.'
+          : 'Biometria facial de referencia para matching automatico na entrega. Templates nao sao expostos na API.',
     };
   }
 
