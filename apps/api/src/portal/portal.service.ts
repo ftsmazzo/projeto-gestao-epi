@@ -63,6 +63,10 @@ import {
 } from './portal-epi-coverage.utils';
 
 const VALIDITY_SOON_DAYS = 90;
+/** Amarelo: troca nos proximos N dias. */
+const REPLACEMENT_WARN_DAYS = 5;
+/** Critico: troca nos proximos N dias (ou ja vencida). */
+const REPLACEMENT_CRITICAL_DAYS = 3;
 const DEFAULT_LOCATION_NAME = 'Estoque principal';
 
 type ValidityBucket = 'expired' | 'soon' | 'ok' | 'missing';
@@ -136,6 +140,19 @@ export class PortalService {
   async getDashboard(organizationId: string, servedClientId: string) {
     const client = await this.requireClient(organizationId, servedClientId);
 
+    const now = new Date();
+    const warnHorizon = new Date(now);
+    warnHorizon.setUTCDate(warnHorizon.getUTCDate() + REPLACEMENT_WARN_DAYS);
+    warnHorizon.setUTCHours(23, 59, 59, 999);
+    const criticalHorizon = new Date(now);
+    criticalHorizon.setUTCDate(
+      criticalHorizon.getUTCDate() + REPLACEMENT_CRITICAL_DAYS,
+    );
+    criticalHorizon.setUTCHours(23, 59, 59, 999);
+    const deliveriesFrom = new Date(now);
+    deliveriesFrom.setUTCDate(deliveriesFrom.getUTCDate() - 7);
+    deliveriesFrom.setUTCHours(0, 0, 0, 0);
+
     const [
       unitsActive,
       workersActive,
@@ -143,6 +160,10 @@ export class PortalService {
       jobsActive,
       requirementsActive,
       validity,
+      stockBalances,
+      replacementItems,
+      deliveriesLast7Days,
+      workersWithBiometrics,
     ] = await Promise.all([
       this.prisma.operationalUnit.count({
         where: { organizationId, servedClientId, status: 'ACTIVE' },
@@ -168,6 +189,54 @@ export class PortalService {
         },
       }),
       this.buildValidityItems(organizationId, servedClientId),
+      this.prisma.epiStockBalance.findMany({
+        where: {
+          organizationId,
+          stockLocation: { servedClientId, isActive: true },
+        },
+        select: { quantity: true, minQuantity: true },
+      }),
+      this.prisma.epiDeliveryItem.findMany({
+        where: {
+          status: {
+            in: [
+              EpiDeliveryItemStatus.DELIVERED,
+              EpiDeliveryItemStatus.PARTIALLY_RETURNED,
+            ],
+          },
+          nextReplacementAt: { not: null, lte: warnHorizon },
+          delivery: {
+            organizationId,
+            servedClientId,
+            status: {
+              in: [
+                EpiDeliveryStatus.COMPLETED,
+                EpiDeliveryStatus.PARTIALLY_RETURNED,
+              ],
+            },
+          },
+        },
+        select: { nextReplacementAt: true },
+      }),
+      this.prisma.epiDelivery.count({
+        where: {
+          organizationId,
+          servedClientId,
+          deliveredAt: { gte: deliveriesFrom },
+          status: { not: EpiDeliveryStatus.CANCELLED },
+        },
+      }),
+      this.prisma.workerFacialReference.findMany({
+        where: {
+          organizationId,
+          servedClientId,
+          status: WorkerFacialReferenceStatus.ACTIVE,
+          faceDescriptor: { not: Prisma.DbNull },
+          worker: { status: WorkerStatus.ACTIVE },
+        },
+        distinct: ['workerId'],
+        select: { workerId: true },
+      }),
     ]);
 
     const uniqueNeeds = await this.countUniqueNeeds(
@@ -175,18 +244,65 @@ export class PortalService {
       servedClientId,
     );
 
-    const stockAgg = await this.prisma.epiStockBalance.aggregate({
-      where: {
-        organizationId,
-        stockLocation: { servedClientId },
+    const stockAgg = stockBalances.reduce(
+      (acc, row) => {
+        acc.quantity += row.quantity;
+        if (row.quantity <= 0) acc.zero += 1;
+        else if (row.minQuantity != null && row.quantity <= row.minQuantity) {
+          acc.low += 1;
+        }
+        return acc;
       },
-      _sum: { quantity: true },
-      _count: { _all: true },
-    });
+      { quantity: 0, low: 0, zero: 0 },
+    );
+
+    let replacementOverdue = 0;
+    let replacementCritical = 0;
+    let replacementWarn = 0;
+    for (const item of replacementItems) {
+      const at = item.nextReplacementAt;
+      if (!at) continue;
+      if (at.getTime() < now.getTime()) replacementOverdue += 1;
+      else if (at.getTime() <= criticalHorizon.getTime()) {
+        replacementCritical += 1;
+      } else replacementWarn += 1;
+    }
+    const replacementTotal =
+      replacementOverdue + replacementCritical + replacementWarn;
 
     const expired = validity.filter((v) => v.bucket === 'expired').length;
     const soon = validity.filter((v) => v.bucket === 'soon').length;
     const missingCa = validity.filter((v) => v.bucket === 'missing').length;
+    const caTotal = expired + soon + missingCa;
+    const stockAlertTotal = stockAgg.low + stockAgg.zero;
+    const biometricsMissing = Math.max(
+      0,
+      workersActive - workersWithBiometrics.length,
+    );
+
+    const attentionCards = this.buildAttentionCards({
+      replacement: {
+        overdue: replacementOverdue,
+        critical: replacementCritical,
+        warn: replacementWarn,
+        total: replacementTotal,
+        warnDays: REPLACEMENT_WARN_DAYS,
+        criticalDays: REPLACEMENT_CRITICAL_DAYS,
+      },
+      caValidity: {
+        expired,
+        soon,
+        missingCa,
+        total: caTotal,
+      },
+      stock: {
+        low: stockAgg.low,
+        zero: stockAgg.zero,
+        total: stockAlertTotal,
+      },
+      deliveries: { last7Days: deliveriesLast7Days },
+      biometrics: { missing: biometricsMissing, workersActive },
+    });
 
     return {
       client: {
@@ -211,10 +327,10 @@ export class PortalService {
         uniqueNeeds,
       },
       metrics: {
-        entregas: null as number | null,
-        validade: expired + soon + missingCa,
+        entregas: deliveriesLast7Days,
+        validade: caTotal,
         custos: null as number | null,
-        estoque: stockAgg._sum.quantity ?? 0,
+        estoque: stockAgg.quantity,
       },
       validitySummary: {
         expired,
@@ -222,8 +338,35 @@ export class PortalService {
         missingCa,
         tracked: validity.length,
       },
+      attention: {
+        replacement: {
+          overdue: replacementOverdue,
+          critical: replacementCritical,
+          warn: replacementWarn,
+          total: replacementTotal,
+          warnDays: REPLACEMENT_WARN_DAYS,
+          criticalDays: REPLACEMENT_CRITICAL_DAYS,
+        },
+        caValidity: {
+          expired,
+          soon,
+          missingCa,
+          total: caTotal,
+        },
+        stock: {
+          low: stockAgg.low,
+          zero: stockAgg.zero,
+          total: stockAlertTotal,
+        },
+        deliveries: { last7Days: deliveriesLast7Days },
+        biometrics: {
+          missing: biometricsMissing,
+          workersActive,
+        },
+        cards: attentionCards,
+      },
       modules: {
-        entregas: { ready: false, reason: 'Fluxo de entrega ainda nao liberado.' },
+        entregas: { ready: true },
         validade: { ready: true },
         custos: { ready: false, reason: 'Sem precificacao/consumo valorizado.' },
         estoque: {
@@ -233,6 +376,171 @@ export class PortalService {
         },
       },
     };
+  }
+
+  private buildAttentionCards(input: {
+    replacement: {
+      overdue: number;
+      critical: number;
+      warn: number;
+      total: number;
+      warnDays: number;
+      criticalDays: number;
+    };
+    caValidity: {
+      expired: number;
+      soon: number;
+      missingCa: number;
+      total: number;
+    };
+    stock: { low: number; zero: number; total: number };
+    deliveries: { last7Days: number };
+    biometrics: { missing: number; workersActive: number };
+  }) {
+    const replacementTone =
+      input.replacement.overdue + input.replacement.critical > 0
+        ? ('critical' as const)
+        : input.replacement.warn > 0
+          ? ('warn' as const)
+          : ('ok' as const);
+
+    const caTone =
+      input.caValidity.expired > 0
+        ? ('critical' as const)
+        : input.caValidity.soon + input.caValidity.missingCa > 0
+          ? ('warn' as const)
+          : ('ok' as const);
+
+    const stockTone =
+      input.stock.zero > 0
+        ? ('critical' as const)
+        : input.stock.low > 0
+          ? ('warn' as const)
+          : ('ok' as const);
+
+    const replacementDetail =
+      input.replacement.total === 0
+        ? 'Nenhuma troca no horizonte de alerta.'
+        : [
+            input.replacement.overdue
+              ? `${input.replacement.overdue} vencida(s)`
+              : null,
+            input.replacement.critical
+              ? `${input.replacement.critical} em ate ${input.replacement.criticalDays}d`
+              : null,
+            input.replacement.warn
+              ? `${input.replacement.warn} em ate ${input.replacement.warnDays}d`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+
+    const caDetail =
+      input.caValidity.total === 0
+        ? 'Nenhum CA exigindo atencao.'
+        : [
+            input.caValidity.expired
+              ? `${input.caValidity.expired} vencido(s)`
+              : null,
+            input.caValidity.soon
+              ? `${input.caValidity.soon} a vencer`
+              : null,
+            input.caValidity.missingCa
+              ? `${input.caValidity.missingCa} sem CA`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+
+    const stockDetail =
+      input.stock.total === 0
+        ? 'Saldos dentro do minimo.'
+        : [
+            input.stock.zero ? `${input.stock.zero} zerado(s)` : null,
+            input.stock.low ? `${input.stock.low} baixo(s)` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+
+    return [
+      {
+        id: 'replacement' as const,
+        title: 'Vida util / trocas',
+        href: '/portal/trabalhadores',
+        count: input.replacement.total,
+        tone: replacementTone,
+        label:
+          replacementTone === 'ok'
+            ? 'Em dia'
+            : replacementTone === 'critical'
+              ? 'Troca urgente'
+              : 'Troca proxima',
+        detail: replacementDetail,
+        visible: input.replacement.total > 0,
+      },
+      {
+        id: 'caValidity' as const,
+        title: 'Validade de CA',
+        href: '/portal/validade',
+        count: input.caValidity.total,
+        tone: caTone,
+        label:
+          caTone === 'ok'
+            ? 'Em dia'
+            : caTone === 'critical'
+              ? 'CA vencido'
+              : 'CA em alerta',
+        detail: caDetail,
+        visible: input.caValidity.total > 0,
+      },
+      {
+        id: 'stock' as const,
+        title: 'Estoque baixo',
+        href: '/portal/estoque',
+        count: input.stock.total,
+        tone: stockTone,
+        label:
+          stockTone === 'ok'
+            ? 'Em dia'
+            : stockTone === 'critical'
+              ? 'Estoque critico'
+              : 'Reabastecer',
+        detail: stockDetail,
+        visible: input.stock.total > 0,
+      },
+      {
+        id: 'deliveries' as const,
+        title: 'Entregas',
+        href: '/portal/entregas',
+        count: input.deliveries.last7Days,
+        tone: 'info' as const,
+        label: 'Ultimos 7 dias',
+        detail:
+          input.deliveries.last7Days === 0
+            ? 'Nenhuma entrega recente.'
+            : `${input.deliveries.last7Days} entrega(s) nos ultimos 7 dias.`,
+        visible: true,
+      },
+      {
+        id: 'biometrics' as const,
+        title: 'Sem biometria',
+        href: '/portal/trabalhadores',
+        count: input.biometrics.missing,
+        tone:
+          input.biometrics.missing > 0
+            ? ('warn' as const)
+            : ('ok' as const),
+        label:
+          input.biometrics.missing > 0
+            ? 'Cadastro pendente'
+            : 'Biometria ok',
+        detail:
+          input.biometrics.missing > 0
+            ? `${input.biometrics.missing} trabalhador(es) ativo(s) sem template facial.`
+            : 'Todos os ativos com biometria.',
+        visible: input.biometrics.missing > 0,
+      },
+    ];
   }
 
   async getValidade(organizationId: string, servedClientId: string) {

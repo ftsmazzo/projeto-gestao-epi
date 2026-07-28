@@ -1018,6 +1018,24 @@ export interface ConfirmPgroImportPayload {
 /** Respostas do Painel do Cliente (`/portal/*`, JWT audience client). */
 export type PortalValidityBucket = 'expired' | 'soon' | 'ok' | 'missing';
 
+export type PortalAttentionTone = 'ok' | 'info' | 'warn' | 'critical';
+
+export interface PortalAttentionCard {
+  id:
+    | 'replacement'
+    | 'caValidity'
+    | 'stock'
+    | 'deliveries'
+    | 'biometrics';
+  title: string;
+  href: string;
+  count: number;
+  tone: PortalAttentionTone;
+  label: string;
+  detail: string;
+  visible: boolean;
+}
+
 export interface PortalDashboardResponse {
   client: {
     id: string;
@@ -1051,6 +1069,35 @@ export interface PortalDashboardResponse {
     soon: number;
     missingCa: number;
     tracked: number;
+  };
+  attention: {
+    replacement: {
+      overdue: number;
+      critical: number;
+      warn: number;
+      total: number;
+      warnDays: number;
+      criticalDays: number;
+    };
+    caValidity: {
+      expired: number;
+      soon: number;
+      missingCa: number;
+      total: number;
+    };
+    stock: {
+      low: number;
+      zero: number;
+      total: number;
+    };
+    deliveries: {
+      last7Days: number;
+    };
+    biometrics: {
+      missing: number;
+      workersActive: number;
+    };
+    cards: PortalAttentionCard[];
   };
   modules: {
     entregas: { ready: boolean; reason?: string };
