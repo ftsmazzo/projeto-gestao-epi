@@ -2816,7 +2816,7 @@ a.btn-danger:hover {
   aspect-ratio: 3 / 4;
 }
 
-@media (max-width: 720px) {
+@media screen and (max-width: 720px) {
   .epi-doc__masthead,
   .epi-doc__section--split,
   .epi-doc__footer,
@@ -2840,13 +2840,17 @@ a.btn-danger:hover {
 
 @media print {
   @page {
-    margin: 12mm;
+    size: A4;
+    margin: 10mm 12mm;
   }
 
   html,
   body {
     background: #fff !important;
     color: #000 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   /* Esconde navegacao / chrome das shells (Consultoria + Portal) */
@@ -2880,9 +2884,12 @@ a.btn-danger:hover {
     display: block !important;
     min-height: 0 !important;
     height: auto !important;
+    width: 100% !important;
+    max-width: none !important;
     padding: 0 !important;
     margin: 0 !important;
     background: #fff !important;
+    grid-template-columns: none !important;
   }
 
   .ops-main,
@@ -2896,8 +2903,10 @@ a.btn-danger:hover {
     padding: 0 !important;
   }
 
+  /* Documento: mesma diagramacao da tela (nao empilhar como mobile) */
   .epi-doc-wrap {
     max-width: none !important;
+    width: 100% !important;
     margin: 0 !important;
   }
 
@@ -2905,6 +2914,63 @@ a.btn-danger:hover {
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    font-size: 10.5pt !important;
+  }
+
+  .epi-doc__masthead {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    gap: 1rem !important;
+    width: 100% !important;
+  }
+
+  .epi-doc__brand {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
+
+  .epi-doc__receipt-box {
+    flex: 0 0 auto !important;
+    min-width: 10.5rem !important;
+    text-align: right !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .epi-doc__grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 0.55rem 0.85rem !important;
+    width: 100% !important;
+  }
+
+  .epi-doc__section--split {
+    display: grid !important;
+    grid-template-columns: 160px 1fr !important;
+    gap: 1rem !important;
+    width: 100% !important;
+    align-items: start !important;
+  }
+
+  .epi-doc__footer {
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: space-between !important;
+    align-items: flex-end !important;
+    width: 100% !important;
+  }
+
+  .epi-doc__lgpd {
+    text-align: right !important;
+  }
+
+  .epi-doc__table {
+    width: 100% !important;
+    table-layout: fixed !important;
   }
 
   .epi-doc__section,
@@ -2914,14 +2980,10 @@ a.btn-danger:hover {
   }
 
   .portal-evidence-thumb__img,
-  .epi-doc .portal-evidence-thumb__img,
-  img {
+  .epi-doc .portal-evidence-thumb__img {
+    max-width: 110px !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
-  }
-
-  .portal-evidence-thumb__img {
-    max-width: 120px !important;
   }
 }
 
