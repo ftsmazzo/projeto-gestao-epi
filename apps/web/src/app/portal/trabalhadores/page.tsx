@@ -1,6 +1,9 @@
 'use client';
 
-import type { PortalTrabalhadoresResponse } from '@gestao-epi/shared';
+import type {
+  PortalTrabalhadorReplacementDue,
+  PortalTrabalhadoresResponse,
+} from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useMemo, useState } from 'react';
@@ -25,6 +28,19 @@ function daysLabel(daysRemaining: number) {
   return `Vence em ${daysRemaining} dias`;
 }
 
+function actionHint(
+  due: PortalTrabalhadorReplacementDue,
+  criticalDays: number,
+) {
+  if (due.overdue > 0) {
+    return `Ha ${due.overdue} EPI(s) ja vencido(s). Registre a troca agora.`;
+  }
+  if (due.critical > 0) {
+    return `${due.critical} item(ns) critico(s) nos proximos ${criticalDays} dias. Priorize a entrega.`;
+  }
+  return `${due.warn} item(ns) no horizonte de alerta. Planeje a troca.`;
+}
+
 function PortalTrabalhadoresContent() {
   const searchParams = useSearchParams();
   const filtro = searchParams.get('filtro');
@@ -42,6 +58,10 @@ function PortalTrabalhadoresContent() {
         if (!cancelled) {
           setData(res);
           setLoading(false);
+          if (onlyDue) {
+            const firstDue = res.workers.find((w) => w.replacementDue);
+            if (firstDue) setExpandedId(firstDue.id);
+          }
         }
       })
       .catch((err: unknown) => {
@@ -57,7 +77,7 @@ function PortalTrabalhadoresContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [onlyDue]);
 
   const workers = useMemo(() => {
     if (!data) return [];
@@ -65,16 +85,18 @@ function PortalTrabalhadoresContent() {
     return data.workers.filter((w) => w.replacementDue);
   }, [data, onlyDue]);
 
+  const criticalDays = data?.replacementHorizon.criticalDays ?? 3;
+  const warnDays = data?.replacementHorizon.warnDays ?? 5;
+
   return (
     <div className="portal-home">
-      <header className="portal-home-header">
-        <div>
-          <p className="page-kicker">Dia a dia</p>
-          <h1 className="page-title page-title--sm">Trabalhadores</h1>
-          <p className="page-lead">
+      <header className="portal-home-header portal-home-header--decision">
+        <div className="portal-home-brand">
+          <h1 className="portal-home-title">Trabalhadores</h1>
+          <p className="portal-home-cnpj">
             {onlyDue
-              ? `Filtro: EPIs com troca em ate ${data?.replacementHorizon.warnDays ?? 5} dias (critico em ${data?.replacementHorizon.criticalDays ?? 3} dias).`
-              : 'Vidas desta empresa. Quem tem EPI vencendo aparece sinalizado.'}
+              ? `Filtrado: trocas em ate ${warnDays} dias`
+              : 'Quem precisa de troca aparece sinalizado'}
           </p>
         </div>
       </header>
@@ -90,21 +112,26 @@ function PortalTrabalhadoresContent() {
 
       {data ? (
         <>
-          <section className="quota-summary" aria-label="Cota de vidas">
+          <section
+            className="quota-summary quota-summary--compact"
+            aria-label="Resumo"
+          >
             <div className="quota-summary-item">
-              <span className="quota-summary-label">Alocadas</span>
+              <span className="quota-summary-label">Vidas</span>
               <strong className="quota-summary-value">
-                {data.lives.allocated}
+                {data.lives.used}/{data.lives.allocated}
               </strong>
             </div>
             <div className="quota-summary-item">
-              <span className="quota-summary-label">Em uso</span>
-              <strong className="quota-summary-value">{data.lives.used}</strong>
-            </div>
-            <div className="quota-summary-item">
-              <span className="quota-summary-label">Troca proxima</span>
+              <span className="quota-summary-label">Com troca</span>
               <strong className="quota-summary-value">
                 {data.summary.withReplacementDue}
+              </strong>
+            </div>
+            <div className="quota-summary-item">
+              <span className="quota-summary-label">Horizonte</span>
+              <strong className="quota-summary-value">
+                {criticalDays}/{warnDays}d
               </strong>
             </div>
           </section>
@@ -116,10 +143,10 @@ function PortalTrabalhadoresContent() {
               </Link>
             ) : data.summary.withReplacementDue > 0 ? (
               <Link
-                className="btn btn-secondary"
+                className="btn btn-primary"
                 href="/portal/trabalhadores?filtro=trocas"
               >
-                So com EPI vencendo ({data.summary.withReplacementDue})
+                Abrir fila de trocas ({data.summary.withReplacementDue})
               </Link>
             ) : null}
             <Link className="btn btn-secondary" href="/portal">
@@ -127,52 +154,41 @@ function PortalTrabalhadoresContent() {
             </Link>
           </div>
 
-          <section className="portal-card">
-            <div className="portal-pick-list" role="list">
-              {workers.length === 0 ? (
-                <p className="page-lead">
-                  {onlyDue
-                    ? 'Nenhum trabalhador com EPI vencendo no horizonte de alerta.'
-                    : 'Nenhum trabalhador cadastrado para esta empresa.'}
-                </p>
-              ) : (
-                workers.map((worker) => {
-                  const due = worker.replacementDue;
-                  const expanded = expandedId === worker.id;
-                  return (
-                    <article
-                      key={worker.id}
-                      role="listitem"
-                      className={`portal-pick-card${due ? ' portal-pick-card--due' : ''}${due?.tone === 'critical' ? ' portal-pick-card--due-critical' : ''}`}
-                    >
-                      <div className="portal-pick-card__body portal-pick-card__body--stack">
-                        <div className="portal-pick-card__main">
-                          <div className="portal-pick-card__title-row">
-                            <strong className="portal-pick-card__title">
-                              {worker.name}
-                            </strong>
-                            {due ? (
-                              <span
-                                className={`status-pill ${
-                                  due.tone === 'critical'
-                                    ? 'status-pill--critical'
-                                    : 'status-pill--warn'
-                                }`}
-                              >
-                                {due.tone === 'critical'
-                                  ? `Troca urgente (${due.count})`
-                                  : `Troca proxima (${due.count})`}
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="portal-pick-card__meta mono">
+          <section className="portal-worker-list" aria-label="Lista">
+            {workers.length === 0 ? (
+              <p className="page-lead">
+                {onlyDue
+                  ? 'Nenhum trabalhador com EPI vencendo no horizonte.'
+                  : 'Nenhum trabalhador cadastrado para esta empresa.'}
+              </p>
+            ) : (
+              workers.map((worker) => {
+                const due = worker.replacementDue;
+                const expanded = expandedId === worker.id;
+                const urgentCount = due
+                  ? due.overdue + due.critical
+                  : 0;
+
+                return (
+                  <article
+                    key={worker.id}
+                    className={`portal-worker-card${due ? ` portal-worker-card--${due.tone}` : ''}`}
+                  >
+                    <header className="portal-worker-card__header">
+                      <div className="portal-worker-card__identity">
+                        <h2 className="portal-worker-card__name">
+                          {worker.name}
+                        </h2>
+                        <p className="portal-worker-card__meta">
+                          <span className="mono">
                             {worker.registration ?? 'Sem matricula'}
-                          </p>
-                          <p className="portal-pick-card__meta">
-                            {worker.role || worker.department || 'Sem funcao'}
-                            {worker.unitName ? ` · ${worker.unitName}` : ''}
-                          </p>
-                        </div>
+                          </span>
+                          {' · '}
+                          {worker.role || worker.department || 'Sem funcao'}
+                          {worker.unitName ? ` · ${worker.unitName}` : ''}
+                        </p>
+                      </div>
+                      <div className="portal-worker-card__flags">
                         <span
                           className={`status-pill status-pill--${
                             worker.status === 'ACTIVE' ? 'active' : 'inactive'
@@ -180,84 +196,135 @@ function PortalTrabalhadoresContent() {
                         >
                           {worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
                         </span>
-                        <div className="btn-row" style={{ marginTop: '0.65rem' }}>
-                          {due ? (
-                            <button
-                              type="button"
-                              className="btn btn-primary"
-                              onClick={() =>
-                                setExpandedId(expanded ? null : worker.id)
-                              }
-                              aria-expanded={expanded}
-                            >
-                              {expanded
-                                ? 'Ocultar EPIs vencendo'
-                                : `Ver EPIs vencendo (${due.count})`}
-                            </button>
-                          ) : null}
-                          <Link
-                            className="btn btn-secondary"
-                            href={`/portal/trabalhadores/${worker.id}/ficha-epi`}
+                        {due ? (
+                          <span
+                            className={`status-pill ${
+                              due.tone === 'critical'
+                                ? 'status-pill--critical'
+                                : 'status-pill--warn'
+                            }`}
                           >
-                            Ficha de EPI
-                          </Link>
-                        </div>
-
-                        {due && expanded ? (
-                          <div className="portal-due-epis" role="region">
-                            <p className="portal-due-epis__title">
-                              EPIs com troca no horizonte
-                            </p>
-                            <ul className="portal-due-epis__list">
-                              {due.items.map((item) => (
-                                <li key={item.id} className="portal-due-epis__item">
-                                  <div>
-                                    <strong>{item.epiName}</strong>
-                                    <span className="portal-pick-card__meta">
-                                      {item.needName}
-                                      {item.caNumber
-                                        ? ` · CA ${item.caNumber}`
-                                        : ''}
-                                    </span>
-                                    <span className="portal-pick-card__meta">
-                                      Entrega {item.receiptNumber}
-                                      {item.usefulLifeLabel
-                                        ? ` · Vida util ${item.usefulLifeLabel}`
-                                        : ''}
-                                    </span>
-                                  </div>
-                                  <div className="portal-due-epis__meta">
-                                    <span
-                                      className={`status-pill ${
-                                        item.tone === 'critical'
-                                          ? 'status-pill--critical'
-                                          : 'status-pill--warn'
-                                      }`}
-                                    >
-                                      {daysLabel(item.daysRemaining)}
-                                    </span>
-                                    <span className="portal-pick-card__meta mono">
-                                      Prox. troca{' '}
-                                      {formatDate(item.nextReplacementAt)}
-                                    </span>
-                                    <Link
-                                      className="btn btn-ghost"
-                                      href={`/portal/entregas/${item.deliveryId}`}
-                                    >
-                                      Ver entrega
-                                    </Link>
-                                  </div>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
+                            {due.tone === 'critical'
+                              ? `Urgente · ${due.count}`
+                              : `Proxima · ${due.count}`}
+                          </span>
                         ) : null}
                       </div>
-                    </article>
-                  );
-                })
-              )}
-            </div>
+                    </header>
+
+                    {due ? (
+                      <p className="portal-worker-card__hint" role="status">
+                        {actionHint(due, criticalDays)}
+                        {urgentCount > 0
+                          ? ` · ${urgentCount} prioritario(s)`
+                          : ''}
+                      </p>
+                    ) : null}
+
+                    <div className="portal-worker-card__actions">
+                      {due ? (
+                        <>
+                          <Link
+                            className="btn btn-primary"
+                            href={`/portal/entregas?worker=${worker.id}`}
+                          >
+                            Registrar troca
+                          </Link>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() =>
+                              setExpandedId(expanded ? null : worker.id)
+                            }
+                            aria-expanded={expanded}
+                          >
+                            {expanded
+                              ? 'Ocultar itens'
+                              : `Ver ${due.count} EPI(s)`}
+                          </button>
+                        </>
+                      ) : null}
+                      <Link
+                        className="btn btn-secondary"
+                        href={`/portal/trabalhadores/${worker.id}/ficha-epi`}
+                      >
+                        Ficha de EPI
+                      </Link>
+                    </div>
+
+                    {due && expanded ? (
+                      <div className="portal-due-panel" role="region">
+                        <div className="portal-due-panel__summary">
+                          {[
+                            due.overdue > 0
+                              ? `${due.overdue} vencido(s)`
+                              : null,
+                            due.critical > 0
+                              ? `${due.critical} em ate ${criticalDays}d`
+                              : null,
+                            due.warn > 0
+                              ? `${due.warn} em ate ${warnDays}d`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .map((label) => (
+                              <span key={String(label)}>{label}</span>
+                            ))}
+                        </div>
+                        <ul className="portal-due-panel__list">
+                          {due.items.map((item) => (
+                            <li
+                              key={item.id}
+                              className={`portal-due-row portal-due-row--${item.tone}`}
+                            >
+                              <div className="portal-due-row__main">
+                                <strong className="portal-due-row__name">
+                                  {item.epiName}
+                                </strong>
+                                <p className="portal-due-row__meta">
+                                  {item.needName}
+                                  {item.caNumber
+                                    ? ` · CA ${item.caNumber}`
+                                    : ''}
+                                </p>
+                              </div>
+                              <div className="portal-due-row__status">
+                                <span
+                                  className={`status-pill ${
+                                    item.tone === 'critical'
+                                      ? 'status-pill--critical'
+                                      : 'status-pill--warn'
+                                  }`}
+                                >
+                                  {daysLabel(item.daysRemaining)}
+                                </span>
+                                <span className="portal-due-row__date mono">
+                                  {formatDate(item.nextReplacementAt)}
+                                </span>
+                              </div>
+                              <div className="portal-due-row__actions">
+                                <Link
+                                  className="btn btn-primary btn-sm"
+                                  href={`/portal/entregas?worker=${worker.id}`}
+                                >
+                                  Trocar
+                                </Link>
+                                <Link
+                                  className="btn btn-ghost btn-sm"
+                                  href={`/portal/entregas/${item.deliveryId}`}
+                                >
+                                  Entrega
+                                </Link>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })
+            )}
           </section>
         </>
       ) : null}

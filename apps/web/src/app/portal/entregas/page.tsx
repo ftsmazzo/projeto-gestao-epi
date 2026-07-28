@@ -10,7 +10,8 @@ import type {
   PortalEntregasPreparacaoResponse,
 } from '@gestao-epi/shared';
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FacialValidationPanel,
   type FacialValidationResult,
@@ -326,6 +327,10 @@ function NeedSelectCard({
 }
 
 function PortalEntregasContent() {
+  const searchParams = useSearchParams();
+  const workerFromQuery = searchParams.get('worker');
+  const autoSelectedRef = useRef<string | null>(null);
+
   const [prep, setPrep] = useState<PortalEntregasPreparacaoResponse | null>(
     null,
   );
@@ -471,6 +476,15 @@ function PortalEntregasContent() {
       setLoadingCoverage(false);
     }
   }
+
+  useEffect(() => {
+    if (!prep || !workerFromQuery) return;
+    if (autoSelectedRef.current === workerFromQuery) return;
+    const worker = prep.workers.find((w) => w.id === workerFromQuery);
+    if (!worker) return;
+    autoSelectedRef.current = workerFromQuery;
+    void selectWorker(worker);
+  }, [prep, workerFromQuery]);
 
   async function submitDelivery() {
     if (!selectedId || !facialResult || !faceMatched) {
@@ -987,7 +1001,11 @@ function PortalEntregasContent() {
 export default function PortalEntregasPage() {
   return (
     <RequireClientAuth>
-      {() => <PortalEntregasContent />}
+      {() => (
+        <Suspense fallback={<p className="page-lead">Carregando...</p>}>
+          <PortalEntregasContent />
+        </Suspense>
+      )}
     </RequireClientAuth>
   );
 }
