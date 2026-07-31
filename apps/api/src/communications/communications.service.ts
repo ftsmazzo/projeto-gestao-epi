@@ -28,6 +28,11 @@ export type AccessInviteChannelStatus =
   | 'SKIPPED'
   | 'NOT_REQUESTED';
 
+export type AccessInviteChannelResult = {
+  status: AccessInviteChannelStatus;
+  error?: string | null;
+};
+
 @Injectable()
 export class CommunicationsService {
   private readonly logger = new Logger(CommunicationsService.name);
@@ -59,6 +64,8 @@ export class CommunicationsService {
     enabled: boolean;
     email: AccessInviteChannelStatus;
     whatsapp: AccessInviteChannelStatus;
+    emailError?: string | null;
+    whatsappError?: string | null;
   }> {
     const enabled = this.isEnabled();
     const empty = {
@@ -79,16 +86,28 @@ export class CommunicationsService {
         replyToEmail: replyTo,
       };
 
-      const [email, whatsapp] = await Promise.all([
+      const [emailResult, whatsappResult] = await Promise.all([
         full.recipientEmail?.trim()
           ? this.enqueueAccessEmail(full)
-          : Promise.resolve('NOT_REQUESTED' as AccessInviteChannelStatus),
+          : Promise.resolve({
+              status: 'NOT_REQUESTED' as AccessInviteChannelStatus,
+              error: null as string | null,
+            }),
         full.recipientPhone?.trim()
           ? this.enqueueAccessWhatsapp(full)
-          : Promise.resolve('NOT_REQUESTED' as AccessInviteChannelStatus),
+          : Promise.resolve({
+              status: 'NOT_REQUESTED' as AccessInviteChannelStatus,
+              error: null as string | null,
+            }),
       ]);
 
-      return { enabled, email, whatsapp };
+      return {
+        enabled,
+        email: emailResult.status,
+        whatsapp: whatsappResult.status,
+        emailError: emailResult.error ?? null,
+        whatsappError: whatsappResult.error ?? null,
+      };
     } catch (err) {
       this.logger.warn(
         `Falha ao enfileirar convite de acesso: ${
@@ -216,7 +235,7 @@ export class CommunicationsService {
 
   private async enqueueAccessEmail(
     input: ClientAccessInviteInput,
-  ): Promise<AccessInviteChannelStatus> {
+  ): Promise<AccessInviteChannelResult> {
     const { subject, text } = buildClientAccessInviteEmail(input);
     const row = await this.prisma.communicationOutbox.create({
       data: {
@@ -242,13 +261,13 @@ export class CommunicationsService {
       },
     });
 
-    if (!this.isEnabled()) return 'SKIPPED';
+    if (!this.isEnabled()) return { status: 'SKIPPED' };
     return this.deliver(row.id);
   }
 
   private async enqueueAccessWhatsapp(
     input: ClientAccessInviteInput,
-  ): Promise<AccessInviteChannelStatus> {
+  ): Promise<AccessInviteChannelResult> {
     const text = buildClientAccessInviteWhatsapp(input);
     const row = await this.prisma.communicationOutbox.create({
       data: {
@@ -273,18 +292,22 @@ export class CommunicationsService {
       },
     });
 
-    if (!this.isEnabled()) return 'SKIPPED';
+    if (!this.isEnabled()) return { status: 'SKIPPED' };
     return this.deliver(row.id);
   }
 
-  private async deliver(outboxId: string): Promise<AccessInviteChannelStatus> {
+  private async deliver(outboxId: string): Promise<AccessInviteChannelResult> {
     const row = await this.prisma.communicationOutbox.findUnique({
       where: { id: outboxId },
     });
-    if (!row) return 'FAILED';
-    if (row.status === CommunicationStatus.SENT) return 'SENT';
-    if (row.status === CommunicationStatus.SKIPPED) return 'SKIPPED';
-    if (row.attempts >= MAX_ATTEMPTS) return 'FAILED';
+    if (!row) return { status: 'FAILED', error: 'Outbox nao encontrado' };
+    if (row.status === CommunicationStatus.SENT) return { status: 'SENT' };
+    if (row.status === CommunicationStatus.SKIPPED) {
+      return { status: 'SKIPPED', error: row.errorMessage };
+    }
+    if (row.attempts >= MAX_ATTEMPTS) {
+      return { status: 'FAILED', error: row.errorMessage };
+    }
 
     try {
       if (row.channel === CommunicationChannel.EMAIL) {
@@ -319,7 +342,7 @@ export class CommunicationsService {
           errorMessage: null,
         },
       });
-      return 'SENT';
+      return { status: 'SENT' };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Envio ${row.channel} falhou (${row.id}): ${message}`);
@@ -331,7 +354,7 @@ export class CommunicationsService {
           errorMessage: message.slice(0, 500),
         },
       });
-      return 'FAILED';
+      return { status: 'FAILED', error: message.slice(0, 500) };
     }
   }
 

@@ -306,6 +306,8 @@ export interface ClientInitialAccess {
     enabled: boolean;
     email: AccessInviteDeliveryStatus;
     whatsapp: AccessInviteDeliveryStatus;
+    emailError?: string | null;
+    whatsappError?: string | null;
   };
 }
 

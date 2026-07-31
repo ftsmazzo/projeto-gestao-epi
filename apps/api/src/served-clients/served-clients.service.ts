@@ -45,6 +45,8 @@ export type ClientInitialAccessPayload = {
     enabled: boolean;
     email: 'SENT' | 'FAILED' | 'PENDING' | 'SKIPPED' | 'NOT_REQUESTED';
     whatsapp: 'SENT' | 'FAILED' | 'PENDING' | 'SKIPPED' | 'NOT_REQUESTED';
+    emailError?: string | null;
+    whatsappError?: string | null;
   };
 };
 
@@ -492,12 +494,22 @@ export class ServedClientsService {
 
     const parts: string[] = [];
     if (delivery.email === 'SENT') parts.push('e-mail enviado');
-    else if (delivery.email === 'FAILED') parts.push('e-mail falhou');
-    else if (delivery.email === 'SKIPPED') parts.push('e-mail ignorado');
+    else if (delivery.email === 'FAILED') {
+      parts.push(
+        delivery.emailError
+          ? `e-mail falhou (${delivery.emailError})`
+          : 'e-mail falhou',
+      );
+    } else if (delivery.email === 'SKIPPED') parts.push('e-mail ignorado');
 
     if (delivery.whatsapp === 'SENT') parts.push('WhatsApp enviado');
-    else if (delivery.whatsapp === 'FAILED') parts.push('WhatsApp falhou');
-    else if (delivery.whatsapp === 'SKIPPED') parts.push('WhatsApp ignorado');
+    else if (delivery.whatsapp === 'FAILED') {
+      parts.push(
+        delivery.whatsappError
+          ? `WhatsApp falhou (${delivery.whatsappError})`
+          : 'WhatsApp falhou',
+      );
+    } else if (delivery.whatsapp === 'SKIPPED') parts.push('WhatsApp ignorado');
     else if (!phone?.trim()) {
       parts.push('WhatsApp nao solicitado (informe telefone do gestor)');
     }

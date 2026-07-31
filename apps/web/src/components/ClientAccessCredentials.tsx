@@ -99,6 +99,9 @@ export function ClientAccessCredentials({
               WhatsApp
               {access.managerPhone ? ` (${access.managerPhone})` : ''}:{' '}
               {deliveryLabel(whatsappStatus)}
+              {delivery.whatsappError ? (
+                <span className="table-sub"> — {delivery.whatsappError}</span>
+              ) : null}
             </li>
           </ul>
         </div>
