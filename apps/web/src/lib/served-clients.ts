@@ -164,13 +164,25 @@ export function clientUserAccessLabel(status: ClientUserAccessStatus) {
 }
 
 export function formatAccessCredentialsCopy(access: ClientInitialAccess) {
-  return [
+  const lines = [
     `Portal do cliente: ${access.accessUrl}`,
     `Usuario/e-mail: ${access.managerEmail}`,
+  ];
+  if (access.managerPhone) {
+    lines.push(`WhatsApp: ${access.managerPhone}`);
+  }
+  lines.push(
     `Senha temporaria: ${access.temporaryPassword}`,
     '',
     'Copie estes dados agora. A senha temporaria nao sera exibida novamente.',
     'ATENCAO: use apenas o portal do cliente. Nao use o login da Consultoria.',
-    'Envio por WhatsApp/e-mail sera implementado depois.',
-  ].join('\n');
+  );
+  if (access.delivery) {
+    lines.push(
+      '',
+      `Envio e-mail: ${access.delivery.email}`,
+      `Envio WhatsApp: ${access.delivery.whatsapp}`,
+    );
+  }
+  return lines.join('\n');
 }

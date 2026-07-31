@@ -21,6 +21,13 @@ import { EvolutionWhatsappSender } from './evolution-whatsapp.sender';
 
 const MAX_ATTEMPTS = 3;
 
+export type AccessInviteChannelStatus =
+  | 'SENT'
+  | 'FAILED'
+  | 'PENDING'
+  | 'SKIPPED'
+  | 'NOT_REQUESTED';
+
 @Injectable()
 export class CommunicationsService {
   private readonly logger = new Logger(CommunicationsService.name);
@@ -41,14 +48,25 @@ export class CommunicationsService {
   }
 
   /**
-   * Enfileira convite de acesso (e-mail e/ou WhatsApp) sem bloquear o fluxo.
-   * Se comunicacoes estiverem desligadas, grava como SKIPPED.
+   * Enfileira e tenta entregar imediatamente o convite de acesso.
+   * Falhas de envio nao derrubam o provisionamento — retornam status.
    */
   async enqueueClientAccessInvite(
     input: Omit<ClientAccessInviteInput, 'replyToEmail' | 'organizationName'> & {
       organizationName?: string;
     },
-  ) {
+  ): Promise<{
+    enabled: boolean;
+    email: AccessInviteChannelStatus;
+    whatsapp: AccessInviteChannelStatus;
+  }> {
+    const enabled = this.isEnabled();
+    const empty = {
+      enabled,
+      email: 'NOT_REQUESTED' as AccessInviteChannelStatus,
+      whatsapp: 'NOT_REQUESTED' as AccessInviteChannelStatus,
+    };
+
     try {
       const org = await this.prisma.organization.findUnique({
         where: { id: input.organizationId },
@@ -61,20 +79,23 @@ export class CommunicationsService {
         replyToEmail: replyTo,
       };
 
-      const jobs: Array<Promise<unknown>> = [];
-      if (full.recipientEmail?.trim()) {
-        jobs.push(this.enqueueAccessEmail(full));
-      }
-      if (full.recipientPhone?.trim()) {
-        jobs.push(this.enqueueAccessWhatsapp(full));
-      }
-      await Promise.all(jobs);
+      const [email, whatsapp] = await Promise.all([
+        full.recipientEmail?.trim()
+          ? this.enqueueAccessEmail(full)
+          : Promise.resolve('NOT_REQUESTED' as AccessInviteChannelStatus),
+        full.recipientPhone?.trim()
+          ? this.enqueueAccessWhatsapp(full)
+          : Promise.resolve('NOT_REQUESTED' as AccessInviteChannelStatus),
+      ]);
+
+      return { enabled, email, whatsapp };
     } catch (err) {
       this.logger.warn(
         `Falha ao enfileirar convite de acesso: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
+      return empty;
     }
   }
 
@@ -193,7 +214,9 @@ export class CommunicationsService {
     return `${base}/portal`;
   }
 
-  private async enqueueAccessEmail(input: ClientAccessInviteInput) {
+  private async enqueueAccessEmail(
+    input: ClientAccessInviteInput,
+  ): Promise<AccessInviteChannelStatus> {
     const { subject, text } = buildClientAccessInviteEmail(input);
     const row = await this.prisma.communicationOutbox.create({
       data: {
@@ -219,12 +242,13 @@ export class CommunicationsService {
       },
     });
 
-    if (this.isEnabled()) {
-      void this.deliver(row.id);
-    }
+    if (!this.isEnabled()) return 'SKIPPED';
+    return this.deliver(row.id);
   }
 
-  private async enqueueAccessWhatsapp(input: ClientAccessInviteInput) {
+  private async enqueueAccessWhatsapp(
+    input: ClientAccessInviteInput,
+  ): Promise<AccessInviteChannelStatus> {
     const text = buildClientAccessInviteWhatsapp(input);
     const row = await this.prisma.communicationOutbox.create({
       data: {
@@ -249,23 +273,18 @@ export class CommunicationsService {
       },
     });
 
-    if (this.isEnabled()) {
-      void this.deliver(row.id);
-    }
+    if (!this.isEnabled()) return 'SKIPPED';
+    return this.deliver(row.id);
   }
 
-  private async deliver(outboxId: string) {
+  private async deliver(outboxId: string): Promise<AccessInviteChannelStatus> {
     const row = await this.prisma.communicationOutbox.findUnique({
       where: { id: outboxId },
     });
-    if (!row) return;
-    if (
-      row.status === CommunicationStatus.SENT ||
-      row.status === CommunicationStatus.SKIPPED
-    ) {
-      return;
-    }
-    if (row.attempts >= MAX_ATTEMPTS) return;
+    if (!row) return 'FAILED';
+    if (row.status === CommunicationStatus.SENT) return 'SENT';
+    if (row.status === CommunicationStatus.SKIPPED) return 'SKIPPED';
+    if (row.attempts >= MAX_ATTEMPTS) return 'FAILED';
 
     try {
       if (row.channel === CommunicationChannel.EMAIL) {
@@ -300,6 +319,7 @@ export class CommunicationsService {
           errorMessage: null,
         },
       });
+      return 'SENT';
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Envio ${row.channel} falhou (${row.id}): ${message}`);
@@ -311,6 +331,7 @@ export class CommunicationsService {
           errorMessage: message.slice(0, 500),
         },
       });
+      return 'FAILED';
     }
   }
 

@@ -129,7 +129,7 @@ export default function ClienteUsuariosPage() {
   async function onResetAccess(user: ClientUserMembership) {
     if (!clientId || !canOperate || !user.isActive) return;
     const confirmed = window.confirm(
-      'Gerar nova senha temporaria? Ela sera exibida apenas agora. O gestor entra em /portal/login.',
+      'Gerar nova senha temporaria? Ela sera exibida aqui e tentaremos enviar por e-mail/WhatsApp. O gestor entra em /portal/login.',
     );
     if (!confirmed) return;
     setUserError(null);
@@ -241,11 +241,12 @@ export default function ClienteUsuariosPage() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="user-phone">WhatsApp / telefone</label>
+                <label htmlFor="user-phone">WhatsApp (para enviar login)</label>
                 <input
                   id="user-phone"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
+                  placeholder="11999999999"
                 />
               </div>
               <div className="field">

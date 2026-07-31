@@ -285,6 +285,13 @@ export interface ClientUserMembership {
   updatedAt: string;
 }
 
+export type AccessInviteDeliveryStatus =
+  | 'SENT'
+  | 'FAILED'
+  | 'PENDING'
+  | 'SKIPPED'
+  | 'NOT_REQUESTED';
+
 export interface ClientInitialAccess {
   membershipId: string;
   managerName: string;
@@ -294,6 +301,12 @@ export interface ClientInitialAccess {
   accessUrl: string;
   accessStatus: ClientUserAccessStatus;
   warning: string;
+  /** Resultado do disparo imediato de convite (e-mail/WhatsApp). */
+  delivery?: {
+    enabled: boolean;
+    email: AccessInviteDeliveryStatus;
+    whatsapp: AccessInviteDeliveryStatus;
+  };
 }
 
 export interface CreateServedClientResult {

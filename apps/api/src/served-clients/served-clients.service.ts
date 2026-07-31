@@ -41,6 +41,11 @@ export type ClientInitialAccessPayload = {
   accessUrl: string;
   accessStatus: ClientUserAccessStatus;
   warning: string;
+  delivery: {
+    enabled: boolean;
+    email: 'SENT' | 'FAILED' | 'PENDING' | 'SKIPPED' | 'NOT_REQUESTED';
+    whatsapp: 'SENT' | 'FAILED' | 'PENDING' | 'SKIPPED' | 'NOT_REQUESTED';
+  };
 };
 
 @Injectable()
@@ -293,7 +298,7 @@ export class ServedClientsService {
     });
 
     const payload = this.toInitialAccessPayload(updated, temporaryPassword);
-    void this.communications.enqueueClientAccessInvite({
+    const delivery = await this.communications.enqueueClientAccessInvite({
       organizationId,
       recipientName: updated.name,
       recipientEmail: updated.email,
@@ -302,7 +307,7 @@ export class ServedClientsService {
       accessUrl: payload.accessUrl,
       membershipId: updated.id,
     });
-    return payload;
+    return this.withDelivery(payload, delivery);
   }
 
   private async provisionInitialManager(
@@ -371,7 +376,7 @@ export class ServedClientsService {
     });
 
     const payload = this.toInitialAccessPayload(membership, temporaryPassword);
-    void this.communications.enqueueClientAccessInvite({
+    const delivery = await this.communications.enqueueClientAccessInvite({
       organizationId,
       recipientName: membership.name,
       recipientEmail: membership.email,
@@ -380,7 +385,7 @@ export class ServedClientsService {
       accessUrl: payload.accessUrl,
       membershipId: membership.id,
     });
-    return payload;
+    return this.withDelivery(payload, delivery);
   }
 
   private async ensureUserForClientAccess(input: {
@@ -448,7 +453,6 @@ export class ServedClientsService {
     },
     temporaryPassword: string,
   ): ClientInitialAccessPayload {
-    const communicationsOn = this.communications.isEnabled();
     return {
       membershipId: membership.id,
       managerName: membership.name,
@@ -457,10 +461,53 @@ export class ServedClientsService {
       temporaryPassword,
       accessUrl: this.resolveAccessUrl(),
       accessStatus: membership.accessStatus,
-      warning: communicationsOn
-        ? 'A senha temporaria sera exibida apenas agora. Tentaremos enviar tambem por e-mail/WhatsApp quando houver contato e provedores configurados. Use o portal do cliente (/portal/login).'
-        : 'A senha temporaria sera exibida apenas agora. Use o link do portal do cliente (/portal/login), nao o login da Consultoria. Comunicacoes automaticas estao desligadas (COMMUNICATIONS_ENABLED).',
+      warning:
+        'A senha temporaria sera exibida apenas agora. Use o portal do cliente (/portal/login).',
+      delivery: {
+        enabled: this.communications.isEnabled(),
+        email: 'NOT_REQUESTED',
+        whatsapp: 'NOT_REQUESTED',
+      },
     };
+  }
+
+  private withDelivery(
+    payload: ClientInitialAccessPayload,
+    delivery: ClientInitialAccessPayload['delivery'],
+  ): ClientInitialAccessPayload {
+    return {
+      ...payload,
+      delivery,
+      warning: this.buildAccessDeliveryWarning(delivery, payload.managerPhone),
+    };
+  }
+
+  private buildAccessDeliveryWarning(
+    delivery: ClientInitialAccessPayload['delivery'],
+    phone: string | null,
+  ): string {
+    if (!delivery.enabled) {
+      return 'A senha temporaria sera exibida apenas agora. Comunicacoes automaticas estao desligadas (COMMUNICATIONS_ENABLED). Use o portal do cliente (/portal/login).';
+    }
+
+    const parts: string[] = [];
+    if (delivery.email === 'SENT') parts.push('e-mail enviado');
+    else if (delivery.email === 'FAILED') parts.push('e-mail falhou');
+    else if (delivery.email === 'SKIPPED') parts.push('e-mail ignorado');
+
+    if (delivery.whatsapp === 'SENT') parts.push('WhatsApp enviado');
+    else if (delivery.whatsapp === 'FAILED') parts.push('WhatsApp falhou');
+    else if (delivery.whatsapp === 'SKIPPED') parts.push('WhatsApp ignorado');
+    else if (!phone?.trim()) {
+      parts.push('WhatsApp nao solicitado (informe telefone do gestor)');
+    }
+
+    const summary =
+      parts.length > 0
+        ? `Envio: ${parts.join('; ')}.`
+        : 'Envio automatico nao solicitado.';
+
+    return `${summary} A senha temporaria sera exibida apenas agora. Use o portal do cliente (/portal/login).`;
   }
 
   async update(

@@ -712,7 +712,7 @@ function ClientFormFields({
             </div>
             <div className="field">
               <label htmlFor="initialManagerPhone">
-                WhatsApp / telefone (opcional)
+                WhatsApp (para enviar login)
               </label>
               <input
                 id="initialManagerPhone"
@@ -723,7 +723,12 @@ function ClientFormFields({
                     initialManagerPhone: e.target.value,
                   }))
                 }
+                placeholder="11999999999"
               />
+              <p className="field-hint">
+                Com COMMUNICATIONS_ENABLED, o convite sai na hora por e-mail e,
+                se informado, por WhatsApp.
+              </p>
             </div>
           </div>
         </fieldset>

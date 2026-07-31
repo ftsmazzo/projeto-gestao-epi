@@ -811,6 +811,34 @@ a.btn-danger:hover {
   font-weight: 700;
 }
 
+.access-credentials__delivery {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface, #fff) 70%, #eef3fa);
+}
+
+.access-credentials__delivery-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.92rem;
+}
+
+.access-credentials__delivery-list li[data-tone='ok'] {
+  color: #1f6b3a;
+}
+
+.access-credentials__delivery-list li[data-tone='warn'] {
+  color: #8a4b00;
+}
+
+.access-credentials__delivery-list li[data-tone='muted'] {
+  color: var(--color-ink-secondary, #5b677a);
+}
+
 .empty-inline {
   display: grid;
   gap: 0.85rem;
