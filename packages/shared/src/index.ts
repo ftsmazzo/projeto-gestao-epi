@@ -1013,6 +1013,8 @@ export interface PgroImportRun {
 export interface PgroImportConfirmResult extends PgroImportRun {
   summary: PgroImportConfirmSummary;
   confirmWarnings: string[];
+  /** Presente quando o confirm criou/provisionou o gestor do portal. */
+  initialAccess?: ClientInitialAccess | null;
 }
 
 export interface ConfirmPgroImportPayload {
@@ -1022,7 +1024,15 @@ export interface ConfirmPgroImportPayload {
     tradeName?: string | null;
     cnpj?: string | null;
     allocatedLifeQuota?: number;
+    contactEmail?: string | null;
+    contactPhone?: string | null;
   };
+  /** Gestor do portal: recebe link e senha por e-mail/WhatsApp. */
+  initialManager?: {
+    name: string;
+    email: string;
+    phone?: string | null;
+  } | null;
   sectors: Array<{ tempId: string; name: string; included: boolean }>;
   functions: Array<{
     tempId: string;

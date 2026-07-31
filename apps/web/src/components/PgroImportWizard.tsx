@@ -15,9 +15,11 @@ import type {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { storeClientAccessOnce } from '../lib/client-access-session';
 import { formatCnpj, formatCnpjInput } from '../lib/cnpj';
 import { listEpiNeeds } from '../lib/epi-needs';
 import { confirmPgroImport, previewPgroImport } from '../lib/pgro';
+import { getServedClient } from '../lib/served-clients';
 
 type Step =
   | 'upload'
@@ -110,12 +112,30 @@ export function PgroImportWizard({ lockedClientId }: PgroImportWizardProps) {
   );
   const [company, setCompany] = useState<PgroCompanyData>(emptyCompany());
   const [allocatedLifeQuota, setAllocatedLifeQuota] = useState('0');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+  const [provisionManager, setProvisionManager] = useState(!isUpdateMode);
+  const [managerName, setManagerName] = useState('');
+  const [managerEmail, setManagerEmail] = useState('');
+  const [managerPhone, setManagerPhone] = useState('');
   const [sectors, setSectors] = useState<PgroExtractedSector[]>([]);
   const [functions, setFunctions] = useState<PgroExtractedFunction[]>([]);
   const [risks, setRisks] = useState<PgroExtractedRisk[]>([]);
   const [epiNeeds, setEpiNeeds] = useState<PgroExtractedEpiNeed[]>([]);
   const [catalogNeeds, setCatalogNeeds] = useState<EpiNeed[]>([]);
   const [summary, setSummary] = useState<PgroImportConfirmSummary | null>(null);
+
+  useEffect(() => {
+    if (!lockedClientId) return;
+    void getServedClient(lockedClientId)
+      .then((client) => {
+        setContactEmail(client.contactEmail ?? '');
+        setContactPhone(client.contactPhone ?? '');
+      })
+      .catch(() => {
+        /* preview ainda preenche empresa; contato fica editavel */
+      });
+  }, [lockedClientId]);
 
   useEffect(() => {
     if (lockedClientId) setServedClientId(lockedClientId);
@@ -229,6 +249,14 @@ export function PgroImportWizard({ lockedClientId }: PgroImportWizardProps) {
 
   async function onConfirm() {
     if (!runId) return;
+    if (provisionManager) {
+      if (!managerName.trim() || !managerEmail.trim()) {
+        setError(
+          'Para liberar o portal, informe nome e e-mail do gestor. Ou desmarque a opcao.',
+        );
+        return;
+      }
+    }
     setConfirming(true);
     setError(null);
     try {
@@ -239,7 +267,18 @@ export function PgroImportWizard({ lockedClientId }: PgroImportWizardProps) {
           tradeName: company.tradeName,
           cnpj: company.cnpj,
           allocatedLifeQuota: Number(allocatedLifeQuota) || 0,
+          contactEmail: contactEmail.trim() || null,
+          contactPhone: contactPhone.trim() || null,
         },
+        ...(provisionManager
+          ? {
+              initialManager: {
+                name: managerName.trim(),
+                email: managerEmail.trim(),
+                phone: managerPhone.trim() || null,
+              },
+            }
+          : {}),
         sectors: sectors.map((s) => ({
           tempId: s.tempId,
           name: s.name,
@@ -276,9 +315,13 @@ export function PgroImportWizard({ lockedClientId }: PgroImportWizardProps) {
         ...(result.warnings ?? []),
         ...(result.confirmWarnings ?? []),
       ]);
-      router.push(
-        `/clientes/${result.summary.servedClientId}/estrutura?pgro=${result.id}`,
-      );
+      const clientId = result.summary.servedClientId;
+      if (result.initialAccess) {
+        storeClientAccessOnce(clientId, result.initialAccess);
+        router.push(`/clientes/${clientId}/usuarios`);
+        return;
+      }
+      router.push(`/clientes/${clientId}/estrutura?pgro=${result.id}`);
     } catch (err) {
       setError(
         err instanceof Error
@@ -542,6 +585,96 @@ export function PgroImportWizard({ lockedClientId }: PgroImportWizardProps) {
               </div>
             ) : null}
           </div>
+
+          <fieldset className="epi-form-section" style={{ marginTop: '1.25rem' }}>
+            <legend>Contato institucional</legend>
+            <p className="field-hint">
+              Usado nos alertas diarios (trocas, CA, biometria). Nao e o login do
+              portal.
+            </p>
+            <div className="form-grid">
+              <div className="field">
+                <label htmlFor="contactEmail">E-mail de contato</label>
+                <input
+                  id="contactEmail"
+                  type="email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="contactPhone">WhatsApp / telefone</label>
+                <input
+                  id="contactPhone"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  placeholder="11999999999"
+                />
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset className="epi-form-section" style={{ marginTop: '1.25rem' }}>
+            <legend>Acesso ao portal do cliente</legend>
+            <label className="field" htmlFor="provisionManager">
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                }}
+              >
+                <input
+                  id="provisionManager"
+                  type="checkbox"
+                  checked={provisionManager}
+                  onChange={(e) => setProvisionManager(e.target.checked)}
+                />
+                Criar gestor e enviar link + senha temporaria por e-mail/WhatsApp
+              </span>
+            </label>
+            {provisionManager ? (
+              <div className="form-grid" style={{ marginTop: '0.75rem' }}>
+                <div className="field">
+                  <label htmlFor="managerName">Nome do gestor</label>
+                  <input
+                    id="managerName"
+                    value={managerName}
+                    onChange={(e) => setManagerName(e.target.value)}
+                    required={provisionManager}
+                    minLength={2}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="managerEmail">E-mail (login)</label>
+                  <input
+                    id="managerEmail"
+                    type="email"
+                    value={managerEmail}
+                    onChange={(e) => setManagerEmail(e.target.value)}
+                    required={provisionManager}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="managerPhone">
+                    WhatsApp (para enviar login)
+                  </label>
+                  <input
+                    id="managerPhone"
+                    value={managerPhone}
+                    onChange={(e) => setManagerPhone(e.target.value)}
+                    placeholder="11999999999"
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="field-hint">
+                Sem gestor, a implantacao grava so a estrutura. Voce pode criar o
+                acesso depois em Usuarios do cliente.
+              </p>
+            )}
+          </fieldset>
+
           <div className="btn-row">
             <button type="button" className="btn btn-secondary" onClick={goPrev}>
               Voltar
@@ -902,6 +1035,23 @@ export function PgroImportWizard({ lockedClientId }: PgroImportWizardProps) {
                 {company.cnpj ? formatCnpj(company.cnpj) : '—'}
               </dd>
             </div>
+            <div>
+              <dt>Contato (alertas)</dt>
+              <dd>
+                {contactEmail || '—'}
+                {contactPhone ? ` · ${contactPhone}` : ''}
+              </dd>
+            </div>
+            <div>
+              <dt>Gestor do portal</dt>
+              <dd>
+                {provisionManager
+                  ? `${managerName || '—'} · ${managerEmail || '—'}${
+                      managerPhone ? ` · ${managerPhone}` : ''
+                    }`
+                  : 'Nao criar agora'}
+              </dd>
+            </div>
           </dl>
           {summary ? (
             <p className="field-hint">
@@ -918,7 +1068,11 @@ export function PgroImportWizard({ lockedClientId }: PgroImportWizardProps) {
               disabled={confirming}
               onClick={() => void onConfirm()}
             >
-              {confirming ? 'Confirmando...' : 'Confirmar implantacao'}
+              {confirming
+                ? 'Confirmando...'
+                : provisionManager
+                  ? 'Confirmar e enviar acesso'
+                  : 'Confirmar implantacao'}
             </button>
           </div>
         </section>

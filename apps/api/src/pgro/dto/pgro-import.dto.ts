@@ -33,6 +33,34 @@ export class ConfirmPgroCompanyDto {
   @IsInt()
   @Min(0)
   allocatedLifeQuota?: number;
+
+  /** Contato institucional do cliente (alertas diarios). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  contactEmail?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  contactPhone?: string | null;
+}
+
+export class ConfirmPgroInitialManagerDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  name!: string;
+
+  @IsString()
+  @MinLength(5)
+  @MaxLength(200)
+  email!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  phone?: string | null;
 }
 
 export class ConfirmPgroSectorDto {
@@ -135,6 +163,12 @@ export class ConfirmPgroImportDto {
   @ValidateNested()
   @Type(() => ConfirmPgroCompanyDto)
   company!: ConfirmPgroCompanyDto;
+
+  /** Se informado, cria gestor do portal e dispara convite (e-mail/WhatsApp). */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ConfirmPgroInitialManagerDto)
+  initialManager?: ConfirmPgroInitialManagerDto | null;
 
   @IsArray()
   @ValidateNested({ each: true })

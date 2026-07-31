@@ -15,6 +15,7 @@ import { AuditService } from '../audit/audit.service';
 import { validateCnpj } from '../common/cnpj';
 import { ensureMatrizOperationalUnit } from '../operational-units/matriz-unit';
 import { PrismaService } from '../prisma/prisma.service';
+import { ServedClientsService } from '../served-clients/served-clients.service';
 import type { ConfirmPgroImportDto } from './dto/pgro-import.dto';
 import {
   normalizeTextKey,
@@ -28,6 +29,7 @@ export class PgroService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly servedClients: ServedClientsService,
   ) {}
 
   private assertManagementRole(membershipRole: string) {
@@ -223,6 +225,17 @@ export class PgroService {
           warnings.push(
             `Cliente com CNPJ ${cnpj} ja existia; estrutura sera vinculada a ele.`,
           );
+          const contactEmail = dto.company.contactEmail?.trim();
+          const contactPhone = dto.company.contactPhone?.trim();
+          if (contactEmail || contactPhone) {
+            await tx.servedClient.update({
+              where: { id: existing.id },
+              data: {
+                ...(contactEmail ? { contactEmail } : {}),
+                ...(contactPhone ? { contactPhone } : {}),
+              },
+            });
+          }
         } else {
           const quota = dto.company.allocatedLifeQuota ?? 0;
           if (quota > 0) {
@@ -235,6 +248,8 @@ export class PgroService {
               tradeName: dto.company.tradeName?.trim() || null,
               cnpj,
               allocatedLifeQuota: quota,
+              contactEmail: dto.company.contactEmail?.trim() || null,
+              contactPhone: dto.company.contactPhone?.trim() || null,
               status: ServedClientStatus.ACTIVE,
               notes: 'Criado via importacao assistida de PGRO/PGR.',
             },
@@ -244,6 +259,21 @@ export class PgroService {
         }
       } else {
         await this.requireClientTx(tx, organizationId, servedClientId);
+        const contactEmail = dto.company.contactEmail?.trim();
+        const contactPhone = dto.company.contactPhone?.trim();
+        if (contactEmail !== undefined || contactPhone !== undefined) {
+          await tx.servedClient.update({
+            where: { id: servedClientId },
+            data: {
+              ...(contactEmail !== undefined
+                ? { contactEmail: contactEmail || null }
+                : {}),
+              ...(contactPhone !== undefined
+                ? { contactPhone: contactPhone || null }
+                : {}),
+            },
+          });
+        }
       }
 
       summary.servedClientId = servedClientId!;
@@ -580,10 +610,40 @@ export class PgroService {
       metadata: summary,
     });
 
+    let initialAccess = null as Awaited<
+      ReturnType<ServedClientsService['createInitialManager']>
+    > | null;
+    const manager = dto.initialManager;
+    if (
+      manager?.name?.trim() &&
+      manager?.email?.trim() &&
+      summary.servedClientId
+    ) {
+      try {
+        initialAccess = await this.servedClients.createInitialManager(
+          organizationId,
+          userId,
+          summary.servedClientId,
+          {
+            name: manager.name.trim(),
+            email: manager.email.trim(),
+            phone: manager.phone?.trim() || undefined,
+          },
+        );
+      } catch (err) {
+        warnings.push(
+          `Estrutura gravada, mas o gestor do portal nao foi criado: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
     return {
       ...this.toDto(result),
       summary,
       confirmWarnings: warnings,
+      initialAccess,
     };
   }
 
