@@ -3,14 +3,19 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
-import { MembershipRole } from '@prisma/client';
+import { MembershipRole, OrganizationContactRole } from '@prisma/client';
 import { rm } from 'fs/promises';
 import { join } from 'path';
 import { AuditService } from '../audit/audit.service';
 import { getDeliveryEvidenceRoot } from '../portal/facial-evidence.storage';
 import { PrismaService } from '../prisma/prisma.service';
 import { getWorkerFaceReferenceRoot } from '../workers/worker-face-reference.storage';
+import type {
+  CreateOrganizationContactDto,
+  UpdateOrganizationContactDto,
+} from './dto/organization-contact.dto';
 
 export type HardResetSummary = {
   servedClients: number;
@@ -35,9 +40,151 @@ export class OrganizationService {
     private readonly audit: AuditService,
   ) {}
 
+  async listContacts(organizationId: string) {
+    return this.prisma.organizationContact.findMany({
+      where: { organizationId },
+      orderBy: [{ isPrimary: 'desc' }, { role: 'asc' }, { name: 'asc' }],
+    });
+  }
+
+  async createContact(
+    organizationId: string,
+    userId: string,
+    dto: CreateOrganizationContactDto,
+  ) {
+    const email = dto.email?.trim().toLowerCase() || null;
+    const phone = dto.phone?.trim() || null;
+    if (!email && !phone) {
+      throw new BadRequestException(
+        'Informe e-mail e/ou telefone (WhatsApp) para o contato.',
+      );
+    }
+
+    const role = dto.role ?? OrganizationContactRole.SUPPORT;
+    const isPrimary = dto.isPrimary === true;
+
+    if (isPrimary) {
+      await this.prisma.organizationContact.updateMany({
+        where: { organizationId, isPrimary: true },
+        data: { isPrimary: false },
+      });
+    }
+
+    const contact = await this.prisma.organizationContact.create({
+      data: {
+        organizationId,
+        name: dto.name.trim(),
+        email,
+        phone,
+        role,
+        isPrimary,
+        notes: dto.notes?.trim() || null,
+      },
+    });
+
+    await this.audit.log({
+      action: 'organization_contact.created',
+      organizationId,
+      userId,
+      entityType: 'OrganizationContact',
+      entityId: contact.id,
+      metadata: { role: contact.role, isPrimary: contact.isPrimary },
+    });
+
+    return contact;
+  }
+
+  async updateContact(
+    organizationId: string,
+    userId: string,
+    contactId: string,
+    dto: UpdateOrganizationContactDto,
+  ) {
+    const existing = await this.prisma.organizationContact.findFirst({
+      where: { id: contactId, organizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('Contato da consultoria nao encontrado.');
+    }
+
+    const nextEmail =
+      dto.email === undefined
+        ? existing.email
+        : dto.email?.trim().toLowerCase() || null;
+    const nextPhone =
+      dto.phone === undefined ? existing.phone : dto.phone?.trim() || null;
+    if (!nextEmail && !nextPhone) {
+      throw new BadRequestException(
+        'O contato precisa ter e-mail e/ou telefone.',
+      );
+    }
+
+    if (dto.isPrimary === true) {
+      await this.prisma.organizationContact.updateMany({
+        where: {
+          organizationId,
+          isPrimary: true,
+          id: { not: contactId },
+        },
+        data: { isPrimary: false },
+      });
+    }
+
+    const contact = await this.prisma.organizationContact.update({
+      where: { id: contactId },
+      data: {
+        name: dto.name?.trim(),
+        email: dto.email === undefined ? undefined : nextEmail,
+        phone: dto.phone === undefined ? undefined : nextPhone,
+        role: dto.role,
+        isPrimary: dto.isPrimary,
+        isActive: dto.isActive,
+        notes:
+          dto.notes === undefined ? undefined : dto.notes?.trim() || null,
+      },
+    });
+
+    await this.audit.log({
+      action: 'organization_contact.updated',
+      organizationId,
+      userId,
+      entityType: 'OrganizationContact',
+      entityId: contact.id,
+      metadata: { role: contact.role, isPrimary: contact.isPrimary },
+    });
+
+    return contact;
+  }
+
+  async deleteContact(
+    organizationId: string,
+    userId: string,
+    contactId: string,
+  ) {
+    const existing = await this.prisma.organizationContact.findFirst({
+      where: { id: contactId, organizationId },
+    });
+    if (!existing) {
+      throw new NotFoundException('Contato da consultoria nao encontrado.');
+    }
+
+    await this.prisma.organizationContact.delete({ where: { id: contactId } });
+
+    await this.audit.log({
+      action: 'organization_contact.deleted',
+      organizationId,
+      userId,
+      entityType: 'OrganizationContact',
+      entityId: contactId,
+      metadata: { role: existing.role, name: existing.name },
+    });
+
+    return { ok: true as const };
+  }
+
   /**
    * Limpa dados operacionais de teste do tenant.
-   * Mantem Organization, Users, Memberships e base CAEPI global.
+   * Mantem Organization, Users, Memberships, contatos e base CAEPI global.
    */
   async hardResetOperationalData(
     organizationId: string,

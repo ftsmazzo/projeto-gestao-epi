@@ -17,6 +17,8 @@ export type ServedClientInput = {
   cnpj: string;
   allocatedLifeQuota: number;
   status?: ServedClientStatus;
+  contactEmail?: string;
+  contactPhone?: string;
   notes?: string;
   initialManagerName?: string;
   initialManagerEmail?: string;
@@ -120,10 +122,18 @@ export function createServedClient(input: ServedClientInput) {
   });
 }
 
-export function updateServedClient(
-  id: string,
-  input: Partial<ServedClientInput>,
-) {
+export type ServedClientUpdateInput = {
+  legalName?: string;
+  tradeName?: string | null;
+  cnpj?: string;
+  allocatedLifeQuota?: number;
+  status?: ServedClientStatus;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  notes?: string | null;
+};
+
+export function updateServedClient(id: string, input: ServedClientUpdateInput) {
   return apiFetch<ServedClient>(`/served-clients/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(input),

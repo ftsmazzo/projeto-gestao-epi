@@ -25,6 +25,12 @@ export const OPS_NAV: OpsNavItem[] = [
     description: 'Painel operacional por CNPJ, estrutura, PGRO e usuarios.',
   },
   {
+    href: '/configuracoes',
+    label: 'Configuracoes',
+    status: 'ready',
+    description: 'Contatos da consultoria para comunicacoes com clientes.',
+  },
+  {
     href: '/caepi',
     label: 'Base CAEPI',
     status: 'ready',

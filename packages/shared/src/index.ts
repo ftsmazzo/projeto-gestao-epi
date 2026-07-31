@@ -44,6 +44,28 @@ export interface ServedClient {
   cnpj: string;
   status: ServedClientStatus;
   allocatedLifeQuota: number;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type OrganizationContactRole =
+  | 'SUPPORT'
+  | 'COMMERCIAL'
+  | 'BILLING'
+  | 'OPERATIONS';
+
+export interface OrganizationContact {
+  id: string;
+  organizationId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  role: OrganizationContactRole;
+  isPrimary: boolean;
+  isActive: boolean;
   notes: string | null;
   createdAt: string;
   updatedAt: string;

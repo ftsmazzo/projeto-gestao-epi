@@ -188,7 +188,8 @@ export default function ClienteUsuariosPage() {
               Gestores acessam o <strong>portal do cliente</strong> em{' '}
               <span className="mono">/portal/login</span>. Nao usam o login da
               Consultoria. Limites: {CLIENT_MANAGER_LIMIT} gestores e{' '}
-              {STOCK_OPERATOR_LIMIT} operadores.
+              {STOCK_OPERATOR_LIMIT} operadores. O 2º gestor e o contato
+              operacional (EPI/trabalhadores) para comunicacoes.
             </p>
           </div>
           <div className="quota-summary" aria-label="Limites">

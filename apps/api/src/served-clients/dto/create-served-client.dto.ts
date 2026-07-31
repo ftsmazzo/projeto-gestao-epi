@@ -36,6 +36,16 @@ export class CreateServedClientDto {
   status?: ServedClientStatus;
 
   @IsOptional()
+  @IsEmail()
+  @MaxLength(200)
+  contactEmail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  contactPhone?: string;
+
+  @IsOptional()
   @IsString()
   @MaxLength(1000)
   notes?: string;

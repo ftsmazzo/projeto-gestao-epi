@@ -81,6 +81,7 @@ model Organization {
 
   memberships       Membership[]
   clientUserMemberships ClientUserMembership[]
+  contacts          OrganizationContact[]
   auditLogs         AuditLog[]
   servedClients     ServedClient[]
   operationalUnits  OperationalUnit[]
@@ -103,6 +104,35 @@ model Organization {
   workerFacialReferences WorkerFacialReference[]
   workerBiometricConsents WorkerBiometricConsent[]
   workerFacialEnrollmentLinks WorkerFacialEnrollmentLink[]
+}
+
+/// Contato oficial da consultoria usado nas comunicacoes com clientes
+/// (remetente/resposta, suporte, comercial, cobranca, operacao).
+model OrganizationContact {
+  id             String                   @id @default(cuid())
+  organizationId String
+  name           String
+  email          String?
+  phone          String?
+  role           OrganizationContactRole  @default(SUPPORT)
+  isPrimary      Boolean                  @default(false)
+  isActive       Boolean                  @default(true)
+  notes          String?
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, role])
+  @@index([organizationId, isPrimary])
+}
+
+enum OrganizationContactRole {
+  SUPPORT
+  COMMERCIAL
+  BILLING
+  OPERATIONS
 }
 
 model User {
@@ -155,6 +185,9 @@ model ServedClient {
   cnpj               String
   status             ServedClientStatus @default(ACTIVE)
   allocatedLifeQuota Int                @default(0)
+  /// Contato institucional para alertas/comunicacoes (CA, cobranca, avisos).
+  contactEmail       String?
+  contactPhone       String?
   notes              String?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt

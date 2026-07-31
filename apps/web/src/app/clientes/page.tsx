@@ -29,6 +29,8 @@ type ClientFormState = {
   tradeName: string;
   cnpj: string;
   allocatedLifeQuota: string;
+  contactEmail: string;
+  contactPhone: string;
   notes: string;
   initialManagerName: string;
   initialManagerEmail: string;
@@ -40,6 +42,8 @@ const emptyForm: ClientFormState = {
   tradeName: '',
   cnpj: '',
   allocatedLifeQuota: '0',
+  contactEmail: '',
+  contactPhone: '',
   notes: '',
   initialManagerName: '',
   initialManagerEmail: '',
@@ -129,6 +133,8 @@ function ClientesContent() {
       tradeName: client.tradeName ?? '',
       cnpj: formatCnpj(client.cnpj),
       allocatedLifeQuota: String(client.allocatedLifeQuota),
+      contactEmail: client.contactEmail ?? '',
+      contactPhone: client.contactPhone ?? '',
       notes: client.notes ?? '',
       initialManagerName: '',
       initialManagerEmail: '',
@@ -172,6 +178,8 @@ function ClientesContent() {
       tradeName: form.tradeName.trim() || undefined,
       cnpj: normalizeCnpj(form.cnpj),
       allocatedLifeQuota: Number(form.allocatedLifeQuota),
+      contactEmail: form.contactEmail.trim() || undefined,
+      contactPhone: form.contactPhone.trim() || undefined,
       notes: form.notes.trim() || undefined,
       ...(listTab === 'create' && managerName && managerEmail
         ? {
@@ -196,10 +204,12 @@ function ClientesContent() {
       if (formMode === 'edit' && editingId) {
         await updateServedClient(editingId, {
           legalName: payload.legalName,
-          tradeName: payload.tradeName,
+          tradeName: payload.tradeName ?? null,
           cnpj: payload.cnpj,
           allocatedLifeQuota: payload.allocatedLifeQuota,
-          notes: payload.notes,
+          contactEmail: form.contactEmail.trim() || null,
+          contactPhone: form.contactPhone.trim() || null,
+          notes: payload.notes ?? null,
         });
         closeEditForm();
         await load();
@@ -617,6 +627,39 @@ function ClientFormFields({
           </p>
         </div>
       </div>
+
+      <fieldset className="epi-form-section">
+        <div className="epi-form-section__head">
+          <h3>Contato institucional</h3>
+          <p>
+            Usado pela consultoria para alertas (CA, EPI, cobranca). Pode ser
+            diferente do gestor do portal.
+          </p>
+        </div>
+        <div className="form-grid">
+          <div className="field">
+            <label htmlFor="contactEmail">E-mail de contato</label>
+            <input
+              id="contactEmail"
+              type="email"
+              value={form.contactEmail}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, contactEmail: e.target.value }))
+              }
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="contactPhone">WhatsApp / telefone</label>
+            <input
+              id="contactPhone"
+              value={form.contactPhone}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, contactPhone: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+      </fieldset>
 
       <div className="field">
         <label htmlFor="notes">Observacoes (opcional)</label>

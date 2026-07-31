@@ -1,4 +1,5 @@
 import {
+  IsEmail,
   IsEnum,
   IsInt,
   IsOptional,
@@ -6,6 +7,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { ServedClientStatus } from '@prisma/client';
 
@@ -35,6 +37,17 @@ export class UpdateServedClientDto {
   @IsOptional()
   @IsEnum(ServedClientStatus)
   status?: ServedClientStatus;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== '')
+  @IsEmail()
+  @MaxLength(200)
+  contactEmail?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  contactPhone?: string | null;
 
   @IsOptional()
   @IsString()

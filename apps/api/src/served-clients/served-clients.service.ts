@@ -154,6 +154,8 @@ export class ServedClientsService {
           cnpj,
           allocatedLifeQuota: dto.allocatedLifeQuota,
           status,
+          contactEmail: dto.contactEmail?.trim().toLowerCase() || null,
+          contactPhone: dto.contactPhone?.trim() || null,
           notes: dto.notes?.trim() || null,
         },
       });
@@ -498,6 +500,14 @@ export class ServedClientsService {
           cnpj: dto.cnpj !== undefined ? cnpj : undefined,
           allocatedLifeQuota: dto.allocatedLifeQuota,
           status: dto.status,
+          contactEmail:
+            dto.contactEmail === undefined
+              ? undefined
+              : dto.contactEmail?.trim().toLowerCase() || null,
+          contactPhone:
+            dto.contactPhone === undefined
+              ? undefined
+              : dto.contactPhone?.trim() || null,
           notes:
             dto.notes === undefined ? undefined : dto.notes?.trim() || null,
         },
