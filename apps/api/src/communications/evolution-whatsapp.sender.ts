@@ -7,11 +7,25 @@ type WhatsappNumberCheck = {
   number?: string;
 };
 
+export type WhatsappSendReceipt = {
+  number: string;
+  jid: string | null;
+  messageId: string;
+  remoteJid: string | null;
+};
+
 @Injectable()
 export class EvolutionWhatsappSender implements WhatsappSender {
   private readonly logger = new Logger(EvolutionWhatsappSender.name);
 
   async sendWhatsapp(input: SendWhatsappInput): Promise<void> {
+    await this.sendWhatsappWithReceipt(input);
+  }
+
+  /** Envia e devolve comprovante (messageId) exigido para marcar SENT. */
+  async sendWhatsappWithReceipt(
+    input: SendWhatsappInput,
+  ): Promise<WhatsappSendReceipt> {
     const baseUrl = process.env.EVOLUTION_API_URL?.trim().replace(/\/$/, '');
     const apiKey = process.env.EVOLUTION_API_KEY?.trim();
     const instance = process.env.EVOLUTION_INSTANCE?.trim();
@@ -28,6 +42,10 @@ export class EvolutionWhatsappSender implements WhatsappSender {
         `Telefone WhatsApp invalido ("${input.to}"). Use DDD+numero (ex.: 11999999999) ou com 55.`,
       );
     }
+
+    this.logger.log(
+      `WhatsApp send start instance=${instance} to=${normalized} url=${baseUrl}`,
+    );
 
     await this.assertInstanceOpen(baseUrl, apiKey, instance);
 
@@ -49,19 +67,23 @@ export class EvolutionWhatsappSender implements WhatsappSender {
       `${baseUrl}/message/sendText/${encodeURIComponent(instance)}`,
       {
         method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          apikey: apiKey,
-        },
+        headers: this.authHeaders(apiKey),
         body: JSON.stringify({
           number,
           text: input.text,
           delay: 1200,
+          linkPreview: false,
         }),
       },
     );
 
     const bodyText = await response.text().catch(() => '');
+    if (looksLikeHtml(bodyText)) {
+      throw new Error(
+        `EVOLUTION_API_URL parece apontar para uma pagina HTML, nao para a API (${baseUrl}). Use a URL da API (ex.: https://seu-host:8080).`,
+      );
+    }
+
     if (!response.ok) {
       this.logger.warn(
         `Evolution falhou (${response.status}) number=${number}: ${bodyText}`,
@@ -74,21 +96,31 @@ export class EvolutionWhatsappSender implements WhatsappSender {
       );
     }
 
-    if (!looksLikeAcceptedSend(bodyText)) {
+    const receipt = extractSendReceipt(bodyText, number, resolved.jid);
+    if (!receipt) {
       this.logger.warn(
-        `Evolution respondeu OK sem comprovante de envio number=${number}: ${bodyText.slice(0, 300)}`,
+        `Evolution OK sem messageId number=${number}: ${bodyText.slice(0, 400)}`,
       );
       throw new Error(
-        `Evolution aceitou a chamada mas nao confirmou o envio (${number}). Resposta: ${bodyText
+        `Evolution respondeu sem messageId (enviado como ${number}). Resposta: ${bodyText
           .replace(/\s+/g, ' ')
           .trim()
-          .slice(0, 160)}`,
+          .slice(0, 200)}`,
       );
     }
 
     this.logger.log(
-      `WhatsApp aceito pela Evolution number=${number} jid=${resolved.jid ?? 'n/a'}`,
+      `WhatsApp confirmado instance=${instance} number=${receipt.number} msgId=${receipt.messageId} remoteJid=${receipt.remoteJid ?? 'n/a'}`,
     );
+    return receipt;
+  }
+
+  private authHeaders(apiKey: string): Record<string, string> {
+    return {
+      'content-type': 'application/json',
+      apikey: apiKey,
+      Authorization: `Bearer ${apiKey}`,
+    };
   }
 
   private async assertInstanceOpen(
@@ -96,26 +128,31 @@ export class EvolutionWhatsappSender implements WhatsappSender {
     apiKey: string,
     instance: string,
   ) {
-    try {
-      const response = await fetch(
-        `${baseUrl}/instance/connectionState/${encodeURIComponent(instance)}`,
-        {
-          method: 'GET',
-          headers: { apikey: apiKey },
-        },
-      );
-      const text = await response.text().catch(() => '');
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${text.slice(0, 120)}`);
-      }
-      const state = extractConnectionState(text);
-      if (state && state !== 'open') {
-        throw new Error(`estado=${state}`);
-      }
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
+    const response = await fetch(
+      `${baseUrl}/instance/connectionState/${encodeURIComponent(instance)}`,
+      {
+        method: 'GET',
+        headers: this.authHeaders(apiKey),
+      },
+    );
+    const text = await response.text().catch(() => '');
+    if (looksLikeHtml(text)) {
       throw new Error(
-        `Instancia Evolution "${instance}" nao esta conectada (${detail}). Pareie o QR e tente de novo.`,
+        `EVOLUTION_API_URL retornou HTML em connectionState (${baseUrl}). Confira a URL da API.`,
+      );
+    }
+    if (!response.ok) {
+      throw new Error(
+        `Instancia Evolution "${instance}" inacessivel (HTTP ${response.status}: ${text.slice(0, 120)}).`,
+      );
+    }
+    const state = extractConnectionState(text);
+    if (state !== 'open') {
+      throw new Error(
+        `Instancia Evolution "${instance}" nao esta open (estado=${state ?? 'desconhecido'}). Pareie o QR e tente de novo. Body: ${text
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 120)}`,
       );
     }
   }
@@ -126,56 +163,83 @@ export class EvolutionWhatsappSender implements WhatsappSender {
     instance: string,
     candidates: string[],
   ): Promise<{ number: string; jid: string | null } | null> {
-    try {
-      const response = await fetch(
-        `${baseUrl}/chat/whatsappNumbers/${encodeURIComponent(instance)}`,
-        {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            apikey: apiKey,
-          },
-          body: JSON.stringify({ numbers: candidates }),
-        },
-      );
-      const text = await response.text().catch(() => '');
-      if (!response.ok) {
+    const skipCheck =
+      process.env.EVOLUTION_SKIP_NUMBER_CHECK?.trim().toLowerCase() === 'true';
+
+    const response = await fetch(
+      `${baseUrl}/chat/whatsappNumbers/${encodeURIComponent(instance)}`,
+      {
+        method: 'POST',
+        headers: this.authHeaders(apiKey),
+        body: JSON.stringify({ numbers: candidates }),
+      },
+    );
+    const text = await response.text().catch(() => '');
+
+    if (!response.ok) {
+      if (skipCheck) {
         this.logger.warn(
-          `whatsappNumbers falhou (${response.status}): ${text.slice(0, 200)}`,
+          `whatsappNumbers falhou; EVOLUTION_SKIP_NUMBER_CHECK=true — usando ${candidates[0]}`,
         );
-        // Fallback: envia o candidato principal se a checagem nao estiver disponivel
         return { number: candidates[0]!, jid: null };
       }
-
-      const parsed = JSON.parse(text) as WhatsappNumberCheck[] | unknown;
-      if (!Array.isArray(parsed)) {
-        return { number: candidates[0]!, jid: null };
-      }
-
-      const hit = parsed.find((row) => row && row.exists === true);
-      if (!hit) return null;
-
-      const fromJid = hit.jid ? digitsFromJid(hit.jid) : null;
-      const number =
-        (hit.number ? hit.number.replace(/\D/g, '') : null) ||
-        fromJid ||
-        candidates[0]!;
-      return { number, jid: hit.jid ?? null };
-    } catch (err) {
-      this.logger.warn(
-        `whatsappNumbers indisponivel: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
+      throw new Error(
+        `Falha ao validar numero na Evolution (HTTP ${response.status}): ${text
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 160)}`,
       );
-      return { number: candidates[0]!, jid: null };
     }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      if (skipCheck) return { number: candidates[0]!, jid: null };
+      throw new Error(
+        `Resposta invalida de whatsappNumbers: ${text.slice(0, 120)}`,
+      );
+    }
+
+    if (!Array.isArray(parsed)) {
+      if (skipCheck) return { number: candidates[0]!, jid: null };
+      throw new Error(
+        `whatsappNumbers nao retornou lista: ${text.slice(0, 120)}`,
+      );
+    }
+
+    const rows = parsed as WhatsappNumberCheck[];
+    const hit = rows.find((row) => row && row.exists === true);
+    if (!hit) {
+      const summary = rows
+        .map(
+          (r) =>
+            `${r.number ?? '?'} exists=${String(r.exists)} jid=${r.jid ?? '-'}`,
+        )
+        .join('; ');
+      this.logger.warn(`Nenhum candidato com WhatsApp: ${summary}`);
+      return null;
+    }
+
+    const fromJid = hit.jid ? digitsFromJid(hit.jid) : null;
+    // Preferir digitos do JID (formato que o Baileys realmente usa)
+    const number =
+      fromJid ||
+      (hit.number ? hit.number.replace(/\D/g, '') : null) ||
+      candidates[0]!;
+    return { number, jid: hit.jid ?? null };
   }
+}
+
+function looksLikeHtml(body: string): boolean {
+  const t = body.trim().slice(0, 200).toLowerCase();
+  return t.startsWith('<!doctype') || t.startsWith('<html') || t.includes('<head');
 }
 
 function extractConnectionState(body: string): string | null {
   try {
     const json = JSON.parse(body) as {
-      instance?: { state?: string };
+      instance?: { state?: string; instanceName?: string };
       state?: string;
     };
     return json.instance?.state ?? json.state ?? null;
@@ -184,33 +248,62 @@ function extractConnectionState(body: string): string | null {
   }
 }
 
-function looksLikeAcceptedSend(body: string): boolean {
-  if (!body.trim()) return true; // algumas builds retornam vazio
+function extractSendReceipt(
+  body: string,
+  fallbackNumber: string,
+  fallbackJid: string | null,
+): WhatsappSendReceipt | null {
+  if (!body.trim()) return null;
   try {
-    const json = JSON.parse(body) as Record<string, unknown>;
-    if (json.error || json.status === 400 || json.status === 'ERROR') {
-      return false;
-    }
-    // Formatos comuns Evolution/Baileys
-    if (json.key && typeof json.key === 'object') return true;
-    if (Array.isArray(json) && json[0] && typeof json[0] === 'object') {
-      const first = json[0] as { key?: unknown };
-      if (first.key) return true;
-    }
-    if (typeof json.messageId === 'string' || typeof json.id === 'string') {
-      return true;
-    }
-    // Se veio JSON sem sinal claro de erro, aceita (compat)
-    return true;
+    const json = JSON.parse(body) as unknown;
+    const key = findMessageKey(json);
+    if (!key?.id) return null;
+    return {
+      number: fallbackNumber,
+      jid: fallbackJid,
+      messageId: String(key.id),
+      remoteJid: key.remoteJid ? String(key.remoteJid) : null,
+    };
   } catch {
-    return !/error|fail|invalid/i.test(body);
+    return null;
   }
+}
+
+function findMessageKey(
+  json: unknown,
+): { id?: unknown; remoteJid?: unknown } | null {
+  if (!json || typeof json !== 'object') return null;
+  const obj = json as Record<string, unknown>;
+
+  if (obj.key && typeof obj.key === 'object') {
+    return obj.key as { id?: unknown; remoteJid?: unknown };
+  }
+  if (Array.isArray(json)) {
+    for (const item of json) {
+      const found = findMessageKey(item);
+      if (found?.id) return found;
+    }
+  }
+  // wrappers: { data: {...} } | { response: { key } } | { message: { key } }
+  for (const nest of ['data', 'response', 'message', 'result']) {
+    if (obj[nest]) {
+      const found = findMessageKey(obj[nest]);
+      if (found?.id) return found;
+    }
+  }
+  return null;
 }
 
 function digitsFromJid(jid: string): string | null {
   const local = jid.split('@')[0]?.trim() ?? '';
+  // Ignora LIDs numericos puros sem sentido de telefone curto demais
   const digits = local.replace(/\D/g, '');
-  return digits || null;
+  if (local.includes(':')) {
+    // formato raro device:jid
+    return digits || null;
+  }
+  if (digits.length >= 10) return digits;
+  return null;
 }
 
 /**

@@ -102,6 +102,9 @@ export function ClientAccessCredentials({
               {delivery.whatsappError ? (
                 <span className="table-sub"> — {delivery.whatsappError}</span>
               ) : null}
+              {!delivery.whatsappError && delivery.whatsappDetail ? (
+                <span className="table-sub"> — {delivery.whatsappDetail}</span>
+              ) : null}
             </li>
           </ul>
         </div>

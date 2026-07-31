@@ -31,6 +31,7 @@ export type AccessInviteChannelStatus =
 export type AccessInviteChannelResult = {
   status: AccessInviteChannelStatus;
   error?: string | null;
+  detail?: string | null;
 };
 
 @Injectable()
@@ -66,6 +67,7 @@ export class CommunicationsService {
     whatsapp: AccessInviteChannelStatus;
     emailError?: string | null;
     whatsappError?: string | null;
+    whatsappDetail?: string | null;
   }> {
     const enabled = this.isEnabled();
     const empty = {
@@ -92,12 +94,14 @@ export class CommunicationsService {
           : Promise.resolve({
               status: 'NOT_REQUESTED' as AccessInviteChannelStatus,
               error: null as string | null,
+              detail: null as string | null,
             }),
         full.recipientPhone?.trim()
           ? this.enqueueAccessWhatsapp(full)
           : Promise.resolve({
               status: 'NOT_REQUESTED' as AccessInviteChannelStatus,
               error: null as string | null,
+              detail: null as string | null,
             }),
       ]);
 
@@ -107,6 +111,7 @@ export class CommunicationsService {
         whatsapp: whatsappResult.status,
         emailError: emailResult.error ?? null,
         whatsappError: whatsappResult.error ?? null,
+        whatsappDetail: whatsappResult.detail ?? null,
       };
     } catch (err) {
       this.logger.warn(
@@ -310,6 +315,7 @@ export class CommunicationsService {
     }
 
     try {
+      let detail: string | null = null;
       if (row.channel === CommunicationChannel.EMAIL) {
         const replyTo =
           row.payload &&
@@ -326,6 +332,12 @@ export class CommunicationsService {
           text: row.bodyText,
           replyTo,
         });
+      } else if (this.whatsappSender instanceof EvolutionWhatsappSender) {
+        const receipt = await this.whatsappSender.sendWhatsappWithReceipt({
+          to: row.toAddress,
+          text: row.bodyText,
+        });
+        detail = `number=${receipt.number}; msgId=${receipt.messageId}; remoteJid=${receipt.remoteJid ?? '-'}`;
       } else {
         await this.whatsappSender.sendWhatsapp({
           to: row.toAddress,
@@ -342,7 +354,7 @@ export class CommunicationsService {
           errorMessage: null,
         },
       });
-      return { status: 'SENT' };
+      return { status: 'SENT', detail };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Envio ${row.channel} falhou (${row.id}): ${message}`);

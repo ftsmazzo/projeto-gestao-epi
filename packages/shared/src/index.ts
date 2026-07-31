@@ -308,6 +308,7 @@ export interface ClientInitialAccess {
     whatsapp: AccessInviteDeliveryStatus;
     emailError?: string | null;
     whatsappError?: string | null;
+    whatsappDetail?: string | null;
   };
 }
 

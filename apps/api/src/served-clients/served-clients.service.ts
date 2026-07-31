@@ -47,6 +47,7 @@ export type ClientInitialAccessPayload = {
     whatsapp: 'SENT' | 'FAILED' | 'PENDING' | 'SKIPPED' | 'NOT_REQUESTED';
     emailError?: string | null;
     whatsappError?: string | null;
+    whatsappDetail?: string | null;
   };
 };
 
