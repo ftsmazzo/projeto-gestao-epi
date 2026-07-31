@@ -53,6 +53,11 @@ export class CommunicationsService {
     return process.env.COMMUNICATIONS_ENABLED?.trim().toLowerCase() === 'true';
   }
 
+  /** Alertas diarios ligados por padrao; pause com COMMUNICATIONS_ALERTS_ENABLED=false. */
+  isAlertsEnabled() {
+    return process.env.COMMUNICATIONS_ALERTS_ENABLED?.trim().toLowerCase() !== 'false';
+  }
+
   /**
    * Enfileira e tenta entregar imediatamente o convite de acesso.
    * Falhas de envio nao derrubam o provisionamento — retornam status.
@@ -158,7 +163,7 @@ export class CommunicationsService {
     relatedId?: string | null;
     /** Se true, nao cria outro envio do mesmo template/destino/related no dia UTC. */
     dedupePerDay?: boolean;
-  }) {
+  }): Promise<{ id: string; created: boolean } | null> {
     const toAddress = input.toAddress.trim();
     if (!toAddress) return null;
 
@@ -187,7 +192,7 @@ export class CommunicationsService {
         },
         select: { id: true },
       });
-      if (existing) return existing;
+      if (existing) return { id: existing.id, created: false };
     }
 
     const replyTo =
@@ -224,7 +229,7 @@ export class CommunicationsService {
     if (this.isEnabled()) {
       void this.deliver(row.id);
     }
-    return row;
+    return { id: row.id, created: true };
   }
 
   resolvePortalUrl() {

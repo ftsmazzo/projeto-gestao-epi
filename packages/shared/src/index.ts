@@ -317,6 +317,21 @@ export interface CreateServedClientResult {
   initialAccess: ClientInitialAccess | null;
 }
 
+/** Resposta de POST /communications/alerts/daily/run */
+export type DailyAlertsSkipReason =
+  | 'communications_disabled'
+  | 'alerts_disabled'
+  | 'client_not_found'
+  | 'no_alerts'
+  | 'no_recipients'
+  | 'already_sent_today';
+
+export interface RunDailyAlertsResult {
+  clients: number;
+  messages: number;
+  skippedReason?: DailyAlertsSkipReason;
+}
+
 export interface ServedClientOverview {
   client: ServedClient;
   operational: boolean;

@@ -40,14 +40,34 @@ export class CommunicationAlertsService {
    * Varre clientes ativos e envia digest diario (EPI/CA/biometria)
    * para contato institucional + gestores do portal.
    */
-  async runDailyClientAlerts() {
+  async runDailyClientAlerts(options?: {
+    organizationId?: string;
+    servedClientId?: string;
+  }) {
     if (!this.communications.isEnabled()) {
       this.logger.debug('Alertas diarios ignorados (comunicacoes off).');
-      return { clients: 0, messages: 0 };
+      return {
+        clients: 0,
+        messages: 0,
+        skippedReason: 'communications_disabled' as const,
+      };
+    }
+    if (!this.communications.isAlertsEnabled()) {
+      return {
+        clients: 0,
+        messages: 0,
+        skippedReason: 'alerts_disabled' as const,
+      };
     }
 
     const clients = await this.prisma.servedClient.findMany({
-      where: { status: ServedClientStatus.ACTIVE },
+      where: {
+        status: ServedClientStatus.ACTIVE,
+        ...(options?.organizationId
+          ? { organizationId: options.organizationId }
+          : {}),
+        ...(options?.servedClientId ? { id: options.servedClientId } : {}),
+      },
       select: {
         id: true,
         organizationId: true,
@@ -59,11 +79,21 @@ export class CommunicationAlertsService {
       },
     });
 
+    if (options?.servedClientId && clients.length === 0) {
+      return {
+        clients: 0,
+        messages: 0,
+        skippedReason: 'client_not_found' as const,
+      };
+    }
+
     let messages = 0;
+    let lastSkip: string | undefined;
     for (const client of clients) {
       try {
-        const sent = await this.processClient(client);
-        messages += sent;
+        const result = await this.processClient(client);
+        messages += result.queued;
+        if (result.skipReason) lastSkip = result.skipReason;
       } catch (err) {
         this.logger.warn(
           `Alerta diario falhou para cliente ${client.id}: ${
@@ -76,7 +106,16 @@ export class CommunicationAlertsService {
     this.logger.log(
       `Alertas diarios: ${clients.length} cliente(s), ${messages} mensagem(ns) enfileirada(s).`,
     );
-    return { clients: clients.length, messages };
+
+    const skippedReason =
+      clients.length === 1 && messages === 0 && lastSkip
+        ? (lastSkip as
+            | 'no_alerts'
+            | 'no_recipients'
+            | 'already_sent_today')
+        : undefined;
+
+    return { clients: clients.length, messages, skippedReason };
   }
 
   private async processClient(client: {
@@ -87,7 +126,7 @@ export class CommunicationAlertsService {
     contactEmail: string | null;
     contactPhone: string | null;
     organization: { name: string };
-  }) {
+  }): Promise<{ queued: number; skipReason?: string }> {
     const metrics = await this.collectMetrics(
       client.organizationId,
       client.id,
@@ -97,7 +136,7 @@ export class CommunicationAlertsService {
       metrics.caTotal === 0 &&
       metrics.biometricsMissing === 0
     ) {
-      return 0;
+      return { queued: 0, skipReason: 'no_alerts' };
     }
 
     const recipients = await this.resolveRecipients(client);
@@ -105,7 +144,7 @@ export class CommunicationAlertsService {
       this.logger.debug(
         `Cliente ${client.id} com alertas, mas sem destinatarios.`,
       );
-      return 0;
+      return { queued: 0, skipReason: 'no_recipients' };
     }
 
     const clientName = client.tradeName || client.legalName;
@@ -123,6 +162,7 @@ export class CommunicationAlertsService {
     };
 
     let queued = 0;
+    let deduped = 0;
     for (const recipient of recipients) {
       const content = {
         ...digestBase,
@@ -144,7 +184,8 @@ export class CommunicationAlertsService {
           dedupePerDay: true,
           payload: { kind: 'daily_alerts', clientId: client.id },
         });
-        if (row) queued += 1;
+        if (row?.created) queued += 1;
+        else if (row) deduped += 1;
       }
       if (recipient.phone) {
         const row = await this.communications.enqueueMessage({
@@ -158,10 +199,15 @@ export class CommunicationAlertsService {
           dedupePerDay: true,
           payload: { kind: 'daily_alerts', clientId: client.id },
         });
-        if (row) queued += 1;
+        if (row?.created) queued += 1;
+        else if (row) deduped += 1;
       }
     }
-    return queued;
+
+    if (queued === 0 && deduped > 0) {
+      return { queued: 0, skipReason: 'already_sent_today' };
+    }
+    return { queued };
   }
 
   private async resolveRecipients(client: {

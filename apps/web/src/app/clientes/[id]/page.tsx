@@ -8,6 +8,10 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import {
+  dailyAlertsResultMessage,
+  runDailyClientAlerts,
+} from '../../../lib/communications';
+import {
   getQuotaSummary,
   getServedClientOverview,
   updateServedClient,
@@ -24,6 +28,8 @@ export default function ClienteVisaoGeralPage() {
   const [quotaInput, setQuotaInput] = useState('0');
   const [savingQuota, setSavingQuota] = useState(false);
   const [quotaMessage, setQuotaMessage] = useState<string | null>(null);
+  const [alertSending, setAlertSending] = useState(false);
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!clientId) return;
@@ -76,6 +82,29 @@ export default function ClienteVisaoGeralPage() {
       );
     } finally {
       setSavingQuota(false);
+    }
+  }
+
+  async function onSendDailyAlert() {
+    if (!clientId || !operational) return;
+    const confirmed = window.confirm(
+      'Enviar alerta diario de teste (EPI/CA/biometria) por e-mail/WhatsApp aos contatos e gestores deste cliente?',
+    );
+    if (!confirmed) return;
+    setAlertSending(true);
+    setAlertMessage(null);
+    setError(null);
+    try {
+      const result = await runDailyClientAlerts(clientId);
+      setAlertMessage(dailyAlertsResultMessage(result));
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel disparar o alerta.',
+      );
+    } finally {
+      setAlertSending(false);
     }
   }
 
@@ -258,6 +287,45 @@ export default function ClienteVisaoGeralPage() {
           </p>
         )}
       </section>
+
+      {operational ? (
+        <section className="surface" aria-labelledby="alerts-title">
+          <div className="form-section-header">
+            <div>
+              <p className="page-kicker">Comunicacoes</p>
+              <h2 id="alerts-title" className="page-title page-title--sm">
+                Alerta diario
+              </h2>
+              <p className="page-lead">
+                Dispara agora o mesmo digest do cron (~08:00 BRT): trocas de
+                EPI, CA e biometria pendente, para o contato institucional e
+                gestores. Dedupe: no maximo 1 envio por destinatario/canal no
+                dia.
+              </p>
+            </div>
+            <div className="btn-row">
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={alertSending}
+                onClick={() => void onSendDailyAlert()}
+              >
+                {alertSending ? 'Enviando...' : 'Enviar alerta de teste'}
+              </button>
+            </div>
+          </div>
+          {alertMessage ? (
+            <p className="field-hint" role="status">
+              {alertMessage}
+            </p>
+          ) : null}
+          {error && overview ? (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }
