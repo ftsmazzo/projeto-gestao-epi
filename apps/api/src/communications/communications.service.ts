@@ -98,6 +98,101 @@ export class CommunicationsService {
     return { processed };
   }
 
+  /**
+   * Enfileira mensagem generica (e-mail ou WhatsApp) com dedupe diario opcional.
+   */
+  async enqueueMessage(input: {
+    organizationId: string;
+    channel: CommunicationChannel;
+    templateKey: string;
+    toAddress: string;
+    subject?: string | null;
+    bodyText: string;
+    payload?: Record<string, unknown>;
+    relatedType?: string | null;
+    relatedId?: string | null;
+    /** Se true, nao cria outro envio do mesmo template/destino/related no dia UTC. */
+    dedupePerDay?: boolean;
+  }) {
+    const toAddress = input.toAddress.trim();
+    if (!toAddress) return null;
+
+    if (input.dedupePerDay) {
+      const start = new Date();
+      start.setUTCHours(0, 0, 0, 0);
+      const existing = await this.prisma.communicationOutbox.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          channel: input.channel,
+          templateKey: input.templateKey,
+          toAddress:
+            input.channel === CommunicationChannel.EMAIL
+              ? toAddress.toLowerCase()
+              : toAddress,
+          relatedType: input.relatedType ?? undefined,
+          relatedId: input.relatedId ?? undefined,
+          createdAt: { gte: start },
+          status: {
+            in: [
+              CommunicationStatus.PENDING,
+              CommunicationStatus.SENT,
+              CommunicationStatus.SKIPPED,
+            ],
+          },
+        },
+        select: { id: true },
+      });
+      if (existing) return existing;
+    }
+
+    const replyTo =
+      input.channel === CommunicationChannel.EMAIL
+        ? await this.resolvePrimaryReplyTo(input.organizationId)
+        : null;
+
+    const row = await this.prisma.communicationOutbox.create({
+      data: {
+        organizationId: input.organizationId,
+        channel: input.channel,
+        templateKey: input.templateKey,
+        toAddress:
+          input.channel === CommunicationChannel.EMAIL
+            ? toAddress.toLowerCase()
+            : toAddress,
+        subject: input.subject ?? null,
+        bodyText: input.bodyText,
+        payload: {
+          ...(input.payload ?? {}),
+          ...(replyTo ? { replyTo } : {}),
+        },
+        relatedType: input.relatedType ?? null,
+        relatedId: input.relatedId ?? null,
+        status: this.isEnabled()
+          ? CommunicationStatus.PENDING
+          : CommunicationStatus.SKIPPED,
+        errorMessage: this.isEnabled()
+          ? null
+          : 'COMMUNICATIONS_ENABLED!=true',
+      },
+    });
+
+    if (this.isEnabled()) {
+      void this.deliver(row.id);
+    }
+    return row;
+  }
+
+  resolvePortalUrl() {
+    const fromEnv =
+      process.env.CLIENT_PORTAL_URL?.trim() ||
+      process.env.WEB_APP_URL?.trim() ||
+      process.env.CORS_ORIGIN?.split(',')[0]?.trim();
+    const base = (fromEnv || 'http://localhost:3000').replace(/\/$/, '');
+    if (base.endsWith('/portal')) return base;
+    if (base.endsWith('/portal/login')) return base.replace(/\/login$/, '');
+    return `${base}/portal`;
+  }
+
   private async enqueueAccessEmail(input: ClientAccessInviteInput) {
     const { subject, text } = buildClientAccessInviteEmail(input);
     const row = await this.prisma.communicationOutbox.create({

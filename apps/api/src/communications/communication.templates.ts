@@ -1,4 +1,5 @@
 export const COMM_TEMPLATE_CLIENT_ACCESS_INVITE = 'client_access_invite';
+export const COMM_TEMPLATE_DAILY_ALERTS = 'daily_client_alerts';
 
 export type ClientAccessInviteInput = {
   organizationId: string;
@@ -10,6 +11,19 @@ export type ClientAccessInviteInput = {
   accessUrl: string;
   membershipId: string;
   replyToEmail?: string | null;
+};
+
+export type DailyClientAlertsInput = {
+  organizationName: string;
+  clientName: string;
+  recipientName: string;
+  portalUrl: string;
+  replacementTotal: number;
+  replacementUrgent: number;
+  caTotal: number;
+  biometricsMissing: number;
+  warnDays: number;
+  criticalDays: number;
 };
 
 export function buildClientAccessInviteEmail(input: ClientAccessInviteInput) {
@@ -41,4 +55,50 @@ export function buildClientAccessInviteWhatsapp(
     `Senha temporaria: ${input.temporaryPassword}`,
     'Troque a senha no primeiro acesso.',
   ].join('\n');
+}
+
+export function buildDailyClientAlertsEmail(input: DailyClientAlertsInput) {
+  const subject = `Alertas do dia — ${input.clientName}`;
+  const lines = [
+    `Ola, ${input.recipientName}.`,
+    '',
+    `Resumo de atencao para ${input.clientName} (${input.organizationName}):`,
+    '',
+  ];
+  if (input.replacementTotal > 0) {
+    lines.push(
+      `• Vida util / trocas: ${input.replacementTotal} item(ns) (ate ${input.warnDays}d; ${input.replacementUrgent} urgente(s) em ate ${input.criticalDays}d ou vencido)`,
+    );
+  }
+  if (input.caTotal > 0) {
+    lines.push(`• Validade de CA: ${input.caTotal} alerta(s)`);
+  }
+  if (input.biometricsMissing > 0) {
+    lines.push(
+      `• Biometria pendente: ${input.biometricsMissing} trabalhador(es)`,
+    );
+  }
+  lines.push('', `Painel: ${input.portalUrl}`, '');
+  lines.push('Acesse o portal do cliente para agir.');
+  return { subject, text: lines.join('\n') };
+}
+
+export function buildDailyClientAlertsWhatsapp(input: DailyClientAlertsInput) {
+  const lines = [
+    `*Alertas — ${input.clientName}*`,
+    `Ola, ${input.recipientName}.`,
+  ];
+  if (input.replacementTotal > 0) {
+    lines.push(
+      `Trocas: ${input.replacementTotal} (urgentes: ${input.replacementUrgent})`,
+    );
+  }
+  if (input.caTotal > 0) {
+    lines.push(`CA em alerta: ${input.caTotal}`);
+  }
+  if (input.biometricsMissing > 0) {
+    lines.push(`Sem biometria: ${input.biometricsMissing}`);
+  }
+  lines.push(`Painel: ${input.portalUrl}`);
+  return lines.join('\n');
 }
