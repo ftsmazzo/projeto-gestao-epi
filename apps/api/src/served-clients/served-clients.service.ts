@@ -14,6 +14,7 @@ import {
 import { randomBytes } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { AuditService } from '../audit/audit.service';
+import { CommunicationsService } from '../communications/communications.service';
 import { validateCnpj } from '../common/cnpj';
 import { ensureMatrizOperationalUnit } from '../operational-units/matriz-unit';
 import { PrismaService } from '../prisma/prisma.service';
@@ -47,6 +48,7 @@ export class ServedClientsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly communications: CommunicationsService,
   ) {}
 
   async list(organizationId: string) {
@@ -290,7 +292,17 @@ export class ServedClientsService {
       },
     });
 
-    return this.toInitialAccessPayload(updated, temporaryPassword);
+    const payload = this.toInitialAccessPayload(updated, temporaryPassword);
+    void this.communications.enqueueClientAccessInvite({
+      organizationId,
+      recipientName: updated.name,
+      recipientEmail: updated.email,
+      recipientPhone: updated.phone,
+      temporaryPassword,
+      accessUrl: payload.accessUrl,
+      membershipId: updated.id,
+    });
+    return payload;
   }
 
   private async provisionInitialManager(
@@ -358,7 +370,17 @@ export class ServedClientsService {
       },
     });
 
-    return this.toInitialAccessPayload(membership, temporaryPassword);
+    const payload = this.toInitialAccessPayload(membership, temporaryPassword);
+    void this.communications.enqueueClientAccessInvite({
+      organizationId,
+      recipientName: membership.name,
+      recipientEmail: membership.email,
+      recipientPhone: membership.phone,
+      temporaryPassword,
+      accessUrl: payload.accessUrl,
+      membershipId: membership.id,
+    });
+    return payload;
   }
 
   private async ensureUserForClientAccess(input: {
@@ -426,6 +448,7 @@ export class ServedClientsService {
     },
     temporaryPassword: string,
   ): ClientInitialAccessPayload {
+    const communicationsOn = this.communications.isEnabled();
     return {
       membershipId: membership.id,
       managerName: membership.name,
@@ -434,8 +457,9 @@ export class ServedClientsService {
       temporaryPassword,
       accessUrl: this.resolveAccessUrl(),
       accessStatus: membership.accessStatus,
-      warning:
-        'A senha temporaria sera exibida apenas agora. Use o link do portal do cliente (/portal/login), nao o login da Consultoria. Envio por WhatsApp/e-mail sera implementado depois.',
+      warning: communicationsOn
+        ? 'A senha temporaria sera exibida apenas agora. Tentaremos enviar tambem por e-mail/WhatsApp quando houver contato e provedores configurados. Use o portal do cliente (/portal/login).'
+        : 'A senha temporaria sera exibida apenas agora. Use o link do portal do cliente (/portal/login), nao o login da Consultoria. Comunicacoes automaticas estao desligadas (COMMUNICATIONS_ENABLED).',
     };
   }
 

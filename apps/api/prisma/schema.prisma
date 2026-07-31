@@ -82,6 +82,7 @@ model Organization {
   memberships       Membership[]
   clientUserMemberships ClientUserMembership[]
   contacts          OrganizationContact[]
+  communicationOutbox CommunicationOutbox[]
   auditLogs         AuditLog[]
   servedClients     ServedClient[]
   operationalUnits  OperationalUnit[]
@@ -133,6 +134,44 @@ enum OrganizationContactRole {
   COMMERCIAL
   BILLING
   OPERATIONS
+}
+
+enum CommunicationChannel {
+  EMAIL
+  WHATSAPP
+}
+
+enum CommunicationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// Fila leve de mensagens (e-mail/WhatsApp) antes de Redis/BullMQ.
+model CommunicationOutbox {
+  id             String                @id @default(cuid())
+  organizationId String
+  channel        CommunicationChannel
+  templateKey    String
+  toAddress      String
+  subject        String?
+  bodyText       String
+  payload        Json?
+  status         CommunicationStatus   @default(PENDING)
+  errorMessage   String?
+  relatedType    String?
+  relatedId      String?
+  attempts       Int                   @default(0)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  sentAt         DateTime?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([status, createdAt])
+  @@index([relatedType, relatedId])
 }
 
 model User {

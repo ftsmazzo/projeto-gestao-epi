@@ -16,6 +16,7 @@ import { ClientStructureModule } from './client-structure/client-structure.modul
 import { PgroModule } from './pgro/pgro.module';
 import { OrganizationModule } from './organization/organization.module';
 import { PortalModule } from './portal/portal.module';
+import { CommunicationsModule } from './communications/communications.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PortalModule } from './portal/portal.module';
     PgroModule,
     OrganizationModule,
     PortalModule,
+    CommunicationsModule,
     HealthModule,
   ],
 })
