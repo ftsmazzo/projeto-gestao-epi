@@ -10,6 +10,7 @@ import {
   IconBuilding,
   IconHome,
   IconMenu,
+  IconPackage,
   IconSettings,
   IconShield,
 } from './ui/NavIcons';
@@ -30,6 +31,8 @@ function navIcon(href: string) {
       return <IconSettings />;
     case '/caepi':
       return <IconShield />;
+    case '/epis':
+      return <IconPackage />;
     case '/biometria-retencao':
       return <IconShield />;
     default:

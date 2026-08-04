@@ -745,12 +745,19 @@ export class ServedClientsService {
         where: { organizationId, isActive: true },
       }),
       this.prisma.epiStockBalance.aggregate({
-        where: { organizationId },
+        where: {
+          organizationId,
+          stockLocation: { servedClientId: id },
+        },
         _sum: { quantity: true },
         _count: { _all: true },
       }),
       this.prisma.epiStockBalance.count({
-        where: { organizationId, quantity: { lte: 0 } },
+        where: {
+          organizationId,
+          quantity: { lte: 0 },
+          stockLocation: { servedClientId: id },
+        },
       }),
       this.prisma.pgroImportRun.findFirst({
         where: { organizationId, servedClientId: id },
@@ -799,7 +806,12 @@ export class ServedClientsService {
     ]);
 
     const lowBalances = await this.prisma.epiStockBalance.findMany({
-      where: { organizationId, quantity: { gt: 0 }, minQuantity: { not: null } },
+      where: {
+        organizationId,
+        quantity: { gt: 0 },
+        minQuantity: { not: null },
+        stockLocation: { servedClientId: id },
+      },
       select: { quantity: true, minQuantity: true },
     });
     const stockLowCount = lowBalances.filter(
@@ -837,8 +849,8 @@ export class ServedClientsService {
           totalQuantity: stockAgg._sum.quantity ?? 0,
           low: stockLowCount,
           zero: stockZero,
-          scopedToClient: false,
-          note: 'Estoque ainda e do tenant; escopo por cliente em etapa futura.',
+          scopedToClient: true,
+          note: 'Estoque operacional deste cliente (Painel do Cliente). Catalogo CA/EPI fica na Consultoria.',
         },
         users: {
           managers: {

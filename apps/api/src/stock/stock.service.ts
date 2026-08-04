@@ -78,24 +78,12 @@ export class StockService {
     userId: string,
     dto: CreateStockLocationDto,
   ) {
-    const location = await this.prisma.stockLocation.create({
-      data: {
-        organizationId,
-        name: dto.name.trim(),
-        description: this.normalizeOptionalText(dto.description),
-      },
-    });
-
-    await this.audit.log({
-      action: 'stock_location.created',
-      organizationId,
-      userId,
-      entityType: 'StockLocation',
-      entityId: location.id,
-      metadata: { name: location.name },
-    });
-
-    return location;
+    void organizationId;
+    void userId;
+    void dto;
+    throw new BadRequestException(
+      'Estoque operacional nao e mais gerido na Consultoria. Use o Painel do Cliente (/portal/estoque). Na Consultoria permanecem catalogo de EPIs e base CAEPI.',
+    );
   }
 
   async updateLocation(
@@ -104,31 +92,13 @@ export class StockService {
     id: string,
     dto: UpdateStockLocationDto,
   ) {
-    const existing = await this.getLocation(organizationId, id);
-    const location = await this.prisma.stockLocation.update({
-      where: { id },
-      data: {
-        name: dto.name?.trim(),
-        description:
-          dto.description === undefined
-            ? undefined
-            : this.normalizeOptionalText(dto.description),
-      },
-    });
-
-    await this.audit.log({
-      action: 'stock_location.updated',
-      organizationId,
-      userId,
-      entityType: 'StockLocation',
-      entityId: location.id,
-      metadata: {
-        before: { name: existing.name, description: existing.description },
-        after: { name: location.name, description: location.description },
-      },
-    });
-
-    return location;
+    void organizationId;
+    void userId;
+    void id;
+    void dto;
+    throw new BadRequestException(
+      'Estoque operacional nao e mais gerido na Consultoria. Use o Painel do Cliente.',
+    );
   }
 
   async updateLocationStatus(
@@ -137,26 +107,13 @@ export class StockService {
     id: string,
     isActive: boolean,
   ) {
-    const existing = await this.getLocation(organizationId, id);
-    if (existing.isActive === isActive) {
-      return existing;
-    }
-
-    const location = await this.prisma.stockLocation.update({
-      where: { id },
-      data: { isActive },
-    });
-
-    await this.audit.log({
-      action: 'stock_location.status_changed',
-      organizationId,
-      userId,
-      entityType: 'StockLocation',
-      entityId: location.id,
-      metadata: { from: existing.isActive, to: location.isActive },
-    });
-
-    return location;
+    void organizationId;
+    void userId;
+    void id;
+    void isActive;
+    throw new BadRequestException(
+      'Estoque operacional nao e mais gerido na Consultoria. Use o Painel do Cliente.',
+    );
   }
 
   async getSummary(organizationId: string) {
@@ -280,35 +237,15 @@ export class StockService {
     dto: CreateStockMovementDto,
   ) {
     const location = await this.getLocation(organizationId, dto.stockLocationId);
+    if (!location.servedClientId) {
+      throw new BadRequestException(
+        'Movimentacao de estoque nao e mais feita na Consultoria. Use o Painel do Cliente (/portal/estoque).',
+      );
+    }
     if (!location.isActive) {
       throw new BadRequestException(
         'Nao e possivel movimentar estoque em local inativo.',
       );
-    }
-
-    const epi = await this.prisma.epiItem.findFirst({
-      where: { id: dto.epiItemId, organizationId },
-      select: { id: true, name: true, isActive: true },
-    });
-    if (!epi) {
-      throw new NotFoundException('EPI nao encontrado neste tenant.');
-    }
-
-    const epiVariantId = dto.epiVariantId?.trim() || null;
-    if (epiVariantId) {
-      const variant = await this.prisma.epiVariant.findFirst({
-        where: {
-          id: epiVariantId,
-          organizationId,
-          epiItemId: dto.epiItemId,
-        },
-        select: { id: true },
-      });
-      if (!variant) {
-        throw new BadRequestException(
-          'Variacao nao pertence a este EPI neste tenant.',
-        );
-      }
     }
 
     if (!Number.isInteger(dto.quantity) || dto.quantity < 0) {
@@ -357,6 +294,7 @@ export class StockService {
         epiItemId: dto.epiItemId,
         epiVariantId: dto.epiVariantId?.trim() || null,
         stockLocationId: dto.stockLocationId,
+        servedClientId: location.servedClientId,
         quantity: dto.quantity,
         previousQuantity: result.movement.previousQuantity,
         newQuantity: result.movement.newQuantity,

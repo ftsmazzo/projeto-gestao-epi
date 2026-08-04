@@ -52,7 +52,6 @@ import {
   updateEpiItem,
   updateEpiItemStatus,
 } from '../../lib/epis';
-import { listStockTotalsByEpi } from '../../lib/stock';
 
 const CAEPI_SEARCH_DEBOUNCE_MS = 350;
 const CAEPI_SEARCH_MIN_CHARS = 3;
@@ -222,9 +221,6 @@ function EpisContent() {
   const [importResultMessage, setImportResultMessage] = useState<string | null>(
     null,
   );
-  const [stockTotalsByEpi, setStockTotalsByEpi] = useState<
-    Record<string, number>
-  >({});
   const [availableNeeds, setAvailableNeeds] = useState<EpiNeed[]>([]);
   const [selectedNeedIds, setSelectedNeedIds] = useState<string[]>([]);
   const [suggestedNeedIds, setSuggestedNeedIds] = useState<string[]>([]);
@@ -233,17 +229,11 @@ function EpisContent() {
     setError(null);
     setLoading(true);
     try {
-      const [list, totals, needs] = await Promise.all([
+      const [list, needs] = await Promise.all([
         listEpiItems(),
-        listStockTotalsByEpi().catch(() => []),
         listEpiNeeds({ status: 'active' }).catch(() => []),
       ]);
       setItems(list);
-      const map: Record<string, number> = {};
-      for (const row of totals) {
-        map[row.epiItemId] = row.totalQuantity;
-      }
-      setStockTotalsByEpi(map);
       setAvailableNeeds(needs);
     } catch (err) {
       setError(
@@ -2074,8 +2064,8 @@ function EpisContent() {
           <div className="empty-state">
             <p className="page-title page-title--sm">Nenhum EPI cadastrado</p>
             <p className="page-lead">
-              Cadastre o primeiro equipamento do catalogo mestre. Estoque e
-              entregas usarao estes itens depois.
+              Cadastre o primeiro equipamento do catalogo mestre. O estoque
+              operacional fica no Painel do Cliente.
             </p>
             <button
               type="button"
@@ -2102,7 +2092,6 @@ function EpisContent() {
                   <th scope="col">Unidade</th>
                   <th scope="col">CA</th>
                   <th scope="col">Validade CA</th>
-                  <th scope="col">Estoque</th>
                   <th scope="col">Fabricante</th>
                   <th scope="col">Status</th>
                   <th scope="col">Acoes</th>
@@ -2130,9 +2119,6 @@ function EpisContent() {
                       {item.caNumber ? item.caNumber : 'Sem CA'}
                     </td>
                     <td>{formatDateBr(item.caExpiresAt)}</td>
-                    <td className="mono">
-                      {stockTotalsByEpi[item.id] ?? 0}
-                    </td>
                     <td>{item.manufacturerName || '—'}</td>
                     <td>
                       <span

@@ -37,6 +37,12 @@ export const OPS_NAV: OpsNavItem[] = [
     description: 'Base oficial de CAs (global).',
   },
   {
+    href: '/epis',
+    label: 'Catalogo de EPIs',
+    status: 'ready',
+    description: 'Cadastro mestre de EPIs do tenant (sem estoque operacional).',
+  },
+  {
     href: '/biometria-retencao',
     label: 'Retencao biometrica',
     status: 'ready',
