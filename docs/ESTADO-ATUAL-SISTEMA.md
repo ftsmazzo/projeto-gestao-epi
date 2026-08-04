@@ -117,8 +117,8 @@ Login: `/portal/login` · Shell: `PortalShell` · Nav: `PORTAL_NAV`
 | `/portal/estrutura` | Leitura da estrutura implantada | Consulta |
 | `/portal/validade` | Validades | Consulta / parcial |
 | `/portal/entregas` | Entregas | Entrega real com facial + baixa de estoque + historico (07.2) |
-| `/portal/relatorios` | Relatorios operacionais | **08.1** — visao geral, entregas, estoque, devolucoes/cancelamentos, cobertura (consulta) |
-| `/portal/custos` | Custos | Ainda nao operacional completo |
+| `/portal/relatorios` | Relatorios operacionais | **08.1** — visao geral, entregas, estoque, devolucoes/cancelamentos, cobertura + **export CSV** |
+| `/portal/custos` | Custos | Ainda nao operacional completo (falta precificacao no dominio) |
 | `/portal/conta` | Conta / troca de senha | Ativo |
 | `/portal/login` | Auth do cliente | Ativo |
 
@@ -185,8 +185,8 @@ Ultimo commit dessa frente: `714206a`.
 | Consultoria: cabecalhos CSV com acentos; Matriz automatica; editar cota; form estruturado | Feito (06.1.1) |
 | Portal: trabalhadores (CRUD do dia a dia) | **Nao** — portal so consulta; CRUD/importacao ficam na Consultoria |
 | Portal: entregas / ficha / biometria | **09.3** + link de autoenrollment; **comprovante e ficha imprimiveis** (HTML → PDF) com evidencia facial autenticada |
-| Portal: relatorios operacionais basicos | **08.1** — feito (consulta; sem PDF/export avancado de custos; sem custo unitario ainda) |
-| Portal: custos / exportacoes ricas | Ainda nao |
+| Portal: relatorios operacionais basicos | **08.1** — feito (consulta + export CSV; sem custo unitario ainda) |
+| Portal: custos / exportacoes ricas | Custos ainda nao (sem preco); CSV de relatorios ok |
 
 ### Documentos imprimiveis (comprovante + ficha)
 

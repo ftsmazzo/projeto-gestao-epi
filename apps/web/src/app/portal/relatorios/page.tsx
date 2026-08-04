@@ -20,6 +20,13 @@ import {
   fetchPortalReportsReturns,
   fetchPortalReportsStock,
 } from '../../../lib/client-auth';
+import {
+  exportCoverageCsv,
+  exportDeliveriesCsv,
+  exportOverviewCsv,
+  exportReturnsCsv,
+  exportStockCsv,
+} from '../../../lib/portal-report-csv';
 
 type TabId = 'overview' | 'deliveries' | 'stock' | 'returns' | 'coverage';
 
@@ -152,6 +159,24 @@ function PortalRelatoriosContent() {
   const jobsFiltered =
     meta?.jobs.filter((j) => !sectorId || j.sectorId === sectorId) ?? [];
 
+  function canExportCurrentTab() {
+    if (loading) return false;
+    if (tab === 'overview') return Boolean(overview);
+    if (tab === 'deliveries') return Boolean(deliveries);
+    if (tab === 'stock') return Boolean(stock);
+    if (tab === 'returns') return Boolean(returns);
+    if (tab === 'coverage') return Boolean(coverage);
+    return false;
+  }
+
+  function onExportCsv() {
+    if (tab === 'overview' && overview) exportOverviewCsv(overview);
+    else if (tab === 'deliveries' && deliveries) exportDeliveriesCsv(deliveries);
+    else if (tab === 'stock' && stock) exportStockCsv(stock);
+    else if (tab === 'returns' && returns) exportReturnsCsv(returns);
+    else if (tab === 'coverage' && coverage) exportCoverageCsv(coverage);
+  }
+
   return (
     <div className="portal-home">
       <header className="portal-home-header portal-home-header--decision">
@@ -159,10 +184,18 @@ function PortalRelatoriosContent() {
           <p className="page-kicker">Dia a dia</p>
           <h1 className="page-title page-title--sm">Relatorios</h1>
           <p className="page-lead">
-            Consulta de entregas, estoque, devolucoes e cobertura. Somente
-            leitura — nao altera operacao.
+            Consulta e exportacao CSV de entregas, estoque, devolucoes e
+            cobertura. Somente leitura — nao altera operacao.
           </p>
         </div>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={!canExportCurrentTab()}
+          onClick={onExportCsv}
+        >
+          Exportar CSV
+        </button>
       </header>
 
       <form
@@ -313,7 +346,7 @@ function PortalRelatoriosContent() {
           </div>
         ) : null}
         <div className="btn-row">
-          <button type="submit" className="btn btn--primary">
+          <button type="submit" className="btn btn-primary">
             Aplicar filtros
           </button>
         </div>
