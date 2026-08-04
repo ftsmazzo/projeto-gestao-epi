@@ -10,6 +10,7 @@ function ImportarPgroContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const clientId = searchParams.get('clientId');
+  const fromNovo = searchParams.get('origem') === 'novo-cliente';
 
   useEffect(() => {
     if (clientId) {
@@ -25,20 +26,38 @@ function ImportarPgroContent() {
     <div className="module-page">
       <header className="module-header">
         <div>
-          <p className="page-kicker">PGRO</p>
-          <h1 className="page-title">Importar PGRO</h1>
+          <p className="page-kicker">
+            {fromNovo ? 'Novo cliente · via PGRO' : 'PGRO'}
+          </p>
+          <h1 className="page-title">
+            {fromNovo ? 'Importar PGRO e criar cliente' : 'Importar PGRO'}
+          </h1>
           <p className="page-lead">
-            Para atualizar a estrutura de um cliente existente, abra o workspace
-            do CNPJ e use <strong>Atualizar PGRO</strong>. O assistente abaixo
-            cria/implanta a partir do PDF quando ainda nao ha cliente
-            selecionado.
+            {fromNovo
+              ? 'O assistente cria o cliente a partir do PDF e monta a estrutura. Se preferir so os dados cadastrais, volte e escolha Inserir dados.'
+              : 'Para atualizar um cliente ja existente, abra o workspace e use Atualizar PGRO. Abaixo, o assistente cria/implanta quando ainda nao ha cliente selecionado.'}
           </p>
         </div>
-        <Link className="btn btn-secondary" href="/clientes">
-          Voltar para clientes
+        <Link
+          className="btn btn-secondary"
+          href={fromNovo ? '/clientes?novo=1' : '/clientes'}
+        >
+          {fromNovo ? 'Voltar as opcoes' : 'Voltar para clientes'}
         </Link>
       </header>
-      <PgroImportWizard />
+
+      {fromNovo ? (
+        <p className="notice notice--info" role="status">
+          Voce esta no fluxo de <strong>Novo cliente</strong>. O PGRO e uma das
+          duas formas de comecar — a outra e inserir os dados manualmente.
+        </p>
+      ) : null}
+
+      <PgroImportWizard
+        hideHeader
+        backHref={fromNovo ? '/clientes?novo=1' : '/clientes'}
+        backLabel={fromNovo ? 'Voltar as opcoes' : 'Voltar para clientes'}
+      />
     </div>
   );
 }

@@ -95,9 +95,18 @@ function emptyCompany(): PgroCompanyData {
 type PgroImportWizardProps = {
   /** Quando informado, opera no workspace do cliente (Atualizar PGRO). */
   lockedClientId?: string;
+  /** Esconde o cabecalho interno (a pagina ja explica o contexto). */
+  hideHeader?: boolean;
+  backHref?: string;
+  backLabel?: string;
 };
 
-export function PgroImportWizard({ lockedClientId }: PgroImportWizardProps) {
+export function PgroImportWizard({
+  lockedClientId,
+  hideHeader = false,
+  backHref,
+  backLabel,
+}: PgroImportWizardProps) {
   const router = useRouter();
   const isUpdateMode = !!lockedClientId;
 
@@ -348,6 +357,7 @@ export function PgroImportWizard({ lockedClientId }: PgroImportWizardProps) {
 
   return (
     <div className={isUpdateMode ? 'workspace-section' : 'module-page'}>
+      {!hideHeader ? (
       <header className="module-header">
         <div>
           <p className="page-kicker">
@@ -366,15 +376,18 @@ export function PgroImportWizard({ lockedClientId }: PgroImportWizardProps) {
           <Link
             className="btn btn-secondary"
             href={
-              lockedClientId
+              backHref ??
+              (lockedClientId
                 ? `/clientes/${lockedClientId}/estrutura`
-                : '/clientes'
+                : '/clientes')
             }
           >
-            {isUpdateMode ? 'Voltar para Estrutura' : 'Voltar'}
+            {backLabel ??
+              (isUpdateMode ? 'Voltar para Estrutura' : 'Voltar')}
           </Link>
         </div>
       </header>
+      ) : null}
 
       <WizardSteps
         label="Etapas do PGRO"

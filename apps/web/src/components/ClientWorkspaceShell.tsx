@@ -120,7 +120,12 @@ export function ClientWorkspaceShell({ children }: Props) {
   const nav: NavItem[] = [
     { href: base, label: 'Visao geral', exact: true },
     { href: `${base}/estrutura`, label: 'Estrutura' },
-    { href: `${base}/atualizar-pgro`, label: 'Atualizar PGRO' },
+    {
+      href: `${base}/atualizar-pgro`,
+      label: overview?.counts.sectors.active
+        ? 'Atualizar PGRO'
+        : 'Importar PGRO',
+    },
     { href: `${base}/usuarios`, label: 'Usuarios' },
     { href: `${base}/unidades`, label: 'Unidades' },
     { href: `${base}/trabalhadores`, label: 'Trabalhadores' },

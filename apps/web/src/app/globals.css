@@ -4964,6 +4964,10 @@ a.btn-danger:hover {
   color: inherit;
   box-shadow: var(--shadow-sm);
   min-height: 7.5rem;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
   transition: transform 0.18s var(--ease-out), box-shadow 0.18s var(--ease-out), border-color 0.15s ease;
 }
 

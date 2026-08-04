@@ -93,27 +93,29 @@ function DashboardContent({
           </>
         }
         actions={
-          <Link className="btn btn-primary" href="/clientes">
-            {hasClients ? 'Gerenciar clientes' : 'Cadastrar primeiro cliente'}
+          <Link className="btn btn-primary" href="/clientes?novo=1">
+            {hasClients ? 'Novo cliente' : 'Cadastrar primeiro cliente'}
           </Link>
         }
       />
 
       <section className="action-strip ux-enter" aria-label="Proximos passos">
-        <Link href="/clientes" className="action-tile action-tile--primary">
+        <Link href="/clientes?novo=1" className="action-tile action-tile--primary">
           <p className="action-tile__kicker">Prioridade</p>
           <h2 className="action-tile__title">
             {hasClients ? 'Abrir clientes' : 'Novo cliente'}
           </h2>
           <p className="action-tile__desc">
-            Cadastre CNPJ, aloque vidas, importe PGRO e libere o portal.
+            {hasClients
+              ? 'Continue a implantacao ou cadastre outro CNPJ.'
+              : 'Inserir dados manuais ou importar PGRO — escolha no proximo passo.'}
           </p>
         </Link>
-        <Link href="/caepi" className="action-tile">
-          <p className="action-tile__kicker">Base</p>
-          <h2 className="action-tile__title">CAEPI</h2>
+        <Link href="/clientes" className="action-tile">
+          <p className="action-tile__kicker">Lista</p>
+          <h2 className="action-tile__title">Clientes atendidos</h2>
           <p className="action-tile__desc">
-            Mantenha a base oficial de CAs atualizada para o catalogo.
+            Veja cotas, abra o workspace e acompanhe a implantacao.
           </p>
         </Link>
         <Link href="/portal-cliente" className="action-tile">

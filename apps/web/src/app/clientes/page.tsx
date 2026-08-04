@@ -2,8 +2,8 @@
 
 import type { QuotaSummary, ServedClient } from '@gestao-epi/shared';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
 import { PageHeader } from '../../components/ui/PageHeader';
@@ -23,6 +23,7 @@ import {
 } from '../../lib/served-clients';
 
 type ListTab = 'clients' | 'create';
+type CreateStep = 'choose' | 'manual';
 type FormMode = 'closed' | 'edit';
 
 type ClientFormState = {
@@ -57,6 +58,7 @@ function statusLabel(status: ServedClient['status']) {
 
 function ClientesContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [clients, setClients] = useState<ServedClient[]>([]);
   const [summary, setSummary] = useState<QuotaSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,6 +66,7 @@ function ClientesContent() {
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [listTab, setListTab] = useState<ListTab>('clients');
+  const [createStep, setCreateStep] = useState<CreateStep>('choose');
   const [formMode, setFormMode] = useState<FormMode>('closed');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ClientFormState>(emptyForm);
@@ -109,6 +112,7 @@ function ClientesContent() {
   function openCreateTab() {
     const available = summary?.available ?? 0;
     setListTab('create');
+    setCreateStep('choose');
     setFormMode('closed');
     setEditingId(null);
     setForm({
@@ -118,8 +122,29 @@ function ClientesContent() {
     setFormError(null);
   }
 
+  useEffect(() => {
+    if (searchParams.get('novo') !== '1') return;
+    const available = summary?.available ?? 0;
+    setListTab('create');
+    setCreateStep('choose');
+    setFormMode('closed');
+    setEditingId(null);
+    setForm({
+      ...emptyForm,
+      allocatedLifeQuota: String(Math.min(available, 10)),
+    });
+    setFormError(null);
+    router.replace('/clientes');
+  }, [searchParams, router, summary?.available]);
+
+  function openManualCreate() {
+    setCreateStep('manual');
+    setFormError(null);
+  }
+
   function openClientsTab() {
     setListTab('clients');
+    setCreateStep('choose');
     setFormMode('closed');
     setEditingId(null);
     setForm(emptyForm);
@@ -273,12 +298,9 @@ function ClientesContent() {
       <PageHeader
         kicker="Cadastros"
         title="Clientes atendidos"
-        lead="Cadastre CNPJs, distribua a franquia de vidas e abra o workspace de cada cliente para implantacao."
+        lead="Implante um CNPJ: cadastre os dados ou importe o PGRO. Depois abra o workspace para estrutura, vidas e acesso ao portal."
         actions={
-          <div className="header-actions header-actions--wrap">
-            <Link className="btn btn-secondary" href="/clientes/importar-pgro">
-              Importar PGRO
-            </Link>
+          listTab === 'clients' ? (
             <button
               type="button"
               className="btn btn-primary"
@@ -286,11 +308,19 @@ function ClientesContent() {
             >
               Novo cliente
             </button>
-          </div>
+          ) : (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={openClientsTab}
+            >
+              Voltar a lista
+            </button>
+          )
         }
       />
 
-      {summary ? (
+      {summary && listTab === 'clients' ? (
         <section className="quota-summary" aria-label="Resumo de cotas">
           <div className="quota-summary-item">
             <span className="quota-summary-label">Contratadas</span>
@@ -325,89 +355,118 @@ function ClientesContent() {
         </p>
       ) : null}
 
-      <div
-        className="panel-tabs"
-        role="tablist"
-        aria-label="Secoes de clientes"
-      >
-        <button
-          type="button"
-          role="tab"
-          className={`panel-tab ${listTab === 'clients' ? 'is-active' : ''}`}
-          aria-selected={listTab === 'clients'}
-          onClick={openClientsTab}
-        >
-          Clientes
-        </button>
-        <button
-          type="button"
-          role="tab"
-          className={`panel-tab ${isCreateTab ? 'is-active' : ''}`}
-          aria-selected={isCreateTab}
-          onClick={openCreateTab}
-        >
-          Novo cliente
-        </button>
-      </div>
-
       {isCreateTab ? (
-        <section className="surface ux-enter" aria-labelledby="client-form-title">
-          <div className="form-section-header">
-            <div>
-              <p className="page-kicker">Passo 1 de implantacao</p>
-              <h2
-                id="client-form-title"
-                className="page-title page-title--sm"
-              >
-                Novo cliente atendido
-              </h2>
-              <p className="page-lead">
-                Informe CNPJ e cotas. Em seguida abriremos o workspace para
-                PGRO, trabalhadores e acesso ao portal.
-              </p>
+        createStep === 'choose' ? (
+          <section
+            className="surface ux-enter"
+            aria-labelledby="create-choose-title"
+          >
+            <div className="form-section-header">
+              <div>
+                <p className="page-kicker">Novo cliente</p>
+                <h2
+                  id="create-choose-title"
+                  className="page-title page-title--sm"
+                >
+                  Como deseja comecar?
+                </h2>
+                <p className="page-lead">
+                  Escolha uma forma de implantar. As duas levam ao workspace do
+                  cliente — a diferenca e so o ponto de partida.
+                </p>
+              </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={openClientsTab}
-            >
-              Voltar a lista
-            </button>
-          </div>
 
-          <form className="form form--wide" onSubmit={onSubmit} noValidate>
-            <ClientFormFields
-              form={form}
-              setForm={setForm}
-              availableForForm={availableForForm}
-              showInitialManager
-            />
-
-            {formError ? (
-              <p className="error" role="alert">
-                {formError}
-              </p>
-            ) : null}
-
-            <div className="flow-sticky-bar">
+            <div className="action-strip" aria-label="Opcoes de cadastro">
+              <button
+                type="button"
+                className="action-tile action-tile--primary"
+                onClick={openManualCreate}
+              >
+                <p className="action-tile__kicker">Opcao 1</p>
+                <h3 className="action-tile__title">Inserir dados</h3>
+                <p className="action-tile__desc">
+                  Informe CNPJ, razao social e cotas. Depois importe o PGRO no
+                  workspace, se quiser.
+                </p>
+              </button>
+              <Link
+                href="/clientes/importar-pgro?origem=novo-cliente"
+                className="action-tile"
+              >
+                <p className="action-tile__kicker">Opcao 2</p>
+                <h3 className="action-tile__title">Importar PGRO</h3>
+                <p className="action-tile__desc">
+                  Use o PDF do PGRO/PGR para criar o cliente e a estrutura de
+                  uma vez.
+                </p>
+              </Link>
+            </div>
+          </section>
+        ) : (
+          <section
+            className="surface ux-enter"
+            aria-labelledby="client-form-title"
+          >
+            <div className="form-section-header">
+              <div>
+                <p className="page-kicker">Novo cliente · dados manuais</p>
+                <h2
+                  id="client-form-title"
+                  className="page-title page-title--sm"
+                >
+                  Dados da empresa
+                </h2>
+                <p className="page-lead">
+                  Preencha o essencial. Apos salvar, abrimos o workspace para
+                  estrutura/PGRO, trabalhadores e usuarios do portal.
+                </p>
+              </div>
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={openClientsTab}
-                disabled={saving}
+                onClick={() => setCreateStep('choose')}
               >
-                Cancelar
-              </button>
-              <button
-                className="btn btn-primary"
-                type="submit"
-                disabled={saving}
-              >
-                {saving ? 'Salvando e abrindo painel...' : 'Cadastrar e continuar'}
+                Trocar forma de cadastro
               </button>
             </div>
-          </form>
-        </section>
+
+            <form className="form form--wide" onSubmit={onSubmit} noValidate>
+              <ClientFormFields
+                form={form}
+                setForm={setForm}
+                availableForForm={availableForForm}
+                showInitialManager
+              />
+
+              {formError ? (
+                <p className="error" role="alert">
+                  {formError}
+                </p>
+              ) : null}
+
+              <div className="flow-sticky-bar">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setCreateStep('choose')}
+                  disabled={saving}
+                >
+                  Voltar
+                </button>
+                <button
+                  className="btn btn-primary"
+                  type="submit"
+                  disabled={saving}
+                >
+                  {saving
+                    ? 'Salvando e abrindo painel...'
+                    : 'Cadastrar e continuar'}
+                </button>
+              </div>
+            </form>
+          </section>
+        )
       ) : (
         <>
           {formMode === 'edit' ? (
@@ -468,7 +527,7 @@ function ClientesContent() {
           <section className="surface" aria-labelledby="clients-list-title">
             <div className="form-section-header">
               <div>
-                <p className="page-kicker">Lista operacional</p>
+                <p className="page-kicker">Lista</p>
                 <h2 id="clients-list-title" className="page-title page-title--sm">
                   Clientes da organizacao
                 </h2>
@@ -498,15 +557,15 @@ function ClientesContent() {
                   Nenhum cliente cadastrado
                 </p>
                 <p className="page-lead">
-                  Cadastre o primeiro CNPJ atendido e aloque parte da franquia
-                  de vidas.
+                  Comece pelo cadastro: inserir dados manuais ou importar o
+                  PGRO.
                 </p>
                 <button
                   type="button"
                   className="btn btn-primary"
                   onClick={openCreateTab}
                 >
-                  Cadastrar primeiro cliente
+                  Novo cliente
                 </button>
               </div>
             ) : filteredClients.length === 0 ? (
@@ -597,82 +656,81 @@ function ClientFormFields({
 }) {
   return (
     <>
-      <div className="form-grid">
-        <div className="field">
-          <label htmlFor="legalName">Razao social</label>
-          <input
-            id="legalName"
-            required
-            minLength={2}
-            value={form.legalName}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, legalName: e.target.value }))
-            }
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="tradeName">Nome fantasia (opcional)</label>
-          <input
-            id="tradeName"
-            value={form.tradeName}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, tradeName: e.target.value }))
-            }
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="cnpj">CNPJ</label>
-          <input
-            id="cnpj"
-            autoComplete="off"
-            required
-            placeholder="00.000.000/0000-00"
-            value={form.cnpj}
-            onChange={(e) =>
-              setForm((prev) => ({
-                ...prev,
-                cnpj: formatCnpjInput(e.target.value),
-              }))
-            }
-          />
-          <p className="field-hint">
-            Aceita CNPJ numerico ou alfanumerico, com ou sem mascara.
-            Armazenado sem formatacao.
-          </p>
-        </div>
-        <div className="field">
-          <label htmlFor="allocatedLifeQuota">Cota de vidas</label>
-          <input
-            id="allocatedLifeQuota"
-            type="number"
-            min={0}
-            max={availableForForm}
-            required
-            value={form.allocatedLifeQuota}
-            onChange={(e) =>
-              setForm((prev) => ({
-                ...prev,
-                allocatedLifeQuota: e.target.value,
-              }))
-            }
-          />
-          <p className="field-hint">
-            Disponivel nesta franquia: {availableForForm} vidas.
-          </p>
-        </div>
-      </div>
-
       <fieldset className="epi-form-section">
         <div className="epi-form-section__head">
-          <h3>Contato institucional</h3>
-          <p>
-            Usado pela consultoria para alertas (CA, EPI, cobranca). Pode ser
-            diferente do gestor do portal.
-          </p>
+          <h3>Empresa</h3>
+          <p>Identificacao e cotas de vidas deste cliente.</p>
         </div>
         <div className="form-grid">
           <div className="field">
-            <label htmlFor="contactEmail">E-mail de contato</label>
+            <label htmlFor="cnpj">CNPJ</label>
+            <input
+              id="cnpj"
+              autoComplete="off"
+              required
+              placeholder="00.000.000/0000-00"
+              value={form.cnpj}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  cnpj: formatCnpjInput(e.target.value),
+                }))
+              }
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="allocatedLifeQuota">Cota de vidas</label>
+            <input
+              id="allocatedLifeQuota"
+              type="number"
+              min={0}
+              max={availableForForm}
+              required
+              value={form.allocatedLifeQuota}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  allocatedLifeQuota: e.target.value,
+                }))
+              }
+            />
+            <p className="field-hint">
+              Disponivel na franquia: {availableForForm}.
+            </p>
+          </div>
+          <div className="field">
+            <label htmlFor="legalName">Razao social</label>
+            <input
+              id="legalName"
+              required
+              minLength={2}
+              value={form.legalName}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, legalName: e.target.value }))
+              }
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="tradeName">Nome fantasia (opcional)</label>
+            <input
+              id="tradeName"
+              value={form.tradeName}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, tradeName: e.target.value }))
+              }
+            />
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset className="epi-form-section">
+        <div className="epi-form-section__head">
+          <h3>Contato institucional (opcional)</h3>
+          <p>Para alertas da consultoria. Pode ser diferente do gestor do portal.</p>
+        </div>
+        <div className="form-grid">
+          <div className="field">
+            <label htmlFor="contactEmail">E-mail</label>
             <input
               id="contactEmail"
               type="email"
@@ -692,33 +750,32 @@ function ClientFormFields({
               }
             />
           </div>
+          <div className="field field--span-2">
+            <label htmlFor="notes">Observacoes</label>
+            <textarea
+              id="notes"
+              rows={2}
+              value={form.notes}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, notes: e.target.value }))
+              }
+            />
+          </div>
         </div>
       </fieldset>
-
-      <div className="field">
-        <label htmlFor="notes">Observacoes (opcional)</label>
-        <textarea
-          id="notes"
-          rows={3}
-          value={form.notes}
-          onChange={(e) =>
-            setForm((prev) => ({ ...prev, notes: e.target.value }))
-          }
-        />
-      </div>
 
       {showInitialManager ? (
         <fieldset className="epi-form-section">
           <div className="epi-form-section__head">
-            <h3>Gestor inicial</h3>
+            <h3>Gestor do portal (opcional)</h3>
             <p>
-              Opcional. Apos salvar, o painel abre em Usuarios com a senha
-              temporaria. O gestor entra em /portal/login — nao na Consultoria.
+              Se informar agora, a senha temporaria aparece uma unica vez apos
+              salvar. Voce tambem pode criar depois em Usuarios.
             </p>
           </div>
           <div className="form-grid">
             <div className="field">
-              <label htmlFor="initialManagerName">Nome do gestor</label>
+              <label htmlFor="initialManagerName">Nome</label>
               <input
                 id="initialManagerName"
                 value={form.initialManagerName}
@@ -745,9 +802,7 @@ function ClientFormFields({
               />
             </div>
             <div className="field">
-              <label htmlFor="initialManagerPhone">
-                WhatsApp (para enviar login)
-              </label>
+              <label htmlFor="initialManagerPhone">WhatsApp</label>
               <input
                 id="initialManagerPhone"
                 value={form.initialManagerPhone}
@@ -759,25 +814,10 @@ function ClientFormFields({
                 }
                 placeholder="11999999999"
               />
-              <p className="field-hint">
-                Com COMMUNICATIONS_ENABLED, o convite sai na hora por e-mail e,
-                se informado, por WhatsApp.
-              </p>
             </div>
           </div>
         </fieldset>
       ) : null}
-
-      <aside className="cnpj-lookup-slot" aria-label="Consulta de CNPJ">
-        <p className="page-kicker">Consulta cadastral</p>
-        <p className="field-hint">
-          Em breve: preencher razao social automaticamente pela Receita
-          Federal. Por enquanto, informe os dados manualmente.
-        </p>
-        <button type="button" className="btn btn-secondary" disabled>
-          Consultar CNPJ (em breve)
-        </button>
-      </aside>
     </>
   );
 }
@@ -785,7 +825,11 @@ function ClientFormFields({
 export default function ClientesPage() {
   return (
     <RequireAuth>
-      {() => <ClientesContent />}
+      {() => (
+        <Suspense fallback={<p className="page-lead">Carregando clientes...</p>}>
+          <ClientesContent />
+        </Suspense>
+      )}
     </RequireAuth>
   );
 }
