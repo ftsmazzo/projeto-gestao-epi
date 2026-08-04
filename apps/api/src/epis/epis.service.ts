@@ -17,6 +17,7 @@ import type {
   EpiVariantInputDto,
 } from './dto/create-epi-item.dto';
 import type { UpdateEpiItemDto } from './dto/update-epi-item.dto';
+import { suggestCategoryFromEquipment } from './epi-import.utils';
 
 const itemInclude = {
   variants: {
@@ -64,7 +65,8 @@ export class EpisService {
       dto.usefulLifeUnit,
     );
     const caExpiresAt = this.parseOptionalDate(dto.caExpiresAt);
-    const category = dto.category ?? null;
+    const category =
+      dto.category ?? suggestCategoryFromEquipment(dto.name.trim());
     const nrr =
       category === EpiCategory.AUDITIVA
         ? this.normalizeOptionalFloat(dto.nrr, 'NRR')
@@ -160,8 +162,11 @@ export class EpisService {
       await this.assertUniqueCaNumber(organizationId, nextCaNumber, id);
     }
 
+    const nextName = dto.name?.trim() ?? existing.name;
     const nextCategory =
-      dto.category === undefined ? existing.category : dto.category;
+      dto.category !== undefined
+        ? dto.category
+        : existing.category ?? suggestCategoryFromEquipment(nextName);
     const rawNrr =
       dto.nrr === undefined
         ? existing.nrr
@@ -208,7 +213,7 @@ export class EpisService {
                   ? null
                   : undefined
                 : dto.usefulLifeUnit,
-            category: dto.category === undefined ? undefined : dto.category,
+            category: nextCategory,
             externalCode:
               dto.externalCode === undefined
                 ? undefined
@@ -308,6 +313,36 @@ export class EpisService {
     });
 
     return item;
+  }
+
+  async backfillCategories(organizationId: string, userId: string) {
+    const items = await this.prisma.epiItem.findMany({
+      where: { organizationId, category: null },
+      select: { id: true, name: true },
+    });
+
+    let updated = 0;
+    for (const item of items) {
+      const category = suggestCategoryFromEquipment(item.name);
+      await this.prisma.epiItem.update({
+        where: { id: item.id },
+        data: { category },
+      });
+      updated += 1;
+    }
+
+    if (updated > 0) {
+      await this.audit.log({
+        action: 'epi_item.categories_backfilled',
+        organizationId,
+        userId,
+        entityType: 'EpiItem',
+        entityId: organizationId,
+        metadata: { updated },
+      });
+    }
+
+    return { scanned: items.length, updated };
   }
 
   private async syncVariants(

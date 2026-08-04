@@ -32,6 +32,7 @@ import {
   formatCaStatusLabel,
   mergeSelectOptions,
   normalizeCaLookupInput,
+  suggestCategoryFromEquipment,
 } from '../../lib/caepi-assist';
 import { lookupCaCertificate, searchCaCertificates } from '../../lib/caepi';
 import {
@@ -41,6 +42,7 @@ import {
   syncNeedsForEpiItem,
 } from '../../lib/epi-needs';
 import {
+  backfillEpiCategories,
   confirmEpiCsvImport,
   createEpiItem,
   downloadCsvText,
@@ -224,6 +226,13 @@ function EpisContent() {
   const [availableNeeds, setAvailableNeeds] = useState<EpiNeed[]>([]);
   const [selectedNeedIds, setSelectedNeedIds] = useState<string[]>([]);
   const [suggestedNeedIds, setSuggestedNeedIds] = useState<string[]>([]);
+  const [backfillBusy, setBackfillBusy] = useState(false);
+  const [backfillMessage, setBackfillMessage] = useState<string | null>(null);
+
+  const missingCategoryCount = useMemo(
+    () => items.filter((item) => !item.category).length,
+    [items],
+  );
 
   const load = useCallback(async () => {
     setError(null);
@@ -775,6 +784,29 @@ function EpisContent() {
     }
   }
 
+  async function onBackfillCategories() {
+    setError(null);
+    setBackfillMessage(null);
+    setBackfillBusy(true);
+    try {
+      const result = await backfillEpiCategories();
+      setBackfillMessage(
+        result.updated === 0
+          ? 'Nenhum EPI sem categoria para preencher.'
+          : `Categorias preenchidas em ${result.updated} EPI(s).`,
+      );
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel preencher as categorias.',
+      );
+    } finally {
+      setBackfillBusy(false);
+    }
+  }
+
   function openImportPanel() {
     setImportOpen(true);
     setImportError(null);
@@ -891,6 +923,18 @@ function EpisContent() {
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
+          {missingCategoryCount > 0 ? (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={backfillBusy}
+              onClick={() => void onBackfillCategories()}
+            >
+              {backfillBusy
+                ? 'Preenchendo...'
+                : `Preencher categorias (${missingCategoryCount})`}
+            </button>
+          ) : null}
           <button
             type="button"
             className="btn btn-secondary"
@@ -903,6 +947,12 @@ function EpisContent() {
           </button>
         </div>
       </header>
+
+      {backfillMessage ? (
+        <p className="notice notice--ok" role="status">
+          {backfillMessage}
+        </p>
+      ) : null}
 
       {importOpen ? (
         <section className="surface epi-import-panel" aria-labelledby="epi-import-title">
@@ -1163,7 +1213,15 @@ function EpisContent() {
                     value={form.name}
                     onChange={(e) => {
                       const value = e.target.value;
-                      setForm((prev) => ({ ...prev, name: value }));
+                      setForm((prev) => ({
+                        ...prev,
+                        name: value,
+                        category:
+                          prev.category ||
+                          (value.trim().length >= 3
+                            ? suggestCategoryFromEquipment(value)
+                            : prev.category),
+                      }));
                       setNameAppliedBanner(null);
                       setNameAssistError(null);
                       setCaSuggestQuery(value);
@@ -1252,7 +1310,7 @@ function EpisContent() {
                       }))
                     }
                   >
-                    <option value="">Sem categoria</option>
+                    <option value="">Sugerir pelo nome</option>
                     {CATEGORY_OPTIONS.map((option) => (
                       <option key={option.value} value={option.value}>
                         {option.label}

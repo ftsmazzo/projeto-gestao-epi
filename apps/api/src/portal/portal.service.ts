@@ -36,10 +36,13 @@ import { normalizeCaNumber } from '../caepi/caepi-import.utils';
 import { CaepiService } from '../caepi/caepi.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../stock/stock.service';
+import type { CreateWorkerDto } from '../workers/dto/create-worker.dto';
+import type { UpdateWorkerDto } from '../workers/dto/update-worker.dto';
+import { WorkerBiometricConsentService } from '../workers/worker-biometric-consent.service';
 import {
   resolveWorkerFaceReferenceAbsolutePath,
 } from '../workers/worker-face-reference.storage';
-import { WorkerBiometricConsentService } from '../workers/worker-biometric-consent.service';
+import { WorkersService } from '../workers/workers.service';
 import {
   FACIAL_EVIDENCE_CONSENT_TEXT,
   FACIAL_EVIDENCE_CONSENT_VERSION,
@@ -135,6 +138,7 @@ export class PortalService {
     private readonly caepi: CaepiService,
     private readonly audit: AuditService,
     private readonly biometricConsent: WorkerBiometricConsentService,
+    private readonly workers: WorkersService,
   ) {}
 
   async getDashboard(organizationId: string, servedClientId: string) {
@@ -560,35 +564,52 @@ export class PortalService {
   async getEstrutura(organizationId: string, servedClientId: string) {
     await this.requireClient(organizationId, servedClientId);
 
-    const sectors = await this.prisma.clientSector.findMany({
-      where: { organizationId, servedClientId, isActive: true },
-      orderBy: { name: 'asc' },
-      include: {
-        operationalUnit: { select: { id: true, name: true } },
-        jobFunctions: {
-          where: { isActive: true },
-          orderBy: { name: 'asc' },
-          include: {
-            risks: {
-              include: { risk: { select: { id: true, name: true } } },
-            },
-            epiRequirements: {
-              where: { isActive: true },
-              include: {
-                epiNeed: { select: { id: true, name: true } },
-                risk: { select: { id: true, name: true } },
+    const [sectors, units] = await Promise.all([
+      this.prisma.clientSector.findMany({
+        where: { organizationId, servedClientId, isActive: true },
+        orderBy: { name: 'asc' },
+        include: {
+          operationalUnit: { select: { id: true, name: true } },
+          jobFunctions: {
+            where: { isActive: true },
+            orderBy: { name: 'asc' },
+            include: {
+              risks: {
+                include: { risk: { select: { id: true, name: true } } },
+              },
+              epiRequirements: {
+                where: { isActive: true },
+                include: {
+                  epiNeed: { select: { id: true, name: true } },
+                  risk: { select: { id: true, name: true } },
+                },
               },
             },
           },
         },
-      },
-    });
+      }),
+      this.prisma.operationalUnit.findMany({
+        where: {
+          organizationId,
+          servedClientId,
+          status: 'ACTIVE',
+        },
+        orderBy: { name: 'asc' },
+        select: { id: true, name: true, code: true },
+      }),
+    ]);
 
     return {
+      units: units.map((unit) => ({
+        id: unit.id,
+        name: unit.name,
+        code: unit.code,
+      })),
       sectors: sectors.map((sector) => ({
         id: sector.id,
         name: sector.name,
         unitName: sector.operationalUnit?.name ?? null,
+        operationalUnitId: sector.operationalUnit?.id ?? null,
         jobs: sector.jobFunctions.map((job) => {
           const needMap = new Map<
             string,
@@ -641,6 +662,8 @@ export class PortalService {
         orderBy: [{ status: 'asc' }, { name: 'asc' }],
         include: {
           operationalUnit: { select: { id: true, name: true } },
+          clientSector: { select: { id: true, name: true } },
+          clientJobFunction: { select: { id: true, name: true } },
         },
       }),
       this.prisma.epiDeliveryItem.findMany({
@@ -748,11 +771,20 @@ export class PortalService {
       return {
         id: w.id,
         name: w.name,
+        cpf: w.cpf,
         registration: w.registration,
+        email: w.email,
+        phone: w.phone,
         role: w.role,
         department: w.department,
         status: w.status,
+        notes: w.notes,
+        operationalUnitId: w.operationalUnitId,
+        clientSectorId: w.clientSectorId,
+        clientJobFunctionId: w.clientJobFunctionId,
         unitName: w.operationalUnit?.name ?? null,
+        sectorName: w.clientSector?.name ?? null,
+        jobFunctionName: w.clientJobFunction?.name ?? null,
         admissionDate: w.admissionDate?.toISOString() ?? null,
         replacementDue,
       };
@@ -785,6 +817,62 @@ export class PortalService {
       },
       workers: mapped,
     };
+  }
+
+  async createWorker(
+    organizationId: string,
+    userId: string,
+    servedClientId: string,
+    dto: CreateWorkerDto,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    return this.workers.create(organizationId, userId, servedClientId, dto);
+  }
+
+  async updateWorker(
+    organizationId: string,
+    userId: string,
+    servedClientId: string,
+    workerId: string,
+    dto: UpdateWorkerDto,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    await this.assertWorkerBelongsToClient(
+      organizationId,
+      servedClientId,
+      workerId,
+    );
+    return this.workers.update(organizationId, userId, workerId, dto);
+  }
+
+  async updateWorkerStatus(
+    organizationId: string,
+    userId: string,
+    servedClientId: string,
+    workerId: string,
+    status: WorkerStatus,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    await this.assertWorkerBelongsToClient(
+      organizationId,
+      servedClientId,
+      workerId,
+    );
+    return this.workers.updateStatus(organizationId, userId, workerId, status);
+  }
+
+  private async assertWorkerBelongsToClient(
+    organizationId: string,
+    servedClientId: string,
+    workerId: string,
+  ) {
+    const worker = await this.prisma.worker.findFirst({
+      where: { id: workerId, organizationId, servedClientId },
+      select: { id: true },
+    });
+    if (!worker) {
+      throw new NotFoundException('Trabalhador nao encontrado.');
+    }
   }
 
   async getEstoqueResumo(organizationId: string, servedClientId: string) {

@@ -1198,10 +1198,16 @@ export interface PortalValidadeResponse {
 }
 
 export interface PortalEstruturaResponse {
+  units: Array<{
+    id: string;
+    name: string;
+    code: string | null;
+  }>;
   sectors: Array<{
     id: string;
     name: string;
     unitName: string | null;
+    operationalUnitId: string | null;
     jobs: Array<{
       id: string;
       name: string;
@@ -1253,11 +1259,20 @@ export interface PortalTrabalhadoresResponse {
   workers: Array<{
     id: string;
     name: string;
+    cpf: string | null;
     registration: string | null;
+    email: string | null;
+    phone: string | null;
     role: string | null;
     department: string | null;
     status: 'ACTIVE' | 'INACTIVE';
+    notes: string | null;
+    operationalUnitId: string | null;
+    clientSectorId: string | null;
+    clientJobFunctionId: string | null;
     unitName: string | null;
+    sectorName: string | null;
+    jobFunctionName: string | null;
     admissionDate: string | null;
     replacementDue: PortalTrabalhadorReplacementDue | null;
   }>;

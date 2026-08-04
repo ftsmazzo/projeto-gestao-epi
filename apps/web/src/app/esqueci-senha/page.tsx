@@ -6,6 +6,10 @@ import { FormEvent, useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { AppShell } from '../../components/AppShell';
 import { BrandLockup } from '../../components/BrandLockup';
+import {
+  requestPasswordReset,
+  type ForgotPasswordResponse,
+} from '../../lib/auth';
 
 function ForgotPasswordForm() {
   const searchParams = useSearchParams();
@@ -13,38 +17,59 @@ function ForgotPasswordForm() {
   const initialEmail = searchParams.get('email') ?? '';
 
   const [email, setEmail] = useState(initialEmail);
-  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<ForgotPasswordResponse | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const backHref = isPortal ? '/portal/login' : '/login';
   const backLabel = isPortal ? 'Voltar ao portal' : 'Voltar ao login';
+  const audience = isPortal ? ('portal' as const) : ('consultoria' as const);
 
   const guidance = useMemo(
     () =>
       isPortal
         ? {
             title: 'Recuperar acesso do portal',
-            lead: `Usuarios do painel do cliente sao gerenciados pela consultoria. Informe o e-mail da conta — o administrador do ${APP_NAME} redefine a senha e libera o acesso.`,
-            nextSteps: [
-              'Fale com o responsavel da consultoria na sua empresa',
-              'Peca o reset da senha do usuario do portal',
-              'Entre de novo com a senha provisoria e altere no primeiro acesso',
-            ],
+            lead: `Informe o e-mail do gestor ou operador. Se a conta existir, geramos uma senha temporaria para o ${APP_NAME}.`,
           }
         : {
             title: 'Recuperar acesso da consultoria',
-            lead: `No piloto, o reset de senha da consultoria e feito pelo administrador da organizacao no ${APP_NAME}. Informe o e-mail para orientar o atendimento.`,
-            nextSteps: [
-              'Confirme o e-mail cadastrado na organizacao',
-              'Solicite o reset ao administrador (OWNER/ADMIN)',
-              'Entre novamente e troque a senha se for exigido',
-            ],
+            lead: `Informe o e-mail cadastrado na organizacao. Se a conta existir, geramos uma senha temporaria para o ${APP_NAME}.`,
           },
     [isPortal],
   );
 
-  function onSubmit(event: FormEvent) {
+  async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    setSent(true);
+    setError(null);
+    setCopied(false);
+    setLoading(true);
+    try {
+      const response = await requestPasswordReset({
+        email: email.trim(),
+        audience,
+      });
+      setResult(response);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel solicitar o reset.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function copyTemporaryPassword() {
+    if (!result?.temporaryPassword) return;
+    try {
+      await navigator.clipboard.writeText(result.temporaryPassword);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
   }
 
   return (
@@ -53,8 +78,8 @@ function ForgotPasswordForm() {
         <BrandLockup subtitle="Recuperacao de acesso" />
         <h2>{APP_TAGLINE}</h2>
         <p>
-          Acesso seguro em poucos passos. Sem e-mail automatico no piloto — o
-          reset passa pelo administrador da organizacao.
+          Reset seguro com senha temporaria. No piloto, se o envio por
+          e-mail/WhatsApp estiver desligado, a senha aparece nesta tela.
         </p>
       </aside>
 
@@ -68,17 +93,46 @@ function ForgotPasswordForm() {
           </h1>
           <p className="page-lead">{guidance.lead}</p>
 
-          {sent ? (
+          {result ? (
             <div className="notice notice--ok" role="status">
               <p>
-                Registramos o pedido para <strong>{email}</strong>. Fale com o
-                administrador da organizacao para concluir o reset.
+                Se o e-mail <strong>{email}</strong> existir, a senha temporaria
+                ja foi gerada.
               </p>
-              <ol className="notice-steps">
-                {guidance.nextSteps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
+              {result.deliveryEnabled ? (
+                <p style={{ marginTop: '0.75rem' }}>
+                  Verifique o e-mail ou WhatsApp cadastrado. No primeiro acesso,
+                  troque a senha.
+                </p>
+              ) : result.temporaryPassword ? (
+                <div style={{ marginTop: '0.85rem' }}>
+                  <p className="field-hint" style={{ marginBottom: '0.35rem' }}>
+                    Senha temporaria (copie e use no login):
+                  </p>
+                  <div className="btn-row" style={{ alignItems: 'center' }}>
+                    <code className="mono" style={{ fontSize: '1.05rem' }}>
+                      {result.temporaryPassword}
+                    </code>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => void copyTemporaryPassword()}
+                    >
+                      {copied ? 'Copiada' : 'Copiar'}
+                    </button>
+                  </div>
+                  {result.accessUrl ? (
+                    <p className="field-hint" style={{ marginTop: '0.65rem' }}>
+                      Acesso: {result.accessUrl}
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <p style={{ marginTop: '0.75rem' }}>
+                  Nenhuma senha foi exibida (conta inexistente ou ja tratada).
+                  Confira o e-mail e tente de novo se precisar.
+                </p>
+              )}
               <p style={{ marginTop: '1rem' }}>
                 <Link className="btn btn-primary" href={backHref}>
                   {backLabel}
@@ -86,7 +140,7 @@ function ForgotPasswordForm() {
               </p>
             </div>
           ) : (
-            <form className="form" onSubmit={onSubmit} noValidate>
+            <form className="form" onSubmit={(e) => void onSubmit(e)} noValidate>
               <div className="field">
                 <label htmlFor="forgot-email">E-mail da conta</label>
                 <input
@@ -98,8 +152,17 @@ function ForgotPasswordForm() {
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-              <button className="btn btn-primary btn-block" type="submit">
-                Continuar recuperacao
+              {error ? (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              <button
+                className="btn btn-primary btn-block"
+                type="submit"
+                disabled={loading}
+              >
+                {loading ? 'Gerando...' : 'Gerar senha temporaria'}
               </button>
               <p className="form-footer">
                 Lembrou a senha? <Link href={backHref}>{backLabel}</Link>

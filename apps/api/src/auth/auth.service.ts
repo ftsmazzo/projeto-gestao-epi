@@ -12,9 +12,12 @@ import {
   ServedClientStatus,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
+import { CommunicationsService } from '../communications/communications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type { ChangePasswordDto } from './dto/change-password.dto';
+import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { ClientJwtPayload, JwtPayload } from './types/jwt-payload';
@@ -35,6 +38,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly audit: AuditService,
+    private readonly communications: CommunicationsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -462,6 +466,219 @@ export class AuthService {
       suffix += 1;
     }
     return candidate;
+  }
+
+  /**
+   * Reset publico de senha (piloto).
+   * Sempre responde ok; se a conta existir, gera senha temporaria e tenta enviar.
+   * Se comunicacoes estiverem off, devolve a senha temporaria na resposta.
+   */
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const email = dto.email.trim().toLowerCase();
+    const generic = {
+      ok: true as const,
+      message:
+        'Se o e-mail existir, geramos uma senha temporaria. Verifique o e-mail/WhatsApp ou a senha exibida abaixo.',
+      audience: dto.audience,
+      temporaryPassword: null as string | null,
+      accessUrl: null as string | null,
+      deliveryEnabled: this.communications.isEnabled(),
+    };
+
+    if (dto.audience === 'portal') {
+      return this.forgotPortalPassword(email, generic);
+    }
+    return this.forgotConsultoriaPassword(email, generic);
+  }
+
+  private async forgotPortalPassword(
+    email: string,
+    generic: {
+      ok: true;
+      message: string;
+      audience: 'portal' | 'consultoria';
+      temporaryPassword: string | null;
+      accessUrl: string | null;
+      deliveryEnabled: boolean;
+    },
+  ) {
+    const membership = await this.prisma.clientUserMembership.findFirst({
+      where: {
+        email,
+        isActive: true,
+        role: { in: [ClientUserRole.CLIENT_MANAGER, ClientUserRole.STOCK_OPERATOR] },
+        servedClient: { status: ServedClientStatus.ACTIVE },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!membership) {
+      return generic;
+    }
+
+    const temporaryPassword = this.generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    const linkedUser = membership.userId
+      ? await this.prisma.user.findUnique({ where: { id: membership.userId } })
+      : null;
+
+    const ensuredUser =
+      linkedUser ??
+      (await this.prisma.user.upsert({
+        where: { email },
+        update: {
+          name: membership.name,
+          passwordHash,
+        },
+        create: {
+          email,
+          name: membership.name,
+          passwordHash,
+        },
+      }));
+
+    if (linkedUser) {
+      await this.prisma.user.update({
+        where: { id: linkedUser.id },
+        data: { passwordHash },
+      });
+    }
+
+    await this.prisma.clientUserMembership.update({
+      where: { id: membership.id },
+      data: {
+        userId: ensuredUser.id,
+        accessStatus: ClientUserAccessStatus.INVITED,
+        mustChangePassword: true,
+        temporaryPasswordCreatedAt: new Date(),
+      },
+    });
+
+    const accessUrl = this.resolvePortalAccessUrl();
+    const delivery = await this.communications.enqueueClientAccessInvite({
+      organizationId: membership.organizationId,
+      recipientName: membership.name,
+      recipientEmail: membership.email,
+      recipientPhone: membership.phone,
+      temporaryPassword,
+      accessUrl,
+      membershipId: membership.id,
+    });
+
+    await this.audit.log({
+      action: 'auth.forgot_password_portal',
+      organizationId: membership.organizationId,
+      userId: ensuredUser.id,
+      entityType: 'ClientUserMembership',
+      entityId: membership.id,
+      metadata: { email, deliveryEnabled: delivery.enabled },
+    });
+
+    return {
+      ...generic,
+      temporaryPassword: delivery.enabled ? null : temporaryPassword,
+      accessUrl,
+      deliveryEnabled: delivery.enabled,
+      channels: {
+        email: delivery.email,
+        whatsapp: delivery.whatsapp,
+      },
+    };
+  }
+
+  private async forgotConsultoriaPassword(
+    email: string,
+    generic: {
+      ok: true;
+      message: string;
+      audience: 'portal' | 'consultoria';
+      temporaryPassword: string | null;
+      accessUrl: string | null;
+      deliveryEnabled: boolean;
+    },
+  ) {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      include: {
+        memberships: {
+          take: 1,
+          orderBy: { createdAt: 'asc' },
+          include: { organization: { select: { id: true, name: true } } },
+        },
+      },
+    });
+    if (!user || user.memberships.length === 0) {
+      return generic;
+    }
+
+    const membership = user.memberships[0];
+    const temporaryPassword = this.generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash },
+    });
+
+    const accessUrl = this.resolveConsultoriaAccessUrl();
+    const delivery = await this.communications.enqueueClientAccessInvite({
+      organizationId: membership.organizationId,
+      recipientName: user.name,
+      recipientEmail: user.email,
+      recipientPhone: null,
+      temporaryPassword,
+      accessUrl,
+      membershipId: membership.id,
+    });
+
+    await this.audit.log({
+      action: 'auth.forgot_password_consultoria',
+      organizationId: membership.organizationId,
+      userId: user.id,
+      entityType: 'User',
+      entityId: user.id,
+      metadata: { email, deliveryEnabled: delivery.enabled },
+    });
+
+    return {
+      ...generic,
+      temporaryPassword: delivery.enabled ? null : temporaryPassword,
+      accessUrl,
+      deliveryEnabled: delivery.enabled,
+      channels: {
+        email: delivery.email,
+        whatsapp: delivery.whatsapp,
+      },
+    };
+  }
+
+  private generateTemporaryPassword(): string {
+    const alphabet =
+      'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';
+    const bytes = randomBytes(14);
+    let out = '';
+    for (let i = 0; i < 14; i += 1) {
+      out += alphabet[bytes[i] % alphabet.length];
+    }
+    return out;
+  }
+
+  private resolvePortalAccessUrl(): string {
+    const fromEnv =
+      process.env.CLIENT_PORTAL_URL?.trim() ||
+      process.env.WEB_APP_URL?.trim() ||
+      process.env.CORS_ORIGIN?.split(',')[0]?.trim();
+    const base = (fromEnv || 'http://localhost:3000').replace(/\/$/, '');
+    if (base.endsWith('/portal/login') || base.endsWith('/portal')) {
+      return base.includes('/login') ? base : `${base}/login`;
+    }
+    return `${base}/portal/login`;
+  }
+
+  private resolveConsultoriaAccessUrl(): string {
+    const fromEnv =
+      process.env.WEB_APP_URL?.trim() ||
+      process.env.CORS_ORIGIN?.split(',')[0]?.trim();
+    const base = (fromEnv || 'http://localhost:3000').replace(/\/$/, '');
+    return `${base}/login`;
   }
 
   private toPublicUser(

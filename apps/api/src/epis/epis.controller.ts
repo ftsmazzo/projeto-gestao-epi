@@ -94,6 +94,11 @@ export class EpisController {
     );
   }
 
+  @Post('backfill-categories')
+  backfillCategories(@CurrentUser() user: JwtPayload) {
+    return this.epis.backfillCategories(user.organizationId, user.sub);
+  }
+
   @Get(':id')
   getById(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.epis.getById(user.organizationId, id);

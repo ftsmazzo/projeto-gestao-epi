@@ -4,6 +4,7 @@ import {
   Get,
   NotFoundException,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -22,6 +23,9 @@ import { memoryStorage } from 'multer';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ClientJwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { ClientJwtPayload } from '../auth/types/jwt-payload';
+import { CreateWorkerDto } from '../workers/dto/create-worker.dto';
+import { UpdateWorkerDto } from '../workers/dto/update-worker.dto';
+import { UpdateWorkerStatusDto } from '../workers/dto/update-worker-status.dto';
 import { PortalCreateDeliveryPayloadDto, PortalCancelDeliveryDto, PortalCreateReturnDto } from './dto/portal-delivery.dto';
 import { PortalStockEntradasDto } from './dto/portal-stock.dto';
 import { PortalReportsService } from './portal-reports.service';
@@ -295,6 +299,52 @@ export class PortalController {
     return this.portal.getTrabalhadores(
       user.organizationId,
       user.servedClientId,
+    );
+  }
+
+  @Post('trabalhadores')
+  createTrabalhador(
+    @CurrentUser() user: ClientJwtPayload,
+    @Body() dto: CreateWorkerDto,
+  ) {
+    this.assertClient(user);
+    return this.portal.createWorker(
+      user.organizationId,
+      user.sub,
+      user.servedClientId,
+      dto,
+    );
+  }
+
+  @Patch('trabalhadores/:id')
+  updateTrabalhador(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkerDto,
+  ) {
+    this.assertClient(user);
+    return this.portal.updateWorker(
+      user.organizationId,
+      user.sub,
+      user.servedClientId,
+      id,
+      dto,
+    );
+  }
+
+  @Patch('trabalhadores/:id/status')
+  updateTrabalhadorStatus(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateWorkerStatusDto,
+  ) {
+    this.assertClient(user);
+    return this.portal.updateWorkerStatus(
+      user.organizationId,
+      user.sub,
+      user.servedClientId,
+      id,
+      dto.status,
     );
   }
 

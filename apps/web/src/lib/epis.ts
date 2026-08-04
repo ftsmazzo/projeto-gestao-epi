@@ -78,6 +78,13 @@ export function updateEpiItemStatus(id: string, isActive: boolean) {
   });
 }
 
+export function backfillEpiCategories() {
+  return apiFetch<{ scanned: number; updated: number }>(
+    '/epis/backfill-categories',
+    { method: 'POST' },
+  );
+}
+
 export function previewEpiCsvImport(csvText: string) {
   return apiFetch<EpiImportPreviewResponse>('/epis/import/preview', {
     method: 'POST',

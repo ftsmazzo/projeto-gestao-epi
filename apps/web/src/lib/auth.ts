@@ -87,3 +87,26 @@ export async function loginAccount(input: { email: string; password: string }) {
 export async function fetchMe() {
   return apiFetch<AuthUser>('/auth/me');
 }
+
+export type ForgotPasswordResponse = {
+  ok: true;
+  message: string;
+  audience: 'portal' | 'consultoria';
+  temporaryPassword: string | null;
+  accessUrl: string | null;
+  deliveryEnabled: boolean;
+  channels?: {
+    email: boolean;
+    whatsapp: boolean;
+  };
+};
+
+export async function requestPasswordReset(input: {
+  email: string;
+  audience: 'portal' | 'consultoria';
+}) {
+  return apiFetch<ForgotPasswordResponse>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}

@@ -124,6 +124,47 @@ export async function fetchPortalTrabalhadores() {
   return clientApiFetch<PortalTrabalhadoresResponse>('/portal/trabalhadores');
 }
 
+export type PortalWorkerInput = {
+  name: string;
+  cpf?: string | null;
+  registration?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  operationalUnitId?: string | null;
+  clientSectorId?: string | null;
+  clientJobFunctionId?: string | null;
+  admissionDate?: string | null;
+  notes?: string | null;
+  status?: 'ACTIVE' | 'INACTIVE';
+};
+
+export async function createPortalWorker(input: PortalWorkerInput) {
+  return clientApiFetch('/portal/trabalhadores', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updatePortalWorker(
+  id: string,
+  input: Partial<PortalWorkerInput>,
+) {
+  return clientApiFetch(`/portal/trabalhadores/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updatePortalWorkerStatus(
+  id: string,
+  status: 'ACTIVE' | 'INACTIVE',
+) {
+  return clientApiFetch(`/portal/trabalhadores/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  });
+}
+
 export async function fetchPortalWorkerEpiSheet(
   workerId: string,
   scope: 'history' | 'open' = 'history',
