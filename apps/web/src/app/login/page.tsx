@@ -1,11 +1,11 @@
 'use client';
 
 import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
-import Image from 'next/image';
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '../../components/AppShell';
+import { BrandLockup } from '../../components/BrandLockup';
 import { loginAccount } from '../../lib/auth';
 
 export default function LoginPage() {
@@ -39,18 +39,7 @@ export default function LoginPage() {
     >
       <div className="auth-split">
         <aside className="auth-split__brand">
-          <Image
-            src="/brand/prontepi-mark.png"
-            alt={APP_NAME}
-            width={88}
-            height={88}
-            className="auth-split__logo"
-            priority
-          />
-          <p className="auth-split__cta">
-            <span aria-hidden="true" />
-            Pronto para o primeiro cliente real
-          </p>
+          <BrandLockup subtitle="Consultoria e implantacao" />
           <h2>{APP_TAGLINE}</h2>
           <p>{APP_PITCH}</p>
           <ol className="auth-split__steps">
@@ -73,10 +62,10 @@ export default function LoginPage() {
           <section className="auth-panel" aria-labelledby="login-title">
             <p className="page-kicker">{APP_NAME} · Consultoria</p>
             <h1 id="login-title" className="page-title">
-              Entre e opere com conformidade
+              Acesse a consultoria
             </h1>
             <p className="page-lead">
-              Acesso da consultoria. Gestores da empresa usam o{' '}
+              Acesso da gestao. Gestores da empresa usam o{' '}
               <Link href="/portal/login">portal do cliente</Link>.
             </p>
 
@@ -93,7 +82,15 @@ export default function LoginPage() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="login-password">Senha</label>
+                <div className="field-label-row">
+                  <label htmlFor="login-password">Senha</label>
+                  <Link
+                    className="field-link"
+                    href={`/esqueci-senha?email=${encodeURIComponent(email)}`}
+                  >
+                    Esqueci a senha
+                  </Link>
+                </div>
                 <input
                   id="login-password"
                   type="password"
@@ -114,7 +111,7 @@ export default function LoginPage() {
                 type="submit"
                 disabled={loading}
               >
-                {loading ? 'Entrando...' : 'Entrar no ProntEPI'}
+                {loading ? 'Entrando...' : `Entrar no ${APP_NAME}`}
               </button>
             </form>
 

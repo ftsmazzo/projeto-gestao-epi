@@ -31,8 +31,8 @@ export const metadata: Metadata = {
   },
   description: APP_PITCH,
   icons: {
-    icon: [{ url: '/favicon.png', type: 'image/png' }],
-    apple: [{ url: '/brand/prontepi-mark.png' }],
+    icon: [{ url: '/brand/prontepi-mark.svg', type: 'image/svg+xml' }],
+    apple: [{ url: '/brand/prontepi-mark.svg' }],
   },
 };
 

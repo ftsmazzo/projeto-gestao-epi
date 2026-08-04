@@ -1,6 +1,6 @@
-import Image from 'next/image';
 import Link from 'next/link';
 import { APP_NAME, APP_TAGLINE } from '@gestao-epi/shared';
+import { BrandMark } from './BrandMark';
 
 type BrandProps = {
   href?: string;
@@ -17,14 +17,7 @@ export function Brand({
   const content = (
     <>
       <span className={`brand-mark brand-mark--${tone}`} aria-hidden="true">
-        <Image
-          src="/brand/prontepi-mark.png"
-          alt=""
-          width={36}
-          height={36}
-          className="brand-mark__img"
-          priority
-        />
+        <BrandMark className="brand-mark__img" title="" />
       </span>
       <span className="brand-text">
         <strong>{APP_NAME}</strong>

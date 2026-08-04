@@ -1,9 +1,11 @@
 'use client';
 
+import { APP_NAME, APP_TAGLINE } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AppShell } from '../../components/AppShell';
+import { BrandLockup } from '../../components/BrandLockup';
 import { registerAccount } from '../../lib/auth';
 
 export default function RegisterPage() {
@@ -45,12 +47,9 @@ export default function RegisterPage() {
       }
     >
       <div className="auth-split">
-        <aside className="auth-split__brand" aria-hidden="true">
-          <p className="auth-split__cta">
-            <span aria-hidden="true" />
-            Comece a operar em minutos
-          </p>
-          <h2>ProntEPI — EPI sob controle. Entrega sem falha.</h2>
+        <aside className="auth-split__brand">
+          <BrandLockup subtitle="Nova organizacao" />
+          <h2>{APP_TAGLINE}</h2>
           <p>
             Crie a organizacao, defina a franquia de vidas e implante o primeiro
             cliente com PGRO, estrutura e portal operacional.
@@ -76,9 +75,9 @@ export default function RegisterPage() {
             className="auth-panel auth-panel--wide"
             aria-labelledby="register-title"
           >
-            <p className="page-kicker">Onboarding</p>
+            <p className="page-kicker">{APP_NAME}</p>
             <h1 id="register-title" className="page-title">
-              Registrar organizacao
+              Crie sua consultoria
             </h1>
             <p className="page-lead">
               Cria a empresa usuaria (tenant) e o usuario dono. Depois voce
@@ -155,12 +154,12 @@ export default function RegisterPage() {
                 type="submit"
                 disabled={loading}
               >
-                {loading ? 'Registrando...' : 'Criar conta'}
+                {loading ? 'Criando...' : 'Comecar agora'}
               </button>
             </form>
 
             <p className="form-footer">
-              Ja tem conta? <Link href="/login">Entrar</Link>
+              Ja tem conta? <Link href="/login">Acesse a consultoria</Link>
             </p>
           </section>
         </div>

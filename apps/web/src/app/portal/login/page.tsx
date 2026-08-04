@@ -1,10 +1,10 @@
 'use client';
 
 import { APP_NAME, APP_TAGLINE } from '@gestao-epi/shared';
-import Image from 'next/image';
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { BrandLockup } from '../../../components/BrandLockup';
 import { PortalShell } from '../../../components/PortalShell';
 import { clientLoginAccount } from '../../../lib/client-auth';
 
@@ -37,18 +37,7 @@ export default function PortalLoginPage() {
     <PortalShell>
       <div className="auth-split auth-split--portal portal-auth">
         <aside className="auth-split__brand">
-          <Image
-            src="/brand/prontepi-mark.png"
-            alt={APP_NAME}
-            width={88}
-            height={88}
-            className="auth-split__logo"
-            priority
-          />
-          <p className="auth-split__cta">
-            <span aria-hidden="true" />
-            Entrega facial em minutos
-          </p>
+          <BrandLockup subtitle="Painel operacional do cliente" />
           <h2>{APP_TAGLINE}</h2>
           <p>
             Estoque, validade e comprovante no celular ou no desktop — o dia a
@@ -77,7 +66,7 @@ export default function PortalLoginPage() {
           >
             <p className="page-kicker">{APP_NAME} · Painel do cliente</p>
             <h1 id="portal-login-title" className="page-title">
-              Entrar e entregar com seguranca
+              Acesse o painel
             </h1>
             <p className="page-lead">
               Acesso da empresa cliente. A Consultoria usa o{' '}
@@ -96,7 +85,15 @@ export default function PortalLoginPage() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="portal-password">Senha</label>
+                <div className="field-label-row">
+                  <label htmlFor="portal-password">Senha</label>
+                  <Link
+                    className="field-link"
+                    href={`/esqueci-senha?origem=portal&email=${encodeURIComponent(email)}`}
+                  >
+                    Esqueci a senha
+                  </Link>
+                </div>
                 <input
                   id="portal-password"
                   type="password"

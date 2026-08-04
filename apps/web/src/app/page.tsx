@@ -3,9 +3,9 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
-import Image from 'next/image';
 import Link from 'next/link';
 import { AppShell } from '../components/AppShell';
+import { BrandLockup } from '../components/BrandLockup';
 import { getAccessToken } from '../lib/auth';
 
 export default function HomePage() {
@@ -32,7 +32,11 @@ export default function HomePage() {
     >
       <section className="hero ux-enter">
         <div className="hero-copy">
-          <p className="page-kicker">{APP_NAME}</p>
+          <BrandLockup
+            onDark={false}
+            className="hero-lockup"
+            subtitle="Gestao digital de EPI"
+          />
           <h1 className="hero-title">{APP_TAGLINE}</h1>
           <p className="hero-lead">{APP_PITCH}</p>
           <div className="btn-row">
@@ -46,21 +50,10 @@ export default function HomePage() {
               Portal do cliente
             </Link>
           </div>
-          <div className="status-pill" role="status">
-            <span className="dot" aria-hidden="true" />
-            Pronto para piloto com cliente real
-          </div>
         </div>
 
-        <aside className="hero-aside" aria-label="Por que ProntEPI">
-          <Image
-            src="/brand/prontepi-mark.png"
-            alt=""
-            width={64}
-            height={64}
-            style={{ borderRadius: '0.75rem', marginBottom: '0.75rem' }}
-          />
-          <h2>O que o mercado sente na pele</h2>
+        <aside className="hero-aside" aria-label={`Por que ${APP_NAME}`}>
+          <h2>Conformidade no ritmo da operacao</h2>
           <ul>
             <li>Implantacao clara: CNPJ, PGRO e portal</li>
             <li>Entrega com biometria e comprovante</li>
