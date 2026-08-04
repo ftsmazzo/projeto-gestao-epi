@@ -1,5 +1,7 @@
 'use client';
 
+import { APP_NAME, APP_TAGLINE } from '@gestao-epi/shared';
+import Image from 'next/image';
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -34,11 +36,23 @@ export default function PortalLoginPage() {
   return (
     <PortalShell>
       <div className="auth-split auth-split--portal portal-auth">
-        <aside className="auth-split__brand" aria-hidden="true">
-          <h2>Entregue EPI com seguranca e rastreio</h2>
+        <aside className="auth-split__brand">
+          <Image
+            src="/brand/prontepi-mark.png"
+            alt={APP_NAME}
+            width={88}
+            height={88}
+            className="auth-split__logo"
+            priority
+          />
+          <p className="auth-split__cta">
+            <span aria-hidden="true" />
+            Entrega facial em minutos
+          </p>
+          <h2>{APP_TAGLINE}</h2>
           <p>
-            Estoque, validade, entrega com evidencia facial e comprovante — o
-            dia a dia da empresa em poucos toques, no celular ou no desktop.
+            Estoque, validade e comprovante no celular ou no desktop — o dia a
+            dia da empresa sem planilha e sem papel perdido.
           </p>
           <ol className="auth-split__steps">
             <li>
@@ -51,7 +65,7 @@ export default function PortalLoginPage() {
             </li>
             <li>
               <span>3</span>
-              Confirmar com biometria e emitir ficha
+              Validar face e emitir ficha
             </li>
           </ol>
         </aside>
@@ -61,13 +75,13 @@ export default function PortalLoginPage() {
             className="portal-card portal-card--auth"
             aria-labelledby="portal-login-title"
           >
-            <p className="page-kicker">Painel do cliente</p>
+            <p className="page-kicker">{APP_NAME} · Painel do cliente</p>
             <h1 id="portal-login-title" className="page-title">
-              Entrar
+              Entrar e entregar com seguranca
             </h1>
             <p className="page-lead">
-              Acesso da empresa cliente (gestores e operadores). A Consultoria
-              entra por outro login.
+              Acesso da empresa cliente. A Consultoria usa o{' '}
+              <Link href="/login">login da gestao</Link>.
             </p>
             <form className="form-panel" onSubmit={onSubmit} noValidate>
               <div className="field">
@@ -107,8 +121,7 @@ export default function PortalLoginPage() {
               </button>
             </form>
             <p className="field-hint" style={{ marginTop: '1rem' }}>
-              E membro da Consultoria?{' '}
-              <Link href="/login">Ir para o login da gestao</Link>
+              E da Consultoria? <Link href="/login">Entrar no {APP_NAME}</Link>
             </p>
           </section>
         </div>

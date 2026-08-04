@@ -1,5 +1,7 @@
 'use client';
 
+import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
+import Image from 'next/image';
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -30,42 +32,51 @@ export default function LoginPage() {
   return (
     <AppShell
       headerActions={
-        <Link className="btn btn-secondary" href="/register">
-          Criar organizacao
+        <Link className="btn btn-primary" href="/register">
+          Comecar agora
         </Link>
       }
     >
       <div className="auth-split">
-        <aside className="auth-split__brand" aria-hidden="true">
-          <h2>Implante clientes com clareza e conformidade</h2>
-          <p>
-            Cadastre o CNPJ, importe o PGRO, organize vidas e libere o painel
-            operacional da empresa — pronto para o primeiro cliente real.
+        <aside className="auth-split__brand">
+          <Image
+            src="/brand/prontepi-mark.png"
+            alt={APP_NAME}
+            width={88}
+            height={88}
+            className="auth-split__logo"
+            priority
+          />
+          <p className="auth-split__cta">
+            <span aria-hidden="true" />
+            Pronto para o primeiro cliente real
           </p>
+          <h2>{APP_TAGLINE}</h2>
+          <p>{APP_PITCH}</p>
           <ol className="auth-split__steps">
             <li>
               <span>1</span>
-              Cadastrar cliente e cotas
+              Implante o CNPJ com PGRO ou dados
             </li>
             <li>
               <span>2</span>
-              Estrutura e necessidades de EPI
+              Liberar portal, estoque e vidas
             </li>
             <li>
               <span>3</span>
-              Liberar acesso ao painel do cliente
+              Entregar EPI com biometria e comprovante
             </li>
           </ol>
         </aside>
 
         <div className="auth-split__panel">
           <section className="auth-panel" aria-labelledby="login-title">
-            <p className="page-kicker">Consultoria</p>
+            <p className="page-kicker">{APP_NAME} · Consultoria</p>
             <h1 id="login-title" className="page-title">
-              Entrar
+              Entre e opere com conformidade
             </h1>
             <p className="page-lead">
-              Acesso da gestao/consultoria. Gestores da empresa cliente usam o{' '}
+              Acesso da consultoria. Gestores da empresa usam o{' '}
               <Link href="/portal/login">portal do cliente</Link>.
             </p>
 
@@ -103,13 +114,13 @@ export default function LoginPage() {
                 type="submit"
                 disabled={loading}
               >
-                {loading ? 'Entrando...' : 'Entrar na consultoria'}
+                {loading ? 'Entrando...' : 'Entrar no ProntEPI'}
               </button>
             </form>
 
             <p className="form-footer">
               Ainda nao tem conta?{' '}
-              <Link href="/register">Registrar organizacao</Link>
+              <Link href="/register">Criar organizacao gratis</Link>
             </p>
           </section>
         </div>

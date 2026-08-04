@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { JetBrains_Mono, Source_Sans_3, Sora } from 'next/font/google';
+import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
 import './globals.css';
 
 const sora = Sora({
@@ -24,8 +25,15 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Gestao Digital de Entrega de EPI',
-  description: 'Plataforma de gestao digital de entrega de EPI',
+  title: {
+    default: `${APP_NAME} — ${APP_TAGLINE}`,
+    template: `%s · ${APP_NAME}`,
+  },
+  description: APP_PITCH,
+  icons: {
+    icon: [{ url: '/favicon.png', type: 'image/png' }],
+    apple: [{ url: '/brand/prontepi-mark.png' }],
+  },
 };
 
 export const viewport = {

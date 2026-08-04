@@ -83,7 +83,7 @@ export function PortalShell({ children, user, onLogout }: Props) {
           <Link href="/portal" className="portal-brand">
             <span className="portal-brand-kicker">Painel do cliente</span>
             <strong className="portal-brand-name">
-              {clientName ?? 'Gestao de EPI'}
+              {clientName ?? 'ProntEPI'}
             </strong>
           </Link>
         </div>

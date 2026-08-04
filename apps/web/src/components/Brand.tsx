@@ -1,4 +1,6 @@
+import Image from 'next/image';
 import Link from 'next/link';
+import { APP_NAME, APP_TAGLINE } from '@gestao-epi/shared';
 
 type BrandProps = {
   href?: string;
@@ -15,15 +17,20 @@ export function Brand({
   const content = (
     <>
       <span className={`brand-mark brand-mark--${tone}`} aria-hidden="true">
-        <span className="brand-mark__shield" />
+        <Image
+          src="/brand/prontepi-mark.png"
+          alt=""
+          width={36}
+          height={36}
+          className="brand-mark__img"
+          priority
+        />
       </span>
       <span className="brand-text">
-        <strong>Gestao Digital de EPI</strong>
+        <strong>{APP_NAME}</strong>
         {!compact ? (
           <span>
-            {tone === 'portal'
-              ? 'Operacao segura no dia a dia'
-              : 'Implantacao e conformidade NR-06'}
+            {tone === 'portal' ? 'Painel operacional do cliente' : APP_TAGLINE}
           </span>
         ) : null}
       </span>

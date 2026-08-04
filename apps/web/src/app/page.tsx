@@ -2,7 +2,8 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { APP_NAME } from '@gestao-epi/shared';
+import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
+import Image from 'next/image';
 import Link from 'next/link';
 import { AppShell } from '../components/AppShell';
 import { getAccessToken } from '../lib/auth';
@@ -24,25 +25,22 @@ export default function HomePage() {
             Entrar
           </Link>
           <Link className="btn btn-primary" href="/register">
-            Criar organizacao
+            Comecar agora
           </Link>
         </>
       }
     >
       <section className="hero ux-enter">
         <div className="hero-copy">
-          <p className="page-kicker">Gestao digital de EPI</p>
-          <h1 className="hero-title">{APP_NAME}</h1>
-          <p className="hero-lead">
-            A consultoria implanta o cliente. A empresa opera entregas com
-            biometria, estoque e conformidade NR-06 — no desktop e no celular.
-          </p>
+          <p className="page-kicker">{APP_NAME}</p>
+          <h1 className="hero-title">{APP_TAGLINE}</h1>
+          <p className="hero-lead">{APP_PITCH}</p>
           <div className="btn-row">
             <Link className="btn btn-primary" href="/register">
-              Registrar organizacao
+              Criar minha consultoria
             </Link>
             <Link className="btn btn-secondary" href="/login">
-              Entrar na consultoria
+              Ja tenho acesso
             </Link>
             <Link className="btn btn-ghost" href="/portal/login">
               Portal do cliente
@@ -54,13 +52,20 @@ export default function HomePage() {
           </div>
         </div>
 
-        <aside className="hero-aside" aria-label="Como funciona">
-          <h2>Duas superficies, um fluxo</h2>
+        <aside className="hero-aside" aria-label="Por que ProntEPI">
+          <Image
+            src="/brand/prontepi-mark.png"
+            alt=""
+            width={64}
+            height={64}
+            style={{ borderRadius: '0.75rem', marginBottom: '0.75rem' }}
+          />
+          <h2>O que o mercado sente na pele</h2>
           <ul>
-            <li>Consultoria: CNPJ, PGRO, estrutura e usuarios</li>
-            <li>Portal: estoque, entrega facial e ficha</li>
-            <li>Mobile-first no painel operacional</li>
-            <li>Rastreio e comprovante em cada entrega</li>
+            <li>Implantacao clara: CNPJ, PGRO e portal</li>
+            <li>Entrega com biometria e comprovante</li>
+            <li>Mobile no chao de fabrica</li>
+            <li>Rastreio NR-06 sem planilha</li>
           </ul>
         </aside>
       </section>

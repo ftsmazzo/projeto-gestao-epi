@@ -1,4 +1,7 @@
-export const APP_NAME = 'Gestao Digital de Entrega de EPI';
+export const APP_NAME = 'ProntEPI';
+export const APP_TAGLINE = 'EPI sob controle. Entrega sem falha.';
+export const APP_PITCH =
+  'Da implantacao ao comprovante facial — conformidade NR-06 no ritmo da operacao.';
 
 export const API_DEFAULT_PORT = 3001;
 

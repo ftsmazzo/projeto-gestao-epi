@@ -46,7 +46,11 @@ export default function RegisterPage() {
     >
       <div className="auth-split">
         <aside className="auth-split__brand" aria-hidden="true">
-          <h2>Comece a consultoria em minutos</h2>
+          <p className="auth-split__cta">
+            <span aria-hidden="true" />
+            Comece a operar em minutos
+          </p>
+          <h2>ProntEPI — EPI sob controle. Entrega sem falha.</h2>
           <p>
             Crie a organizacao, defina a franquia de vidas e implante o primeiro
             cliente com PGRO, estrutura e portal operacional.
