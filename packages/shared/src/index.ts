@@ -2267,4 +2267,66 @@ export interface PortalReportsCoverageResponse {
   }>;
 }
 
+export type PortalReportReplacementTone = 'overdue' | 'critical' | 'warn';
+
+export interface PortalReportsReplacementsResponse {
+  horizon: {
+    warnDays: number;
+    criticalDays: number;
+  };
+  summary: {
+    total: number;
+    overdue: number;
+    critical: number;
+    warn: number;
+  };
+  rows: Array<{
+    id: string;
+    deliveryId: string;
+    receiptNumber: string;
+    workerId: string;
+    workerName: string;
+    workerRegistration: string | null;
+    unitName: string | null;
+    sectorName: string | null;
+    jobFunctionName: string | null;
+    epiName: string;
+    needName: string;
+    caNumber: string | null;
+    nextReplacementAt: string;
+    usefulLifeLabel: string | null;
+    daysRemaining: number;
+    tone: PortalReportReplacementTone;
+    toneLabel: string;
+  }>;
+}
+
+export interface PortalReportsActivityResponse {
+  period: { from: string; to: string };
+  summary: {
+    deliveries: number;
+    workersWithActivity: number;
+    sectorsWithActivity: number;
+    itemsDelivered: number;
+  };
+  byWorker: Array<{
+    workerId: string;
+    workerName: string;
+    registration: string | null;
+    unitName: string | null;
+    sectorName: string | null;
+    jobFunctionName: string | null;
+    deliveries: number;
+    itemsDelivered: number;
+    withFacial: number;
+    facialRate: number;
+  }>;
+  bySector: Array<{
+    sectorId: string | null;
+    sectorName: string;
+    deliveries: number;
+    itemsDelivered: number;
+  }>;
+}
+
 

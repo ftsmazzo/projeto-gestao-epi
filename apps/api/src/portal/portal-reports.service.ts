@@ -1,12 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   DeliveryEvidenceType,
+  EpiDeliveryItemStatus,
   EpiDeliveryReturnCondition,
   EpiDeliveryStatus,
   WorkerStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { groupCoverageRequirementsByNeed } from './portal-epi-coverage.utils';
+import { formatUsefulLifeSnapshot } from './replacement-schedule.utils';
 
 export type PortalReportFilters = {
   from?: string;
@@ -21,6 +23,9 @@ export type PortalReportFilters = {
   stockLocationId?: string;
   stockStatus?: string;
 };
+
+const REPLACEMENT_WARN_DAYS = 5;
+const REPLACEMENT_CRITICAL_DAYS = 3;
 
 function parseDayStart(value?: string): Date | null {
   if (!value?.trim()) return null;
@@ -682,6 +687,271 @@ export class PortalReportsService {
         semEpiReal,
       },
       byJobFunction: resultJobs,
+    };
+  }
+
+  async getReplacementsReport(
+    organizationId: string,
+    servedClientId: string,
+    filters: PortalReportFilters,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    const now = new Date();
+    const warnHorizon = new Date(now);
+    warnHorizon.setUTCDate(warnHorizon.getUTCDate() + REPLACEMENT_WARN_DAYS);
+    warnHorizon.setUTCHours(23, 59, 59, 999);
+    const criticalHorizon = new Date(now);
+    criticalHorizon.setUTCDate(
+      criticalHorizon.getUTCDate() + REPLACEMENT_CRITICAL_DAYS,
+    );
+    criticalHorizon.setUTCHours(23, 59, 59, 999);
+
+    const workerWhere = this.workerFilter(filters);
+    const items = await this.prisma.epiDeliveryItem.findMany({
+      where: {
+        status: {
+          in: [
+            EpiDeliveryItemStatus.DELIVERED,
+            EpiDeliveryItemStatus.PARTIALLY_RETURNED,
+          ],
+        },
+        nextReplacementAt: { not: null, lte: warnHorizon },
+        delivery: {
+          organizationId,
+          servedClientId,
+          status: {
+            in: [
+              EpiDeliveryStatus.COMPLETED,
+              EpiDeliveryStatus.PARTIALLY_RETURNED,
+            ],
+          },
+          ...(filters.workerId ? { workerId: filters.workerId } : {}),
+          ...(workerWhere ? { worker: workerWhere } : {}),
+        },
+        ...(filters.epiNeedId ? { epiNeedId: filters.epiNeedId } : {}),
+        ...(filters.epiItemId ? { epiItemId: filters.epiItemId } : {}),
+      },
+      include: {
+        delivery: {
+          select: {
+            id: true,
+            receiptNumber: true,
+            worker: {
+              select: {
+                id: true,
+                name: true,
+                registration: true,
+                operationalUnit: { select: { name: true } },
+                clientSector: { select: { name: true } },
+                clientJobFunction: { select: { name: true } },
+              },
+            },
+          },
+        },
+        epiNeed: { select: { name: true } },
+        epiItem: { select: { name: true, caNumber: true } },
+      },
+      orderBy: { nextReplacementAt: 'asc' },
+      take: 500,
+    });
+
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const rows = items
+      .filter((item) => item.nextReplacementAt)
+      .map((item) => {
+        const at = item.nextReplacementAt!;
+        const daysRemaining = Math.ceil(
+          (at.getTime() - now.getTime()) / msPerDay,
+        );
+        const tone: 'overdue' | 'critical' | 'warn' =
+          daysRemaining < 0
+            ? 'overdue'
+            : at.getTime() <= criticalHorizon.getTime()
+              ? 'critical'
+              : 'warn';
+        return {
+          id: item.id,
+          deliveryId: item.delivery.id,
+          receiptNumber: item.delivery.receiptNumber,
+          workerId: item.delivery.worker.id,
+          workerName: item.delivery.worker.name,
+          workerRegistration: item.delivery.worker.registration,
+          unitName: item.delivery.worker.operationalUnit?.name ?? null,
+          sectorName: item.delivery.worker.clientSector?.name ?? null,
+          jobFunctionName:
+            item.delivery.worker.clientJobFunction?.name ?? null,
+          epiName: item.epiItem.name,
+          needName: item.epiNeed.name,
+          caNumber: item.epiItem.caNumber,
+          nextReplacementAt: at.toISOString(),
+          usefulLifeLabel: formatUsefulLifeSnapshot(
+            item.usefulLifeValue,
+            item.usefulLifeUnit,
+          ),
+          daysRemaining,
+          tone,
+          toneLabel:
+            tone === 'overdue'
+              ? 'Vencido'
+              : tone === 'critical'
+                ? 'Critico'
+                : 'Alerta',
+        };
+      })
+      .filter((row) => !filters.status || row.tone === filters.status);
+
+    return {
+      horizon: {
+        warnDays: REPLACEMENT_WARN_DAYS,
+        criticalDays: REPLACEMENT_CRITICAL_DAYS,
+      },
+      summary: {
+        total: rows.length,
+        overdue: rows.filter((r) => r.tone === 'overdue').length,
+        critical: rows.filter((r) => r.tone === 'critical').length,
+        warn: rows.filter((r) => r.tone === 'warn').length,
+      },
+      rows,
+    };
+  }
+
+  async getActivityReport(
+    organizationId: string,
+    servedClientId: string,
+    filters: PortalReportFilters,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    const period = this.resolvePeriod(filters);
+    const workerWhere = this.workerFilter(filters);
+
+    const deliveries = await this.prisma.epiDelivery.findMany({
+      where: {
+        organizationId,
+        servedClientId,
+        deliveredAt: { gte: period.from, lte: period.to },
+        status: {
+          in: [
+            EpiDeliveryStatus.COMPLETED,
+            EpiDeliveryStatus.PARTIALLY_RETURNED,
+            EpiDeliveryStatus.RETURNED,
+          ],
+        },
+        ...(filters.workerId ? { workerId: filters.workerId } : {}),
+        ...(workerWhere ? { worker: workerWhere } : {}),
+      },
+      select: {
+        id: true,
+        workerId: true,
+        worker: {
+          select: {
+            id: true,
+            name: true,
+            registration: true,
+            operationalUnit: { select: { name: true } },
+            clientSector: { select: { id: true, name: true } },
+            clientJobFunction: { select: { name: true } },
+          },
+        },
+        items: { select: { quantity: true } },
+        evidences: {
+          where: { type: DeliveryEvidenceType.FACIAL_CAPTURE },
+          select: { id: true },
+          take: 1,
+        },
+      },
+      take: 2000,
+    });
+
+    type WorkerAgg = {
+      workerId: string;
+      workerName: string;
+      registration: string | null;
+      unitName: string | null;
+      sectorName: string | null;
+      jobFunctionName: string | null;
+      deliveries: number;
+      itemsDelivered: number;
+      withFacial: number;
+    };
+
+    const byWorkerMap = new Map<string, WorkerAgg>();
+    const bySectorMap = new Map<
+      string,
+      { sectorId: string | null; sectorName: string; deliveries: number; itemsDelivered: number }
+    >();
+
+    for (const d of deliveries) {
+      const qty = d.items.reduce((sum, i) => sum + i.quantity, 0);
+      const facial = d.evidences.length > 0 ? 1 : 0;
+      const existing = byWorkerMap.get(d.workerId);
+      if (existing) {
+        existing.deliveries += 1;
+        existing.itemsDelivered += qty;
+        existing.withFacial += facial;
+      } else {
+        byWorkerMap.set(d.workerId, {
+          workerId: d.worker.id,
+          workerName: d.worker.name,
+          registration: d.worker.registration,
+          unitName: d.worker.operationalUnit?.name ?? null,
+          sectorName: d.worker.clientSector?.name ?? null,
+          jobFunctionName: d.worker.clientJobFunction?.name ?? null,
+          deliveries: 1,
+          itemsDelivered: qty,
+          withFacial: facial,
+        });
+      }
+
+      const sectorKey = d.worker.clientSector?.id ?? '__none__';
+      const sectorName = d.worker.clientSector?.name ?? 'Sem setor';
+      const sector = bySectorMap.get(sectorKey);
+      if (sector) {
+        sector.deliveries += 1;
+        sector.itemsDelivered += qty;
+      } else {
+        bySectorMap.set(sectorKey, {
+          sectorId: d.worker.clientSector?.id ?? null,
+          sectorName,
+          deliveries: 1,
+          itemsDelivered: qty,
+        });
+      }
+    }
+
+    const byWorker = Array.from(byWorkerMap.values())
+      .map((w) => ({
+        ...w,
+        facialRate:
+          w.deliveries === 0
+            ? 0
+            : Math.round((w.withFacial / w.deliveries) * 100),
+      }))
+      .sort(
+        (a, b) =>
+          b.deliveries - a.deliveries ||
+          b.itemsDelivered - a.itemsDelivered ||
+          a.workerName.localeCompare(b.workerName, 'pt-BR'),
+      );
+
+    const bySector = Array.from(bySectorMap.values()).sort(
+      (a, b) =>
+        b.deliveries - a.deliveries ||
+        a.sectorName.localeCompare(b.sectorName, 'pt-BR'),
+    );
+
+    return {
+      period: {
+        from: period.from.toISOString().slice(0, 10),
+        to: period.to.toISOString().slice(0, 10),
+      },
+      summary: {
+        deliveries: deliveries.length,
+        workersWithActivity: byWorker.length,
+        sectorsWithActivity: bySector.length,
+        itemsDelivered: byWorker.reduce((s, w) => s + w.itemsDelivered, 0),
+      },
+      byWorker,
+      bySector,
     };
   }
 

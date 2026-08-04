@@ -1,7 +1,9 @@
 import type {
+  PortalReportsActivityResponse,
   PortalReportsCoverageResponse,
   PortalReportsDeliveriesResponse,
   PortalReportsOverviewResponse,
+  PortalReportsReplacementsResponse,
   PortalReportsReturnsResponse,
   PortalReportsStockResponse,
 } from '@gestao-epi/shared';
@@ -205,4 +207,80 @@ export function exportCoverageCsv(data: PortalReportsCoverageResponse) {
     rows,
   );
   downloadCsvText(`relatorio-cobertura-${stamp()}.csv`, csv);
+}
+
+export function exportReplacementsCsv(data: PortalReportsReplacementsResponse) {
+  const csv = toCsv(
+    [
+      'prioridade',
+      'dias_restantes',
+      'proxima_troca',
+      'trabalhador',
+      'matricula',
+      'unidade',
+      'setor',
+      'funcao',
+      'epi',
+      'necessidade',
+      'ca',
+      'vida_util',
+      'recibo',
+      'entrega_id',
+    ],
+    data.rows.map((row) => [
+      row.toneLabel,
+      row.daysRemaining,
+      row.nextReplacementAt,
+      row.workerName,
+      row.workerRegistration,
+      row.unitName,
+      row.sectorName,
+      row.jobFunctionName,
+      row.epiName,
+      row.needName,
+      row.caNumber,
+      row.usefulLifeLabel,
+      row.receiptNumber,
+      row.deliveryId,
+    ]),
+  );
+  downloadCsvText(`relatorio-trocas-${stamp()}.csv`, csv);
+}
+
+export function exportActivityCsv(data: PortalReportsActivityResponse) {
+  const workerCsv = toCsv(
+    [
+      'trabalhador',
+      'matricula',
+      'unidade',
+      'setor',
+      'funcao',
+      'entregas',
+      'itens',
+      'com_facial',
+      'taxa_facial_pct',
+    ],
+    data.byWorker.map((row) => [
+      row.workerName,
+      row.registration,
+      row.unitName,
+      row.sectorName,
+      row.jobFunctionName,
+      row.deliveries,
+      row.itemsDelivered,
+      row.withFacial,
+      row.facialRate,
+    ]),
+  );
+  downloadCsvText(`relatorio-atividade-trabalhadores-${stamp()}.csv`, workerCsv);
+
+  const sectorCsv = toCsv(
+    ['setor', 'entregas', 'itens'],
+    data.bySector.map((row) => [
+      row.sectorName,
+      row.deliveries,
+      row.itemsDelivered,
+    ]),
+  );
+  downloadCsvText(`relatorio-atividade-setores-${stamp()}.csv`, sectorCsv);
 }

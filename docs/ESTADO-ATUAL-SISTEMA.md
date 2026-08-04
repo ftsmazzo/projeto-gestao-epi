@@ -117,7 +117,7 @@ Login: `/portal/login` · Shell: `PortalShell` · Nav: `PORTAL_NAV`
 | `/portal/estrutura` | Leitura da estrutura implantada | Consulta |
 | `/portal/validade` | Validades | Consulta / parcial |
 | `/portal/entregas` | Entregas | Entrega real com facial + baixa de estoque + historico (07.2) |
-| `/portal/relatorios` | Relatorios operacionais | **08.1** — visao geral, entregas, estoque, devolucoes/cancelamentos, cobertura + **export CSV** |
+| `/portal/relatorios` | Relatorios operacionais | Visao geral, **trocas**, entregas, **atividade**, estoque, devolucoes, cobertura + CSV/impressao |
 | `/portal/custos` | Custos | Ainda nao operacional completo (falta precificacao no dominio) |
 | `/portal/conta` | Conta / troca de senha | Ativo |
 | `/portal/login` | Auth do cliente | Ativo |

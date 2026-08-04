@@ -115,6 +115,32 @@ export class PortalController {
     );
   }
 
+  @Get('reports/replacements')
+  reportsReplacements(
+    @CurrentUser() user: ClientJwtPayload,
+    @Query() query: Record<string, string | undefined>,
+  ) {
+    this.assertClient(user);
+    return this.reports.getReplacementsReport(
+      user.organizationId,
+      user.servedClientId,
+      this.parseReportFilters(query),
+    );
+  }
+
+  @Get('reports/activity')
+  reportsActivity(
+    @CurrentUser() user: ClientJwtPayload,
+    @Query() query: Record<string, string | undefined>,
+  ) {
+    this.assertClient(user);
+    return this.reports.getActivityReport(
+      user.organizationId,
+      user.servedClientId,
+      this.parseReportFilters(query),
+    );
+  }
+
   @Get('reports/filters')
   reportsFilters(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);

@@ -18,6 +18,8 @@ import type {
   PortalReportsDeliveriesResponse,
   PortalReportsOverviewResponse,
   PortalReportsReturnsResponse,
+  PortalReportsReplacementsResponse,
+  PortalReportsActivityResponse,
   PortalReportsStockResponse,
   PortalStockEntradasResult,
   PortalTrabalhadoresResponse,
@@ -441,5 +443,21 @@ export async function fetchPortalReportsCoverage(
 ) {
   return clientApiFetch<PortalReportsCoverageResponse>(
     `/portal/reports/coverage${portalReportQuery(filters)}`,
+  );
+}
+
+export async function fetchPortalReportsReplacements(
+  filters: PortalReportFiltersQuery = {},
+) {
+  return clientApiFetch<PortalReportsReplacementsResponse>(
+    `/portal/reports/replacements${portalReportQuery(filters)}`,
+  );
+}
+
+export async function fetchPortalReportsActivity(
+  filters: PortalReportFiltersQuery = {},
+) {
+  return clientApiFetch<PortalReportsActivityResponse>(
+    `/portal/reports/activity${portalReportQuery(filters)}`,
   );
 }
