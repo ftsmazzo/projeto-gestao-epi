@@ -58,12 +58,12 @@ export type PortalNavItem = {
 export const PORTAL_NAV: PortalNavItem[] = [
   { href: '/portal', label: 'Painel', exact: true },
   { href: '/portal/entregas', label: 'Entregas' },
-  { href: '/portal/relatorios', label: 'Relatorios' },
-  { href: '/portal/validade', label: 'Validade' },
-  { href: '/portal/custos', label: 'Custos' },
   { href: '/portal/estoque', label: 'Estoque' },
-  { href: '/portal/estrutura', label: 'Estrutura' },
+  { href: '/portal/validade', label: 'Validade' },
   { href: '/portal/trabalhadores', label: 'Trabalhadores' },
+  { href: '/portal/relatorios', label: 'Relatorios' },
+  { href: '/portal/estrutura', label: 'Estrutura' },
+  { href: '/portal/custos', label: 'Custos' },
   { href: '/portal/conta', label: 'Minha conta' },
 ];
 

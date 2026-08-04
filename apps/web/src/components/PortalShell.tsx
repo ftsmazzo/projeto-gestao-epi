@@ -5,6 +5,14 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useId, useState } from 'react';
 import { isPortalNavActive, PORTAL_NAV } from '../lib/nav';
+import {
+  IconChart,
+  IconHome,
+  IconMenu,
+  IconMore,
+  IconPackage,
+  IconTruck,
+} from './ui/NavIcons';
 
 type Props = {
   children: ReactNode;
@@ -19,6 +27,21 @@ const BOTTOM_PRIMARY = [
   '/portal/estoque',
   '/portal/relatorios',
 ] as const;
+
+function bottomIcon(href: string) {
+  switch (href) {
+    case '/portal':
+      return <IconHome />;
+    case '/portal/entregas':
+      return <IconTruck />;
+    case '/portal/estoque':
+      return <IconPackage />;
+    case '/portal/relatorios':
+      return <IconChart />;
+    default:
+      return <IconMore />;
+  }
+}
 
 export function PortalShell({ children, user, onLogout }: Props) {
   const pathname = usePathname();
@@ -98,15 +121,16 @@ export function PortalShell({ children, user, onLogout }: Props) {
               className="btn btn-secondary portal-menu-toggle"
               aria-expanded={menuOpen}
               aria-controls={drawerId}
+              aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
               onClick={() => setMenuOpen((v) => !v)}
             >
-              Menu
+              <IconMenu />
             </button>
           ) : null}
           {onLogout ? (
             <button
               type="button"
-              className="btn btn-secondary portal-logout-desktop"
+              className="btn btn-ghost portal-logout-desktop"
               onClick={onLogout}
             >
               Sair
@@ -157,7 +181,7 @@ export function PortalShell({ children, user, onLogout }: Props) {
         </aside>
       ) : null}
 
-      <main id="portal-conteudo" className="portal-main">
+      <main id="portal-conteudo" className="portal-main ux-enter">
         {children}
       </main>
 
@@ -171,6 +195,9 @@ export function PortalShell({ children, user, onLogout }: Props) {
                 isPortalNavActive(pathname, item) ? 'is-active' : ''
               }`}
             >
+              <span className="portal-bottom-nav__icon" aria-hidden="true">
+                {bottomIcon(item.href)}
+              </span>
               <span className="portal-bottom-nav__label">{item.label}</span>
             </Link>
           ))}
@@ -181,6 +208,9 @@ export function PortalShell({ children, user, onLogout }: Props) {
             aria-controls={drawerId}
             onClick={() => setMenuOpen((v) => !v)}
           >
+            <span className="portal-bottom-nav__icon" aria-hidden="true">
+              <IconMore />
+            </span>
             <span className="portal-bottom-nav__label">Mais</span>
           </button>
         </nav>

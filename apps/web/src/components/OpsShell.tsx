@@ -6,12 +6,36 @@ import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import { OPS_NAV } from '../lib/nav';
 import { Brand } from './Brand';
+import {
+  IconBuilding,
+  IconHome,
+  IconMenu,
+  IconSettings,
+  IconShield,
+} from './ui/NavIcons';
 
 type OpsShellProps = {
   children: ReactNode;
   user?: AuthUser | null;
   onLogout?: () => void;
 };
+
+function navIcon(href: string) {
+  switch (href) {
+    case '/dashboard':
+      return <IconHome />;
+    case '/clientes':
+      return <IconBuilding />;
+    case '/configuracoes':
+      return <IconSettings />;
+    case '/caepi':
+      return <IconShield />;
+    case '/biometria-retencao':
+      return <IconShield />;
+    default:
+      return <IconHome />;
+  }
+}
 
 export function OpsShell({ children, user, onLogout }: OpsShellProps) {
   const pathname = usePathname();
@@ -34,9 +58,10 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
             className="btn btn-secondary ops-menu-toggle"
             aria-expanded={menuOpen}
             aria-controls="ops-nav"
+            aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
             onClick={() => setMenuOpen((open) => !open)}
           >
-            Menu
+            <IconMenu />
           </button>
           <Brand href="/dashboard" compact />
         </div>
@@ -48,7 +73,7 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
             </div>
           ) : null}
           {onLogout ? (
-            <button type="button" className="btn btn-danger" onClick={onLogout}>
+            <button type="button" className="btn btn-ghost" onClick={onLogout}>
               Sair
             </button>
           ) : null}
@@ -74,11 +99,20 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
                   className={`ops-nav-link ${active ? 'is-active' : ''}`}
                   onClick={() => setMenuOpen(false)}
                 >
-                  <span>{item.label}</span>
+                  <span className="ops-nav-link__row">
+                    <span className="ops-nav-link__icon">{navIcon(item.href)}</span>
+                    <span>{item.label}</span>
+                  </span>
                 </Link>
               );
             })}
           </nav>
+          <div className="ops-sidebar-note">
+            <p className="field-hint">
+              Implante o cliente aqui. O dia a dia da empresa acontece no painel
+              do cliente.
+            </p>
+          </div>
         </aside>
 
         {menuOpen ? (
@@ -90,7 +124,7 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
           />
         ) : null}
 
-        <main id="conteudo" className="ops-main">
+        <main id="conteudo" className="ops-main ux-enter">
           {children}
         </main>
       </div>

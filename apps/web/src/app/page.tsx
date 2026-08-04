@@ -29,35 +29,38 @@ export default function HomePage() {
         </>
       }
     >
-      <section className="hero">
+      <section className="hero ux-enter">
         <div className="hero-copy">
-          <p className="page-kicker">Web Admin</p>
+          <p className="page-kicker">Gestao digital de EPI</p>
           <h1 className="hero-title">{APP_NAME}</h1>
           <p className="hero-lead">
-            Controle operacional de entrega de EPI para a empresa usuaria:
-            clientes atendidos, vidas, estoque, documentos e relatorios.
+            A consultoria implanta o cliente. A empresa opera entregas com
+            biometria, estoque e conformidade NR-06 — no desktop e no celular.
           </p>
           <div className="btn-row">
             <Link className="btn btn-primary" href="/register">
               Registrar organizacao
             </Link>
             <Link className="btn btn-secondary" href="/login">
-              Ja tenho acesso
+              Entrar na consultoria
+            </Link>
+            <Link className="btn btn-ghost" href="/portal/login">
+              Portal do cliente
             </Link>
           </div>
           <div className="status-pill" role="status">
             <span className="dot" aria-hidden="true" />
-            Autenticacao e tenancy ativos
+            Pronto para piloto com cliente real
           </div>
         </div>
 
-        <aside className="hero-aside" aria-label="Escopo atual">
-          <h2>Escopo operacional</h2>
+        <aside className="hero-aside" aria-label="Como funciona">
+          <h2>Duas superficies, um fluxo</h2>
           <ul>
-            <li>Tenant = empresa que assina o software</li>
-            <li>Clientes atendidos com cotas de vidas</li>
-            <li>Portal do cliente em etapa futura</li>
-            <li>Cadastros e entrega nas proximas subetapas</li>
+            <li>Consultoria: CNPJ, PGRO, estrutura e usuarios</li>
+            <li>Portal: estoque, entrega facial e ficha</li>
+            <li>Mobile-first no painel operacional</li>
+            <li>Rastreio e comprovante em cada entrega</li>
           </ul>
         </aside>
       </section>

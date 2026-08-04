@@ -20,6 +20,7 @@ import { formatCnpj, formatCnpjInput } from '../lib/cnpj';
 import { listEpiNeeds } from '../lib/epi-needs';
 import { confirmPgroImport, previewPgroImport } from '../lib/pgro';
 import { getServedClient } from '../lib/served-clients';
+import { WizardSteps } from './ui/WizardSteps';
 
 type Step =
   | 'upload'
@@ -375,23 +376,17 @@ export function PgroImportWizard({ lockedClientId }: PgroImportWizardProps) {
         </div>
       </header>
 
-      <div className="panel-tabs" role="tablist" aria-label="Etapas">
-        {STEPS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            className={`panel-tab ${step === item.id ? 'is-active' : ''}`}
-            aria-selected={step === item.id}
-            disabled={!runId && item.id !== 'upload'}
-            onClick={() => {
-              if (runId || item.id === 'upload') setStep(item.id);
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <WizardSteps
+        label="Etapas do PGRO"
+        steps={STEPS}
+        currentId={step}
+        unlockedIds={
+          runId ? STEPS.map((s) => s.id) : (['upload'] as Step[])
+        }
+        onSelect={(id) => {
+          if (runId || id === 'upload') setStep(id as Step);
+        }}
+      />
 
       {error ? (
         <p className="error" role="alert">

@@ -35,56 +35,84 @@ export default function LoginPage() {
         </Link>
       }
     >
-      <div className="auth-layout">
-        <section className="auth-panel" aria-labelledby="login-title">
-          <p className="page-kicker">Acesso</p>
-          <h1 id="login-title" className="page-title">
-            Entrar na Consultoria
-          </h1>
-          <p className="page-lead">
-            Acesso da gestao/consultoria. Gestores de empresa cliente usam o{' '}
-            <Link href="/portal/login">portal do cliente</Link>.
+      <div className="auth-split">
+        <aside className="auth-split__brand" aria-hidden="true">
+          <h2>Implante clientes com clareza e conformidade</h2>
+          <p>
+            Cadastre o CNPJ, importe o PGRO, organize vidas e libere o painel
+            operacional da empresa — pronto para o primeiro cliente real.
           </p>
+          <ol className="auth-split__steps">
+            <li>
+              <span>1</span>
+              Cadastrar cliente e cotas
+            </li>
+            <li>
+              <span>2</span>
+              Estrutura e necessidades de EPI
+            </li>
+            <li>
+              <span>3</span>
+              Liberar acesso ao painel do cliente
+            </li>
+          </ol>
+        </aside>
 
-          <form className="form" onSubmit={onSubmit} noValidate>
-            <div className="field">
-              <label htmlFor="login-email">Email</label>
-              <input
-                id="login-email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="login-password">Senha</label>
-              <input
-                id="login-password"
-                type="password"
-                autoComplete="current-password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            {error ? (
-              <p className="error" role="alert">
-                {error}
-              </p>
-            ) : null}
-            <button className="btn btn-primary btn-block" type="submit" disabled={loading}>
-              {loading ? 'Entrando...' : 'Entrar'}
-            </button>
-          </form>
+        <div className="auth-split__panel">
+          <section className="auth-panel" aria-labelledby="login-title">
+            <p className="page-kicker">Consultoria</p>
+            <h1 id="login-title" className="page-title">
+              Entrar
+            </h1>
+            <p className="page-lead">
+              Acesso da gestao/consultoria. Gestores da empresa cliente usam o{' '}
+              <Link href="/portal/login">portal do cliente</Link>.
+            </p>
 
-          <p className="form-footer">
-            Ainda nao tem conta?{' '}
-            <Link href="/register">Registrar organizacao</Link>
-          </p>
-        </section>
+            <form className="form" onSubmit={onSubmit} noValidate>
+              <div className="field">
+                <label htmlFor="login-email">Email</label>
+                <input
+                  id="login-email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="login-password">Senha</label>
+                <input
+                  id="login-password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              {error ? (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              <button
+                className="btn btn-primary btn-block"
+                type="submit"
+                disabled={loading}
+              >
+                {loading ? 'Entrando...' : 'Entrar na consultoria'}
+              </button>
+            </form>
+
+            <p className="form-footer">
+              Ainda nao tem conta?{' '}
+              <Link href="/register">Registrar organizacao</Link>
+            </p>
+          </section>
+        </div>
       </div>
     </AppShell>
   );

@@ -17,12 +17,19 @@ import {
   type FacialValidationResult,
 } from '../../../components/FacialValidationPanel';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
+import { WizardSteps } from '../../../components/ui/WizardSteps';
 import {
   createPortalDelivery,
   fetchPortalDeliveries,
   fetchPortalEntregasPreparacao,
   fetchPortalWorkerEpiCoverage,
 } from '../../../lib/client-auth';
+
+const DELIVERY_STEPS = [
+  { id: 'worker', label: 'Trabalhador' },
+  { id: 'epis', label: 'EPIs' },
+  { id: 'face', label: 'Biometria' },
+] as const;
 
 type ItemSelection = {
   selected: boolean;
@@ -557,13 +564,13 @@ function PortalEntregasContent() {
 
   return (
     <div className="portal-home">
-      <header className="portal-home-header">
+      <header className="portal-home-header portal-home-header--decision">
         <div>
           <p className="page-kicker">Dia a dia</p>
           <h1 className="page-title page-title--sm">Entrega de EPI</h1>
           <p className="page-lead">
-            Escolha o trabalhador, marque os EPIs e valide a face para
-            concluir a entrega.
+            Tres passos: trabalhador → EPIs → biometria facial. O comprovante
+            fica pronto para imprimir.
           </p>
         </div>
       </header>
@@ -576,9 +583,13 @@ function PortalEntregasContent() {
       {loading ? <p className="page-lead">Carregando trabalhadores...</p> : null}
 
       {receipt ? (
-        <section className="portal-card" aria-labelledby="receipt-title">
+        <section
+          className="portal-card receipt-success"
+          aria-labelledby="receipt-title"
+        >
+          <p className="receipt-success__badge">Entrega concluida</p>
           <h2 id="receipt-title" className="page-title page-title--sm">
-            Entrega registrada
+            Comprovante gerado
           </h2>
           <p className="portal-receipt__code mono">{receipt.receiptNumber}</p>
           <p>
@@ -607,7 +618,7 @@ function PortalEntregasContent() {
             ))}
           </ul>
           {receipt.evidence?.verificationStatus === 'MATCHED' ? (
-            <p className="notice notice--info" role="status">
+            <p className="notice notice--ok" role="status">
               Biometria facial: aprovada automaticamente
             </p>
           ) : null}
@@ -620,13 +631,7 @@ function PortalEntregasContent() {
               .
             </p>
           ) : null}
-          <div className="btn-row" style={{ marginTop: '1rem' }}>
-            <Link
-              className="btn btn-primary"
-              href={`/portal/entregas/${receipt.id}`}
-            >
-              Ver detalhes
-            </Link>
+          <div className="flow-sticky-bar">
             <button
               type="button"
               className="btn btn-secondary"
@@ -634,8 +639,11 @@ function PortalEntregasContent() {
             >
               Nova entrega
             </button>
-            <Link className="btn btn-secondary" href="/portal/estoque">
-              Ver estoque
+            <Link
+              className="btn btn-primary"
+              href={`/portal/entregas/${receipt.id}`}
+            >
+              Ver comprovante / imprimir
             </Link>
           </div>
         </section>
@@ -643,6 +651,14 @@ function PortalEntregasContent() {
 
       {prep && !receipt ? (
         <>
+          <WizardSteps
+            label="Etapas da entrega"
+            steps={[...DELIVERY_STEPS]}
+            currentId={
+              !selectedId ? 'worker' : !faceMatched ? 'epis' : 'face'
+            }
+          />
+
           <section className="quota-summary" aria-label="Resumo">
             <div className="quota-summary-item">
               <span className="quota-summary-label">Ativos</span>
@@ -909,7 +925,7 @@ function PortalEntregasContent() {
                 />
               </section>
 
-              <div className="btn-row portal-sticky-actions">
+              <div className="flow-sticky-bar portal-sticky-actions">
                 <button
                   type="button"
                   className="btn btn-primary"
@@ -920,9 +936,6 @@ function PortalEntregasContent() {
                 </button>
                 <Link className="btn btn-secondary" href="/portal/estoque">
                   Ir ao estoque
-                </Link>
-                <Link className="btn btn-secondary portal-hide-mobile" href="/portal">
-                  Voltar ao painel
                 </Link>
               </div>
               {!faceMatched ? (

@@ -3,7 +3,7 @@
 import type { ServedClient, ServedClientOverview } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
-import { ReactNode, useCallback, useEffect, useState } from 'react';
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { formatCnpj } from '../lib/cnpj';
 import { getServedClient, getServedClientOverview } from '../lib/served-clients';
 
@@ -15,7 +15,13 @@ type NavItem = {
   href: string;
   label: string;
   exact?: boolean;
-  external?: boolean;
+};
+
+type JourneyStep = {
+  href: string;
+  label: string;
+  hint: string;
+  done: boolean;
 };
 
 export function ClientWorkspaceShell({ children }: Props) {
@@ -49,6 +55,49 @@ export function ClientWorkspaceShell({ children }: Props) {
     void load();
   }, [load]);
 
+  const journey = useMemo((): JourneyStep[] => {
+    if (!client || !overview) return [];
+    const base = `/clientes/${client.id}`;
+    const hasStructure =
+      overview.counts.sectors.active > 0 ||
+      overview.counts.jobFunctions.active > 0 ||
+      overview.counts.epiNeeds.active > 0;
+    const hasWorkers = overview.counts.workers.active > 0;
+    const hasUsersAccess = hasStructure && hasWorkers;
+    return [
+      {
+        href: `${base}/estrutura`,
+        label: '1. Estrutura',
+        hint: hasStructure ? 'PGRO / setores ok' : 'Importar PGRO ou montar',
+        done: hasStructure,
+      },
+      {
+        href: `${base}/trabalhadores`,
+        label: '2. Trabalhadores',
+        hint: hasWorkers
+          ? `${overview.counts.workers.active} ativos`
+          : 'Cadastrar vidas',
+        done: hasWorkers,
+      },
+      {
+        href: `${base}/usuarios`,
+        label: '3. Acesso portal',
+        hint: hasUsersAccess
+          ? 'Criar ou revisar gestores'
+          : 'Depende da estrutura e vidas',
+        done: overview.operational,
+      },
+      {
+        href: '/portal-cliente',
+        label: '4. Operar',
+        hint: overview.operational
+          ? 'Cliente pronto para o painel'
+          : 'Conclua a implantacao',
+        done: overview.operational,
+      },
+    ];
+  }, [client, overview]);
+
   if (error && !client) {
     return (
       <div className="module-page">
@@ -77,6 +126,8 @@ export function ClientWorkspaceShell({ children }: Props) {
     { href: `${base}/trabalhadores`, label: 'Trabalhadores' },
   ];
 
+  const firstPending = journey.find((s) => !s.done);
+
   return (
     <div className="client-workspace">
       <header className="client-workspace-header">
@@ -101,6 +152,30 @@ export function ClientWorkspaceShell({ children }: Props) {
           Voltar a lista
         </Link>
       </header>
+
+      {journey.length > 0 ? (
+        <section className="journey-rail" aria-label="Roteiro de implantacao">
+          <p className="journey-rail__title">Roteiro de implantacao</p>
+          <ol className="journey-rail__steps">
+            {journey.map((step) => {
+              const isCurrent = firstPending?.href === step.href;
+              const stateClass = step.done
+                ? 'journey-step--done'
+                : isCurrent
+                  ? 'journey-step--current'
+                  : 'journey-step--todo';
+              return (
+                <li key={step.href}>
+                  <Link href={step.href} className={`journey-step ${stateClass}`}>
+                    <span className="journey-step__label">{step.label}</span>
+                    <span className="journey-step__hint">{step.hint}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      ) : null}
 
       <nav className="client-workspace-nav" aria-label="Secoes do cliente">
         {nav.map((item) => {

@@ -129,6 +129,34 @@ export default function ClienteVisaoGeralPage() {
       ? null
       : franchiseAvailable + overview.lives.allocated;
 
+  const hasStructure =
+    counts.sectors.active > 0 ||
+    counts.jobFunctions.active > 0 ||
+    counts.epiNeeds.active > 0;
+  const hasWorkers = counts.workers.active > 0;
+  const hasManagers = counts.users.managers.active > 0;
+  const nextHref = !hasStructure
+    ? `/clientes/${clientId}/estrutura`
+    : !hasWorkers
+      ? `/clientes/${clientId}/trabalhadores`
+      : !hasManagers
+        ? `/clientes/${clientId}/usuarios`
+        : `/clientes/${clientId}/usuarios`;
+  const nextTitle = !hasStructure
+    ? 'Importar ou montar estrutura'
+    : !hasWorkers
+      ? 'Cadastrar trabalhadores'
+      : !hasManagers
+        ? 'Criar acesso ao portal'
+        : 'Revisar usuarios do portal';
+  const nextDesc = !hasStructure
+    ? 'Comece pelo PGRO ou cadastre setores e necessidades.'
+    : !hasWorkers
+      ? 'Cadastre as vidas que consomem a cota deste cliente.'
+      : !hasManagers
+        ? 'Libere gestor/operador para operar no painel.'
+        : 'Cliente pronto — revise acessos e acompanhe a operacao.';
+
   return (
     <div className="workspace-section">
       {!operational ? (
@@ -139,6 +167,38 @@ export default function ClienteVisaoGeralPage() {
           </p>
         </div>
       ) : null}
+
+      <section className="action-strip" aria-label="Proximo passo da implantacao">
+        <Link href={nextHref} className="action-tile action-tile--primary">
+          <p className="action-tile__kicker">Proximo passo</p>
+          <h2 className="action-tile__title">{nextTitle}</h2>
+          <p className="action-tile__desc">{nextDesc}</p>
+        </Link>
+        <Link
+          href={`/clientes/${clientId}/atualizar-pgro`}
+          className="action-tile"
+        >
+          <p className="action-tile__kicker">PGRO</p>
+          <h2 className="action-tile__title">
+            {lastPgroImport ? 'Atualizar PGRO' : 'Importar PGRO'}
+          </h2>
+          <p className="action-tile__desc">
+            {lastPgroImport
+              ? `Ultimo: ${lastPgroImport.fileName}`
+              : 'Extrair setores, funcoes, riscos e EPIs do PDF.'}
+          </p>
+        </Link>
+        <Link href={`/clientes/${clientId}/usuarios`} className="action-tile">
+          <p className="action-tile__kicker">Portal</p>
+          <h2 className="action-tile__title">Usuarios do cliente</h2>
+          <p className="action-tile__desc">
+            Gestores {counts.users.managers.active}/
+            {counts.users.managers.limit} · Estoque{' '}
+            {counts.users.stockOperators.active}/
+            {counts.users.stockOperators.limit}
+          </p>
+        </Link>
+      </section>
 
       <section className="surface" aria-labelledby="overview-title">
         <div className="form-section-header">

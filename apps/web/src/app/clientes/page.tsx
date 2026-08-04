@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
+import { PageHeader } from '../../components/ui/PageHeader';
 import { storeClientAccessOnce } from '../../lib/client-access-session';
 import {
   formatCnpj,
@@ -66,6 +67,7 @@ function ClientesContent() {
   const [formMode, setFormMode] = useState<FormMode>('closed');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ClientFormState>(emptyForm);
+  const [clientQuery, setClientQuery] = useState('');
 
   const load = useCallback(async () => {
     setError(null);
@@ -250,38 +252,43 @@ function ClientesContent() {
 
   const isCreateTab = listTab === 'create';
 
+  const filteredClients = useMemo(() => {
+    const q = clientQuery.trim().toLowerCase();
+    if (!q) return clients;
+    return clients.filter((client) => {
+      const hay = [
+        client.legalName,
+        client.tradeName ?? '',
+        client.cnpj,
+        formatCnpj(client.cnpj),
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [clients, clientQuery]);
+
   return (
     <div className="module-page">
-      <header className="module-header">
-        <div>
-          <p className="page-kicker">Cadastros</p>
-          <h1 className="page-title">Clientes atendidos</h1>
-          <p className="page-lead">
-            Cadastre CNPJs, distribua a franquia de vidas e abra o workspace de
-            cada cliente para implantacao e operacao.
-          </p>
-        </div>
-        <div className="header-actions header-actions--wrap">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled
-            title="Importacao CSV sera liberada em breve"
-          >
-            Importar CSV (em breve)
-          </button>
-          <Link className="btn btn-secondary" href="/clientes/importar-pgro">
-            Importar PGRO
-          </Link>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={openCreateTab}
-          >
-            Novo cliente
-          </button>
-        </div>
-      </header>
+      <PageHeader
+        kicker="Cadastros"
+        title="Clientes atendidos"
+        lead="Cadastre CNPJs, distribua a franquia de vidas e abra o workspace de cada cliente para implantacao."
+        actions={
+          <div className="header-actions header-actions--wrap">
+            <Link className="btn btn-secondary" href="/clientes/importar-pgro">
+              Importar PGRO
+            </Link>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={openCreateTab}
+            >
+              Novo cliente
+            </button>
+          </div>
+        }
+      />
 
       {summary ? (
         <section className="quota-summary" aria-label="Resumo de cotas">
@@ -344,10 +351,10 @@ function ClientesContent() {
       </div>
 
       {isCreateTab ? (
-        <section className="surface" aria-labelledby="client-form-title">
+        <section className="surface ux-enter" aria-labelledby="client-form-title">
           <div className="form-section-header">
             <div>
-              <p className="page-kicker">Novo cadastro</p>
+              <p className="page-kicker">Passo 1 de implantacao</p>
               <h2
                 id="client-form-title"
                 className="page-title page-title--sm"
@@ -355,9 +362,8 @@ function ClientesContent() {
                 Novo cliente atendido
               </h2>
               <p className="page-lead">
-                Ao salvar, voce sera levado automaticamente ao painel deste
-                cliente. Se informar o gestor inicial, a senha temporaria
-                aparecera la (uma unica vez).
+                Informe CNPJ e cotas. Em seguida abriremos o workspace para
+                PGRO, trabalhadores e acesso ao portal.
               </p>
             </div>
             <button
@@ -383,14 +389,7 @@ function ClientesContent() {
               </p>
             ) : null}
 
-            <div className="btn-row">
-              <button
-                className="btn btn-primary"
-                type="submit"
-                disabled={saving}
-              >
-                {saving ? 'Salvando e abrindo painel...' : 'Cadastrar cliente'}
-              </button>
+            <div className="flow-sticky-bar">
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -398,6 +397,13 @@ function ClientesContent() {
                 disabled={saving}
               >
                 Cancelar
+              </button>
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={saving}
+              >
+                {saving ? 'Salvando e abrindo painel...' : 'Cadastrar e continuar'}
               </button>
             </div>
           </form>
@@ -469,6 +475,21 @@ function ClientesContent() {
               </div>
             </div>
 
+            {clients.length > 0 ? (
+              <div className="client-search">
+                <label htmlFor="client-search" className="field-hint">
+                  Buscar por nome ou CNPJ
+                </label>
+                <input
+                  id="client-search"
+                  type="search"
+                  placeholder="Ex.: Acme ou 12.345.678/0001-90"
+                  value={clientQuery}
+                  onChange={(e) => setClientQuery(e.target.value)}
+                />
+              </div>
+            ) : null}
+
             {loading ? (
               <p className="page-lead">Carregando clientes...</p>
             ) : clients.length === 0 ? (
@@ -488,9 +509,22 @@ function ClientesContent() {
                   Cadastrar primeiro cliente
                 </button>
               </div>
+            ) : filteredClients.length === 0 ? (
+              <div className="empty-state">
+                <p className="page-lead">
+                  Nenhum cliente encontrado para &quot;{clientQuery}&quot;.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setClientQuery('')}
+                >
+                  Limpar busca
+                </button>
+              </div>
             ) : (
               <div className="stack-list" role="list" aria-label="Clientes">
-                {clients.map((client) => (
+                {filteredClients.map((client) => (
                   <article key={client.id} role="listitem" className="stack-card">
                     <div className="stack-card__body stack-card__body--stack">
                       <div className="stack-card__main">

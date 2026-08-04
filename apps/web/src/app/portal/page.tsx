@@ -52,6 +52,33 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
         <p className="portal-home-welcome">Ola, {user.name}.</p>
       </header>
 
+      <section className="action-strip ux-enter" aria-label="Acoes do dia">
+        <Link
+          href="/portal/entregas"
+          className="action-tile action-tile--primary"
+        >
+          <p className="action-tile__kicker">Principal</p>
+          <h2 className="action-tile__title">Nova entrega</h2>
+          <p className="action-tile__desc">
+            Selecionar trabalhador, EPI e confirmar com biometria facial.
+          </p>
+        </Link>
+        <Link href="/portal/estoque" className="action-tile">
+          <p className="action-tile__kicker">Estoque</p>
+          <h2 className="action-tile__title">Entrada e saldos</h2>
+          <p className="action-tile__desc">
+            Registrar compra com CAEPI e acompanhar quantidade.
+          </p>
+        </Link>
+        <Link href="/portal/validade" className="action-tile">
+          <p className="action-tile__kicker">Alertas</p>
+          <h2 className="action-tile__title">Validades</h2>
+          <p className="action-tile__desc">
+            Ver trocas proximas e EPIs vencidos ou criticos.
+          </p>
+        </Link>
+      </section>
+
       {user.mustChangePassword ? (
         <div className="notice notice--warn" role="status">
           <p>
@@ -72,7 +99,10 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
       ) : null}
 
       {dash ? (
-        <section className="quota-summary quota-summary--compact" aria-label="Resumo da empresa">
+        <section
+          className="quota-summary quota-summary--compact ux-enter-delay"
+          aria-label="Resumo da empresa"
+        >
           <div className="quota-summary-item">
             <span className="quota-summary-label">Vidas</span>
             <strong className="quota-summary-value">

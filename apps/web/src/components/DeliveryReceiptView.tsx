@@ -168,7 +168,10 @@ export function DeliveryReceiptView({
       ) : null}
 
       {showActions ? (
-        <div className="btn-row no-print epi-doc-toolbar">
+        <div className="flow-sticky-bar no-print epi-doc-toolbar">
+          <Link className="btn btn-secondary" href="/portal/entregas">
+            Voltar as entregas
+          </Link>
           <button
             type="button"
             className="btn btn-primary"

@@ -4,6 +4,7 @@ import type { QuotaSummary } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useEffect, useState } from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
+import { PageHeader } from '../../components/ui/PageHeader';
 import { OPS_NAV } from '../../lib/nav';
 import { hardResetOrganization } from '../../lib/organization';
 import { getQuotaSummary } from '../../lib/served-clients';
@@ -78,27 +79,87 @@ function DashboardContent({
     }
   }
 
+  const hasClients = Boolean(summary && summary.totalClients > 0);
+
   return (
     <div className="module-page">
-      <header className="module-header">
-        <div>
-          <p className="page-kicker">Dashboard</p>
-          <h1 className="page-title">Ola, {userName}</h1>
-          <p className="page-lead">
-            Painel da empresa usuaria <strong>{orgName}</strong>. Acompanhe a
-            franquia e os clientes atendidos.
+      <PageHeader
+        kicker="Dashboard"
+        title={`Ola, ${userName}`}
+        lead={
+          <>
+            Painel da consultoria <strong>{orgName}</strong>. Foque na
+            implantacao do proximo cliente e na franquia de vidas.
+          </>
+        }
+        actions={
+          <Link className="btn btn-primary" href="/clientes">
+            {hasClients ? 'Gerenciar clientes' : 'Cadastrar primeiro cliente'}
+          </Link>
+        }
+      />
+
+      <section className="action-strip ux-enter" aria-label="Proximos passos">
+        <Link href="/clientes" className="action-tile action-tile--primary">
+          <p className="action-tile__kicker">Prioridade</p>
+          <h2 className="action-tile__title">
+            {hasClients ? 'Abrir clientes' : 'Novo cliente'}
+          </h2>
+          <p className="action-tile__desc">
+            Cadastre CNPJ, aloque vidas, importe PGRO e libere o portal.
           </p>
-        </div>
-        <Link className="btn btn-primary" href="/clientes">
-          Gerenciar clientes
         </Link>
-      </header>
+        <Link href="/caepi" className="action-tile">
+          <p className="action-tile__kicker">Base</p>
+          <h2 className="action-tile__title">CAEPI</h2>
+          <p className="action-tile__desc">
+            Mantenha a base oficial de CAs atualizada para o catalogo.
+          </p>
+        </Link>
+        <Link href="/portal-cliente" className="action-tile">
+          <p className="action-tile__kicker">Operacao</p>
+          <h2 className="action-tile__title">Portal do cliente</h2>
+          <p className="action-tile__desc">
+            Entenda o que o gestor da empresa ve no dia a dia.
+          </p>
+        </Link>
+      </section>
+
+      <div className="quota-summary ux-enter-delay" aria-label="Franquia de vidas">
+        <div className="quota-summary-item">
+          <span className="quota-summary-label">Contratadas</span>
+          <strong className="quota-summary-value">
+            {summary?.contracted ?? '—'}
+          </strong>
+        </div>
+        <div className="quota-summary-item">
+          <span className="quota-summary-label">Alocadas</span>
+          <strong className="quota-summary-value">
+            {summary?.allocated ?? '—'}
+          </strong>
+        </div>
+        <div className="quota-summary-item">
+          <span className="quota-summary-label">Usadas</span>
+          <strong className="quota-summary-value">{summary?.used ?? '—'}</strong>
+        </div>
+        <div className="quota-summary-item">
+          <span className="quota-summary-label">Disponiveis</span>
+          <strong className="quota-summary-value">
+            {summary?.available ?? '—'}
+          </strong>
+        </div>
+      </div>
+      {quotaError ? (
+        <p className="error" role="alert">
+          {quotaError}
+        </p>
+      ) : null}
 
       <div className="dashboard-grid dashboard-grid--ops">
         <section className="surface" aria-labelledby="org-summary">
           <p className="page-kicker">Organizacao</p>
           <h2 id="org-summary" className="page-title page-title--sm">
-            Resumo do tenant
+            Conta da consultoria
           </h2>
           <dl className="meta-list">
             <div>
@@ -113,79 +174,21 @@ function DashboardContent({
               <dt>Slug</dt>
               <dd>{slug}</dd>
             </div>
+            <div>
+              <dt>Clientes</dt>
+              <dd>
+                {summary
+                  ? `${summary.activeClients} ativos / ${summary.totalClients} total`
+                  : '—'}
+              </dd>
+            </div>
           </dl>
         </section>
 
-        <section className="surface" aria-labelledby="life-quota">
-          <p className="page-kicker">Franquia</p>
-          <h2 id="life-quota" className="page-title page-title--sm">
-            Vidas contratadas
-          </h2>
-          <p className="quota-value">{summary?.contracted ?? '—'}</p>
-          <p className="field-hint">
-            Franquia total do contrato. Alocadas em ativos:{' '}
-            {summary?.allocated ?? '—'} · Liberadas (inativas):{' '}
-            {summary?.inactiveAllocated ?? '—'} · Usadas:{' '}
-            {summary?.used ?? '—'} · Disponiveis: {summary?.available ?? '—'}.
-          </p>
-          {quotaError ? (
-            <p className="error" role="alert">
-              {quotaError}
-            </p>
-          ) : null}
-        </section>
-
-        <section className="surface" aria-labelledby="client-quotas">
-          <p className="page-kicker">Cotas</p>
-          <h2 id="client-quotas" className="page-title page-title--sm">
-            Cotas por cliente
-          </h2>
-          {summary && summary.totalClients > 0 ? (
-            <dl className="meta-list">
-              <div>
-                <dt>Clientes ativos</dt>
-                <dd>{summary.activeClients}</dd>
-              </div>
-              <div>
-                <dt>Total de clientes</dt>
-                <dd>{summary.totalClients}</dd>
-              </div>
-              <div>
-                <dt>Vidas alocadas (ativas)</dt>
-                <dd>{summary.allocated}</dd>
-              </div>
-              <div>
-                <dt>Vidas liberadas (inativas)</dt>
-                <dd>{summary.inactiveAllocated}</dd>
-              </div>
-              <div>
-                <dt>Saldo disponivel</dt>
-                <dd>{summary.available}</dd>
-              </div>
-              <div>
-                <dt>Vidas usadas</dt>
-                <dd>{summary.used} trabalhadores ativos</dd>
-              </div>
-            </dl>
-          ) : (
-            <div className="empty-inline">
-              <p className="page-lead">
-                Nenhum cliente atendido cadastrado. Distribua a franquia por
-                CNPJ no modulo de clientes.
-              </p>
-            </div>
-          )}
-          <div className="btn-row">
-            <Link className="btn btn-secondary" href="/clientes">
-              Abrir clientes atendidos
-            </Link>
-          </div>
-        </section>
-
         <section className="surface" aria-labelledby="next-modules">
-          <p className="page-kicker">Roteiro</p>
+          <p className="page-kicker">Modulos</p>
           <h2 id="next-modules" className="page-title page-title--sm">
-            Proximos modulos
+            Navegacao rapida
           </h2>
           <ul className="module-link-list">
             {OPS_NAV.filter((item) => item.href !== '/dashboard').map(
@@ -196,44 +199,12 @@ function DashboardContent({
                       <strong>{item.label}</strong>
                       <span className="field-hint">{item.description}</span>
                     </span>
-                    <span className="ops-nav-badge">
-                      {item.status === 'ready'
-                        ? 'Ativo'
-                        : item.status === 'via-client'
-                          ? 'Via cliente'
-                          : 'Em breve'}
-                    </span>
+                    <span className="ops-nav-badge">Ativo</span>
                   </Link>
                 </li>
               ),
             )}
           </ul>
-        </section>
-
-        <section
-          className="surface surface--graphite"
-          aria-labelledby="actions"
-        >
-          <p className="page-kicker page-kicker--on-dark">Acoes</p>
-          <h2
-            id="actions"
-            className="page-title page-title--sm page-title--on-dark"
-          >
-            O que ja e possivel
-          </h2>
-          <ul className="upcoming-list upcoming-list--on-dark">
-            <li>Autenticacao e isolamento por organizacao</li>
-            <li>Cadastro de clientes, unidades e trabalhadores</li>
-            <li>Controle de cotas e vidas usadas</li>
-          </ul>
-          <div className="btn-row">
-            <Link className="btn btn-primary" href="/clientes">
-              Cadastrar cliente
-            </Link>
-            <Link className="btn btn-secondary" href="/portal-cliente">
-              Ver portal do cliente
-            </Link>
-          </div>
         </section>
 
         {role === 'OWNER' ? (
