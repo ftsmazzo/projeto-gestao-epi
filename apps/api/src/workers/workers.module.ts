@@ -24,6 +24,7 @@ import { WorkersService } from './workers.service';
   ],
   exports: [
     WorkersService,
+    WorkerImportService,
     WorkerFacialReferenceService,
     WorkerBiometricConsentService,
     BiometricRetentionService,

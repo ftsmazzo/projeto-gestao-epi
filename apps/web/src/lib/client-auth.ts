@@ -25,8 +25,12 @@ import type {
   PortalWorkerEpiSheetResponse,
   WorkerFacialEnrollmentLinkGenerated,
   WorkerFacialEnrollmentLinkStatusResponse,
+  WorkerImportConfirmResponse,
+  WorkerImportConfirmRowInput,
+  WorkerImportPreviewResponse,
 } from '@gestao-epi/shared';
 import { getApiUrl } from './auth';
+import { downloadCsvText } from './epis';
 
 const CLIENT_TOKEN_KEY = 'gestao-epi.clientAccessToken';
 
@@ -181,6 +185,38 @@ export async function generatePortalWorkerFacialEnrollmentLink(
     { method: 'POST' },
   );
 }
+
+export async function getPortalWorkerCsvTemplate() {
+  return clientApiFetch<{
+    fileName: string;
+    contentType: string;
+    csvText: string;
+  }>('/portal/trabalhadores/import/csv-template');
+}
+
+export async function previewPortalWorkerCsvImport(csvText: string) {
+  return clientApiFetch<WorkerImportPreviewResponse>(
+    '/portal/trabalhadores/import/preview',
+    {
+      method: 'POST',
+      body: JSON.stringify({ csvText }),
+    },
+  );
+}
+
+export async function confirmPortalWorkerCsvImport(
+  rows: WorkerImportConfirmRowInput[],
+) {
+  return clientApiFetch<WorkerImportConfirmResponse>(
+    '/portal/trabalhadores/import/confirm',
+    {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    },
+  );
+}
+
+export { downloadCsvText };
 
 export async function fetchPortalWorkerEpiSheet(
   workerId: string,

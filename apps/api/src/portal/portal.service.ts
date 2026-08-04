@@ -45,7 +45,10 @@ import { WorkerFacialEnrollmentService } from '../workers/worker-facial-enrollme
 import {
   resolveWorkerFaceReferenceAbsolutePath,
 } from '../workers/worker-face-reference.storage';
+import { WorkerImportService } from '../workers/worker-import.service';
+import { WORKER_CSV_TEMPLATE } from '../workers/worker-import.utils';
 import { WorkersService } from '../workers/workers.service';
+import type { ConfirmWorkerImportDto } from '../workers/dto/worker-import.dto';
 import {
   FACIAL_EVIDENCE_CONSENT_TEXT,
   FACIAL_EVIDENCE_CONSENT_VERSION,
@@ -143,6 +146,7 @@ export class PortalService {
     private readonly biometricConsent: WorkerBiometricConsentService,
     private readonly workers: WorkersService,
     private readonly facialEnrollment: WorkerFacialEnrollmentService,
+    private readonly workerImport: WorkerImportService,
   ) {}
 
   async getDashboard(organizationId: string, servedClientId: string) {
@@ -928,6 +932,54 @@ export class PortalService {
       workerId,
     );
     return this.facialEnrollment.generate(organizationId, userId, workerId);
+  }
+
+  getWorkerCsvTemplate() {
+    return {
+      fileName: 'modelo-importacao-trabalhadores.csv',
+      contentType: 'text/csv; charset=utf-8',
+      csvText: WORKER_CSV_TEMPLATE,
+    };
+  }
+
+  async previewWorkerImport(
+    organizationId: string,
+    servedClientId: string,
+    csvText: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    return this.workerImport.preview(organizationId, servedClientId, csvText);
+  }
+
+  async confirmWorkerImport(
+    organizationId: string,
+    userId: string,
+    servedClientId: string,
+    dto: ConfirmWorkerImportDto,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    return this.workerImport.confirm(
+      organizationId,
+      userId,
+      servedClientId,
+      dto.rows.map((row) => ({
+        rowNumber: row.rowNumber,
+        payload: {
+          name: row.payload.name,
+          cpf: row.payload.cpf ?? null,
+          registration: row.payload.registration ?? null,
+          email: row.payload.email ?? null,
+          phone: row.payload.phone ?? null,
+          admissionDate: row.payload.admissionDate ?? null,
+          status: row.payload.status,
+          operationalUnitId: row.payload.operationalUnitId ?? null,
+          clientSectorId: row.payload.clientSectorId ?? null,
+          clientJobFunctionId: row.payload.clientJobFunctionId ?? null,
+          department: row.payload.department ?? null,
+          role: row.payload.role ?? null,
+        },
+      })),
+    );
   }
 
   private async assertWorkerBelongsToClient(

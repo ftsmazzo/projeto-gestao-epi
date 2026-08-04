@@ -26,6 +26,10 @@ import type { ClientJwtPayload } from '../auth/types/jwt-payload';
 import { CreateWorkerDto } from '../workers/dto/create-worker.dto';
 import { UpdateWorkerDto } from '../workers/dto/update-worker.dto';
 import { UpdateWorkerStatusDto } from '../workers/dto/update-worker-status.dto';
+import {
+  ConfirmWorkerImportDto,
+  PreviewWorkerImportDto,
+} from '../workers/dto/worker-import.dto';
 import { PortalCreateDeliveryPayloadDto, PortalCancelDeliveryDto, PortalCreateReturnDto } from './dto/portal-delivery.dto';
 import { PortalStockEntradasDto } from './dto/portal-stock.dto';
 import { PortalReportsService } from './portal-reports.service';
@@ -309,6 +313,39 @@ export class PortalController {
   ) {
     this.assertClient(user);
     return this.portal.createWorker(
+      user.organizationId,
+      user.sub,
+      user.servedClientId,
+      dto,
+    );
+  }
+
+  @Get('trabalhadores/import/csv-template')
+  workerCsvTemplate(@CurrentUser() user: ClientJwtPayload) {
+    this.assertClient(user);
+    return this.portal.getWorkerCsvTemplate();
+  }
+
+  @Post('trabalhadores/import/preview')
+  previewWorkerImport(
+    @CurrentUser() user: ClientJwtPayload,
+    @Body() dto: PreviewWorkerImportDto,
+  ) {
+    this.assertClient(user);
+    return this.portal.previewWorkerImport(
+      user.organizationId,
+      user.servedClientId,
+      dto.csvText,
+    );
+  }
+
+  @Post('trabalhadores/import/confirm')
+  confirmWorkerImport(
+    @CurrentUser() user: ClientJwtPayload,
+    @Body() dto: ConfirmWorkerImportDto,
+  ) {
+    this.assertClient(user);
+    return this.portal.confirmWorkerImport(
       user.organizationId,
       user.sub,
       user.servedClientId,

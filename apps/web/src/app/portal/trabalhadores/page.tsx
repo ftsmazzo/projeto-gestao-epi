@@ -4,6 +4,7 @@ import type {
   PortalEstruturaResponse,
   PortalTrabalhadorReplacementDue,
   PortalTrabalhadoresResponse,
+  WorkerImportPreviewResponse,
 } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -17,16 +18,21 @@ import {
 } from 'react';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
 import {
+  confirmPortalWorkerCsvImport,
   createPortalWorker,
+  downloadCsvText,
   fetchPortalEstrutura,
   fetchPortalTrabalhadores,
   generatePortalWorkerFacialEnrollmentLink,
+  getPortalWorkerCsvTemplate,
+  previewPortalWorkerCsvImport,
   updatePortalWorker,
   updatePortalWorkerStatus,
 } from '../../../lib/client-auth';
 import { formatCpfInput, stripCpf } from '../../../lib/cpf';
 
 type FormMode = 'closed' | 'create' | 'edit';
+type PanelMode = 'list' | 'import';
 
 type WorkerFormState = {
   name: string;
@@ -120,6 +126,7 @@ function PortalTrabalhadoresContent() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [mode, setMode] = useState<FormMode>('closed');
+  const [panel, setPanel] = useState<PanelMode>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<WorkerFormState>(emptyForm);
   const [enrollmentUrl, setEnrollmentUrl] = useState<string | null>(null);
@@ -127,6 +134,11 @@ function PortalTrabalhadoresContent() {
     null,
   );
   const [linkCopied, setLinkCopied] = useState(false);
+  const [importFileName, setImportFileName] = useState<string | null>(null);
+  const [importPreview, setImportPreview] =
+    useState<WorkerImportPreviewResponse | null>(null);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -192,6 +204,7 @@ function PortalTrabalhadoresContent() {
   const warnDays = data?.replacementHorizon.warnDays ?? 5;
 
   function openCreate() {
+    setPanel('list');
     setMode('create');
     setEditingId(null);
     setForm(emptyForm);
@@ -199,6 +212,7 @@ function PortalTrabalhadoresContent() {
   }
 
   function openEdit(worker: PortalWorkerRow) {
+    setPanel('list');
     setMode('edit');
     setEditingId(worker.id);
     setForm({
@@ -219,6 +233,96 @@ function PortalTrabalhadoresContent() {
     setEditingId(null);
     setForm(emptyForm);
     setFormError(null);
+  }
+
+  function openImport() {
+    setMode('closed');
+    setPanel('import');
+    setImportErrorClear();
+    setImportFileName(null);
+    setImportPreview(null);
+    setImportMessage(null);
+  }
+
+  function setImportErrorClear() {
+    setError(null);
+  }
+
+  function closeImport() {
+    setPanel('list');
+    setImportBusy(false);
+    setImportPreview(null);
+    setImportFileName(null);
+  }
+
+  async function onDownloadTemplate() {
+    try {
+      const template = await getPortalWorkerCsvTemplate();
+      downloadCsvText(template.fileName, template.csvText);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel baixar o modelo CSV.',
+      );
+    }
+  }
+
+  async function onPreviewFile(file: File | null) {
+    if (!file) return;
+    setImportBusy(true);
+    setError(null);
+    setImportMessage(null);
+    setImportFileName(file.name);
+    try {
+      const csvText = await file.text();
+      const preview = await previewPortalWorkerCsvImport(csvText);
+      setImportPreview(preview);
+    } catch (err) {
+      setImportPreview(null);
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao gerar previa da importacao.',
+      );
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function onConfirmImport() {
+    if (!importPreview) return;
+    const rows = importPreview.rows
+      .filter((row) => row.status === 'valid' && row.payload)
+      .map((row) => ({
+        rowNumber: row.rowNumber,
+        payload: row.payload!,
+      }));
+    if (rows.length === 0) {
+      setError('Nenhuma linha valida para importar.');
+      return;
+    }
+    setImportBusy(true);
+    setError(null);
+    try {
+      const result = await confirmPortalWorkerCsvImport(rows);
+      setImportMessage(
+        `Importacao concluida: ${result.created} criado(s), ${result.updated} atualizado(s)` +
+          (result.skipped ? `, ${result.skipped} ignorado(s).` : '.'),
+      );
+      setImportPreview(null);
+      setImportFileName(null);
+      await load();
+      setPanel('list');
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao confirmar a importacao.',
+      );
+    } finally {
+      setImportBusy(false);
+    }
   }
 
   async function onSubmit(event: FormEvent) {
@@ -337,13 +441,22 @@ function PortalTrabalhadoresContent() {
           <p className="portal-home-cnpj">
             {onlyDue
               ? `Filtrado: trocas em ate ${warnDays} dias`
-              : 'Cadastre vidas e acompanhe trocas de EPI'}
+              : 'Cadastre vidas (individual ou planilha) e acompanhe trocas'}
           </p>
         </div>
-        {mode === 'closed' ? (
-          <button type="button" className="btn btn-primary" onClick={openCreate}>
-            Novo trabalhador
-          </button>
+        {mode === 'closed' && panel === 'list' ? (
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={openImport}
+            >
+              Importar CSV
+            </button>
+            <button type="button" className="btn btn-primary" onClick={openCreate}>
+              Novo trabalhador
+            </button>
+          </div>
         ) : null}
       </header>
 
@@ -384,6 +497,214 @@ function PortalTrabalhadoresContent() {
       ) : null}
       {loading ? (
         <p className="page-lead">Carregando trabalhadores...</p>
+      ) : null}
+
+      {importMessage && panel === 'list' && mode === 'closed' ? (
+        <p className="notice notice--ok" role="status">
+          {importMessage}
+        </p>
+      ) : null}
+
+      {panel === 'import' ? (
+        <section className="surface" aria-labelledby="portal-worker-import-title">
+          <div className="form-section-header">
+            <div>
+              <p className="page-kicker">Lote</p>
+              <h2
+                id="portal-worker-import-title"
+                className="page-title page-title--sm"
+              >
+                Importar trabalhadores
+              </h2>
+              <p className="page-lead">
+                CSV com unidade, setor e funcao ja existentes na estrutura.
+                Baixe o modelo, preencha e confirme a previa.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={closeImport}
+              disabled={importBusy}
+            >
+              Voltar
+            </button>
+          </div>
+
+          <div className="btn-row" style={{ marginBottom: '1rem' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void onDownloadTemplate()}
+              disabled={importBusy}
+            >
+              Baixar modelo CSV
+            </button>
+            <label className="btn btn-primary" style={{ cursor: 'pointer' }}>
+              {importBusy ? 'Processando...' : 'Selecionar CSV'}
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                hidden
+                disabled={importBusy}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  void onPreviewFile(file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+          </div>
+
+          {importFileName ? (
+            <p className="field-hint">Arquivo: {importFileName}</p>
+          ) : null}
+          {importMessage ? (
+            <p className="notice notice--info" role="status">
+              {importMessage}
+            </p>
+          ) : null}
+
+          {importPreview ? (
+            <>
+              {importPreview.warnings.length > 0 ? (
+                <ul className="page-lead">
+                  {importPreview.warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              ) : null}
+
+              <section className="quota-summary" aria-label="Impacto na cota">
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Linhas lidas</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.rowsRead}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Validas</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.valid}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Com erro</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.withErrors}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Novos / updates</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.creates} /{' '}
+                    {importPreview.totals.updates}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Excedem cota</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.totals.exceedQuota}
+                  </strong>
+                </div>
+                <div className="quota-summary-item">
+                  <span className="quota-summary-label">Vidas apos</span>
+                  <strong className="quota-summary-value">
+                    {importPreview.lifeImpact.availableAfter} disp.
+                  </strong>
+                </div>
+              </section>
+
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Linha</th>
+                      <th>Nome</th>
+                      <th>Acao</th>
+                      <th>Setor / Funcao</th>
+                      <th>EPIs</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.rows.map((row) => (
+                      <tr key={row.rowNumber}>
+                        <td className="mono">{row.rowNumber}</td>
+                        <td>
+                          <strong>
+                            {row.payload?.name ??
+                              row.raw.nome ??
+                              row.raw.name ??
+                              '—'}
+                          </strong>
+                          <span className="table-sub">
+                            {row.payload?.registration ??
+                              row.raw.matricula ??
+                              '—'}
+                          </span>
+                        </td>
+                        <td>
+                          {row.action === 'create'
+                            ? 'Novo'
+                            : row.action === 'update'
+                              ? `Atualizar (${row.matchBy ?? '—'})`
+                              : '—'}
+                        </td>
+                        <td>
+                          {row.resolved.sectorName ?? '—'}
+                          <span className="table-sub">
+                            {row.resolved.jobFunctionName ?? '—'}
+                          </span>
+                        </td>
+                        <td className="mono">
+                          {row.resolved.requiredEpiCount}
+                        </td>
+                        <td>
+                          {row.status === 'valid' ? (
+                            <span className="status-pill status-pill--active">
+                              Valida
+                            </span>
+                          ) : (
+                            <span className="status-pill status-pill--inactive">
+                              Erro
+                            </span>
+                          )}
+                          {row.errors.length > 0 ? (
+                            <span className="table-sub">
+                              {row.errors.join(' · ')}
+                            </span>
+                          ) : null}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={importBusy || importPreview.totals.valid === 0}
+                  onClick={() => void onConfirmImport()}
+                >
+                  {importBusy
+                    ? 'Confirmando...'
+                    : `Confirmar importacao (${importPreview.totals.valid})`}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={importBusy}
+                  onClick={closeImport}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </>
+          ) : null}
+        </section>
       ) : null}
 
       {mode !== 'closed' ? (
@@ -578,7 +899,7 @@ function PortalTrabalhadoresContent() {
         </section>
       ) : null}
 
-      {data && mode === 'closed' ? (
+      {data && mode === 'closed' && panel === 'list' ? (
         <>
           <section
             className="quota-summary quota-summary--compact"
@@ -656,13 +977,22 @@ function PortalTrabalhadoresContent() {
                     Limpar busca
                   </button>
                 ) : !onlyDue ? (
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={openCreate}
-                  >
-                    Cadastrar primeiro trabalhador
-                  </button>
+                  <div className="btn-row">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={openImport}
+                    >
+                      Importar CSV
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={openCreate}
+                    >
+                      Cadastrar primeiro trabalhador
+                    </button>
+                  </div>
                 ) : null}
               </div>
             ) : (
