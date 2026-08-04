@@ -137,6 +137,8 @@ export default function ClienteTrabalhadoresPage() {
   const [panel, setPanel] = useState<PanelMode>('list');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<WorkerFormState>(emptyForm);
+  const [workerQuery, setWorkerQuery] = useState('');
+  const [bioFilter, setBioFilter] = useState<'all' | 'pending' | 'ok'>('all');
 
   const [importFileName, setImportFileName] = useState<string | null>(null);
   const [importPreview, setImportPreview] =
@@ -158,6 +160,27 @@ export default function ClienteTrabalhadoresPage() {
     [jobs, form.clientSectorId],
   );
   const hasStructure = activeSectors.length > 0;
+
+  const filteredWorkers = useMemo(() => {
+    const q = workerQuery.trim().toLowerCase();
+    return workers.filter((worker) => {
+      const bio = biometricStatusLabel(worker);
+      if (bioFilter === 'ok' && !bio.ok) return false;
+      if (bioFilter === 'pending' && bio.ok) return false;
+      if (!q) return true;
+      const hay = [
+        worker.name,
+        worker.registration ?? '',
+        worker.cpf ?? '',
+        worker.unitName ?? '',
+        worker.sectorName ?? '',
+        worker.jobFunctionName ?? '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [workers, workerQuery, bioFilter]);
 
   const load = useCallback(async () => {
     if (!clientId) return;
@@ -1006,7 +1029,13 @@ export default function ClienteTrabalhadoresPage() {
             <p className="page-lead">Carregando...</p>
           ) : workers.length === 0 ? (
             <div className="empty-state">
-              <p className="page-lead">Nenhum trabalhador cadastrado.</p>
+              <p className="page-title page-title--sm">
+                Nenhum trabalhador cadastrado
+              </p>
+              <p className="page-lead">
+                Importe um CSV ou cadastre a primeira vida. Cada ativo consome
+                1 vaga da cota.
+              </p>
               <div className="btn-row">
                 <button
                   type="button"
@@ -1025,8 +1054,69 @@ export default function ClienteTrabalhadoresPage() {
               </div>
             </div>
           ) : (
+            <>
+              <div className="client-search">
+                <label htmlFor="worker-search" className="field-hint">
+                  Buscar trabalhador
+                </label>
+                <input
+                  id="worker-search"
+                  type="search"
+                  placeholder="Nome, matricula, CPF, setor..."
+                  value={workerQuery}
+                  onChange={(e) => setWorkerQuery(e.target.value)}
+                />
+              </div>
+              <div
+                className="portal-section-tabs"
+                role="tablist"
+                aria-label="Filtro de biometria"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  className={`portal-section-tab ${bioFilter === 'all' ? 'is-active' : ''}`}
+                  aria-selected={bioFilter === 'all'}
+                  onClick={() => setBioFilter('all')}
+                >
+                  Todos
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={`portal-section-tab ${bioFilter === 'pending' ? 'is-active' : ''}`}
+                  aria-selected={bioFilter === 'pending'}
+                  onClick={() => setBioFilter('pending')}
+                >
+                  Biometria pendente
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={`portal-section-tab ${bioFilter === 'ok' ? 'is-active' : ''}`}
+                  aria-selected={bioFilter === 'ok'}
+                  onClick={() => setBioFilter('ok')}
+                >
+                  Biometria ok
+                </button>
+              </div>
+              {filteredWorkers.length === 0 ? (
+                <div className="empty-state">
+                  <p className="page-lead">Nenhum trabalhador neste filtro.</p>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setWorkerQuery('');
+                      setBioFilter('all');
+                    }}
+                  >
+                    Limpar filtros
+                  </button>
+                </div>
+              ) : (
             <div className="stack-list" role="list" aria-label="Trabalhadores">
-              {workers.map((worker) => {
+              {filteredWorkers.map((worker) => {
                 const bio = biometricStatusLabel(worker);
                 return (
                 <article key={worker.id} role="listitem" className="stack-card">
@@ -1122,6 +1212,8 @@ export default function ClienteTrabalhadoresPage() {
                 );
               })}
             </div>
+              )}
+            </>
           )}
         </section>
       ) : null}

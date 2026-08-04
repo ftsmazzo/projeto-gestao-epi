@@ -154,18 +154,23 @@ function PortalRelatoriosContent() {
 
   return (
     <div className="portal-home">
-      <header className="portal-home-header">
+      <header className="portal-home-header portal-home-header--decision">
         <div>
           <p className="page-kicker">Dia a dia</p>
           <h1 className="page-title page-title--sm">Relatorios</h1>
           <p className="page-lead">
-            Consulta operacional de entregas, estoque, devolucoes e cobertura de
-            EPI. Somente leitura — sem alterar estoque ou entregas.
+            Consulta de entregas, estoque, devolucoes e cobertura. Somente
+            leitura — nao altera operacao.
           </p>
         </div>
       </header>
 
-      <form className="form-grid" onSubmit={applyFilters} aria-label="Filtros">
+      <form
+        className="portal-card form-grid"
+        onSubmit={applyFilters}
+        aria-label="Filtros"
+        style={{ marginBottom: '1rem' }}
+      >
         <div className="field">
           <label htmlFor="rep-from">De</label>
           <input
@@ -314,14 +319,14 @@ function PortalRelatoriosContent() {
         </div>
       </form>
 
-      <div className="panel-tabs" role="tablist" aria-label="Abas de relatorio">
+      <div className="portal-section-tabs" role="tablist" aria-label="Abas de relatorio">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             role="tab"
             aria-selected={tab === t.id}
-            className={`panel-tab ${tab === t.id ? 'is-active' : ''}`}
+            className={`portal-section-tab ${tab === t.id ? 'is-active' : ''}`}
             onClick={() => setTab(t.id)}
           >
             {t.label}

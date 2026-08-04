@@ -44,94 +44,122 @@ export default function RegisterPage() {
         </Link>
       }
     >
-      <div className="auth-layout">
-        <section
-          className="auth-panel auth-panel--wide"
-          aria-labelledby="register-title"
-        >
-          <p className="page-kicker">Onboarding</p>
-          <h1 id="register-title" className="page-title">
-            Registrar organizacao
-          </h1>
-          <p className="page-lead">
-            Cria a empresa usuaria (tenant) e o usuario dono. Clientes atendidos
-            e cotas por cliente entram nas proximas etapas.
+      <div className="auth-split">
+        <aside className="auth-split__brand" aria-hidden="true">
+          <h2>Comece a consultoria em minutos</h2>
+          <p>
+            Crie a organizacao, defina a franquia de vidas e implante o primeiro
+            cliente com PGRO, estrutura e portal operacional.
           </p>
+          <ol className="auth-split__steps">
+            <li>
+              <span>1</span>
+              Registrar tenant e dono
+            </li>
+            <li>
+              <span>2</span>
+              Cadastrar cliente e cotas
+            </li>
+            <li>
+              <span>3</span>
+              Liberar o painel da empresa
+            </li>
+          </ol>
+        </aside>
 
-          <form className="form" onSubmit={onSubmit} noValidate>
-            <div className="field">
-              <label htmlFor="register-name">Seu nome</label>
-              <input
-                id="register-name"
-                required
-                minLength={2}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="register-email">Email</label>
-              <input
-                id="register-email"
-                type="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="register-password">Senha</label>
-              <input
-                id="register-password"
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={8}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <p className="field-hint">Minimo de 8 caracteres.</p>
-            </div>
-            <div className="field">
-              <label htmlFor="register-org">Nome da organizacao (tenant)</label>
-              <input
-                id="register-org"
-                required
-                minLength={2}
-                value={organizationName}
-                onChange={(e) => setOrganizationName(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="register-quota">
-                Franquia total de vidas contratadas
-              </label>
-              <input
-                id="register-quota"
-                type="number"
-                min={0}
-                value={contractedLifeQuota}
-                onChange={(e) => setContractedLifeQuota(e.target.value)}
-              />
-              <p className="field-hint">
-                Valor total do contrato. Distribuicao por cliente vem depois.
-              </p>
-            </div>
-            {error ? (
-              <p className="error" role="alert">
-                {error}
-              </p>
-            ) : null}
-            <button className="btn btn-primary btn-block" type="submit" disabled={loading}>
-              {loading ? 'Registrando...' : 'Criar conta'}
-            </button>
-          </form>
+        <div className="auth-split__panel">
+          <section
+            className="auth-panel auth-panel--wide"
+            aria-labelledby="register-title"
+          >
+            <p className="page-kicker">Onboarding</p>
+            <h1 id="register-title" className="page-title">
+              Registrar organizacao
+            </h1>
+            <p className="page-lead">
+              Cria a empresa usuaria (tenant) e o usuario dono. Depois voce
+              cadastra os clientes atendidos.
+            </p>
 
-          <p className="form-footer">
-            Ja tem conta? <Link href="/login">Entrar</Link>
-          </p>
-        </section>
+            <form className="form" onSubmit={onSubmit} noValidate>
+              <div className="field">
+                <label htmlFor="register-name">Seu nome</label>
+                <input
+                  id="register-name"
+                  required
+                  minLength={2}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="register-email">Email</label>
+                <input
+                  id="register-email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="register-password">Senha</label>
+                <input
+                  id="register-password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <p className="field-hint">Minimo de 8 caracteres.</p>
+              </div>
+              <div className="field">
+                <label htmlFor="register-org">Nome da organizacao (tenant)</label>
+                <input
+                  id="register-org"
+                  required
+                  minLength={2}
+                  value={organizationName}
+                  onChange={(e) => setOrganizationName(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="register-quota">
+                  Franquia total de vidas contratadas
+                </label>
+                <input
+                  id="register-quota"
+                  type="number"
+                  min={0}
+                  value={contractedLifeQuota}
+                  onChange={(e) => setContractedLifeQuota(e.target.value)}
+                />
+                <p className="field-hint">
+                  Valor total do contrato. Distribuicao por cliente vem depois.
+                </p>
+              </div>
+              {error ? (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              <button
+                className="btn btn-primary btn-block"
+                type="submit"
+                disabled={loading}
+              >
+                {loading ? 'Registrando...' : 'Criar conta'}
+              </button>
+            </form>
+
+            <p className="form-footer">
+              Ja tem conta? <Link href="/login">Entrar</Link>
+            </p>
+          </section>
+        </div>
       </div>
     </AppShell>
   );

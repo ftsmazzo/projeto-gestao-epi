@@ -475,11 +475,17 @@ function EstruturaContent({ clientId }: { clientId: string }) {
             {client.tradeName || client.legalName}
           </h1>
           <p className="page-lead">
-            Setores, funcoes, riscos e necessidades desta empresa. PGRO fica na
-            aba Atualizar PGRO do menu do workspace.
+            Setores, funcoes, riscos e necessidades. Prefira importar o PGRO e
+            revisar aqui o que foi extraido.
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
+          <Link
+            className="btn btn-primary"
+            href={`/clientes/${clientId}/atualizar-pgro`}
+          >
+            Importar / atualizar PGRO
+          </Link>
           <button
             type="button"
             className="btn btn-secondary"
@@ -489,6 +495,32 @@ function EstruturaContent({ clientId }: { clientId: string }) {
           </button>
         </div>
       </header>
+
+      {sectors.length === 0 ? (
+        <section className="action-strip" aria-label="Comecar estrutura">
+          <Link
+            href={`/clientes/${clientId}/atualizar-pgro`}
+            className="action-tile action-tile--primary"
+          >
+            <p className="action-tile__kicker">Recomendado</p>
+            <h2 className="action-tile__title">Importar PGRO em PDF</h2>
+            <p className="action-tile__desc">
+              Extrai setores, funcoes, riscos e EPIs automaticamente para
+              revisar.
+            </p>
+          </Link>
+          <Link
+            href={`/clientes/${clientId}/unidades`}
+            className="action-tile"
+          >
+            <p className="action-tile__kicker">Manual</p>
+            <h2 className="action-tile__title">Cadastrar unidades</h2>
+            <p className="action-tile__desc">
+              Matriz e filiais antes de montar setores na mao.
+            </p>
+          </Link>
+        </section>
+      ) : null}
 
       {error ? (
         <p className="error" role="alert">

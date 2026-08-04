@@ -11,6 +11,7 @@ import {
   STOCK_OPERATOR_LIMIT,
 } from '@gestao-epi/shared';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ClientAccessCredentials } from '../../../../components/ClientAccessCredentials';
 import { consumeClientAccessOnce } from '../../../../lib/client-access-session';
@@ -177,6 +178,24 @@ export default function ClienteUsuariosPage() {
 
   return (
     <div className="workspace-section">
+      <section className="action-strip" aria-label="Proximo passo">
+        <div className="action-tile action-tile--primary">
+          <p className="action-tile__kicker">Acesso ao portal</p>
+          <h2 className="action-tile__title">Libere o gestor da empresa</h2>
+          <p className="action-tile__desc">
+            Cadastre e-mail e WhatsApp. A senha temporaria aparece uma unica
+            vez — o gestor entra em /portal/login.
+          </p>
+        </div>
+        <Link href="/portal/login" className="action-tile" target="_blank" rel="noreferrer">
+          <p className="action-tile__kicker">Teste</p>
+          <h2 className="action-tile__title">Abrir portal</h2>
+          <p className="action-tile__desc">
+            Confira a tela que o cliente vera apos receber o acesso.
+          </p>
+        </Link>
+      </section>
+
       <section className="surface" aria-labelledby="users-title">
         <div className="form-section-header">
           <div>
@@ -188,8 +207,7 @@ export default function ClienteUsuariosPage() {
               Gestores acessam o <strong>portal do cliente</strong> em{' '}
               <span className="mono">/portal/login</span>. Nao usam o login da
               Consultoria. Limites: {CLIENT_MANAGER_LIMIT} gestores e{' '}
-              {STOCK_OPERATOR_LIMIT} operadores. O 2º gestor e o contato
-              operacional (EPI/trabalhadores) para comunicacoes.
+              {STOCK_OPERATOR_LIMIT} operadores.
             </p>
           </div>
           <div className="quota-summary" aria-label="Limites">
@@ -285,7 +303,7 @@ export default function ClienteUsuariosPage() {
                 {userError}
               </p>
             ) : null}
-            <div className="btn-row">
+            <div className="flow-sticky-bar">
               <button
                 type="submit"
                 className="btn btn-primary"
@@ -306,9 +324,13 @@ export default function ClienteUsuariosPage() {
         )}
 
         {users.length === 0 ? (
-          <p className="page-lead" style={{ marginTop: '1rem' }}>
-            Nenhum usuario cadastrado.
-          </p>
+          <div className="empty-state" style={{ marginTop: '1.25rem' }}>
+            <p className="page-title page-title--sm">Nenhum usuario ainda</p>
+            <p className="page-lead">
+              Cadastre o primeiro gestor para a empresa operar estoque e
+              entregas no portal.
+            </p>
+          </div>
         ) : (
           <div className="stack-list" role="list" aria-label="Usuarios" style={{ marginTop: '1.25rem' }}>
             {users.map((user) => (

@@ -50,6 +50,7 @@ function PortalTrabalhadoresContent() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -81,9 +82,24 @@ function PortalTrabalhadoresContent() {
 
   const workers = useMemo(() => {
     if (!data) return [];
-    if (!onlyDue) return data.workers;
-    return data.workers.filter((w) => w.replacementDue);
-  }, [data, onlyDue]);
+    const base = onlyDue
+      ? data.workers.filter((w) => w.replacementDue)
+      : data.workers;
+    const q = query.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((w) => {
+      const hay = [
+        w.name,
+        w.registration ?? '',
+        w.role ?? '',
+        w.department ?? '',
+        w.unitName ?? '',
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [data, onlyDue, query]);
 
   const criticalDays = data?.replacementHorizon.criticalDays ?? 3;
   const warnDays = data?.replacementHorizon.warnDays ?? 5;
@@ -149,18 +165,46 @@ function PortalTrabalhadoresContent() {
                 Abrir fila de trocas ({data.summary.withReplacementDue})
               </Link>
             ) : null}
-            <Link className="btn btn-secondary" href="/portal">
-              Voltar ao painel
+            <Link className="btn btn-secondary" href="/portal/entregas">
+              Nova entrega
             </Link>
           </div>
 
+          {data.workers.length > 0 ? (
+            <div className="client-search">
+              <label htmlFor="portal-worker-search" className="field-hint">
+                Buscar trabalhador
+              </label>
+              <input
+                id="portal-worker-search"
+                type="search"
+                placeholder="Nome, matricula, funcao..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+          ) : null}
+
           <section className="portal-worker-list" aria-label="Lista">
             {workers.length === 0 ? (
-              <p className="page-lead">
-                {onlyDue
-                  ? 'Nenhum trabalhador com EPI vencendo no horizonte.'
-                  : 'Nenhum trabalhador cadastrado para esta empresa.'}
-              </p>
+              <div className="empty-state">
+                <p className="page-lead">
+                  {onlyDue
+                    ? 'Nenhum trabalhador com EPI vencendo no horizonte.'
+                    : query
+                      ? `Nenhum resultado para "${query}".`
+                      : 'Nenhum trabalhador cadastrado para esta empresa.'}
+                </p>
+                {query ? (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setQuery('')}
+                  >
+                    Limpar busca
+                  </button>
+                ) : null}
+              </div>
             ) : (
               workers.map((worker) => {
                 const due = worker.replacementDue;

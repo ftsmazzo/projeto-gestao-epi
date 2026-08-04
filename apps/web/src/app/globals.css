@@ -794,6 +794,12 @@ a.btn-danger:hover {
 .empty-state {
   display: grid;
   gap: 0.85rem;
+  justify-items: start;
+  padding: 1.25rem 0.25rem;
+}
+
+.empty-state .page-title {
+  margin-bottom: 0;
 }
 
 .access-credentials {
