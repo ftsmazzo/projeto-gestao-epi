@@ -20,6 +20,7 @@ import {
   createPortalWorker,
   fetchPortalEstrutura,
   fetchPortalTrabalhadores,
+  generatePortalWorkerFacialEnrollmentLink,
   updatePortalWorker,
   updatePortalWorkerStatus,
 } from '../../../lib/client-auth';
@@ -87,6 +88,22 @@ function toDateInput(value: string | null) {
 
 type PortalWorkerRow = PortalTrabalhadoresResponse['workers'][number];
 
+function bioLabel(worker: PortalWorkerRow) {
+  if (worker.hasValidBiometrics) {
+    return { ok: true, text: 'Face ok' };
+  }
+  switch (worker.biometricStatus) {
+    case 'NEEDS_REENROLLMENT':
+      return { ok: false, text: 'Recadastrar face' };
+    case 'INCOMPLETE':
+      return { ok: false, text: 'Face incompleta' };
+    case 'REVOKED':
+      return { ok: false, text: 'Face revogada' };
+    default:
+      return { ok: false, text: 'Sem face' };
+  }
+}
+
 function PortalTrabalhadoresContent() {
   const searchParams = useSearchParams();
   const filtro = searchParams.get('filtro');
@@ -105,6 +122,11 @@ function PortalTrabalhadoresContent() {
   const [mode, setMode] = useState<FormMode>('closed');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<WorkerFormState>(emptyForm);
+  const [enrollmentUrl, setEnrollmentUrl] = useState<string | null>(null);
+  const [enrollmentBusyFor, setEnrollmentBusyFor] = useState<string | null>(
+    null,
+  );
+  const [linkCopied, setLinkCopied] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -268,6 +290,45 @@ function PortalTrabalhadoresContent() {
     }
   }
 
+  async function generateEnrollment(worker: PortalWorkerRow) {
+    setError(null);
+    setEnrollmentUrl(null);
+    setLinkCopied(false);
+    if (worker.hasValidBiometrics) {
+      setError(
+        'Este trabalhador ja tem face valida. Revogue na Consultoria se precisar recadastrar.',
+      );
+      return;
+    }
+    if (!worker.cpf || stripCpf(worker.cpf).length < 4) {
+      setError('Informe o CPF do trabalhador (Editar) antes de gerar o link.');
+      return;
+    }
+    setEnrollmentBusyFor(worker.id);
+    try {
+      const link = await generatePortalWorkerFacialEnrollmentLink(worker.id);
+      setEnrollmentUrl(link.url);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel gerar o link facial.',
+      );
+    } finally {
+      setEnrollmentBusyFor(null);
+    }
+  }
+
+  async function copyEnrollmentUrl() {
+    if (!enrollmentUrl) return;
+    try {
+      await navigator.clipboard.writeText(enrollmentUrl);
+      setLinkCopied(true);
+    } catch {
+      setLinkCopied(false);
+    }
+  }
+
   return (
     <div className="portal-home">
       <header className="portal-home-header portal-home-header--decision">
@@ -290,6 +351,36 @@ function PortalTrabalhadoresContent() {
         <p className="error" role="alert">
           {error}
         </p>
+      ) : null}
+      {enrollmentUrl ? (
+        <div className="notice notice--ok enroll-link-banner" role="status">
+          <p>Link de cadastro facial gerado (valido por 24h):</p>
+          <div className="btn-row" style={{ marginTop: '0.5rem' }}>
+            <input
+              className="mono"
+              readOnly
+              value={enrollmentUrl}
+              style={{ flex: 1, minWidth: 0 }}
+            />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void copyEnrollmentUrl()}
+            >
+              {linkCopied ? 'Copiado' : 'Copiar'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => {
+                setEnrollmentUrl(null);
+                setLinkCopied(false);
+              }}
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
       ) : null}
       {loading ? (
         <p className="page-lead">Carregando trabalhadores...</p>
@@ -579,6 +670,7 @@ function PortalTrabalhadoresContent() {
                 const due = worker.replacementDue;
                 const expanded = expandedId === worker.id;
                 const urgentCount = due ? due.overdue + due.critical : 0;
+                const bio = bioLabel(worker);
 
                 return (
                   <article
@@ -609,6 +701,13 @@ function PortalTrabalhadoresContent() {
                           }`}
                         >
                           {worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+                        </span>
+                        <span
+                          className={`status-pill ${
+                            bio.ok ? 'status-pill--active' : 'status-pill--warn'
+                          }`}
+                        >
+                          {bio.text}
                         </span>
                         {due ? (
                           <span
@@ -657,6 +756,18 @@ function PortalTrabalhadoresContent() {
                               : `Ver ${due.count} EPI(s)`}
                           </button>
                         </>
+                      ) : null}
+                      {!bio.ok ? (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={enrollmentBusyFor === worker.id}
+                          onClick={() => void generateEnrollment(worker)}
+                        >
+                          {enrollmentBusyFor === worker.id
+                            ? 'Gerando...'
+                            : 'Link facial'}
+                        </button>
                       ) : null}
                       <button
                         type="button"

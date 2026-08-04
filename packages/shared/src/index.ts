@@ -403,6 +403,101 @@ export type EpiCategory =
   | 'TRONCO'
   | 'OUTROS';
 
+/** Infere categoria a partir do nome do equipamento / necessidade. */
+export function suggestCategoryFromEquipment(
+  equipmentName: string | null | undefined,
+): EpiCategory {
+  const text = (equipmentName ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+  if (!text) return 'OUTROS';
+  if (text.includes('RESPIRADOR') || text.includes('RESPIRATORIO')) {
+    return 'RESPIRATORIA';
+  }
+  if (
+    text.includes('PROTETOR AUDITIVO') ||
+    text.includes('AUDITIVO') ||
+    text.includes('AURICULAR')
+  ) {
+    return 'AUDITIVA';
+  }
+  if (text.includes('LUVA')) return 'MAOS';
+  if (
+    text.includes('OCULOS') ||
+    text.includes('VISEIRA') ||
+    text.includes('OCULAR') ||
+    text.includes('PROTETOR FACIAL')
+  ) {
+    return 'OLHOS';
+  }
+  if (text.includes('CAPACETE')) return 'CABECA';
+  if (
+    text.includes('CALCADO') ||
+    text.includes('BOTINA') ||
+    text.includes('BOTA') ||
+    text.includes('SAPATO')
+  ) {
+    return 'PES';
+  }
+  if (
+    text.includes('CINTUR') ||
+    text.includes('TRAVA QUEDA') ||
+    text.includes('TRAVA-QUEDA') ||
+    text.includes('QUEDA')
+  ) {
+    return 'QUEDA';
+  }
+  if (
+    text.includes('AVENTAL') ||
+    text.includes('JALECO') ||
+    text.includes('MACACAO') ||
+    text.includes('COLETE')
+  ) {
+    return 'TRONCO';
+  }
+  return 'OUTROS';
+}
+
+/**
+ * Compara necessidade (PGRO) com equipamento do CA.
+ * Ex.: necessidade "Capacete" + CA de respirador de jateamento = incompativel.
+ */
+export function assessNeedEquipmentCompatibility(
+  needName: string,
+  equipmentName: string | null | undefined,
+): {
+  compatible: boolean;
+  needCategory: EpiCategory;
+  equipmentCategory: EpiCategory;
+  reason: string | null;
+} {
+  const needCategory = suggestCategoryFromEquipment(needName);
+  const equipmentCategory = suggestCategoryFromEquipment(equipmentName);
+  if (needCategory === 'OUTROS' || equipmentCategory === 'OUTROS') {
+    return {
+      compatible: true,
+      needCategory,
+      equipmentCategory,
+      reason: null,
+    };
+  }
+  if (needCategory === equipmentCategory) {
+    return {
+      compatible: true,
+      needCategory,
+      equipmentCategory,
+      reason: null,
+    };
+  }
+  return {
+    compatible: false,
+    needCategory,
+    equipmentCategory,
+    reason: `A necessidade sugere categoria ${needCategory}, mas o CA descreve ${equipmentCategory}.`,
+  };
+}
+
 export interface EpiVariant {
   id: string;
   organizationId: string;
@@ -1274,6 +1369,14 @@ export interface PortalTrabalhadoresResponse {
     sectorName: string | null;
     jobFunctionName: string | null;
     admissionDate: string | null;
+    hasValidBiometrics: boolean;
+    biometricStatus:
+      | 'OK'
+      | 'OK_MISSING_IMAGE'
+      | 'NEEDS_REENROLLMENT'
+      | 'REVOKED'
+      | 'MISSING'
+      | 'INCOMPLETE';
     replacementDue: PortalTrabalhadorReplacementDue | null;
   }>;
 }

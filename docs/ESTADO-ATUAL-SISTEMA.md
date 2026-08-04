@@ -113,7 +113,7 @@ Login: `/portal/login` · Shell: `PortalShell` · Nav: `PORTAL_NAV`
 |---|---|---|
 | `/portal` | Dashboard (cards do dia a dia) | Ativo — dados via API |
 | `/portal/estoque` | Entrada e saldos da empresa | **Operacional** — busca na base CAEPI (igual catalogo), seleciona o EPI comprado, vincula a necessidade; nao digitar CA na mao |
-| `/portal/trabalhadores` | Vidas da empresa | **Somente leitura** (lista + cotas). CRUD operacional ainda nao esta no portal |
+| `/portal/trabalhadores` | Vidas da empresa | **CRUD** + link facial + ficha EPI |
 | `/portal/estrutura` | Leitura da estrutura implantada | Consulta |
 | `/portal/validade` | Validades | Consulta / parcial |
 | `/portal/entregas` | Entregas | Entrega real com facial + baixa de estoque + historico (07.2) |

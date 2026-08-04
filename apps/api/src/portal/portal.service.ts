@@ -25,6 +25,7 @@ import {
   EPI_SHEET_DECLARATION_VERSION,
   FACE_ENGINE,
   FACE_ENGINE_VERSION,
+  assessNeedEquipmentCompatibility,
   isValidFaceDescriptor,
   resolveFaceMatchThreshold,
 } from '@gestao-epi/shared';
@@ -39,6 +40,8 @@ import { StockService } from '../stock/stock.service';
 import type { CreateWorkerDto } from '../workers/dto/create-worker.dto';
 import type { UpdateWorkerDto } from '../workers/dto/update-worker.dto';
 import { WorkerBiometricConsentService } from '../workers/worker-biometric-consent.service';
+import { evaluateWorkerBiometrics } from '../workers/worker-biometrics.utils';
+import { WorkerFacialEnrollmentService } from '../workers/worker-facial-enrollment.service';
 import {
   resolveWorkerFaceReferenceAbsolutePath,
 } from '../workers/worker-face-reference.storage';
@@ -139,6 +142,7 @@ export class PortalService {
     private readonly audit: AuditService,
     private readonly biometricConsent: WorkerBiometricConsentService,
     private readonly workers: WorkersService,
+    private readonly facialEnrollment: WorkerFacialEnrollmentService,
   ) {}
 
   async getDashboard(organizationId: string, servedClientId: string) {
@@ -656,7 +660,7 @@ export class PortalService {
     );
     criticalHorizon.setUTCHours(23, 59, 59, 999);
 
-    const [workers, dueItems] = await Promise.all([
+    const [workers, dueItems, faces] = await Promise.all([
       this.prisma.worker.findMany({
         where: { organizationId, servedClientId },
         orderBy: [{ status: 'asc' }, { name: 'asc' }],
@@ -699,7 +703,34 @@ export class PortalService {
         },
         orderBy: { nextReplacementAt: 'asc' },
       }),
+      this.prisma.workerFacialReference.findMany({
+        where: {
+          organizationId,
+          servedClientId,
+          status: {
+            in: [
+              WorkerFacialReferenceStatus.ACTIVE,
+              WorkerFacialReferenceStatus.NEEDS_REENROLLMENT,
+              WorkerFacialReferenceStatus.REVOKED,
+            ],
+          },
+        },
+        orderBy: { uploadedAt: 'desc' },
+        select: {
+          workerId: true,
+          status: true,
+          faceDescriptor: true,
+          filePath: true,
+        },
+      }),
     ]);
+
+    const faceByWorker = new Map<string, (typeof faces)[number]>();
+    for (const face of faces) {
+      if (!faceByWorker.has(face.workerId)) {
+        faceByWorker.set(face.workerId, face);
+      }
+    }
 
     const dueByWorker = new Map<
       string,
@@ -768,6 +799,13 @@ export class PortalService {
               items,
             };
 
+      const face = faceByWorker.get(w.id);
+      const bio = evaluateWorkerBiometrics({
+        status: face?.status,
+        faceDescriptor: face?.faceDescriptor,
+        filePath: face?.filePath,
+      });
+
       return {
         id: w.id,
         name: w.name,
@@ -786,6 +824,8 @@ export class PortalService {
         sectorName: w.clientSector?.name ?? null,
         jobFunctionName: w.clientJobFunction?.name ?? null,
         admissionDate: w.admissionDate?.toISOString() ?? null,
+        hasValidBiometrics: bio.hasValidBiometrics,
+        biometricStatus: bio.biometricStatus,
         replacementDue,
       };
     });
@@ -859,6 +899,35 @@ export class PortalService {
       workerId,
     );
     return this.workers.updateStatus(organizationId, userId, workerId, status);
+  }
+
+  async getWorkerFacialEnrollmentLink(
+    organizationId: string,
+    servedClientId: string,
+    workerId: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    await this.assertWorkerBelongsToClient(
+      organizationId,
+      servedClientId,
+      workerId,
+    );
+    return this.facialEnrollment.getLatestStatus(organizationId, workerId);
+  }
+
+  async generateWorkerFacialEnrollmentLink(
+    organizationId: string,
+    userId: string,
+    servedClientId: string,
+    workerId: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    await this.assertWorkerBelongsToClient(
+      organizationId,
+      servedClientId,
+      workerId,
+    );
+    return this.facialEnrollment.generate(organizationId, userId, workerId);
   }
 
   private async assertWorkerBelongsToClient(
@@ -1249,12 +1318,18 @@ export class PortalService {
     if (input.epiItemId) {
       const existing = await this.prisma.epiItem.findFirst({
         where: { id: input.epiItemId, organizationId, isActive: true },
-        select: { id: true },
+        select: { id: true, name: true, caNumber: true },
       });
       if (!existing) {
         throw new NotFoundException('EPI informado nao existe no catalogo.');
       }
       if (input.epiNeedId) {
+        await this.assertNeedMatchesCaEquipment(
+          organizationId,
+          input.epiNeedId,
+          existing.caNumber ?? '—',
+          existing.name,
+        );
         await this.ensureNeedItemLink(
           organizationId,
           input.epiNeedId,
@@ -1303,6 +1378,16 @@ export class PortalService {
     });
     if (byCa) {
       if (input.epiNeedId) {
+        const item = await this.prisma.epiItem.findFirst({
+          where: { id: byCa.id },
+          select: { name: true, caNumber: true },
+        });
+        await this.assertNeedMatchesCaEquipment(
+          organizationId,
+          input.epiNeedId,
+          item?.caNumber ?? caNumber,
+          item?.name ?? null,
+        );
         await this.ensureNeedItemLink(
           organizationId,
           input.epiNeedId,
@@ -1321,6 +1406,15 @@ export class PortalService {
     }
 
     const cert = caepi.certificate;
+    if (input.epiNeedId) {
+      await this.assertNeedMatchesCaEquipment(
+        organizationId,
+        input.epiNeedId,
+        caNumber,
+        cert.equipmentName,
+      );
+    }
+
     const name =
       cert.equipmentName?.trim() ||
       (input.epiNeedId
@@ -1360,6 +1454,30 @@ export class PortalService {
     }
 
     return { epiItemId: created.id, created: true };
+  }
+
+  private async assertNeedMatchesCaEquipment(
+    organizationId: string,
+    epiNeedId: string,
+    caNumber: string,
+    equipmentName: string | null | undefined,
+  ) {
+    const need = await this.prisma.epiNeed.findFirst({
+      where: { id: epiNeedId, organizationId },
+      select: { name: true },
+    });
+    if (!need) {
+      throw new NotFoundException('Necessidade nao encontrada.');
+    }
+    const check = assessNeedEquipmentCompatibility(
+      need.name,
+      equipmentName,
+    );
+    if (!check.compatible) {
+      throw new BadRequestException(
+        `CA ${caNumber} nao combina com a necessidade "${need.name}". ${check.reason} Escolha um CA da mesma protecao (ex.: capacete de cabeca, nao respirador de jateamento).`,
+      );
+    }
   }
 
   private async ensureNeedItemLink(

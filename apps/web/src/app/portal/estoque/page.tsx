@@ -4,6 +4,7 @@ import type {
   CaCertificateSearchItem,
   PortalEstoqueResponse,
 } from '@gestao-epi/shared';
+import { assessNeedEquipmentCompatibility } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
@@ -314,18 +315,23 @@ function PortalEstoqueContent() {
 
   function pickForNeed(index: number, cert: CaCertificateSearchItem) {
     setNeedRows((prev) =>
-      prev.map((r, i) =>
-        i === index
-          ? {
-              ...r,
-              picked: cert,
-              selected: true,
-              picking: false,
-              suggestions: [],
-              suggestMessage: null,
-            }
-          : r,
-      ),
+      prev.map((r, i) => {
+        if (i !== index) return r;
+        const check = assessNeedEquipmentCompatibility(
+          r.needName,
+          cert.equipmentName,
+        );
+        return {
+          ...r,
+          picked: cert,
+          selected: check.compatible,
+          picking: false,
+          suggestions: [],
+          suggestMessage: check.compatible
+            ? null
+            : `CA ${cert.caNumber} nao combina: ${check.reason}`,
+        };
+      }),
     );
   }
 
@@ -336,16 +342,35 @@ function PortalEstoqueContent() {
         epiNeedId: row.needId,
         caNumber: row.picked!.caNumber,
         quantity: row.quantity,
+        needName: row.needName,
+        equipmentName: row.picked!.equipmentName,
       }));
     if (items.length === 0) {
       setError('Selecione o EPI (CA) de cada necessidade que deseja incluir.');
+      return;
+    }
+    const mismatch = items.find(
+      (item) =>
+        !assessNeedEquipmentCompatibility(item.needName, item.equipmentName)
+          .compatible,
+    );
+    if (mismatch) {
+      setError(
+        `CA ${mismatch.caNumber} nao combina com "${mismatch.needName}". Escolha outro CA.`,
+      );
       return;
     }
     setSaving(true);
     setError(null);
     setSuccess(null);
     try {
-      const result = await createPortalStockEntradas(items);
+      const result = await createPortalStockEntradas(
+        items.map(({ epiNeedId, caNumber, quantity }) => ({
+          epiNeedId,
+          caNumber,
+          quantity,
+        })),
+      );
       setSuccess(`${result.created} entrada(s) registrada(s) no estoque.`);
       setView('saldos');
       await reload();

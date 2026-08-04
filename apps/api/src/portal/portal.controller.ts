@@ -348,6 +348,33 @@ export class PortalController {
     );
   }
 
+  @Get('trabalhadores/:id/facial-enrollment-link')
+  getFacialEnrollmentLink(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+  ) {
+    this.assertClient(user);
+    return this.portal.getWorkerFacialEnrollmentLink(
+      user.organizationId,
+      user.servedClientId,
+      id,
+    );
+  }
+
+  @Post('trabalhadores/:id/facial-enrollment-link')
+  generateFacialEnrollmentLink(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+  ) {
+    this.assertClient(user);
+    return this.portal.generateWorkerFacialEnrollmentLink(
+      user.organizationId,
+      user.sub,
+      user.servedClientId,
+      id,
+    );
+  }
+
   @Get('trabalhadores/:id/epi-coverage')
   trabalhadorEpiCoverage(
     @CurrentUser() user: ClientJwtPayload,

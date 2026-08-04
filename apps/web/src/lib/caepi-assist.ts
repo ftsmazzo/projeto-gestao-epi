@@ -1,4 +1,5 @@
 import type { CaCertificate, EpiCategory, EpiUnitOfMeasure } from '@gestao-epi/shared';
+import { suggestCategoryFromEquipment as suggestCategoryShared } from '@gestao-epi/shared';
 
 export function normalizeCaLookupInput(value: string) {
   return value.trim().replace(/\s+/g, '');
@@ -7,60 +8,7 @@ export function normalizeCaLookupInput(value: string) {
 export function suggestCategoryFromEquipment(
   equipmentName: string | null | undefined,
 ): EpiCategory {
-  const text = (equipmentName ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase();
-
-  if (!text) {
-    return 'OUTROS';
-  }
-  if (text.includes('RESPIRADOR') || text.includes('RESPIRATORIO')) {
-    return 'RESPIRATORIA';
-  }
-  if (
-    text.includes('PROTETOR AUDITIVO') ||
-    text.includes('AUDITIVO') ||
-    text.includes('AURICULAR')
-  ) {
-    return 'AUDITIVA';
-  }
-  if (text.includes('LUVA')) {
-    return 'MAOS';
-  }
-  if (
-    text.includes('OCULOS') ||
-    text.includes('VISEIRA') ||
-    text.includes('OCULAR') ||
-    text.includes('PROTETOR FACIAL')
-  ) {
-    return 'OLHOS';
-  }
-  if (text.includes('CAPACETE')) {
-    return 'CABECA';
-  }
-  if (
-    text.includes('CALCADO') ||
-    text.includes('BOTINA') ||
-    text.includes('BOTA')
-  ) {
-    return 'PES';
-  }
-  if (
-    text.includes('CINTO') ||
-    text.includes('TALABARTE') ||
-    text.includes('QUEDA')
-  ) {
-    return 'QUEDA';
-  }
-  if (
-    text.includes('MACACAO') ||
-    text.includes('AVENTAL') ||
-    text.includes('VESTIMENTA')
-  ) {
-    return 'TRONCO';
-  }
-  return 'OUTROS';
+  return suggestCategoryShared(equipmentName);
 }
 
 export function suggestUnitFromEquipment(

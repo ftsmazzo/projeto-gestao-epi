@@ -23,6 +23,8 @@ import type {
   PortalTrabalhadoresResponse,
   PortalValidadeResponse,
   PortalWorkerEpiSheetResponse,
+  WorkerFacialEnrollmentLinkGenerated,
+  WorkerFacialEnrollmentLinkStatusResponse,
 } from '@gestao-epi/shared';
 import { getApiUrl } from './auth';
 
@@ -163,6 +165,21 @@ export async function updatePortalWorkerStatus(
     method: 'PATCH',
     body: JSON.stringify({ status }),
   });
+}
+
+export async function fetchPortalWorkerFacialEnrollmentLink(workerId: string) {
+  return clientApiFetch<WorkerFacialEnrollmentLinkStatusResponse>(
+    `/portal/trabalhadores/${workerId}/facial-enrollment-link`,
+  );
+}
+
+export async function generatePortalWorkerFacialEnrollmentLink(
+  workerId: string,
+) {
+  return clientApiFetch<WorkerFacialEnrollmentLinkGenerated>(
+    `/portal/trabalhadores/${workerId}/facial-enrollment-link`,
+    { method: 'POST' },
+  );
 }
 
 export async function fetchPortalWorkerEpiSheet(

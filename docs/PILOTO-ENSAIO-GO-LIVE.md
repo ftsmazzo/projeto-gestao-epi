@@ -58,3 +58,19 @@ Nao imprime CPF nem biometria.
 - **Portal:** estoque operacional (`/portal/estoque`) com `StockLocation.servedClientId` preenchido.
 - Rota legada `/estoque` na Consultoria foi descontinuada (aviso + links). APIs de criacao de local/movimento na Consultoria rejeitam locais sem cliente.
 
+## Compatibilidade necessidade × CA
+
+Ao entrar estoque no portal vinculando necessidade + CA, o sistema **bloqueia** pares incompativeis
+(ex.: necessidade "Capacete" + CA 21196 de respirador de jateamento). Escolha um CA da mesma
+categoria de protecao.
+
+## Acoes do ensaio InSeg (producao)
+
+| Cliente | Proximo passo |
+|---|---|
+| **Amendo Healthy** | Portal → Trabalhadores: cadastrar vidas + CPF; gerar **Link facial**; estoque; 1 entrega |
+| **Bragametal** | Maria: Editar CPF se faltar → **Link facial** no portal; revisar CA do Capacete se ainda estiver 21196 |
+| Ambos | Repetir entrega no **celular** (passo 12) |
+
+Portal agora cobre CRUD de trabalhadores + geracao de link facial (sem depender da Consultoria no dia a dia).
+
