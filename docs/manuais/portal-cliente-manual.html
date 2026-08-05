@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ProntEPI — Manual do Painel do Cliente</title>
+  <style>
+    :root {
+      --ink: #0f172a;
+      --muted: #64748b;
+      --teal: #0f766e;
+      --teal-dark: #134e4a;
+      --teal-soft: #ccfbf1;
+      --line: #e2e8f0;
+      --bg: #f4f7f8;
+      --surface: #fff;
+      --warn: #b45309;
+      --warn-bg: #fffbeb;
+      --ok: #047857;
+      --ok-bg: #ecfdf5;
+      --crit: #b91c1c;
+      --crit-bg: #fef2f2;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font: 16px/1.55 "Segoe UI", system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    a { color: var(--teal); }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 1.25rem 1.1rem 4rem; }
+    header.hero {
+      display: grid;
+      gap: 1rem;
+      padding: 1.4rem 1.5rem;
+      background: linear-gradient(155deg, #0f172a 0%, #134e4a 55%, #0f766e 100%);
+      color: #ecfeff;
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      margin-bottom: 1.25rem;
+    }
+    .brand { display: flex; gap: .85rem; align-items: center; }
+    .brand svg { width: 48px; height: 48px; border-radius: 12px; }
+    .brand strong { font-size: 1.25rem; letter-spacing: -.03em; }
+    .brand span { display: block; font-size: .88rem; opacity: .78; }
+    header.hero h1 { margin: .2rem 0 0; font-size: clamp(1.55rem, 3vw, 2.1rem); letter-spacing: -.03em; }
+    header.hero p { margin: .35rem 0 0; max-width: 48rem; opacity: .88; }
+    .meta { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+    .chip {
+      font-size: .78rem; font-weight: 650;
+      padding: .28rem .65rem; border-radius: 999px;
+      background: rgba(255,255,255,.12); color: #ecfeff;
+    }
+    nav.toc {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1rem 1.15rem;
+      margin-bottom: 1.5rem;
+    }
+    nav.toc h2 { margin: 0 0 .55rem; font-size: 1rem; }
+    nav.toc ol { margin: 0; padding-left: 1.2rem; columns: 2; gap: 2rem; }
+    @media (max-width: 720px) { nav.toc ol { columns: 1; } }
+    section.doc {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1.25rem 1.3rem 1.4rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 1px 0 rgba(15,23,42,.02);
+    }
+    section.doc h2 { margin: 0 0 .65rem; font-size: 1.35rem; letter-spacing: -.02em; }
+    section.doc h3 { margin: 1.1rem 0 .4rem; font-size: 1.05rem; }
+    .note, .warn, .ok, .crit {
+      padding: .75rem .9rem; border-radius: 10px; border: 1px solid var(--line);
+      margin: .75rem 0;
+    }
+    .note { background: #f0fdfa; border-color: #99f6e4; }
+    .warn { background: var(--warn-bg); border-color: #fcd34d; color: var(--warn); }
+    .ok { background: var(--ok-bg); border-color: #a7f3d0; color: var(--ok); }
+    .crit { background: var(--crit-bg); border-color: #fca5a5; color: var(--crit); }
+    table {
+      width: 100%; border-collapse: collapse; font-size: .92rem; margin: .6rem 0 0;
+    }
+    th, td { border-bottom: 1px solid var(--line); text-align: left; padding: .45rem .4rem; vertical-align: top; }
+    th { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    ol.steps { padding-left: 1.2rem; }
+    ol.steps li { margin: .35rem 0; }
+    .screen {
+      margin: 1rem 0 0;
+      border: 1px solid #cbd5e1;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #eef2f6;
+      box-shadow: var(--shadow);
+    }
+    .screen figcaption {
+      font-size: .82rem; color: var(--muted); padding: .45rem .75rem .7rem;
+      background: var(--surface); border-top: 1px solid var(--line);
+    }
+    .screen a { display: block; color: inherit; }
+    .screen img.shot {
+      display: block; width: 100%; max-height: 640px;
+      object-fit: cover; object-position: top center; background: #eef2f6;
+    }
+    .chrome { display: flex; align-items: center; gap: .5rem; padding: .55rem .75rem; background: #0f172a; color: #ecfeff; font-size: .78rem; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #334155; }
+    .chrome strong { font-weight: 650; }
+    .app {
+      display: grid; grid-template-columns: 168px 1fr; min-height: 280px;
+      background: #f8fafc;
+    }
+    @media (max-width: 800px) { .app { grid-template-columns: 1fr; } .aside { display: none; } }
+    .aside { background: #fff; border-right: 1px solid var(--line); padding: .7rem .55rem; }
+    .navi { display: grid; gap: .25rem; }
+    .navi span {
+      display: block; padding: .4rem .55rem; border-radius: 8px; font-size: .78rem; color: #475569;
+    }
+    .navi span.on { background: var(--teal-soft); color: var(--teal-dark); font-weight: 700; }
+    .main { padding: .85rem .9rem 1rem; }
+    .kicker { margin: 0; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+    .ttl { margin: .15rem 0 0; font-size: 1.15rem; letter-spacing: -.02em; }
+    .lead { margin: .2rem 0 0; font-size: .85rem; color: var(--muted); }
+    .tiles { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: .5rem; margin-top: .7rem; }
+    @media (max-width: 800px) { .tiles { grid-template-columns: 1fr; } }
+    .tile { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: .65rem .7rem; }
+    .tile.p { background: var(--teal); color: #ecfeff; border: 0; }
+    .tile .k { margin: 0; font-size: .65rem; text-transform: uppercase; letter-spacing: .05em; opacity: .75; }
+    .tile h4 { margin: .15rem 0 0; font-size: .92rem; }
+    .tile p { margin: .2rem 0 0; font-size: .75rem; opacity: .85; }
+    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: .45rem; margin-top: .65rem; }
+    .kpi { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: .5rem .6rem; }
+    .kpi b { display: block; font-family: ui-monospace, monospace; font-size: 1.05rem; }
+    .kpi small { color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; }
+    .fake-form { display: grid; gap: .45rem; max-width: 22rem; margin-top: .7rem; }
+    .fake-form label { font-size: .75rem; font-weight: 650; }
+    .fake-form .box { height: 2rem; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-height: 2rem; padding: 0 .8rem; border-radius: 8px; font-size: .8rem; font-weight: 700;
+      border: 0; background: var(--teal); color: #fff;
+    }
+    .btn.sec { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+    .wiz { display: flex; gap: .55rem; margin: .7rem 0 .55rem; font-size: .75rem; }
+    .wiz i { width: 1.35rem; height: 1.35rem; border-radius: 999px; display: grid; place-items: center; background: var(--teal); color: #fff; font-style: normal; font-size: .7rem; }
+    .wiz span { opacity: .55; }
+    .wiz .cur { opacity: 1; font-weight: 700; color: var(--teal-dark); }
+    .row { display: flex; gap: .45rem; flex-wrap: wrap; margin-top: .55rem; }
+    .pill { font-size: .7rem; font-weight: 700; padding: .2rem .5rem; border-radius: 999px; background: #ecfdf5; color: var(--ok); }
+    .pill.w { background: #fffbeb; color: var(--warn); }
+    .pill.c { background: #fef2f2; color: var(--crit); }
+    footer.end { margin-top: 1.5rem; color: var(--muted); font-size: .85rem; }
+    @media print {
+      body { background: #fff; }
+      header.hero, nav.toc, section.doc { break-inside: avoid; box-shadow: none; }
+      .screen { break-inside: avoid; }
+      nav.toc ol { columns: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="brand">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" aria-hidden="true">
+          <rect width="64" height="64" rx="14" fill="#0f172a"/>
+          <path fill="#0f766e" d="M32 9.5c8.4 0 15.2 1.9 19.4 4 1.1.5 1.8 1.6 1.8 2.8v18.2c0 10-6.1 18.7-15.4 22.7L32 59.5l-5.8-2.8C16.9 52.7 10.8 44 10.8 34V16.3c0-1.2.7-2.3 1.8-2.8 4.2-2.1 11-4 19.4-4z"/>
+          <path fill="#99f6e4" d="M27.5 23h8.2c5 0 8.1 2.8 8.1 7.1 0 4.1-3.1 7-8.1 7H30.4v8.4H27.5V23zm2.9 11.4h4.9c3.2 0 5.1-1.6 5.1-4.3 0-2.6-1.9-4.2-5.1-4.2h-4.9v8.5z"/>
+          <path fill="#f8fafc" d="M19.8 37.2 27 44.2l14.4-17.2-2.4-2-12 14.3-5-4.9-2.2 2.8z"/>
+        </svg>
+        <div>
+          <strong>ProntEPI</strong>
+          <span>Manual de uso · Painel do Cliente</span>
+        </div>
+      </div>
+      <h1>Como a empresa opera entregas, estoque e vidas</h1>
+      <p>
+        Este manual descreve o <strong>Painel do Cliente</strong> (<code>/portal</code>), a superficie
+        do dia a dia da empresa. A Consultoria usa outro login e outro menu.
+        Os prints sao <strong>reais</strong>, capturados no piloto da Bragametal (InSeg) em 05/08/2026.
+        Clique na imagem para abrir em tamanho cheio.
+      </p>
+      <div class="meta">
+        <span class="chip">Versao do produto: piloto operacional</span>
+        <span class="chip">Atualizado: 05/08/2026</span>
+        <span class="chip">Piloto: Bragametal · Tadeu Mazzo (Gestor)</span>
+        <span class="chip">URL: /portal/login</span>
+      </div>
+    </header>
+
+    <nav class="toc">
+      <h2>Indice</h2>
+      <ol>
+        <li><a href="#acesso">Acesso e papéis</a></li>
+        <li><a href="#login">Login, senha e conta</a></li>
+        <li><a href="#painel">Painel inicial</a></li>
+        <li><a href="#estoque">Estoque</a></li>
+        <li><a href="#trabalhadores">Trabalhadores</a></li>
+        <li><a href="#face">Cadastro facial</a></li>
+        <li><a href="#entregas">Entregas e comprovante</a></li>
+        <li><a href="#validade">Validade</a></li>
+        <li><a href="#relatorios">Relatorios</a></li>
+        <li><a href="#estrutura">Estrutura e custos</a></li>
+        <li><a href="#mobile">Uso no celular</a></li>
+        <li><a href="#limites">O que o portal nao faz</a></li>
+      </ol>
+    </nav>
+
+    <section class="doc" id="acesso">
+      <h2>1. Acesso e papéis</h2>
+      <p>Ha <strong>duas portas</strong>. Nao misturar.</p>
+      <table>
+        <thead>
+          <tr><th>Superficie</th><th>URL</th><th>Quem usa</th><th>Para que</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Consultoria</td>
+            <td><code>/login</code></td>
+            <td>InSeg / implantacao</td>
+            <td>Cliente, PGRO, estrutura, CAEPI, catalogo, usuarios do portal</td>
+          </tr>
+          <tr>
+            <td>Painel do Cliente</td>
+            <td><code>/portal/login</code></td>
+            <td>Gestor ou operador da empresa</td>
+            <td>Estoque, vidas, entrega facial, relatorios, ficha</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Papeis no portal</h3>
+      <table>
+        <thead><tr><th>Papel</th><th>Faz</th></tr></thead>
+        <tbody>
+          <tr><td>Gestor do cliente</td><td>Opera o painel completo da empresa (estoque, trabalhadores, entregas, relatorios).</td></tr>
+          <tr><td>Operador de estoque</td><td>Mesmo acesso operacional no piloto (estoque e entregas no dia a dia).</td></tr>
+        </tbody>
+      </table>
+      <div class="note">
+        A Consultoria cria o usuario. O cliente recebe e-mail/WhatsApp ou senha temporaria.
+        No primeiro acesso, o sistema pede troca de senha.
+      </div>
+    </section>
+
+    <section class="doc" id="login">
+      <h2>2. Login, senha e conta</h2>
+      <ol class="steps">
+        <li>Abra o endereco do ProntEPI e va em <strong>Portal do cliente</strong> ou direto em <code>/portal/login</code>.</li>
+        <li>Informe e-mail e senha cadastrados.</li>
+        <li>Se aparecer “troque a senha temporaria”, va em <strong>Minha conta</strong>.</li>
+        <li>Esqueceu a senha? Use <strong>Esqueci a senha</strong> (<code>/esqueci-senha?origem=portal</code>). No piloto, a senha temporaria pode aparecer na tela se o envio automatico estiver desligado.</li>
+      </ol>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/login</strong></div>
+        <a href="screenshots/01-login.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/01-login.png" alt="Tela de login do Painel do Cliente" />
+        </a>
+        <figcaption>Print real do login. Link “login da gestao” leva a Consultoria — nao misturar.</figcaption>
+      </figure>
+      <h3>Minha conta</h3>
+      <p>Mostra nome, e-mail e papel. Permite trocar senha (atual + nova + confirmacao, minimo 8 caracteres).</p>
+    </section>
+
+    <section class="doc" id="painel">
+      <h2>3. Painel inicial</h2>
+      <p>Apos o login, o usuario ve a empresa (nome + CNPJ), atalhos do dia, resumo de vidas/setores/funcoes e o bloco <strong>Precisa de atencao</strong>.</p>
+      <p>No piloto Bragametal (05/08/2026): <strong>2/20 vidas</strong>, 4 setores, 6 funcoes, 4 trocas vencidas, 1 CA vencido, 1 trabalhador sem face, 0 entregas nos ultimos 7 dias.</p>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal</strong></div>
+        <a href="screenshots/02-painel.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/02-painel.png" alt="Painel inicial da Bragametal" />
+        </a>
+        <figcaption>Print real do painel. Cards vermelhos pedem acao imediata (troca / CA vencido).</figcaption>
+      </figure>
+    </section>
+
+    <section class="doc" id="estoque">
+      <h2>4. Estoque</h2>
+      <p>O estoque operacional e <strong>da empresa</strong>, nao da Consultoria. Duas abas: <strong>Entrada</strong> e <strong>Saldos</strong>.</p>
+      <ol class="steps">
+        <li>Abra <strong>Estoque</strong>.</li>
+        <li>Na aba Entrada, escolha a necessidade (ex.: Capacete) ou busque um EPI livre na base CAEPI.</li>
+        <li>Selecione o certificado correto (nome do equipamento deve combinar com a necessidade).</li>
+        <li>Informe a quantidade e confirme. O sistema vincula ao catalogo automaticamente.</li>
+        <li>Va em Saldos para conferir unidades por local.</li>
+      </ol>
+      <div class="warn">
+        O sistema bloqueia CA incompativel. Exemplo: necessidade “Capacete” + CA 21196 (respirador de jateamento) e recusado.
+        Escolha um CA de capacete de cabeca.
+      </div>
+      <p>No piloto: 8 necessidades, 13 linhas em saldo, <strong>68 unidades</strong> no Estoque principal. Ha CA vencido em estoque (Protetor facial CA 44809, 20/09/2025).</p>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/estoque</strong></div>
+        <a href="screenshots/04-estoque.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/04-estoque.png" alt="Estoque — registrar entrada" />
+        </a>
+        <figcaption>Print real da entrada de estoque (necessidade + busca CAEPI).</figcaption>
+      </figure>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/estoque · saldos</strong></div>
+        <a href="screenshots/14-estoque-saldos.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/14-estoque-saldos.png" alt="Saldos atuais de estoque" />
+        </a>
+        <figcaption>Print real dos saldos. Use “Revisar estoque” a partir da Validade quando o CA estiver vencido.</figcaption>
+      </figure>
+    </section>
+
+    <section class="doc" id="trabalhadores">
+      <h2>5. Trabalhadores</h2>
+      <p>A empresa cadastra e mantem as vidas sem depender da Consultoria.</p>
+      <h3>Individual</h3>
+      <ol class="steps">
+        <li><strong>Novo trabalhador</strong>: nome (obrigatorio), CPF, matricula, unidade, setor, funcao, admissao, observacoes.</li>
+        <li>Se a estrutura existir, setor e funcao sao obrigatorios (os EPIs da funcao vêm daí).</li>
+        <li><strong>Editar</strong>, <strong>Ativar/Inativar</strong> (inativar libera cota de vida).</li>
+        <li>Status de face: Face ok / Sem face / Recadastrar face.</li>
+      </ol>
+      <h3>Planilha CSV</h3>
+      <ol class="steps">
+        <li>Clique em <strong>Importar CSV</strong>.</li>
+        <li><strong>Baixar modelo CSV</strong> e preencher (unidade, setor e funcao ja existentes na estrutura).</li>
+        <li>Enviar o arquivo, revisar a previa (linhas validas, erros, impacto na cota) e confirmar.</li>
+      </ol>
+      <h3>Ficha de EPI</h3>
+      <p>Em cada trabalhador: <strong>Ficha de EPI</strong> (historico / em aberto). Imprimivel.</p>
+      <p>No piloto: Joao Souza (MAT-002, motorista, Face ok, 4 EPIs vencidos) e Maria Silva (MAT-001, instalador tecnico, Sem face).</p>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/trabalhadores</strong></div>
+        <a href="screenshots/06-trabalhadores.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/06-trabalhadores.png" alt="Lista de trabalhadores" />
+        </a>
+        <figcaption>Print real. Card vermelho = troca urgente. “Link facial” so aparece sem template.</figcaption>
+      </figure>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/trabalhadores · importar CSV</strong></div>
+        <a href="screenshots/13-importar-csv.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/13-importar-csv.png" alt="Modal de importacao CSV" />
+        </a>
+        <figcaption>Print real do fluxo de planilha: baixar modelo → previa → confirmar.</figcaption>
+      </figure>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/trabalhadores/.../ficha-epi</strong></div>
+        <a href="screenshots/11-ficha-epi.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/11-ficha-epi.png" alt="Ficha de EPI do trabalhador" />
+        </a>
+        <figcaption>Print real da ficha de EPI (historico / em aberto). Imprimivel.</figcaption>
+      </figure>
+    </section>
+
+    <section class="doc" id="face">
+      <h2>6. Cadastro facial (link publico)</h2>
+      <ol class="steps">
+        <li>No trabalhador sem face, clique em <strong>Link facial</strong>. Exige CPF (pelo menos 4 digitos finais).</li>
+        <li>Copie o link (valido 24h) e envie ao trabalhador (WhatsApp, etc.).</li>
+        <li>No celular, o trabalhador abre o link, informa os <strong>4 ultimos digitos do CPF</strong>, aceita o termo LGPD e posiciona o rosto no oval.</li>
+        <li>A captura e automatica quando o enquadramento esta ok. Nao precisa login no portal.</li>
+      </ol>
+      <div class="note">Quem ja tem “Face ok” nao gera novo link pelo portal. Recadastro exige revogacao na Consultoria.</div>
+      <div class="warn">Camera, HTTPS e navegador moderno sao obrigatorios. Modo privado / bloqueio de camera costuma falhar.</div>
+    </section>
+
+    <section class="doc" id="entregas">
+      <h2>7. Entregas e comprovante</h2>
+      <p>Fluxo principal do piloto: <strong>Trabalhador → EPIs → Biometria</strong>.</p>
+      <ol class="steps">
+        <li>Abra <strong>Entregas</strong> → inicie uma nova (ou use “Registrar troca” no trabalhador).</li>
+        <li>Selecione o trabalhador ativo com funcao.</li>
+        <li>Marque as necessidades/EPIs disponiveis no estoque. Sem estoque ou sem EPI vinculado, a linha fica bloqueada.</li>
+        <li>Na etapa Biometria, capture a face. O sistema compara com o template cadastrado.</li>
+        <li>Confirme a declaracao NR-06. A entrega baixa o estoque e gera recibo.</li>
+        <li>Abra o comprovante (<code>/portal/entregas/[id]</code>) e use <strong>Imprimir / PDF</strong>.</li>
+      </ol>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/entregas</strong></div>
+        <a href="screenshots/03-entregas.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/03-entregas.png" alt="Assistente de entrega de EPI" />
+        </a>
+        <figcaption>Print real: passo 1 (trabalhador) + historico recente (ex.: ENT-20260728-0003).</figcaption>
+      </figure>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/entregas/[id]</strong></div>
+        <a href="screenshots/12-comprovante.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/12-comprovante.png" alt="Comprovante de entrega de EPI" />
+        </a>
+        <figcaption>Print real do comprovante (recibo, itens, face, termo NR-06). Contem evidencia facial — dado sensivel de teste.</figcaption>
+      </figure>
+      <h3>Problemas comuns na entrega</h3>
+      <table>
+        <thead><tr><th>Situacao</th><th>O que fazer</th></tr></thead>
+        <tbody>
+          <tr><td>Sem face / recadastrar</td><td>Gerar link facial e so depois entregar.</td></tr>
+          <tr><td>Sem estoque</td><td>Registrar entrada no Estoque com CA correto.</td></tr>
+          <tr><td>Sem EPI real vinculado</td><td>Entrada de estoque na necessidade da funcao.</td></tr>
+          <tr><td>Face nao bate</td><td>Melhor iluminacao, tirar oculos escuros, tentar de novo. Se persistir, recadastro.</td></tr>
+          <tr><td>Trabalhador inativo</td><td>Ativar em Trabalhadores (se houver cota).</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="doc" id="validade">
+      <h2>8. Validade</h2>
+      <p>Lista CAs e vinculos: <strong>Vencido</strong>, <strong>A vencer</strong> (horizonte ~90 dias), <strong>Sem CA</strong>, <strong>Em dia</strong>. O filtro abre no bucket mais critico.</p>
+      <p>No piloto: 1 vencido (Protetor facial CA 44809, 20/09/2025), 0 a vencer, 0 sem CA, 12 em dia.</p>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/validade</strong></div>
+        <a href="screenshots/05-validade.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/05-validade.png" alt="Tela de validade de CA" />
+        </a>
+        <figcaption>Print real. Acao tipica: “Revisar estoque” e registrar entrada com CA vigente.</figcaption>
+      </figure>
+    </section>
+
+    <section class="doc" id="relatorios">
+      <h2>9. Relatorios</h2>
+      <p>Somente leitura. Filtros de periodo, trabalhador, unidade, setor e funcao.</p>
+      <table>
+        <thead><tr><th>Aba</th><th>Conteudo</th></tr></thead>
+        <tbody>
+          <tr><td>Visao geral</td><td>Entregas, itens, devolucoes, cancelamentos, gaps de cobertura/estoque.</td></tr>
+          <tr><td>Trocas</td><td>Fila de EPI vencido / critico / alerta, com atalho para trocar.</td></tr>
+          <tr><td>Entregas</td><td>Lista com recibo, facial e comprovante.</td></tr>
+          <tr><td>Atividade</td><td>Ranking por trabalhador e por setor.</td></tr>
+          <tr><td>Estoque</td><td>Saldos OK / baixo / zerado.</td></tr>
+          <tr><td>Devolucoes</td><td>Devolucoes e cancelamentos.</td></tr>
+          <tr><td>Cobertura</td><td>Necessidade × estoque por funcao.</td></tr>
+        </tbody>
+      </table>
+      <p><strong>Exportar CSV</strong> baixa a aba ativa. <strong>Imprimir</strong> gera folha limpa (sem menu/filtros).</p>
+      <p>No piloto (periodo ~30 dias ate 05/08/2026): 3 entregas, 10 itens, 0 devolucoes/cancelamentos, 2 trabalhadores ativos, sem gaps de cobertura/estoque.</p>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/relatorios</strong></div>
+        <a href="screenshots/07-relatorios.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/07-relatorios.png" alt="Relatorios — visao geral" />
+        </a>
+        <figcaption>Print real: filtros + abas + Exportar CSV / Imprimir. Banner avisa que custo unitario ainda nao existe.</figcaption>
+      </figure>
+      <div class="note">Custo unitario ainda nao existe no dominio — o modulo Custos permanece “em breve”.</div>
+    </section>
+
+    <section class="doc" id="estrutura">
+      <h2>10. Estrutura e custos</h2>
+      <p><strong>Estrutura</strong> e somente leitura: setores, funcoes, riscos e necessidades implantados pela Consultoria (PGRO). O cliente nao edita PGRO pelo portal.</p>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/estrutura</strong></div>
+        <a href="screenshots/08-estrutura.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/08-estrutura.png" alt="Estrutura somente leitura" />
+        </a>
+        <figcaption>Print real da estrutura (setores/funcoes/riscos/necessidades). Sem edicao no portal.</figcaption>
+      </figure>
+      <p><strong>Custos</strong>: tela placeholder (“em breve”) ate haver preco por item/lote. Nao ha indicadores financeiros no piloto.</p>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/custos</strong></div>
+        <a href="screenshots/09-custos.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/09-custos.png" alt="Modulo de custos em breve" />
+        </a>
+        <figcaption>Print real do placeholder de Custos.</figcaption>
+      </figure>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal/conta</strong></div>
+        <a href="screenshots/10-conta.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/10-conta.png" alt="Minha conta — troca de senha" />
+        </a>
+        <figcaption>Print real de Minha conta (perfil + troca de senha).</figcaption>
+      </figure>
+    </section>
+
+    <section class="doc" id="mobile">
+      <h2>11. Uso no celular</h2>
+      <ul>
+        <li>O portal e mobile-first: menu inferior (Painel, Entregas, Estoque, Relatorios, Mais).</li>
+        <li>Entrega e cadastro facial funcionam melhor em HTTPS, camera frontal, boa luz.</li>
+        <li>Impressao de comprovante/ficha: use “Imprimir” do navegador (salvar PDF).</li>
+      </ul>
+      <figure class="screen">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><strong>/portal · mobile</strong></div>
+        <a href="screenshots/16-painel-mobile.png" target="_blank" rel="noopener">
+          <img class="shot" src="screenshots/16-painel-mobile.png" alt="Painel no celular" style="max-height:820px;object-fit:contain;background:#0f172a" />
+        </a>
+        <figcaption>Print real no viewport de celular. Menu inferior + hamburger para o restante.</figcaption>
+      </figure>
+    </section>
+
+    <section class="doc" id="limites">
+      <h2>12. O que o portal nao faz</h2>
+      <table>
+        <thead><tr><th>Pedido</th><th>Onde resolver</th></tr></thead>
+        <tbody>
+          <tr><td>Criar empresa / CNPJ / cota de vidas</td><td>Consultoria</td></tr>
+          <tr><td>Importar ou alterar PGRO / estrutura</td><td>Consultoria</td></tr>
+          <tr><td>Base CAEPI (atualizar certificados)</td><td>Consultoria</td></tr>
+          <tr><td>Catalogo mestre de EPIs da organizacao</td><td>Consultoria → EPIs</td></tr>
+          <tr><td>Criar usuario do portal</td><td>Consultoria → Usuarios do cliente</td></tr>
+          <tr><td>Revogar biometria / LGPD retencao</td><td>Consultoria</td></tr>
+          <tr><td>Precificacao e custos</td><td>Ainda nao disponivel</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer class="end">
+      Material interno ProntEPI · Painel do Cliente. Para atendimento, use tambem
+      <code>docs/manuais/portal-cliente-sac.md</code>.
+    </footer>
+  </div>
+</body>
+</html>

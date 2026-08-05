@@ -1,0 +1,25 @@
+{
+  "baseUrl": "https://gestao-epi-web.kxryyk.easypanel.host",
+  "layout": {
+    "desktop": "Menu horizontal no TOPO. Nao e menu lateral.",
+    "mobile": "Barra inferior: Painel, Entregas, Estoque, Relatorios, Mais."
+  },
+  "pages": [
+    { "slug": "login", "label": "Login do portal", "path": "/portal/login", "print": "/ajuda/portal/login.png" },
+    { "slug": "painel", "label": "Painel inicial", "path": "/portal", "print": "/ajuda/portal/painel.png" },
+    { "slug": "entregas", "label": "Entregas", "path": "/portal/entregas", "print": "/ajuda/portal/entregas.png" },
+    { "slug": "estoque", "label": "Estoque (entrada)", "path": "/portal/estoque", "print": "/ajuda/portal/estoque.png" },
+    { "slug": "estoque-saldos", "label": "Estoque (saldos)", "path": "/portal/estoque", "print": "/ajuda/portal/estoque-saldos.png" },
+    { "slug": "validade", "label": "Validade de CA", "path": "/portal/validade", "print": "/ajuda/portal/validade.png" },
+    { "slug": "trabalhadores", "label": "Trabalhadores", "path": "/portal/trabalhadores", "print": "/ajuda/portal/trabalhadores.png" },
+    { "slug": "ficha-epi", "label": "Ficha de EPI", "path": "/portal/trabalhadores/{id}/ficha-epi", "print": "/ajuda/portal/ficha-epi.png", "notes": "Nao fica em Relatorios. Botao no card do trabalhador." },
+    { "slug": "importar-csv", "label": "Importar CSV", "path": "/portal/trabalhadores", "print": "/ajuda/portal/importar-csv.png" },
+    { "slug": "relatorios", "label": "Relatorios", "path": "/portal/relatorios", "print": "/ajuda/portal/relatorios.png" },
+    { "slug": "estrutura", "label": "Estrutura", "path": "/portal/estrutura", "print": "/ajuda/portal/estrutura.png" },
+    { "slug": "custos", "label": "Custos", "path": "/portal/custos", "print": "/ajuda/portal/custos.png" },
+    { "slug": "conta", "label": "Minha conta", "path": "/portal/conta", "print": "/ajuda/portal/conta.png" },
+    { "slug": "comprovante", "label": "Comprovante de entrega", "path": "/portal/entregas/{id}", "print": "/ajuda/portal/comprovante.png" },
+    { "slug": "painel-mobile", "label": "Painel no celular", "path": "/portal", "print": "/ajuda/portal/painel-mobile.png" },
+    { "slug": "entregas-mobile", "label": "Entregas no celular", "path": "/portal/entregas", "print": "/ajuda/portal/entregas-mobile.png" }
+  ]
+}

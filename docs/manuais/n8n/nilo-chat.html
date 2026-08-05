@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nilo · InSeg · ProntEPI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+  <style>
+    body { font-family: "Segoe UI", system-ui, sans-serif; }
+    .bubble p { margin: 0 0 .4rem; }
+    .bubble p:last-child { margin: 0; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-100 text-slate-900">
+  <div class="mx-auto flex min-h-screen max-w-3xl flex-col p-4 md:p-6" x-data="niloApp()" x-init="boot()">
+    <header class="mb-4 flex items-center gap-3 rounded-2xl bg-gradient-to-r from-slate-900 to-teal-800 p-4 text-teal-50 shadow">
+      <div class="grid h-12 w-12 place-items-center rounded-xl bg-teal-500 font-bold">N</div>
+      <div>
+        <p class="text-xs uppercase tracking-wide text-teal-200">InSeg · Painel do Cliente</p>
+        <h1 class="text-xl font-semibold">Nilo</h1>
+        <p class="text-sm text-teal-100/80">Analista de relacionamento · ProntEPI</p>
+      </div>
+    </header>
+
+    <div class="flex-1 space-y-3 overflow-y-auto rounded-2xl bg-white p-4 shadow" id="thread">
+      <template x-for="(m, i) in messages" :key="i">
+        <div :class="m.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+          <div class="bubble max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed"
+               :class="m.role === 'user' ? 'bg-teal-700 text-white' : 'bg-slate-100 text-slate-800'"
+               x-html="m.html"></div>
+        </div>
+      </template>
+      <div x-show="loading" class="text-sm text-slate-500">Nilo está digitando...</div>
+    </div>
+
+    <form class="mt-4 flex gap-2" @submit.prevent="send()">
+      <input x-model="draft" class="flex-1 rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-teal-600"
+             placeholder="Pergunte sobre login, estoque, entrega, face..." autocomplete="off" />
+      <button class="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-50" :disabled="loading || !draft.trim()">
+        Enviar
+      </button>
+    </form>
+    <p class="mt-2 text-center text-xs text-slate-500">Nilo não troca senha nem altera PGRO. Escalação vai para a Consultoria InSeg.</p>
+  </div>
+
+  <script>
+    function escapeHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+    function toHtml(text) {
+      return escapeHtml(text).replace(/\n/g, '<br>');
+    }
+    function niloApp() {
+      return {
+        draft: '',
+        loading: false,
+        sessionId: '',
+        messages: [{
+          role: 'assistant',
+          html: 'Oi! Eu sou o <strong>Nilo</strong>, da InSeg. Posso te ajudar a usar o Painel do Cliente do ProntEPI: login, estoque, trabalhadores, entrega facial, validade e relatórios. Como posso te ajudar?'
+        }],
+        boot() {
+          this.sessionId = localStorage.getItem('nilo.session') || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+          localStorage.setItem('nilo.session', this.sessionId);
+        },
+        async send() {
+          const text = this.draft.trim();
+          if (!text || this.loading) return;
+          this.draft = '';
+          this.messages.push({ role: 'user', html: toHtml(text) });
+          this.loading = true;
+          try {
+            const res = await fetch('/webhook/nilo/chat', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ message: text, session_id: this.sessionId })
+            });
+            const data = await res.json();
+            this.messages.push({ role: 'assistant', html: toHtml(data.answer || data.output || 'Não consegui responder agora.') });
+          } catch (e) {
+            this.messages.push({ role: 'assistant', html: 'Tive um problema técnico para responder. Pode tentar de novo em instantes?' });
+          } finally {
+            this.loading = false;
+            this.$nextTick(() => {
+              const el = document.getElementById('thread');
+              el.scrollTop = el.scrollHeight;
+            });
+          }
+        }
+      };
+    }
+  </script>
+</body>
+</html>
