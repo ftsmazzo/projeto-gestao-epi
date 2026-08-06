@@ -5,12 +5,11 @@ import { ProdutoLanding } from '../../components/marketing/ProdutoLanding';
 export const metadata: Metadata = {
   title: `Painel do Cliente — ${APP_NAME}`,
   description:
-    'Gestao de EPI no dia a dia da empresa: entrega com biometria, estoque com CA certo, validade e relatorios — sem planilha.',
+    'Pare de gerir EPI na planilha. Entrega facial, estoque com CA certo e alertas NR-06 no Painel do Cliente ProntEPI.',
   openGraph: {
     title: `${APP_NAME} · Painel do Cliente`,
     description:
-      'EPI sob controle no chao de fabrica. Entrega, estoque e conformidade NR-06 no ritmo da operacao.',
-    images: [{ url: '/marketing/painel.png' }],
+      'Entrega facial, estoque e conformidade NR-06 no ritmo do chao de fabrica.',
   },
 };
 

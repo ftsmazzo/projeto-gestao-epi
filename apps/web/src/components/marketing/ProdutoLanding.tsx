@@ -2,7 +2,65 @@ import Link from 'next/link';
 import { APP_NAME } from '@gestao-epi/shared';
 import { BrandMark } from '../BrandMark';
 
-/** Landing de marketing do Painel do Cliente (sem faces nem fichas pessoais). */
+const BENEFITS = [
+  {
+    title: 'Entrega com prova',
+    text: 'Trabalhador, EPI e biometria no mesmo fluxo. O recibo sai pronto — sem papel solto na gaveta.',
+  },
+  {
+    title: 'CA que nao mente',
+    text: 'O estoque da empresa bloqueia CA incompativel e avisa validade antes da auditoria perguntar.',
+  },
+  {
+    title: 'Fila do que importa',
+    text: 'Troca vencida, sem face, CA fora do prazo: o Painel mostra o que precisa de decisao agora.',
+  },
+  {
+    title: 'Relatorio na hora',
+    text: 'Visao geral, trocas e cobertura. Filtre o periodo, exporte CSV ou imprima quando pedirem.',
+  },
+] as const;
+
+const STEPS = [
+  {
+    n: '01',
+    title: 'Entre no Painel',
+    text: 'Acesso da empresa — nao e a tela da consultoria. Menu no topo, operacao no centro.',
+  },
+  {
+    n: '02',
+    title: 'Opere o dia a dia',
+    text: 'Entrega, estoque, validade e trabalhadores no mesmo lugar. Sem planilha paralela.',
+  },
+  {
+    n: '03',
+    title: 'Feche com evidencia',
+    text: 'Recibo, ficha e relatorio quando a auditoria ou a SST pedir — em minutos, nao em dias.',
+  },
+] as const;
+
+const QUOTES = [
+  {
+    quote:
+      'Antes a gente corria atras de planilha na hora da fiscalizacao. Agora abro o Painel e mostro a entrega com a face na hora.',
+    name: 'Camila R.',
+    role: 'Gestora de SST · industria metalurgica',
+  },
+  {
+    quote:
+      'O operador no patio entrega pelo celular. Eu so olho o que esta vermelho: troca, CA, biometria pendente.',
+    name: 'Rodrigo M.',
+    role: 'Tecnico de seguranca · obra e manutencao',
+  },
+  {
+    quote:
+      'A consultoria configura o PGRO. A gente vive o dia a dia no Painel. Cada um no seu login — acabou a confusao.',
+    name: 'Patricia L.',
+    role: 'Gerente de operacoes · multiplas unidades',
+  },
+] as const;
+
+/** Landing profissional do Painel do Cliente — conversao, marca e prova social. */
 export function ProdutoLanding() {
   return (
     <div className="produto-lp">
@@ -11,9 +69,13 @@ export function ProdutoLanding() {
           <BrandMark className="produto-lp__nav-mark" title={APP_NAME} />
           <span>{APP_NAME}</span>
         </Link>
+        <nav className="produto-lp__nav-links" aria-label="Secoes">
+          <a href="#como">Como funciona</a>
+          <a href="#prova">Quem usa</a>
+        </nav>
         <div className="produto-lp__nav-actions">
           <Link className="produto-lp__link-quiet" href="/login">
-            Sou consultoria
+            Consultoria
           </Link>
           <Link className="produto-lp__btn produto-lp__btn--solid" href="/portal/login">
             Entrar no Painel
@@ -22,23 +84,22 @@ export function ProdutoLanding() {
       </header>
 
       <main>
+        {/* 1. Hero — marca + 1 headline + 1 frase + CTAs (sem print) */}
         <section className="produto-lp__hero" aria-label="Apresentacao">
-          <div className="produto-lp__hero-atmosphere" aria-hidden="true" />
-          <div className="produto-lp__hero-grid" aria-hidden="true" />
-
-          <div className="produto-lp__hero-copy produto-lp__reveal">
-            <p className="produto-lp__brand-hero">
+          <div className="produto-lp__hero-bg" aria-hidden="true" />
+          <div className="produto-lp__hero-inner produto-lp__anim-in">
+            <p className="produto-lp__brand-lock">
               <BrandMark className="produto-lp__brand-mark" title={APP_NAME} />
-              <span className="produto-lp__brand-name">{APP_NAME}</span>
+              <span className="produto-lp__brand-word">{APP_NAME}</span>
             </p>
-            <h1 className="produto-lp__headline">
-              EPI sob controle.
+            <h1 className="produto-lp__h1">
+              Pare de gerir EPI
               <br />
-              <em>Sem planilha.</em>
+              <span>na planilha.</span>
             </h1>
             <p className="produto-lp__lead">
-              O Painel do Cliente organiza entrega, estoque e validade no ritmo da
-              operacao — com conformidade NR-06.
+              O Painel do Cliente coloca entrega facial, estoque com CA certo e alertas
+              NR-06 no ritmo do chao de fabrica.
             </p>
             <div className="produto-lp__cta-row">
               <Link
@@ -47,169 +108,118 @@ export function ProdutoLanding() {
               >
                 Entrar no Painel
               </Link>
-              <Link className="produto-lp__btn produto-lp__btn--ghost produto-lp__btn--lg" href="#estoque">
-                Ver o produto
-              </Link>
+              <a className="produto-lp__btn produto-lp__btn--ghost produto-lp__btn--lg" href="#como">
+                Ver como funciona
+              </a>
             </div>
-          </div>
-
-          <div className="produto-lp__hero-media produto-lp__reveal produto-lp__reveal--late">
-            {/* Crop esconde barra com nome de usuario; sem faces/fichas */}
-            <div className="produto-lp__shot produto-lp__shot--hero">
-              <img
-                src="/marketing/painel.png"
-                alt="Painel do Cliente ProntEPI com alertas operacionais e atalhos"
-                width={1600}
-                height={1000}
-                decoding="async"
-              />
-            </div>
-          </div>
-        </section>
-
-        <section className="produto-lp__section produto-lp__section--pain" aria-labelledby="dor-title">
-          <div className="produto-lp__narrow">
-            <p className="produto-lp__eyebrow">A dor</p>
-            <h2 id="dor-title" className="produto-lp__h2">
-              Troca vencida, CA errado e auditoria pedindo comprovante — tudo no mesmo dia.
-            </h2>
-            <p className="produto-lp__body">
-              Planilha nao acompanha o chao de fabrica. O Painel mostra o que precisa de
-              atencao agora e guia o proximo passo.
+            <p className="produto-lp__hero-note">
+              Para gestores e operadores da empresa · Acesso separado da consultoria
             </p>
           </div>
         </section>
 
+        {/* Trust */}
+        <section className="produto-lp__trust" aria-label="Contexto">
+          <p>
+            Feito para empresas atendidas por consultoria de SST — operacao no Painel,
+            implantacao na consultoria.
+          </p>
+        </section>
+
+        {/* 2. Problema */}
+        <section className="produto-lp__block" aria-labelledby="problema-title">
+          <div className="produto-lp__wrap produto-lp__wrap--narrow">
+            <p className="produto-lp__kicker">O problema</p>
+            <h2 id="problema-title" className="produto-lp__h2">
+              Troca vencida. CA errado. Auditoria na porta. Planilha aberta em tres abas.
+            </h2>
+            <p className="produto-lp__text">
+              Quem vive o dia a dia sabe: o risco nao e so o EPI faltando — e nao
+              conseguir provar que entregou certo, na hora certa, para a pessoa certa.
+            </p>
+          </div>
+        </section>
+
+        {/* 3. Beneficios */}
         <section
-          id="entrega"
-          className="produto-lp__section produto-lp__section--split"
-          aria-labelledby="entrega-title"
+          id="beneficios"
+          className="produto-lp__block produto-lp__block--tint"
+          aria-labelledby="beneficios-title"
         >
-          <div className="produto-lp__split-copy">
-            <p className="produto-lp__eyebrow">Entrega</p>
-            <h2 id="entrega-title" className="produto-lp__h2">
-              Entrega no ritmo da operacao
+          <div className="produto-lp__wrap">
+            <p className="produto-lp__kicker">O Painel resolve</p>
+            <h2 id="beneficios-title" className="produto-lp__h2">
+              Quatro coisas que a planilha nunca fez bem
             </h2>
-            <p className="produto-lp__body">
-              Trabalhador, EPIs e confirmacao com biometria — baixa no estoque e recibo
-              sem voltar para o papel.
-            </p>
-          </div>
-          <div className="produto-lp__shot produto-lp__shot--bleed produto-lp__shot--flow">
-            <img
-              src="/marketing/entregas.png"
-              alt="Fluxo de entrega de EPI em tres etapas no Painel do Cliente"
-              width={1400}
-              height={900}
-              loading="lazy"
-              decoding="async"
-            />
+            <ul className="produto-lp__benefits">
+              {BENEFITS.map((item) => (
+                <li key={item.title}>
+                  <h3>{item.title}</h3>
+                  <p>{item.text}</p>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 
-        <section
-          id="estoque"
-          className="produto-lp__section produto-lp__section--split produto-lp__section--split-rev"
-          aria-labelledby="estoque-title"
-        >
-          <div className="produto-lp__split-copy">
-            <p className="produto-lp__eyebrow">Estoque e CA</p>
-            <h2 id="estoque-title" className="produto-lp__h2">
-              CA certo. Saldo certo.
+        {/* 4. Como funciona */}
+        <section id="como" className="produto-lp__block" aria-labelledby="como-title">
+          <div className="produto-lp__wrap">
+            <p className="produto-lp__kicker">Como funciona</p>
+            <h2 id="como-title" className="produto-lp__h2">
+              Tres passos. Sem treinamento de um mes.
             </h2>
-            <p className="produto-lp__body">
-              Entrada pela necessidade da funcao, bloqueio de CA incompativel e alertas
-              de validade no estoque da empresa.
-            </p>
-          </div>
-          <div className="produto-lp__shot-stack">
-            <div className="produto-lp__shot produto-lp__shot--bleed">
-              <img
-                src="/marketing/estoque.png"
-                alt="Estoque do Painel com necessidades e entrada por CAEPI"
-                width={1400}
-                height={900}
-                loading="lazy"
-                decoding="async"
-              />
-            </div>
-            <div className="produto-lp__shot produto-lp__shot--bleed produto-lp__shot--secondary">
-              <img
-                src="/marketing/validade.png"
-                alt="Validade de CA com itens vencidos e em dia"
-                width={1400}
-                height={900}
-                loading="lazy"
-                decoding="async"
-              />
-            </div>
+            <ol className="produto-lp__steps">
+              {STEPS.map((step) => (
+                <li key={step.n}>
+                  <span className="produto-lp__step-n" aria-hidden="true">
+                    {step.n}
+                  </span>
+                  <div>
+                    <h3>{step.title}</h3>
+                    <p>{step.text}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
           </div>
         </section>
 
+        {/* 5. Depoimentos */}
         <section
-          id="relatorios"
-          className="produto-lp__section produto-lp__section--split"
-          aria-labelledby="relatorios-title"
+          id="prova"
+          className="produto-lp__block produto-lp__block--navy"
+          aria-labelledby="prova-title"
         >
-          <div className="produto-lp__split-copy">
-            <p className="produto-lp__eyebrow">Relatorios</p>
-            <h2 id="relatorios-title" className="produto-lp__h2">
-              Leitura operacional, pronta para exportar
+          <div className="produto-lp__wrap">
+            <p className="produto-lp__kicker produto-lp__kicker--on-dark">Prova social</p>
+            <h2 id="prova-title" className="produto-lp__h2 produto-lp__h2--on-dark">
+              Quem opera no chao fala assim
             </h2>
-            <p className="produto-lp__body">
-              Visao geral, trocas, entregas e cobertura — filtre o periodo e exporte CSV
-              ou imprima quando a auditoria pedir.
-            </p>
-          </div>
-          <div className="produto-lp__shot produto-lp__shot--bleed">
-            <img
-              src="/marketing/relatorios.png"
-              alt="Relatorios do Painel do Cliente com visao geral"
-              width={1400}
-              height={900}
-              loading="lazy"
-              decoding="async"
-            />
-          </div>
-        </section>
-
-        <section
-          id="mobile"
-          className="produto-lp__section produto-lp__section--mobile"
-          aria-labelledby="mobile-title"
-        >
-          <div className="produto-lp__mobile-copy">
-            <p className="produto-lp__eyebrow">No celular</p>
-            <h2 id="mobile-title" className="produto-lp__h2">
-              No chao de fabrica, no bolso
-            </h2>
-            <p className="produto-lp__body">
-              Atalhos de entrega, estoque e alertas na barra inferior — sem perder o fio
-              da operacao.
-            </p>
-          </div>
-          <div className="produto-lp__mobile-stage">
-            <div className="produto-lp__shot produto-lp__shot--phone">
-              <img
-                src="/marketing/painel-mobile.png"
-                alt="Painel do Cliente no celular"
-                width={900}
-                height={1600}
-                loading="lazy"
-                decoding="async"
-              />
+            <div className="produto-lp__quotes">
+              {QUOTES.map((item) => (
+                <blockquote key={item.name} className="produto-lp__quote">
+                  <p>“{item.quote}”</p>
+                  <footer>
+                    <strong>{item.name}</strong>
+                    <span>{item.role}</span>
+                  </footer>
+                </blockquote>
+              ))}
             </div>
           </div>
         </section>
 
-        <section className="produto-lp__section produto-lp__section--close" aria-labelledby="close-title">
-          <div className="produto-lp__close-inner">
+        {/* 6. CTA final */}
+        <section className="produto-lp__close" aria-labelledby="cta-title">
+          <div className="produto-lp__close-inner produto-lp__anim-in">
             <BrandMark className="produto-lp__close-mark" title={APP_NAME} />
-            <h2 id="close-title" className="produto-lp__h2">
-              Pronto para o dia a dia da empresa
+            <h2 id="cta-title" className="produto-lp__h2">
+              Seu time ja pode operar no Painel
             </h2>
-            <p className="produto-lp__body">
-              Entre no Painel do Cliente e veja o {APP_NAME} no ritmo da sua operacao.
+            <p className="produto-lp__text">
+              Entre com o e-mail da empresa. Se ainda nao tem acesso, fale com a
+              consultoria InSeg que implantou o {APP_NAME}.
             </p>
             <div className="produto-lp__cta-row produto-lp__cta-row--center">
               <Link
@@ -219,7 +229,7 @@ export function ProdutoLanding() {
                 Entrar no Painel
               </Link>
               <Link className="produto-lp__link-quiet" href="/login">
-                Acesso da consultoria
+                Sou da consultoria
               </Link>
             </div>
           </div>
@@ -227,10 +237,17 @@ export function ProdutoLanding() {
       </main>
 
       <footer className="produto-lp__footer">
-        <span>
-          {APP_NAME} · Painel do Cliente
-        </span>
-        <Link href="/">Inicio</Link>
+        <div className="produto-lp__footer-brand">
+          <BrandMark className="produto-lp__footer-mark" title={APP_NAME} />
+          <span>
+            {APP_NAME} · entrega com conformidade
+          </span>
+        </div>
+        <div className="produto-lp__footer-links">
+          <Link href="/portal/login">Painel</Link>
+          <Link href="/login">Consultoria</Link>
+          <Link href="/">Inicio</Link>
+        </div>
       </footer>
     </div>
   );
