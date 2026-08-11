@@ -976,6 +976,9 @@ model WorkerFacialReference {
   faceEngine         String?
   faceEngineVersion  String?
   qualityScore       Float?
+  /// Desafio de presenca MVP no cadastro (piscar/virar).
+  livenessPassed     Boolean?
+  livenessChallenge  String?
   status             WorkerFacialReferenceStatus  @default(ACTIVE)
   uploadedAt         DateTime                     @default(now())
   createdByUserId    String?
@@ -1163,6 +1166,9 @@ model DeliveryEvidence {
   matchThreshold     Float?
   faceEngine         String?
   verifiedAt         DateTime?
+  /// Desafio de presenca MVP (piscar/virar). Null em entregas anteriores ao recurso.
+  livenessPassed     Boolean?
+  livenessChallenge  String?
   metadata           Json?
   retentionUntil     DateTime?
   deletedAt          DateTime?

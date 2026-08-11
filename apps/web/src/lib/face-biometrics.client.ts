@@ -10,6 +10,9 @@ import {
   FACE_DESCRIPTOR_LENGTH,
   FACE_ENGINE,
   FACE_ENGINE_VERSION,
+  LIVENESS_CHALLENGE_LABELS,
+  LIVENESS_MVP_NOTICE,
+  type LivenessChallengeType,
 } from '@gestao-epi/shared';
 
 export type FaceDetectionOutcome =
@@ -28,6 +31,8 @@ export type FaceBox = {
   height: number;
 };
 
+export type FacePoint = { x: number; y: number };
+
 export type LiveFaceScan =
   | { kind: 'none' }
   | { kind: 'multiple'; count: number }
@@ -37,6 +42,7 @@ export type LiveFaceScan =
       score: number;
       videoWidth: number;
       videoHeight: number;
+      landmarks?: FacePoint[];
     };
 
 export type FaceFramingHint =
@@ -46,6 +52,21 @@ export type FaceFramingHint =
   | 'off_center'
   | 'hold_still'
   | 'ready';
+
+export type LivenessTrackerState = {
+  challenge: LivenessChallengeType;
+  /** EAR baixo visto (piscar). */
+  blinkClosedSeen: boolean;
+  /** Frames com yaw no alvo. */
+  turnHoldFrames: number;
+  startedAt: number;
+};
+
+export type LivenessProgress = {
+  passed: boolean;
+  message: string;
+  timedOut: boolean;
+};
 
 type FaceApiGlobal = {
   nets: {
@@ -65,9 +86,16 @@ type FaceApiGlobal = {
       withFaceDescriptors: () => Promise<
         Array<{
           detection: { score: number; box: FaceBox };
+          landmarks: { positions: FacePoint[] };
           descriptor: Float32Array | number[];
         }>
       >;
+      then: Promise<
+        Array<{
+          detection: { score: number; box: FaceBox };
+          landmarks: { positions: FacePoint[] };
+        }>
+      >['then'];
     };
     then: Promise<
       Array<{
@@ -88,6 +116,14 @@ let modelsReady: Promise<void> | null = null;
 
 /** Tempo minimo de enquadramento estavel antes da captura automatica. */
 export const AUTO_CAPTURE_STABLE_MS = 900;
+/** Timeout do desafio de liveness (MVP). */
+export const LIVENESS_TIMEOUT_MS = 12_000;
+/** Frames com yaw no alvo para considerar virada. */
+const LIVENESS_TURN_HOLD_FRAMES = 4;
+const EAR_CLOSED = 0.19;
+const EAR_OPEN = 0.24;
+/** |yaw| minimo (espelhado: positivo = esquerda na tela). */
+const YAW_TURN_THRESHOLD = 0.18;
 
 /** Face precisa ocupar pelo menos esta fracao da largura do video. */
 const MIN_FACE_WIDTH_RATIO = 0.22;
@@ -181,6 +217,224 @@ export async function scanFacesInVideo(
     score: first.score,
     videoWidth: vw,
     videoHeight: vh,
+  };
+}
+
+/** Deteccao com landmarks 68 para desafio de liveness. */
+export async function scanFacesWithLandmarks(
+  video: HTMLVideoElement,
+): Promise<LiveFaceScan> {
+  await loadFaceModels();
+  const faceapi = getFaceApi();
+  const options = new faceapi.TinyFaceDetectorOptions({
+    inputSize: 320,
+    scoreThreshold: 0.45,
+  });
+  const detections = await faceapi
+    .detectAllFaces(video, options)
+    .withFaceLandmarks();
+  const vw = video.videoWidth || 1;
+  const vh = video.videoHeight || 1;
+
+  if (!detections.length) return { kind: 'none' };
+  if (detections.length > 1) {
+    return { kind: 'multiple', count: detections.length };
+  }
+
+  const first = detections[0]!;
+  return {
+    kind: 'one',
+    box: first.detection.box,
+    score: first.detection.score,
+    videoWidth: vw,
+    videoHeight: vh,
+    landmarks: first.landmarks.positions.map((p) => ({ x: p.x, y: p.y })),
+  };
+}
+
+function eyeAspectRatio(eye: FacePoint[]): number {
+  if (eye.length < 6) return 1;
+  const p1 = eye[0]!;
+  const p2 = eye[1]!;
+  const p3 = eye[2]!;
+  const p4 = eye[3]!;
+  const p5 = eye[4]!;
+  const p6 = eye[5]!;
+  const vertical1 = Math.hypot(p2.x - p6.x, p2.y - p6.y);
+  const vertical2 = Math.hypot(p3.x - p5.x, p3.y - p5.y);
+  const horizontal = Math.hypot(p1.x - p4.x, p1.y - p4.y);
+  if (horizontal < 1e-6) return 1;
+  return (vertical1 + vertical2) / (2 * horizontal);
+}
+
+function meanEar(landmarks: FacePoint[]): number | null {
+  if (landmarks.length < 48) return null;
+  const left = landmarks.slice(36, 42);
+  const right = landmarks.slice(42, 48);
+  return (eyeAspectRatio(left) + eyeAspectRatio(right)) / 2;
+}
+
+/**
+ * Yaw aproximado no espelho CSS (scaleX -1): positivo = esquerda na tela
+ * (mesmo lado que o usuario ve).
+ */
+function mirroredYaw(landmarks: FacePoint[]): number | null {
+  if (landmarks.length < 31) return null;
+  const jawLeft = landmarks[0]!;
+  const jawRight = landmarks[16]!;
+  const nose = landmarks[30]!;
+  const faceWidth = Math.abs(jawRight.x - jawLeft.x);
+  if (faceWidth < 1) return null;
+  const centerX = (jawLeft.x + jawRight.x) / 2;
+  // Inverte o sinal por causa do espelho na UI.
+  return -((nose.x - centerX) / faceWidth);
+}
+
+export function pickLivenessChallenge(): LivenessChallengeType {
+  const options: LivenessChallengeType[] = [
+    'blink',
+    'turn_left',
+    'turn_right',
+  ];
+  const idx = Math.floor(Math.random() * options.length);
+  return options[idx]!;
+}
+
+export function createLivenessTracker(
+  challenge: LivenessChallengeType = pickLivenessChallenge(),
+): LivenessTrackerState {
+  return {
+    challenge,
+    blinkClosedSeen: false,
+    turnHoldFrames: 0,
+    startedAt: Date.now(),
+  };
+}
+
+export function livenessChallengeLabel(
+  challenge: LivenessChallengeType,
+): string {
+  return LIVENESS_CHALLENGE_LABELS[challenge];
+}
+
+export function evaluateLiveness(
+  scan: LiveFaceScan,
+  state: LivenessTrackerState,
+  now = Date.now(),
+): { state: LivenessTrackerState; progress: LivenessProgress } {
+  const elapsed = now - state.startedAt;
+  if (elapsed > LIVENESS_TIMEOUT_MS) {
+    return {
+      state,
+      progress: {
+        passed: false,
+        timedOut: true,
+        message: 'Tempo esgotado. Tente novamente o desafio de presenca.',
+      },
+    };
+  }
+
+  const label = livenessChallengeLabel(state.challenge);
+  if (scan.kind !== 'one' || !scan.landmarks?.length) {
+    return {
+      state: { ...state, turnHoldFrames: 0 },
+      progress: {
+        passed: false,
+        timedOut: false,
+        message: `${label} — mantenha o rosto no oval`,
+      },
+    };
+  }
+
+  if (state.challenge === 'blink') {
+    const ear = meanEar(scan.landmarks);
+    if (ear == null) {
+      return {
+        state,
+        progress: {
+          passed: false,
+          timedOut: false,
+          message: label,
+        },
+      };
+    }
+    if (!state.blinkClosedSeen && ear <= EAR_CLOSED) {
+      return {
+        state: { ...state, blinkClosedSeen: true },
+        progress: {
+          passed: false,
+          timedOut: false,
+          message: 'Bom — abra os olhos',
+        },
+      };
+    }
+    if (state.blinkClosedSeen && ear >= EAR_OPEN) {
+      return {
+        state,
+        progress: {
+          passed: true,
+          timedOut: false,
+          message: 'Presenca confirmada',
+        },
+      };
+    }
+    return {
+      state,
+      progress: {
+        passed: false,
+        timedOut: false,
+        message: state.blinkClosedSeen ? 'Abra os olhos' : label,
+      },
+    };
+  }
+
+  const yaw = mirroredYaw(scan.landmarks);
+  if (yaw == null) {
+    return {
+      state: { ...state, turnHoldFrames: 0 },
+      progress: {
+        passed: false,
+        timedOut: false,
+        message: label,
+      },
+    };
+  }
+
+  const targetOk =
+    state.challenge === 'turn_left'
+      ? yaw >= YAW_TURN_THRESHOLD
+      : yaw <= -YAW_TURN_THRESHOLD;
+
+  if (targetOk) {
+    const hold = state.turnHoldFrames + 1;
+    const next = { ...state, turnHoldFrames: hold };
+    if (hold >= LIVENESS_TURN_HOLD_FRAMES) {
+      return {
+        state: next,
+        progress: {
+          passed: true,
+          timedOut: false,
+          message: 'Presenca confirmada',
+        },
+      };
+    }
+    return {
+      state: next,
+      progress: {
+        passed: false,
+        timedOut: false,
+        message: `${label} — mantenha`,
+      },
+    };
+  }
+
+  return {
+    state: { ...state, turnHoldFrames: 0 },
+    progress: {
+      passed: false,
+      timedOut: false,
+      message: label,
+    },
   };
 }
 
@@ -307,3 +561,5 @@ export const FACE_ENGINE_META = {
   engine: FACE_ENGINE,
   version: FACE_ENGINE_VERSION,
 } as const;
+
+export { LIVENESS_MVP_NOTICE };

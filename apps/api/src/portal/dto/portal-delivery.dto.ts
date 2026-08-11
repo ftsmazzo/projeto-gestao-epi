@@ -18,6 +18,7 @@ import {
 } from 'class-validator';
 import { EpiDeliveryReturnCondition, EpiUsefulLifeUnit } from '@prisma/client';
 import { FACE_DESCRIPTOR_LENGTH } from '@gestao-epi/shared';
+import type { LivenessChallengeType } from '@gestao-epi/shared';
 
 export const FACIAL_EVIDENCE_CONSENT_VERSION = 'v1-2026-07';
 
@@ -106,6 +107,16 @@ export class PortalCreateDeliveryPayloadDto {
   @IsOptional()
   @IsNumber()
   faceDetectionScore?: number;
+
+  /** Desafio de presenca MVP (cliente). */
+  @IsOptional()
+  @IsBoolean()
+  livenessPassed?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  livenessChallenge?: LivenessChallengeType | string;
 }
 
 export class PortalCancelDeliveryDto {

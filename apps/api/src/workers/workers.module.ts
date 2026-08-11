@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
+import { CommunicationsModule } from '../communications/communications.module';
 import { BiometricRetentionSchedulerService } from './biometric-retention.scheduler';
 import { BiometricRetentionService } from './biometric-retention.service';
 import { PublicFacialEnrollmentController } from './public-facial-enrollment.controller';
@@ -11,7 +12,7 @@ import { WorkersController } from './workers.controller';
 import { WorkersService } from './workers.service';
 
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, CommunicationsModule],
   controllers: [WorkersController, PublicFacialEnrollmentController],
   providers: [
     WorkersService,

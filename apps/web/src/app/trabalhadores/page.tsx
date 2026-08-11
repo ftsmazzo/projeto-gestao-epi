@@ -1,26 +1,47 @@
 'use client';
 
-import { ModulePlaceholder } from '../../components/ModulePlaceholder';
+import Link from 'next/link';
 import { RequireAuth } from '../../components/RequireAuth';
 
-export default function TrabalhadoresPage() {
+/**
+ * Trabalhadores da operacao ficam no workspace do CNPJ e no Painel do Cliente.
+ */
+function TrabalhadoresRetiredContent() {
   return (
-    <RequireAuth>
-      {() => (
-        <ModulePlaceholder
-          kicker="Cadastros"
-          title="Trabalhadores"
-          description="Vidas ativas vinculadas a um cliente atendido. Consomem cota e franquia da organizacao."
-          emptyTitle="Nenhum trabalhador cadastrado"
-          emptyDescription="O cadastro de trabalhadores depende de clientes atendidos e sera liberado em seguida."
-          primaryActionLabel="Novo trabalhador (em breve)"
-          upcoming={[
-            'Vinculo com cliente atendido',
-            'Status ativo/afastado/desligado',
-            'Consumo de cota de vidas',
-          ]}
-        />
-      )}
-    </RequireAuth>
+    <div className="workspace-section">
+      <div className="notice notice--warn" role="status">
+        <p>
+          <strong>Trabalhadores nao ficam neste menu.</strong> Cadastro e
+          biometria de referencia: workspace do cliente. Operacao do dia a dia:
+          Painel do Cliente.
+        </p>
+      </div>
+
+      <section className="surface" aria-labelledby="trab-retired-title">
+        <p className="page-kicker">Consultoria</p>
+        <h1 id="trab-retired-title" className="page-title">
+          Trabalhadores por CNPJ
+        </h1>
+        <p className="page-lead">
+          Abra o cliente atendido para gerir vidas e biometria, ou use o portal
+          para a operacao da empresa.
+        </p>
+        <div className="btn-row">
+          <Link className="btn btn-primary" href="/clientes">
+            Clientes atendidos
+          </Link>
+          <Link className="btn btn-secondary" href="/portal/login">
+            Portal do cliente
+          </Link>
+          <Link className="btn btn-ghost" href="/dashboard">
+            Dashboard
+          </Link>
+        </div>
+      </section>
+    </div>
   );
+}
+
+export default function TrabalhadoresPage() {
+  return <RequireAuth>{() => <TrabalhadoresRetiredContent />}</RequireAuth>;
 }

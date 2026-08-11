@@ -26,6 +26,7 @@ import {
   getWorkerFacialReference,
   grantWorkerBiometricConsent,
   requestWorkerFacialReferenceDeletion,
+  resendWorkerFacialEnrollmentWhatsapp,
   revokeWorkerBiometricConsent,
   revokeWorkerFacialReference,
   uploadWorkerFacialReference,
@@ -490,13 +491,33 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
     try {
       const link = await generateWorkerFacialEnrollmentLink(workerId);
       setGeneratedLink(link);
-      setDetectStatus('Link de cadastro facial gerado (valido por 24h).');
+      setDetectStatus(link.whatsappNotice || 'Link de cadastro facial gerado.');
       await reload();
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
           : 'Falha ao gerar link de cadastro facial.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function resendEnrollmentWhatsapp() {
+    setSaving(true);
+    setError(null);
+    setLinkCopied(false);
+    try {
+      const link = await resendWorkerFacialEnrollmentWhatsapp(workerId);
+      setGeneratedLink(link);
+      setDetectStatus(link.whatsappNotice || 'WhatsApp reenviado.');
+      await reload();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao reenviar WhatsApp do link facial.',
       );
     } finally {
       setSaving(false);
@@ -595,8 +616,9 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
         >
           <p className="face-ux__consent">
             <strong>Link para o celular do trabalhador</strong> (valido 24h).
-            Ele confirma com os 4 ultimos digitos do CPF. Copie e envie
-            manualmente (WhatsApp/SMS).
+            Com telefone cadastrado e comunicacoes ligadas, o WhatsApp e
+            enviado automaticamente. Ele confirma com os 4 ultimos digitos do
+            CPF.
           </p>
           {needsReenrollment ? (
             <p className="notice notice--warn" role="status">
@@ -622,6 +644,9 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
                     : enrollmentStatus.status === 'REVOKED'
                       ? 'Revogado'
                       : 'Nao gerado'}
+              {enrollmentStatus.hasPhone === false
+                ? ' · Sem telefone'
+                : ''}
               {enrollmentStatus.link?.expiresAt
                 ? ` · Expira ${new Date(enrollmentStatus.link.expiresAt).toLocaleString('pt-BR')}`
                 : ''}
@@ -631,6 +656,22 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
               Gere um link para o trabalhador cadastrar a biometria sozinho.
             </p>
           )}
+          {generatedLink?.whatsappNotice ? (
+            <p
+              className={
+                generatedLink.whatsapp === 'SENT'
+                  ? 'notice notice--ok'
+                  : generatedLink.whatsapp === 'FAILED' ||
+                      generatedLink.whatsapp === 'NO_PHONE' ||
+                      generatedLink.whatsapp === 'DISABLED'
+                    ? 'notice notice--warn'
+                    : 'table-sub'
+              }
+              role="status"
+            >
+              {generatedLink.whatsappNotice}
+            </p>
+          ) : null}
           {generatedLink?.url ? (
             <div className="field" style={{ marginTop: '0.5rem' }}>
               <label htmlFor={`enroll-link-${workerId}`}>Link gerado</label>
@@ -647,6 +688,19 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
                   onClick={() => void copyEnrollmentLink()}
                 >
                   {linkCopied ? 'Copiado' : 'Copiar link'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => void resendEnrollmentWhatsapp()}
+                  disabled={
+                    saving ||
+                    enrolled ||
+                    phase === 'scanning' ||
+                    phase === 'processing'
+                  }
+                >
+                  Reenviar WhatsApp
                 </button>
               </div>
             </div>

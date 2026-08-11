@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react';
 import {
   cancelPortalDelivery,
   createPortalDeliveryReturn,
+  downloadPortalDeliveryPdf,
 } from '../lib/client-auth';
 import { formatCnpj } from '../lib/cnpj';
 import { EpiLegalDeclarationBlock } from './EpiLegalDeclarationBlock';
@@ -78,6 +79,7 @@ export function DeliveryReceiptView({
   const [returnReason, setReturnReason] = useState('');
   const [returnNotes, setReturnNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [returnRows, setReturnRows] = useState<Record<string, ReturnRowState>>(
     {},
@@ -122,6 +124,20 @@ export function DeliveryReceiptView({
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function downloadPdf() {
+    setPdfBusy(true);
+    setActionError(null);
+    try {
+      await downloadPortalDeliveryPdf(detail.id);
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : 'Falha ao baixar o PDF.',
+      );
+    } finally {
+      setPdfBusy(false);
     }
   }
 
@@ -178,7 +194,15 @@ export function DeliveryReceiptView({
             className="btn btn-primary"
             onClick={() => window.print()}
           >
-            Imprimir / salvar PDF
+            Imprimir
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => void downloadPdf()}
+            disabled={pdfBusy || busy}
+          >
+            {pdfBusy ? 'Gerando PDF…' : 'Baixar PDF'}
           </button>
           {detail.actions.canCancel ? (
             <button

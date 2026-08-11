@@ -47,6 +47,8 @@ export class PublicFacialEnrollmentController {
     @Body('faceEngine') faceEngine?: string,
     @Body('faceEngineVersion') faceEngineVersion?: string,
     @Body('qualityScore') qualityScoreRaw?: string,
+    @Body('livenessPassed') livenessPassedRaw?: string,
+    @Body('livenessChallenge') livenessChallenge?: string,
   ) {
     if (!facial?.buffer?.length) {
       throw new BadRequestException(
@@ -70,6 +72,8 @@ export class PublicFacialEnrollmentController {
     const qualityScore = qualityScoreRaw
       ? Number.parseFloat(qualityScoreRaw)
       : null;
+    const livenessPassed =
+      livenessPassedRaw === 'true' || livenessPassedRaw === '1';
 
     return this.enrollment.complete(token, {
       cpfLast4,
@@ -79,6 +83,8 @@ export class PublicFacialEnrollmentController {
       faceEngine,
       faceEngineVersion,
       qualityScore: Number.isFinite(qualityScore) ? qualityScore : null,
+      livenessPassed,
+      livenessChallenge: livenessChallenge?.trim() || null,
     });
   }
 }

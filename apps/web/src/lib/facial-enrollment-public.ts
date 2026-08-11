@@ -1,5 +1,6 @@
 import { getApiUrl } from './auth';
 import type {
+  LivenessChallengeType,
   PublicFacialEnrollmentCompleteResponse,
   PublicFacialEnrollmentUnlockResponse,
 } from '@gestao-epi/shared';
@@ -45,6 +46,8 @@ export async function completeFacialEnrollment(
     faceEngine?: string;
     faceEngineVersion?: string;
     qualityScore?: number | null;
+    livenessPassed: true;
+    livenessChallenge: LivenessChallengeType;
   },
 ): Promise<PublicFacialEnrollmentCompleteResponse> {
   const form = new FormData();
@@ -52,6 +55,8 @@ export async function completeFacialEnrollment(
   form.append('cpfLast4', options.cpfLast4);
   form.append('consentAccepted', 'true');
   form.append('faceDescriptor', JSON.stringify(options.faceDescriptor));
+  form.append('livenessPassed', 'true');
+  form.append('livenessChallenge', options.livenessChallenge);
   if (options.faceEngine) form.append('faceEngine', options.faceEngine);
   if (options.faceEngineVersion) {
     form.append('faceEngineVersion', options.faceEngineVersion);

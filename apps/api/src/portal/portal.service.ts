@@ -26,6 +26,8 @@ import {
   FACE_ENGINE,
   FACE_ENGINE_VERSION,
   assessNeedEquipmentCompatibility,
+  isLivenessChallengeType,
+  isLivenessRequired,
   isValidFaceDescriptor,
   resolveFaceMatchThreshold,
 } from '@gestao-epi/shared';
@@ -932,6 +934,25 @@ export class PortalService {
       workerId,
     );
     return this.facialEnrollment.generate(organizationId, userId, workerId);
+  }
+
+  async resendWorkerFacialEnrollmentWhatsapp(
+    organizationId: string,
+    userId: string,
+    servedClientId: string,
+    workerId: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    await this.assertWorkerBelongsToClient(
+      organizationId,
+      servedClientId,
+      workerId,
+    );
+    return this.facialEnrollment.resendWhatsapp(
+      organizationId,
+      userId,
+      workerId,
+    );
   }
 
   getWorkerCsvTemplate() {
@@ -2865,7 +2886,7 @@ export class PortalService {
 
   /**
    * Cria entrega com baixa de estoque (ENTREGA) e matching biometrico automatico.
-   * Descritor 128-d (face-api) comparado no backend; sem liveness.
+   * Descritor 128-d (face-api) comparado no backend; liveness MVP opcional via env.
    */
   async createDelivery(
     organizationId: string,
@@ -2892,6 +2913,24 @@ export class PortalService {
       throw new BadRequestException(
         'Descritor facial da captura invalido. Detecte exatamente uma face e tente novamente.',
       );
+    }
+
+    const livenessRequired = isLivenessRequired(
+      process.env.LIVENESS_REQUIRED,
+      process.env.NODE_ENV,
+    );
+    const livenessChallenge = payload.livenessChallenge?.trim() ?? '';
+    if (livenessRequired) {
+      if (payload.livenessPassed !== true) {
+        throw new BadRequestException(
+          'Desafio de presenca obrigatorio. Complete o desafio (piscar/virar) e tente novamente.',
+        );
+      }
+      if (!isLivenessChallengeType(livenessChallenge)) {
+        throw new BadRequestException(
+          'Tipo de desafio de presenca invalido.',
+        );
+      }
     }
 
     if (!facial?.buffer?.byteLength) {
@@ -3279,6 +3318,11 @@ export class PortalService {
             matchThreshold: match.threshold,
             faceEngine: payload.faceEngine?.trim() || FACE_ENGINE,
             verifiedAt: deliveredAt,
+            livenessPassed:
+              payload.livenessPassed === true ? true : payload.livenessPassed === false ? false : null,
+            livenessChallenge: isLivenessChallengeType(livenessChallenge)
+              ? livenessChallenge
+              : null,
             retentionUntil: (() => {
               const until = new Date(deliveredAt);
               until.setFullYear(until.getFullYear() + 5);
@@ -3293,7 +3337,14 @@ export class PortalService {
                 payload.faceEngineVersion?.trim() || FACE_ENGINE_VERSION,
               faceDetectionScore: payload.faceDetectionScore ?? null,
               workerFacialReferenceId: facialReference.id,
-              note: 'Matching biometrico automatico aprovado (face-api descritor 128-d). Sem liveness.',
+              livenessPassed: payload.livenessPassed === true,
+              livenessChallenge: isLivenessChallengeType(livenessChallenge)
+                ? livenessChallenge
+                : null,
+              note:
+                payload.livenessPassed === true
+                  ? 'Matching biometrico automatico aprovado (face-api) com desafio de presenca MVP.'
+                  : 'Matching biometrico automatico aprovado (face-api descritor 128-d).',
             } as Prisma.InputJsonValue,
           },
         });

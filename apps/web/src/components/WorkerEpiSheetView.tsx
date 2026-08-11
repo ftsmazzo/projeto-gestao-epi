@@ -2,6 +2,8 @@
 
 import type { PortalWorkerEpiSheetResponse } from '@gestao-epi/shared';
 import Link from 'next/link';
+import { useState } from 'react';
+import { downloadPortalWorkerEpiSheetPdf } from '../lib/client-auth';
 import { formatCnpj } from '../lib/cnpj';
 import { EpiLegalDeclarationBlock } from './EpiLegalDeclarationBlock';
 import { PortalFacialEvidenceThumb } from './PortalFacialEvidenceThumb';
@@ -55,16 +57,48 @@ export function WorkerEpiSheetView({
   periodLoading?: boolean;
 }) {
   const hasPeriodFilter = Boolean(data.period?.from || data.period?.to);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  async function downloadPdf() {
+    setPdfBusy(true);
+    setPdfError(null);
+    try {
+      await downloadPortalWorkerEpiSheetPdf(data.worker.id, scope, {
+        from: periodFrom || data.period.from || undefined,
+        to: periodTo || data.period.to || undefined,
+      });
+    } catch (err) {
+      setPdfError(
+        err instanceof Error ? err.message : 'Falha ao baixar o PDF.',
+      );
+    } finally {
+      setPdfBusy(false);
+    }
+  }
 
   return (
     <div className="epi-doc-wrap">
+      {pdfError ? (
+        <p className="error no-print" role="alert">
+          {pdfError}
+        </p>
+      ) : null}
       <div className="btn-row no-print epi-doc-toolbar">
         <button
           type="button"
           className="btn btn-primary"
           onClick={() => window.print()}
         >
-          Imprimir / salvar PDF
+          Imprimir
+        </button>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() => void downloadPdf()}
+          disabled={pdfBusy || periodLoading}
+        >
+          {pdfBusy ? 'Gerando PDF…' : 'Baixar PDF'}
         </button>
         <Link className="btn btn-secondary" href="/portal/trabalhadores">
           Voltar aos trabalhadores

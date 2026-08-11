@@ -49,6 +49,51 @@ export function clearClientAccessToken() {
   window.localStorage.removeItem(CLIENT_TOKEN_KEY);
 }
 
+async function clientApiFetchBlob(
+  path: string,
+  options: RequestInit = {},
+): Promise<Blob> {
+  const headers = new Headers(options.headers);
+  const token = getClientAccessToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const response = await fetch(`${getApiUrl()}${path}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    let message = `Erro HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as { message?: string | string[] };
+      if (Array.isArray(body.message)) {
+        message = body.message.join(', ');
+      } else if (body.message) {
+        message = body.message;
+      }
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  return response.blob();
+}
+
+function triggerBrowserDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function clientApiFetch<T>(
   path: string,
   options: RequestInit = {},
@@ -188,6 +233,15 @@ export async function generatePortalWorkerFacialEnrollmentLink(
   );
 }
 
+export async function resendPortalWorkerFacialEnrollmentWhatsapp(
+  workerId: string,
+) {
+  return clientApiFetch<WorkerFacialEnrollmentLinkGenerated>(
+    `/portal/trabalhadores/${workerId}/facial-enrollment-link/whatsapp`,
+    { method: 'POST' },
+  );
+}
+
 export async function getPortalWorkerCsvTemplate() {
   return clientApiFetch<{
     fileName: string;
@@ -256,6 +310,27 @@ export async function fetchPortalDeliveries(status?: string) {
 
 export async function fetchPortalDelivery(id: string) {
   return clientApiFetch<PortalDeliveryDetail>(`/portal/entregas/${id}`);
+}
+
+export async function downloadPortalDeliveryPdf(id: string) {
+  const blob = await clientApiFetchBlob(`/portal/entregas/${id}/pdf`);
+  triggerBrowserDownload(blob, `comprovante-${id}.pdf`);
+}
+
+export async function downloadPortalWorkerEpiSheetPdf(
+  workerId: string,
+  scope: 'history' | 'open' = 'history',
+  period?: { from?: string; to?: string },
+) {
+  const params = new URLSearchParams();
+  if (scope === 'open') params.set('scope', 'open');
+  if (period?.from?.trim()) params.set('from', period.from.trim());
+  if (period?.to?.trim()) params.set('to', period.to.trim());
+  const query = params.toString();
+  const blob = await clientApiFetchBlob(
+    `/portal/trabalhadores/${workerId}/ficha-epi/pdf${query ? `?${query}` : ''}`,
+  );
+  triggerBrowserDownload(blob, `ficha-epi-${workerId}.pdf`);
 }
 
 export async function cancelPortalDelivery(id: string, reason: string) {

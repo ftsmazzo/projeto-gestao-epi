@@ -331,4 +331,16 @@ export class WorkersController {
       id,
     );
   }
+
+  @Post('workers/:id/facial-enrollment-link/whatsapp')
+  resendFacialEnrollmentWhatsapp(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.facialEnrollment.resendWhatsapp(
+      user.organizationId,
+      user.sub,
+      id,
+    );
+  }
 }

@@ -236,6 +236,8 @@ export class WorkerFacialReferenceService {
       faceEngine?: string;
       faceEngineVersion?: string;
       qualityScore?: number | null;
+      livenessPassed?: boolean | null;
+      livenessChallenge?: string | null;
     },
   ) {
     const worker = await this.requireWorker(organizationId, workerId);
@@ -312,6 +314,13 @@ export class WorkerFacialReferenceService {
               Number.isFinite(options.qualityScore)
                 ? options.qualityScore
                 : null,
+            livenessPassed:
+              options.livenessPassed === true
+                ? true
+                : options.livenessPassed === false
+                  ? false
+                  : null,
+            livenessChallenge: options.livenessChallenge?.trim() || null,
             status: WorkerFacialReferenceStatus.ACTIVE,
             uploadedAt: now,
             createdByUserId: userId,

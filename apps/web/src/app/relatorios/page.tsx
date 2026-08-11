@@ -1,26 +1,46 @@
 'use client';
 
-import { ModulePlaceholder } from '../../components/ModulePlaceholder';
+import Link from 'next/link';
 import { RequireAuth } from '../../components/RequireAuth';
 
-export default function RelatoriosPage() {
+/**
+ * Relatorios operacionais ficam no Painel do Cliente.
+ */
+function RelatoriosRetiredContent() {
   return (
-    <RequireAuth>
-      {() => (
-        <ModulePlaceholder
-          kicker="Gestao"
-          title="Relatorios"
-          description="Visao gerencial de entregas, pendencias, estoque e uso de franquia."
-          emptyTitle="Sem dados para relatar"
-          emptyDescription="Os relatorios dependem dos eventos operacionais das proximas etapas."
-          primaryActionLabel="Gerar relatorio (em breve)"
-          upcoming={[
-            'Entregas por periodo',
-            'Uso de vidas/cotas',
-            'Exportacao para auditoria',
-          ]}
-        />
-      )}
-    </RequireAuth>
+    <div className="workspace-section">
+      <div className="notice notice--warn" role="status">
+        <p>
+          <strong>Relatorios operacionais sairam da Consultoria.</strong>{' '}
+          Entregas, trocas, estoque e cobertura ficam no Painel do Cliente.
+        </p>
+      </div>
+
+      <section className="surface" aria-labelledby="rel-retired-title">
+        <p className="page-kicker">Consultoria</p>
+        <h1 id="rel-retired-title" className="page-title">
+          Relatorios no portal
+        </h1>
+        <p className="page-lead">
+          A empresa consulta e exporta no portal. A Consultoria acompanha pela
+          implantacao e pelos clientes atendidos.
+        </p>
+        <div className="btn-row">
+          <Link className="btn btn-primary" href="/portal/login">
+            Ir ao portal do cliente
+          </Link>
+          <Link className="btn btn-secondary" href="/clientes">
+            Clientes atendidos
+          </Link>
+          <Link className="btn btn-ghost" href="/dashboard">
+            Dashboard
+          </Link>
+        </div>
+      </section>
+    </div>
   );
+}
+
+export default function RelatoriosPage() {
+  return <RequireAuth>{() => <RelatoriosRetiredContent />}</RequireAuth>;
 }

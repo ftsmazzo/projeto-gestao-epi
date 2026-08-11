@@ -4399,12 +4399,17 @@ a.btn-danger:hover {
   --enroll-surface: rgba(247, 251, 248, 0.92);
   --enroll-border: rgba(16, 36, 28, 0.12);
   min-height: 100dvh;
+  min-height: 100svh;
   position: relative;
   display: grid;
   place-items: center;
-  padding: 1.25rem;
+  padding: max(0.75rem, env(safe-area-inset-top))
+    max(0.75rem, env(safe-area-inset-right))
+    max(0.75rem, env(safe-area-inset-bottom))
+    max(0.75rem, env(safe-area-inset-left));
   color: var(--enroll-ink);
   font-family: var(--font-plex-sans), 'IBM Plex Sans', sans-serif;
+  box-sizing: border-box;
 }
 
 .enroll-page__atmosphere {
@@ -4430,6 +4435,15 @@ a.btn-danger:hover {
 }
 
 .enroll-page__hero { margin-bottom: 1.1rem; }
+
+.enroll-page__hero--compact {
+  margin-bottom: 0.55rem;
+}
+
+.enroll-page__hero--compact .enroll-page__title {
+  font-size: 1.25rem;
+  margin: 0.15rem 0 0;
+}
 
 .enroll-page__brand {
   margin: 0;
@@ -4457,6 +4471,12 @@ a.btn-danger:hover {
 }
 
 .enroll-page__hint { margin-top: 0.55rem; font-size: 0.85rem; }
+
+.enroll-page__hint--mvp {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  opacity: 0.9;
+}
 
 .enroll-page__error {
   margin: 0 0 0.85rem;
@@ -4492,7 +4512,8 @@ a.btn-danger:hover {
   background: var(--enroll-accent);
   color: #fff;
   cursor: pointer;
-  margin-top: 0.35rem;
+  margin-top: 0;
+  width: 100%;
 }
 
 .enroll-page__btn:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -4508,16 +4529,44 @@ a.btn-danger:hover {
   grid-template-columns: auto 1fr;
   gap: 0.65rem;
   align-items: start;
-  margin: 0.85rem 0 1rem;
+  margin: 0.35rem 0 0.5rem;
   font-size: 0.88rem;
   line-height: 1.4;
   color: var(--enroll-muted);
 }
 
+.enroll-page__capture {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.enroll-page__capture-top {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.enroll-page__live-status {
+  margin: 0;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--enroll-ink);
+  line-height: 1.35;
+  min-height: 1.35em;
+}
+
 .enroll-page__stage {
-  margin-bottom: 0.85rem;
+  margin: 0 auto;
   border-radius: 1rem;
   overflow: hidden;
+  width: min(100%, 280px);
+}
+
+.enroll-page__actions {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.15rem;
 }
 
 .enroll-page__success {
@@ -4533,6 +4582,134 @@ a.btn-danger:hover {
 
 .enroll-link-banner { margin-top: 1rem; }
 .enroll-link-banner input { font-size: 0.82rem; }
+
+/* Mobile: uma composicao sem “cacar” o botao / redimensionar a janela */
+@media (max-width: 720px) {
+  .enroll-page {
+    place-items: stretch;
+    align-content: stretch;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .enroll-page__sheet {
+    width: 100%;
+    min-height: 100dvh;
+    min-height: 100svh;
+    border-radius: 0;
+    border: 0;
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    padding:
+      max(0.85rem, env(safe-area-inset-top))
+      1rem
+      max(0.85rem, env(safe-area-inset-bottom))
+      1rem;
+  }
+
+  .enroll-page--capture .enroll-page__sheet {
+    overflow: hidden;
+  }
+
+  .enroll-page--live .enroll-page__sheet {
+    padding-top: max(0.55rem, env(safe-area-inset-top));
+  }
+
+  .enroll-page__capture {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .enroll-page__capture--live .enroll-page__capture-top {
+    flex: 0 0 auto;
+  }
+
+  .enroll-page__capture--live .enroll-page__stage {
+    flex: 1 1 auto;
+    width: min(100%, 340px);
+    max-height: min(58dvh, 420px);
+    aspect-ratio: auto;
+    height: auto;
+    min-height: 220px;
+  }
+
+  .enroll-page__capture--live .enroll-page__stage .face-ux__media,
+  .enroll-page__capture--live .enroll-page__stage .face-ux__placeholder {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .enroll-page__actions {
+    flex: 0 0 auto;
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    margin-top: auto;
+    padding:
+      0.65rem 0
+      max(0.35rem, env(safe-area-inset-bottom));
+    background: linear-gradient(
+      180deg,
+      rgba(247, 251, 248, 0) 0%,
+      rgba(247, 251, 248, 0.96) 28%,
+      rgba(247, 251, 248, 1) 100%
+    );
+  }
+
+  .enroll-page__consent {
+    max-height: 6.5rem;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 0.15rem;
+    font-size: 0.82rem;
+  }
+
+  .enroll-page__form .enroll-page__btn {
+    position: sticky;
+    bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+
+  .face-ux--panel .face-ux__actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    margin-top: 0.35rem;
+    padding: 0.55rem 0 max(0.25rem, env(safe-area-inset-bottom));
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      var(--color-surface, #fff) 35%
+    );
+  }
+
+  .face-ux--panel .face-ux__stage {
+    width: min(100%, 280px);
+    max-height: 42dvh;
+  }
+}
+
+@media (max-height: 700px) and (max-width: 720px) {
+  .enroll-page__hero:not(.enroll-page__hero--compact) .enroll-page__lead {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .enroll-page__capture--live .enroll-page__stage {
+    max-height: min(48dvh, 320px);
+    min-height: 180px;
+  }
+
+  .enroll-page__consent {
+    max-height: 4.5rem;
+  }
+}
 
 /* ============================================================
    Wizard steps (PGRO, entregas, formularios longos)

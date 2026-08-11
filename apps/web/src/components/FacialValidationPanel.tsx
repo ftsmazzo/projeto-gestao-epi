@@ -1,20 +1,28 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { LivenessChallengeType } from '@gestao-epi/shared';
 import {
   AUTO_CAPTURE_STABLE_MS,
+  createLivenessTracker,
   evaluateFaceFraming,
+  evaluateLiveness,
   extractFaceDescriptorFromBlob,
   FACE_ENGINE_META,
+  LIVENESS_MVP_NOTICE,
   loadFaceModels,
+  livenessChallengeLabel,
   scanFacesInVideo,
+  scanFacesWithLandmarks,
   type FaceFramingHint,
+  type LivenessTrackerState,
 } from '../lib/face-biometrics.client';
 import { previewPortalFacialMatch } from '../lib/client-auth';
 
 export type FacialUxStatus =
   | 'idle'
   | 'capturing'
+  | 'liveness'
   | 'processing'
   | 'matched'
   | 'rejected'
@@ -29,6 +37,8 @@ export type FacialValidationResult = {
   faceEngine: string;
   faceEngineVersion: string;
   consentAccepted: true;
+  livenessPassed: true;
+  livenessChallenge: LivenessChallengeType;
 };
 
 type Props = {
@@ -43,7 +53,7 @@ type Props = {
 type GuideTone = 'neutral' | 'adjusting' | 'ready' | 'processing' | 'matched' | 'rejected';
 
 const STATUS_COPY: Record<
-  Exclude<FacialUxStatus, 'idle' | 'capturing' | 'processing'>,
+  Exclude<FacialUxStatus, 'idle' | 'capturing' | 'liveness' | 'processing'>,
   { title: string; detail: string }
 > = {
   matched: {
@@ -94,6 +104,10 @@ export function FacialValidationPanel({
   const capturingLockRef = useRef(false);
   const stableSinceRef = useRef<number | null>(null);
   const loopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const livenessRef = useRef<LivenessTrackerState | null>(null);
+  const livenessPassedRef = useRef<{
+    challenge: LivenessChallengeType;
+  } | null>(null);
 
   const [engineReady, setEngineReady] = useState(false);
   const [status, setStatus] = useState<FacialUxStatus>(
@@ -204,6 +218,9 @@ export function FacialValidationPanel({
             faceEngine: FACE_ENGINE_META.engine,
             faceEngineVersion: FACE_ENGINE_META.version,
             consentAccepted: true,
+            livenessPassed: true,
+            livenessChallenge:
+              livenessPassedRef.current?.challenge ?? 'blink',
           });
         } else {
           setUxStatus('rejected');
@@ -260,9 +277,15 @@ export function FacialValidationPanel({
 
   const runScanLoop = useCallback(() => {
     stopLoop();
+    livenessRef.current = null;
+    livenessPassedRef.current = null;
 
     const tick = async () => {
-      if (statusRef.current !== 'capturing' || capturingLockRef.current) {
+      const phase = statusRef.current;
+      if (
+        (phase !== 'capturing' && phase !== 'liveness') ||
+        capturingLockRef.current
+      ) {
         return;
       }
       const video = videoRef.current;
@@ -272,36 +295,73 @@ export function FacialValidationPanel({
       }
 
       try {
-        const scan = await scanFacesInVideo(video);
-        if (statusRef.current !== 'capturing' || capturingLockRef.current) {
-          return;
-        }
-        const { hint, message } = evaluateFaceFraming(scan);
-        setGuideMessage(message);
-        setGuideTone(toneForHint(hint));
+        if (phase === 'capturing') {
+          const scan = await scanFacesInVideo(video);
+          if (statusRef.current !== 'capturing' || capturingLockRef.current) {
+            return;
+          }
+          const { hint, message } = evaluateFaceFraming(scan);
+          setGuideMessage(message);
+          setGuideTone(toneForHint(hint));
 
-        if (hint === 'ready') {
-          const now = Date.now();
-          if (stableSinceRef.current == null) {
-            stableSinceRef.current = now;
-          } else if (now - stableSinceRef.current >= AUTO_CAPTURE_STABLE_MS) {
+          if (hint === 'ready') {
+            const now = Date.now();
+            if (stableSinceRef.current == null) {
+              stableSinceRef.current = now;
+            } else if (now - stableSinceRef.current >= AUTO_CAPTURE_STABLE_MS) {
+              const tracker = createLivenessTracker();
+              livenessRef.current = tracker;
+              setUxStatus('liveness');
+              setGuideTone('ready');
+              setGuideMessage(livenessChallengeLabel(tracker.challenge));
+              stableSinceRef.current = null;
+            }
+          } else {
+            stableSinceRef.current = null;
+          }
+        } else if (phase === 'liveness') {
+          const scan = await scanFacesWithLandmarks(video);
+          if (statusRef.current !== 'liveness' || capturingLockRef.current) {
+            return;
+          }
+          let tracker = livenessRef.current;
+          if (!tracker) {
+            tracker = createLivenessTracker();
+            livenessRef.current = tracker;
+          }
+          const { state, progress } = evaluateLiveness(scan, tracker);
+          livenessRef.current = state;
+          setGuideMessage(progress.message);
+          setGuideTone(progress.passed ? 'ready' : 'adjusting');
+
+          if (progress.timedOut) {
+            setUxStatus('error');
+            setGuideTone('rejected');
+            setStatusDetail(progress.message);
+            stopCamera();
+            return;
+          }
+          if (progress.passed) {
+            livenessPassedRef.current = { challenge: state.challenge };
             await captureFrame();
             return;
           }
-        } else {
-          stableSinceRef.current = null;
         }
       } catch {
         // Mantém o loop; falhas pontuais de deteccao nao derrubam a sessao.
       }
 
-      if (statusRef.current === 'capturing' && !capturingLockRef.current) {
+      if (
+        (statusRef.current === 'capturing' ||
+          statusRef.current === 'liveness') &&
+        !capturingLockRef.current
+      ) {
         loopTimerRef.current = setTimeout(() => void tick(), 280);
       }
     };
 
     loopTimerRef.current = setTimeout(() => void tick(), 200);
-  }, [captureFrame, stopLoop]);
+  }, [captureFrame, setUxStatus, stopCamera, stopLoop]);
 
   async function startCamera() {
     if (disabled || !hasBiometricTemplate || needsReenrollment) return;
@@ -357,9 +417,15 @@ export function FacialValidationPanel({
   }
 
   const blocked = status === 'needsReenrollment';
-  const showLive = status === 'capturing' || (status === 'idle' && !thumbUrl);
+  const showLive =
+    status === 'capturing' ||
+    status === 'liveness' ||
+    (status === 'idle' && !thumbUrl);
   const copy =
-    status === 'idle' || status === 'capturing' || status === 'processing'
+    status === 'idle' ||
+    status === 'capturing' ||
+    status === 'liveness' ||
+    status === 'processing'
       ? null
       : STATUS_COPY[status];
 
@@ -383,7 +449,8 @@ export function FacialValidationPanel({
           Validacao facial
         </h2>
         <p className="face-ux__subtitle">
-          Toque em iniciar, enquadre o rosto e aguarde a captura automatica.
+          Enquadre o rosto, complete o desafio de presenca e aguarde a captura
+          automatica.
         </p>
       </header>
 
@@ -424,7 +491,7 @@ export function FacialValidationPanel({
             </div>
           )}
           <div className={`face-ux__oval face-ux__oval--${ovalTone}`} aria-hidden />
-          {status === 'capturing' ? (
+          {status === 'capturing' || status === 'liveness' ? (
             <p className="face-ux__live-hint" role="status">
               {guideMessage}
             </p>
@@ -456,7 +523,7 @@ export function FacialValidationPanel({
 
       <p className="face-ux__consent">
         Ao validar a face, a imagem capturada sera registrada como evidencia
-        desta entrega.
+        desta entrega. {LIVENESS_MVP_NOTICE}
       </p>
 
       <div className="face-ux__actions face-ux__actions--stack">

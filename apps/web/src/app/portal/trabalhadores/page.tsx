@@ -26,6 +26,7 @@ import {
   generatePortalWorkerFacialEnrollmentLink,
   getPortalWorkerCsvTemplate,
   previewPortalWorkerCsvImport,
+  resendPortalWorkerFacialEnrollmentWhatsapp,
   updatePortalWorker,
   updatePortalWorkerStatus,
 } from '../../../lib/client-auth';
@@ -130,6 +131,13 @@ function PortalTrabalhadoresContent() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<WorkerFormState>(emptyForm);
   const [enrollmentUrl, setEnrollmentUrl] = useState<string | null>(null);
+  const [enrollmentWhatsappNotice, setEnrollmentWhatsappNotice] = useState<
+    string | null
+  >(null);
+  const [enrollmentWhatsappOk, setEnrollmentWhatsappOk] = useState(false);
+  const [enrollmentWorkerId, setEnrollmentWorkerId] = useState<string | null>(
+    null,
+  );
   const [enrollmentBusyFor, setEnrollmentBusyFor] = useState<string | null>(
     null,
   );
@@ -397,6 +405,9 @@ function PortalTrabalhadoresContent() {
   async function generateEnrollment(worker: PortalWorkerRow) {
     setError(null);
     setEnrollmentUrl(null);
+    setEnrollmentWhatsappNotice(null);
+    setEnrollmentWhatsappOk(false);
+    setEnrollmentWorkerId(null);
     setLinkCopied(false);
     if (worker.hasValidBiometrics) {
       setError(
@@ -412,11 +423,37 @@ function PortalTrabalhadoresContent() {
     try {
       const link = await generatePortalWorkerFacialEnrollmentLink(worker.id);
       setEnrollmentUrl(link.url);
+      setEnrollmentWorkerId(worker.id);
+      setEnrollmentWhatsappNotice(link.whatsappNotice);
+      setEnrollmentWhatsappOk(link.whatsapp === 'SENT');
     } catch (err) {
       setError(
         err instanceof Error
           ? err.message
           : 'Nao foi possivel gerar o link facial.',
+      );
+    } finally {
+      setEnrollmentBusyFor(null);
+    }
+  }
+
+  async function resendEnrollmentWhatsapp() {
+    if (!enrollmentWorkerId) return;
+    setError(null);
+    setLinkCopied(false);
+    setEnrollmentBusyFor(enrollmentWorkerId);
+    try {
+      const link = await resendPortalWorkerFacialEnrollmentWhatsapp(
+        enrollmentWorkerId,
+      );
+      setEnrollmentUrl(link.url);
+      setEnrollmentWhatsappNotice(link.whatsappNotice);
+      setEnrollmentWhatsappOk(link.whatsapp === 'SENT');
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel reenviar o WhatsApp.',
       );
     } finally {
       setEnrollmentBusyFor(null);
@@ -466,8 +503,14 @@ function PortalTrabalhadoresContent() {
         </p>
       ) : null}
       {enrollmentUrl ? (
-        <div className="notice notice--ok enroll-link-banner" role="status">
-          <p>Link de cadastro facial gerado (valido por 24h):</p>
+        <div
+          className={`notice ${enrollmentWhatsappOk ? 'notice--ok' : 'notice--warn'} enroll-link-banner`}
+          role="status"
+        >
+          <p>Link de cadastro facial gerado (valido por 24h).</p>
+          {enrollmentWhatsappNotice ? (
+            <p className="table-sub">{enrollmentWhatsappNotice}</p>
+          ) : null}
           <div className="btn-row" style={{ marginTop: '0.5rem' }}>
             <input
               className="mono"
@@ -484,9 +527,19 @@ function PortalTrabalhadoresContent() {
             </button>
             <button
               type="button"
+              className="btn btn-secondary"
+              onClick={() => void resendEnrollmentWhatsapp()}
+              disabled={!enrollmentWorkerId || enrollmentBusyFor != null}
+            >
+              Reenviar WhatsApp
+            </button>
+            <button
+              type="button"
               className="btn btn-ghost"
               onClick={() => {
                 setEnrollmentUrl(null);
+                setEnrollmentWhatsappNotice(null);
+                setEnrollmentWorkerId(null);
                 setLinkCopied(false);
               }}
             >

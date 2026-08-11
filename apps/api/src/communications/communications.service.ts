@@ -14,8 +14,11 @@ import {
 import {
   buildClientAccessInviteEmail,
   buildClientAccessInviteWhatsapp,
+  buildFacialEnrollmentInviteWhatsapp,
   COMM_TEMPLATE_CLIENT_ACCESS_INVITE,
+  COMM_TEMPLATE_FACIAL_ENROLLMENT_INVITE,
   type ClientAccessInviteInput,
+  type FacialEnrollmentInviteInput,
 } from './communication.templates';
 import { EvolutionWhatsappSender } from './evolution-whatsapp.sender';
 
@@ -125,6 +128,64 @@ export class CommunicationsService {
         }`,
       );
       return empty;
+    }
+  }
+
+  /**
+   * Enfileira WhatsApp do link de cadastro facial e tenta entregar na hora.
+   * Falha de envio nao invalida o link — so retorna status.
+   */
+  async enqueueFacialEnrollmentWhatsapp(input: {
+    organizationId: string;
+    workerId: string;
+    linkId: string;
+    phone: string | null | undefined;
+    invite: FacialEnrollmentInviteInput;
+  }): Promise<{
+    status: AccessInviteChannelStatus | 'NO_PHONE' | 'DISABLED';
+    error?: string | null;
+    detail?: string | null;
+  }> {
+    if (!this.isEnabled()) {
+      return { status: 'DISABLED' };
+    }
+    const phone = input.phone?.trim();
+    if (!phone) {
+      return { status: 'NO_PHONE' };
+    }
+
+    try {
+      const text = buildFacialEnrollmentInviteWhatsapp(input.invite);
+      const row = await this.prisma.communicationOutbox.create({
+        data: {
+          organizationId: input.organizationId,
+          channel: CommunicationChannel.WHATSAPP,
+          templateKey: COMM_TEMPLATE_FACIAL_ENROLLMENT_INVITE,
+          toAddress: phone,
+          subject: null,
+          bodyText: text,
+          payload: {
+            workerId: input.workerId,
+            linkId: input.linkId,
+            enrollmentUrl: input.invite.enrollmentUrl,
+          },
+          relatedType: 'WorkerFacialEnrollmentLink',
+          relatedId: input.linkId,
+          status: CommunicationStatus.PENDING,
+        },
+      });
+      const result = await this.deliver(row.id);
+      return {
+        status: result.status,
+        error: result.error ?? null,
+        detail: result.detail ?? null,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Falha ao enfileirar WhatsApp facial (${input.workerId}): ${message}`,
+      );
+      return { status: 'FAILED', error: message.slice(0, 500) };
     }
   }
 

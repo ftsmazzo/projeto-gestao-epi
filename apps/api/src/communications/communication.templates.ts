@@ -1,5 +1,6 @@
 export const COMM_TEMPLATE_CLIENT_ACCESS_INVITE = 'client_access_invite';
 export const COMM_TEMPLATE_DAILY_ALERTS = 'daily_client_alerts';
+export const COMM_TEMPLATE_FACIAL_ENROLLMENT_INVITE = 'facial_enrollment_invite';
 
 export type ClientAccessInviteInput = {
   organizationId: string;
@@ -101,4 +102,28 @@ export function buildDailyClientAlertsWhatsapp(input: DailyClientAlertsInput) {
   }
   lines.push(`Painel: ${input.portalUrl}`);
   return lines.join('\n');
+}
+
+export type FacialEnrollmentInviteInput = {
+  workerName: string;
+  enrollmentUrl: string;
+  expiresAtIso: string;
+};
+
+export function buildFacialEnrollmentInviteWhatsapp(
+  input: FacialEnrollmentInviteInput,
+) {
+  const firstName =
+    input.workerName.trim().split(/\s+/)[0] || input.workerName;
+  const expiresLabel = new Date(input.expiresAtIso).toLocaleString('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
+  return [
+    `Ola, ${firstName}.`,
+    'Cadastre sua biometria facial para receber EPI com seguranca.',
+    `Link (valido 24h, ate ${expiresLabel}):`,
+    input.enrollmentUrl,
+    'Voce precisara dos 4 ultimos digitos do CPF.',
+  ].join('\n');
 }

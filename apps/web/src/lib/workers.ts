@@ -241,6 +241,13 @@ export function generateWorkerFacialEnrollmentLink(workerId: string) {
   );
 }
 
+export function resendWorkerFacialEnrollmentWhatsapp(workerId: string) {
+  return apiFetch<WorkerFacialEnrollmentLinkGenerated>(
+    `/workers/${workerId}/facial-enrollment-link/whatsapp`,
+    { method: 'POST' },
+  );
+}
+
 /** Blob autenticado da referencia facial (Consultoria). */
 export async function fetchWorkerFacialReferenceBlob(workerId: string) {
   const headers = new Headers();

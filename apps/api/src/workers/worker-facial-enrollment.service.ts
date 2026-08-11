@@ -12,9 +12,13 @@ import {
 import {
   WORKER_BIOMETRIC_CONSENT_TEXT,
   WORKER_BIOMETRIC_CONSENT_VERSION,
+  isLivenessChallengeType,
+  isLivenessRequired,
   isValidFaceDescriptor,
+  type FacialEnrollmentWhatsappStatus,
 } from '@gestao-epi/shared';
 import { AuditService } from '../audit/audit.service';
+import { CommunicationsService } from '../communications/communications.service';
 import { stripCpf } from '../common/cpf';
 import { PrismaService } from '../prisma/prisma.service';
 import { WorkerBiometricConsentService } from './worker-biometric-consent.service';
@@ -57,6 +61,29 @@ function deriveStatus(row: {
   return 'PENDING';
 }
 
+function whatsappNoticeFor(
+  status: FacialEnrollmentWhatsappStatus,
+  error?: string | null,
+): string {
+  switch (status) {
+    case 'SENT':
+      return 'WhatsApp enviado com o link de cadastro facial.';
+    case 'PENDING':
+      return 'WhatsApp enfileirado; entrega em andamento.';
+    case 'FAILED':
+      return error
+        ? `Falha ao enviar WhatsApp (${error}). O link continua valido — copie e envie manualmente.`
+        : 'Falha ao enviar WhatsApp. O link continua valido — copie e envie manualmente.';
+    case 'NO_PHONE':
+      return 'Trabalhador sem telefone cadastrado. Copie o link e envie manualmente.';
+    case 'DISABLED':
+    case 'SKIPPED':
+      return 'Comunicacoes desligadas. Copie o link e envie manualmente.';
+    default:
+      return 'Copie o link e envie ao trabalhador se necessario.';
+  }
+}
+
 @Injectable()
 export class WorkerFacialEnrollmentService {
   constructor(
@@ -64,6 +91,7 @@ export class WorkerFacialEnrollmentService {
     private readonly audit: AuditService,
     private readonly biometricConsent: WorkerBiometricConsentService,
     private readonly facialReference: WorkerFacialReferenceService,
+    private readonly communications: CommunicationsService,
   ) {}
 
   /** Gera (ou regenera) link de 24h. Exige CPF no trabalhador. */
@@ -134,6 +162,8 @@ export class WorkerFacialEnrollmentService {
       },
     });
 
+    const url = buildEnrollmentUrl(token);
+
     await this.audit.log({
       action: 'worker.facial_enrollment_link.generated',
       organizationId,
@@ -146,18 +176,51 @@ export class WorkerFacialEnrollmentService {
       },
     });
 
+    const whatsappResult =
+      await this.communications.enqueueFacialEnrollmentWhatsapp({
+        organizationId,
+        workerId: worker.id,
+        linkId: created.id,
+        phone: worker.phone,
+        invite: {
+          workerName: worker.name,
+          enrollmentUrl: url,
+          expiresAtIso: expiresAt.toISOString(),
+        },
+      });
+
+    const whatsapp = whatsappResult.status as FacialEnrollmentWhatsappStatus;
+    const whatsappNotice = whatsappNoticeFor(
+      whatsapp,
+      whatsappResult.error,
+    );
+
     return {
       id: created.id,
       workerId: worker.id,
       workerName: worker.name,
       status: 'PENDING' as const,
-      url: buildEnrollmentUrl(token),
+      url,
       expiresAt: expiresAt.toISOString(),
       createdAt: created.createdAt.toISOString(),
       requiresCpfLast4: true,
-      notice:
-        'Copie o link e envie ao trabalhador. Ele precisara dos 4 ultimos digitos do CPF. Validade: 24 horas.',
+      notice: `${whatsappNotice} Validade: 24 horas. O trabalhador precisara dos 4 ultimos digitos do CPF.`,
+      whatsapp,
+      whatsappError: whatsappResult.error ?? null,
+      whatsappNotice,
     };
+  }
+
+  /**
+   * Reenvia WhatsApp: regenera link (token so e conhecido na geracao) e enfileira.
+   * Mesma regra de generate — falha de envio nao invalida o link.
+   */
+  async resendWhatsapp(
+    organizationId: string,
+    userId: string,
+    workerId: string,
+  ) {
+    return this.generate(organizationId, userId, workerId);
   }
 
   /** Status do link ativo mais recente (sem token/URL regeneravel). */
@@ -181,6 +244,7 @@ export class WorkerFacialEnrollmentService {
         workerId: worker.id,
         workerName: worker.name,
         hasCpf: stripCpf(worker.cpf ?? '').length >= 4,
+        hasPhone: Boolean(worker.phone?.trim()),
         status: 'MISSING' as const,
         link: null,
         canGenerate: stripCpf(worker.cpf ?? '').length >= 4,
@@ -192,6 +256,7 @@ export class WorkerFacialEnrollmentService {
       workerId: worker.id,
       workerName: worker.name,
       hasCpf: stripCpf(worker.cpf ?? '').length >= 4,
+      hasPhone: Boolean(worker.phone?.trim()),
       status,
       link: {
         id: latest.id,
@@ -218,7 +283,7 @@ export class WorkerFacialEnrollmentService {
       consentText: WORKER_BIOMETRIC_CONSENT_TEXT,
       consentVersion: WORKER_BIOMETRIC_CONSENT_VERSION,
       notice:
-        'Centralize o rosto no oval e aguarde a captura automatica. Aceite o consentimento antes de salvar.',
+        'Centralize o rosto no oval, complete o desafio de presenca e aguarde a captura automatica. Aceite o consentimento antes de salvar.',
     };
   }
 
@@ -233,12 +298,32 @@ export class WorkerFacialEnrollmentService {
       faceEngine?: string;
       faceEngineVersion?: string;
       qualityScore?: number | null;
+      livenessPassed?: boolean;
+      livenessChallenge?: string | null;
     },
   ) {
     if (input.consentAccepted !== true) {
       throw new BadRequestException(
         'E necessario aceitar o consentimento biometrico.',
       );
+    }
+
+    const livenessRequired = isLivenessRequired(
+      process.env.LIVENESS_REQUIRED,
+      process.env.NODE_ENV,
+    );
+    const challenge = input.livenessChallenge?.trim() ?? '';
+    if (livenessRequired) {
+      if (input.livenessPassed !== true) {
+        throw new BadRequestException(
+          'Desafio de presenca obrigatorio. Complete o desafio (piscar/virar) e tente novamente.',
+        );
+      }
+      if (!isLivenessChallengeType(challenge)) {
+        throw new BadRequestException(
+          'Tipo de desafio de presenca invalido.',
+        );
+      }
     }
 
     const link = await this.findValidLinkOrThrow(token);
@@ -269,6 +354,10 @@ export class WorkerFacialEnrollmentService {
         faceEngine: input.faceEngine,
         faceEngineVersion: input.faceEngineVersion,
         qualityScore: input.qualityScore ?? null,
+        livenessPassed: input.livenessPassed === true,
+        livenessChallenge: isLivenessChallengeType(challenge)
+          ? challenge
+          : null,
       },
     );
 
@@ -307,6 +396,7 @@ export class WorkerFacialEnrollmentService {
         id: true,
         name: true,
         cpf: true,
+        phone: true,
         servedClientId: true,
         organizationId: true,
       },

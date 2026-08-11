@@ -520,6 +520,8 @@ function PortalEntregasContent() {
           faceDescriptor: facialResult.descriptor,
           faceEngine: facialResult.faceEngine,
           faceEngineVersion: facialResult.faceEngineVersion,
+          livenessPassed: facialResult.livenessPassed,
+          livenessChallenge: facialResult.livenessChallenge,
           items: selectedItems.map(({ need, sel }) => {
             const lifeRaw = Number(sel.usefulLifeValue);
             const usesRaw = Number(sel.usageDaysPerWeek);

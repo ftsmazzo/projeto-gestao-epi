@@ -6,6 +6,7 @@ export const APP_PITCH =
 export const API_DEFAULT_PORT = 3001;
 
 export * from './face-biometrics';
+import type { LivenessChallengeType } from './face-biometrics';
 
 export type HealthStatus = 'ok' | 'degraded' | 'down';
 
@@ -1809,6 +1810,15 @@ export type WorkerFacialEnrollmentLinkStatus =
   | 'REVOKED'
   | 'MISSING';
 
+export type FacialEnrollmentWhatsappStatus =
+  | 'SENT'
+  | 'FAILED'
+  | 'PENDING'
+  | 'SKIPPED'
+  | 'NOT_REQUESTED'
+  | 'NO_PHONE'
+  | 'DISABLED';
+
 export interface WorkerFacialEnrollmentLinkGenerated {
   id: string;
   workerId: string;
@@ -1819,12 +1829,16 @@ export interface WorkerFacialEnrollmentLinkGenerated {
   createdAt: string;
   requiresCpfLast4: boolean;
   notice: string;
+  whatsapp: FacialEnrollmentWhatsappStatus;
+  whatsappError?: string | null;
+  whatsappNotice: string;
 }
 
 export interface WorkerFacialEnrollmentLinkStatusResponse {
   workerId: string;
   workerName: string;
   hasCpf: boolean;
+  hasPhone: boolean;
   status: WorkerFacialEnrollmentLinkStatus;
   link: {
     id: string;
@@ -2159,6 +2173,9 @@ export interface PortalCreateDeliveryPayload {
   faceEngine?: string;
   faceEngineVersion?: string;
   faceDetectionScore?: number;
+  /** Desafio de presenca MVP (piscar/virar). */
+  livenessPassed?: boolean;
+  livenessChallenge?: LivenessChallengeType;
 }
 
 export interface PortalCancelDeliveryPayload {

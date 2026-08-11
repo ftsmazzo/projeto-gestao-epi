@@ -1,16 +1,23 @@
 'use client';
 
 import { WORKER_BIOMETRIC_CONSENT_TEXT } from '@gestao-epi/shared';
+import type { LivenessChallengeType } from '@gestao-epi/shared';
 import { useParams } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AUTO_CAPTURE_STABLE_MS,
+  createLivenessTracker,
   evaluateFaceFraming,
+  evaluateLiveness,
   extractFaceDescriptorFromBlob,
   FACE_ENGINE_META,
+  LIVENESS_MVP_NOTICE,
   loadFaceModels,
+  livenessChallengeLabel,
   scanFacesInVideo,
+  scanFacesWithLandmarks,
   type FaceFramingHint,
+  type LivenessTrackerState,
 } from '../../../../lib/face-biometrics.client';
 import {
   completeFacialEnrollment,
@@ -25,7 +32,13 @@ type GuideTone =
   | 'matched'
   | 'rejected';
 
-type Phase = 'locked' | 'ready' | 'scanning' | 'processing' | 'done';
+type Phase =
+  | 'locked'
+  | 'ready'
+  | 'scanning'
+  | 'liveness'
+  | 'processing'
+  | 'done';
 
 function toneForHint(hint: FaceFramingHint): GuideTone {
   if (hint === 'ready') return 'ready';
@@ -42,8 +55,14 @@ export default function FacialEnrollmentPage() {
   const scanningRef = useRef(false);
   const stableSinceRef = useRef<number | null>(null);
   const capturingRef = useRef(false);
+  const livenessRef = useRef<LivenessTrackerState | null>(null);
+  const phaseRef = useRef<Phase>('locked');
 
-  const [phase, setPhase] = useState<Phase>('locked');
+  const [phase, setPhaseState] = useState<Phase>('locked');
+  const setPhase = useCallback((next: Phase) => {
+    phaseRef.current = next;
+    setPhaseState(next);
+  }, []);
   const [cpfLast4, setCpfLast4] = useState('');
   const [unlocking, setUnlocking] = useState(false);
   const [firstName, setFirstName] = useState<string | null>(null);
@@ -59,6 +78,7 @@ export default function FacialEnrollmentPage() {
     scanningRef.current = false;
     capturingRef.current = false;
     stableSinceRef.current = null;
+    livenessRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
@@ -95,6 +115,11 @@ export default function FacialEnrollmentPage() {
       setConsentText(result.consentText);
       setExpiresAt(result.expiresAt);
       setPhase('ready');
+      requestAnimationFrame(() => {
+        document
+          .querySelector('.enroll-page__actions')
+          ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      });
     } catch (err) {
       setError(
         err instanceof Error
@@ -134,6 +159,11 @@ export default function FacialEnrollmentPage() {
       scanningRef.current = true;
       stableSinceRef.current = null;
       capturingRef.current = false;
+      livenessRef.current = null;
+      // Mantem a camera e o botao Cancelar no viewport (mobile).
+      requestAnimationFrame(() => {
+        video.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
       void scanLoop();
     } catch {
       setError(
@@ -151,25 +181,56 @@ export default function FacialEnrollmentPage() {
         continue;
       }
       try {
-        const scan = await scanFacesInVideo(video);
-        const { hint, message } = evaluateFaceFraming(scan);
-        setGuideTone(toneForHint(hint));
-        setGuideMessage(message);
+        const current = phaseRef.current;
+        if (current === 'scanning') {
+          const scan = await scanFacesInVideo(video);
+          const { hint, message } = evaluateFaceFraming(scan);
+          setGuideTone(toneForHint(hint));
+          setGuideMessage(message);
 
-        if (hint === 'ready') {
-          if (stableSinceRef.current == null) {
-            stableSinceRef.current = Date.now();
-          } else if (
-            Date.now() - stableSinceRef.current >= AUTO_CAPTURE_STABLE_MS &&
-            !capturingRef.current
-          ) {
-            capturingRef.current = true;
+          if (hint === 'ready') {
+            if (stableSinceRef.current == null) {
+              stableSinceRef.current = Date.now();
+            } else if (
+              Date.now() - stableSinceRef.current >= AUTO_CAPTURE_STABLE_MS &&
+              !capturingRef.current
+            ) {
+              const tracker = createLivenessTracker();
+              livenessRef.current = tracker;
+              setPhase('liveness');
+              setGuideTone('ready');
+              setGuideMessage(livenessChallengeLabel(tracker.challenge));
+              stableSinceRef.current = null;
+            }
+          } else {
+            stableSinceRef.current = null;
+          }
+        } else if (current === 'liveness') {
+          const scan = await scanFacesWithLandmarks(video);
+          let tracker = livenessRef.current;
+          if (!tracker) {
+            tracker = createLivenessTracker();
+            livenessRef.current = tracker;
+          }
+          const { state, progress } = evaluateLiveness(scan, tracker);
+          livenessRef.current = state;
+          setGuideMessage(progress.message);
+          setGuideTone(progress.passed ? 'ready' : 'adjusting');
+
+          if (progress.timedOut) {
             scanningRef.current = false;
-            await captureAndSubmit();
+            setError(progress.message);
+            setGuideTone('rejected');
+            setPhase('ready');
+            stopCamera();
             return;
           }
-        } else {
-          stableSinceRef.current = null;
+          if (progress.passed && !capturingRef.current) {
+            capturingRef.current = true;
+            scanningRef.current = false;
+            await captureAndSubmit(state.challenge);
+            return;
+          }
         }
       } catch {
         // continua tentando
@@ -178,7 +239,7 @@ export default function FacialEnrollmentPage() {
     }
   }
 
-  async function captureAndSubmit() {
+  async function captureAndSubmit(challenge: LivenessChallengeType) {
     setPhase('processing');
     setGuideTone('processing');
     setGuideMessage('Validando e salvando…');
@@ -228,6 +289,8 @@ export default function FacialEnrollmentPage() {
         faceEngine: FACE_ENGINE_META.engine,
         faceEngineVersion: FACE_ENGINE_META.version,
         qualityScore: extracted.detectionScore,
+        livenessPassed: true,
+        livenessChallenge: challenge,
       });
       setPhase('done');
       setGuideTone('matched');
@@ -247,19 +310,37 @@ export default function FacialEnrollmentPage() {
     : null;
 
   return (
-    <main className="enroll-page">
+    <main
+      className={`enroll-page${
+        phase !== 'locked' && phase !== 'done' ? ' enroll-page--capture' : ''
+      }${
+        phase === 'scanning' || phase === 'liveness' || phase === 'processing'
+          ? ' enroll-page--live'
+          : ''
+      }`}
+    >
       <div className="enroll-page__atmosphere" aria-hidden />
       <div className="enroll-page__sheet">
-        <header className="enroll-page__hero">
+        <header
+          className={`enroll-page__hero${
+            phase === 'scanning' || phase === 'liveness' || phase === 'processing'
+              ? ' enroll-page__hero--compact'
+              : ''
+          }`}
+        >
           <p className="enroll-page__brand">Gestao EPI</p>
           <h1 className="enroll-page__title">Cadastro facial</h1>
-          <p className="enroll-page__lead">
-            {phase === 'done'
-              ? 'Tudo certo. Sua biometria foi registrada.'
-              : phase === 'locked'
-                ? 'Confirme sua identidade com os 4 ultimos digitos do CPF.'
-                : `Ola${firstName ? `, ${firstName}` : ''}. Enquadre o rosto e aguarde a captura automatica.`}
-          </p>
+          {phase === 'scanning' ||
+          phase === 'liveness' ||
+          phase === 'processing' ? null : (
+            <p className="enroll-page__lead">
+              {phase === 'done'
+                ? 'Tudo certo. Sua biometria foi registrada.'
+                : phase === 'locked'
+                  ? 'Confirme sua identidade com os 4 ultimos digitos do CPF.'
+                  : `Ola${firstName ? `, ${firstName}` : ''}. Enquadre o rosto, complete o desafio de presenca e aguarde a captura.`}
+            </p>
+          )}
         </header>
 
         {error ? (
@@ -305,33 +386,55 @@ export default function FacialEnrollmentPage() {
         ) : null}
 
         {phase !== 'locked' && phase !== 'done' ? (
-          <>
-            {expiresLabel ? (
-              <p className="enroll-page__hint">Link valido ate {expiresLabel}</p>
-            ) : null}
+          <div
+            className={`enroll-page__capture${
+              phase === 'scanning' || phase === 'liveness' || phase === 'processing'
+                ? ' enroll-page__capture--live'
+                : ''
+            }`}
+          >
+            <div className="enroll-page__capture-top">
+              {expiresLabel && phase === 'ready' ? (
+                <p className="enroll-page__hint">Link valido ate {expiresLabel}</p>
+              ) : null}
 
-            <label className="enroll-page__consent">
-              <input
-                type="checkbox"
-                checked={consentAccepted}
-                onChange={(e) => setConsentAccepted(e.target.checked)}
-                disabled={phase === 'scanning' || phase === 'processing'}
-              />
-              <span>{consentText}</span>
-            </label>
+              {phase === 'ready' ? (
+                <>
+                  <label className="enroll-page__consent">
+                    <input
+                      type="checkbox"
+                      checked={consentAccepted}
+                      onChange={(e) => setConsentAccepted(e.target.checked)}
+                    />
+                    <span>{consentText}</span>
+                  </label>
+                  <p className="enroll-page__hint enroll-page__hint--mvp">
+                    {LIVENESS_MVP_NOTICE}
+                  </p>
+                </>
+              ) : (
+                <p className="enroll-page__live-status" role="status">
+                  {phase === 'processing'
+                    ? 'Validando e salvando…'
+                    : guideMessage}
+                </p>
+              )}
+            </div>
 
             <div
               className={`face-ux__stage face-ux__stage--enroll face-ux__stage--${guideTone} enroll-page__stage`}
             >
               <video
                 ref={videoRef}
-                className={`face-ux__media${phase === 'scanning' ? '' : ' is-hidden'}`}
+                className={`face-ux__media${
+                  phase === 'scanning' || phase === 'liveness' ? '' : ' is-hidden'
+                }`}
                 playsInline
                 muted
                 autoPlay
                 aria-label="Preview da camera"
               />
-              {phase !== 'scanning' ? (
+              {phase !== 'scanning' && phase !== 'liveness' ? (
                 <div className="face-ux__placeholder">
                   <span className="face-ux__placeholder-icon" aria-hidden />
                   <span>
@@ -341,39 +444,51 @@ export default function FacialEnrollmentPage() {
                   </span>
                 </div>
               ) : null}
-              <div className={`face-ux__oval face-ux__oval--${guideTone}`} aria-hidden />
-              {phase === 'scanning' ? (
+              <div
+                className={`face-ux__oval face-ux__oval--${guideTone}`}
+                aria-hidden
+              />
+              {phase === 'scanning' || phase === 'liveness' ? (
                 <p className="face-ux__live-hint" role="status">
                   {guideMessage}
                 </p>
               ) : null}
             </div>
 
-            {phase === 'ready' ? (
-              <button
-                type="button"
-                className="enroll-page__btn"
-                onClick={() => void startScan()}
-                disabled={!consentAccepted || !modelsReady}
-              >
-                {modelsReady ? 'Iniciar camera' : 'Carregando…'}
-              </button>
-            ) : null}
+            <div className="enroll-page__actions">
+              {phase === 'ready' ? (
+                <button
+                  type="button"
+                  className="enroll-page__btn"
+                  onClick={() => void startScan()}
+                  disabled={!consentAccepted || !modelsReady}
+                >
+                  {modelsReady ? 'Iniciar camera' : 'Carregando…'}
+                </button>
+              ) : null}
 
-            {phase === 'scanning' ? (
-              <button
-                type="button"
-                className="enroll-page__btn enroll-page__btn--ghost"
-                onClick={() => {
-                  stopCamera();
-                  setPhase('ready');
-                  setGuideTone('neutral');
-                }}
-              >
-                Cancelar
-              </button>
-            ) : null}
-          </>
+              {phase === 'scanning' || phase === 'liveness' ? (
+                <button
+                  type="button"
+                  className="enroll-page__btn enroll-page__btn--ghost"
+                  onClick={() => {
+                    stopCamera();
+                    setPhase('ready');
+                    setGuideTone('neutral');
+                    setGuideMessage('Posicione o rosto no oval');
+                  }}
+                >
+                  Cancelar
+                </button>
+              ) : null}
+
+              {phase === 'processing' ? (
+                <button type="button" className="enroll-page__btn" disabled>
+                  Salvando…
+                </button>
+              ) : null}
+            </div>
+          </div>
         ) : null}
       </div>
     </main>

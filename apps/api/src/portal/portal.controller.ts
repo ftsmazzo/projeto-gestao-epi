@@ -32,6 +32,7 @@ import {
 } from '../workers/dto/worker-import.dto';
 import { PortalCreateDeliveryPayloadDto, PortalCancelDeliveryDto, PortalCreateReturnDto } from './dto/portal-delivery.dto';
 import { PortalStockEntradasDto } from './dto/portal-stock.dto';
+import { PortalPdfService } from './portal-pdf.service';
 import { PortalReportsService } from './portal-reports.service';
 import type { PortalReportFilters } from './portal-reports.service';
 import { PortalService } from './portal.service';
@@ -42,6 +43,7 @@ export class PortalController {
   constructor(
     private readonly portal: PortalService,
     private readonly reports: PortalReportsService,
+    private readonly portalPdf: PortalPdfService,
   ) {}
 
   @Get('dashboard')
@@ -192,6 +194,43 @@ export class PortalController {
       user.servedClientId,
       id,
     );
+  }
+
+  @Get('entregas/:id/pdf')
+  async getEntregaPdf(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    this.assertClient(user);
+    const detail = await this.portal.getDelivery(
+      user.organizationId,
+      user.servedClientId,
+      id,
+    );
+    let evidencePath: string | null = null;
+    try {
+      const file = await this.portal.getFacialEvidenceAbsolutePath(
+        user.organizationId,
+        user.servedClientId,
+        id,
+      );
+      evidencePath = file.absolutePath;
+    } catch {
+      evidencePath = null;
+    }
+    const pdf = await this.portalPdf.buildDeliveryReceiptPdf(
+      detail,
+      evidencePath,
+    );
+    const fileName = `comprovante-${detail.receiptNumber}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fileName}"`,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(pdf);
   }
 
   @Post('entregas/:id/cancel')
@@ -438,6 +477,20 @@ export class PortalController {
     );
   }
 
+  @Post('trabalhadores/:id/facial-enrollment-link/whatsapp')
+  resendFacialEnrollmentWhatsapp(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+  ) {
+    this.assertClient(user);
+    return this.portal.resendWorkerFacialEnrollmentWhatsapp(
+      user.organizationId,
+      user.sub,
+      user.servedClientId,
+      id,
+    );
+  }
+
   @Get('trabalhadores/:id/epi-coverage')
   trabalhadorEpiCoverage(
     @CurrentUser() user: ClientJwtPayload,
@@ -469,6 +522,43 @@ export class PortalController {
       normalized,
       { from, to },
     );
+  }
+
+  @Get('trabalhadores/:id/ficha-epi/pdf')
+  async trabalhadorFichaEpiPdf(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+    @Res() res: Response,
+    @Query('scope') scope?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    this.assertClient(user);
+    const normalized =
+      scope === 'open' ? ('open' as const) : ('history' as const);
+    const sheet = await this.portal.getWorkerEpiSheet(
+      user.organizationId,
+      user.servedClientId,
+      id,
+      normalized,
+      { from, to },
+    );
+    const pdf = await this.portalPdf.buildWorkerEpiSheetPdf(sheet);
+    const safeName = sheet.worker.name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9_-]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 40);
+    const fileName = `ficha-epi-${safeName || sheet.worker.id}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fileName}"`,
+    );
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(pdf);
   }
 
   @Get('trabalhadores/:id/facial-reference')

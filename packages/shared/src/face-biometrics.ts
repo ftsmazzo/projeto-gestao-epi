@@ -66,3 +66,35 @@ export function decideFaceMatch(
     threshold,
   };
 }
+
+/** Desafios leves de presenca (MVP). Nao substitui biometria certificada (D03). */
+export type LivenessChallengeType = 'blink' | 'turn_left' | 'turn_right';
+
+export const LIVENESS_CHALLENGE_LABELS: Record<LivenessChallengeType, string> = {
+  blink: 'Pisque os olhos',
+  turn_left: 'Vire a cabeca para a esquerda',
+  turn_right: 'Vire a cabeca para a direita',
+};
+
+export const LIVENESS_MVP_NOTICE =
+  'Desafio de presenca (MVP). Nao substitui biometria certificada.';
+
+export function isLivenessChallengeType(
+  value: unknown,
+): value is LivenessChallengeType {
+  return value === 'blink' || value === 'turn_left' || value === 'turn_right';
+}
+
+/**
+ * Exige liveness quando LIVENESS_REQUIRED=true/1, ou em producao se a env
+ * nao estiver definida. Desliga com LIVENESS_REQUIRED=false/0.
+ */
+export function isLivenessRequired(
+  livenessRequiredEnv?: string | null,
+  nodeEnv?: string | null,
+): boolean {
+  const raw = livenessRequiredEnv?.trim().toLowerCase();
+  if (raw === 'false' || raw === '0' || raw === 'off') return false;
+  if (raw === 'true' || raw === '1' || raw === 'on') return true;
+  return nodeEnv === 'production';
+}
