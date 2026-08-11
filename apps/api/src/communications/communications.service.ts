@@ -14,10 +14,14 @@ import {
 import {
   buildClientAccessInviteEmail,
   buildClientAccessInviteWhatsapp,
+  buildConsultoriaAccessInviteEmail,
+  buildConsultoriaAccessInviteWhatsapp,
   buildFacialEnrollmentInviteWhatsapp,
   COMM_TEMPLATE_CLIENT_ACCESS_INVITE,
+  COMM_TEMPLATE_CONSULTORIA_ACCESS_INVITE,
   COMM_TEMPLATE_FACIAL_ENROLLMENT_INVITE,
   type ClientAccessInviteInput,
+  type ConsultoriaAccessInviteInput,
   type FacialEnrollmentInviteInput,
 } from './communication.templates';
 import { EvolutionWhatsappSender } from './evolution-whatsapp.sender';
@@ -124,6 +128,78 @@ export class CommunicationsService {
     } catch (err) {
       this.logger.warn(
         `Falha ao enfileirar convite de acesso: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return empty;
+    }
+  }
+
+  /**
+   * Convite de acesso a gestao (Consultoria). Reply-to = contato suporte primario.
+   */
+  async enqueueConsultoriaAccessInvite(
+    input: Omit<
+      ConsultoriaAccessInviteInput,
+      'replyToEmail' | 'organizationName'
+    > & {
+      organizationName?: string;
+    },
+  ): Promise<{
+    enabled: boolean;
+    email: AccessInviteChannelStatus;
+    whatsapp: AccessInviteChannelStatus;
+    emailError?: string | null;
+    whatsappError?: string | null;
+    whatsappDetail?: string | null;
+  }> {
+    const enabled = this.isEnabled();
+    const empty = {
+      enabled,
+      email: 'NOT_REQUESTED' as AccessInviteChannelStatus,
+      whatsapp: 'NOT_REQUESTED' as AccessInviteChannelStatus,
+    };
+
+    try {
+      const org = await this.prisma.organization.findUnique({
+        where: { id: input.organizationId },
+        select: { name: true },
+      });
+      const replyTo = await this.resolvePrimaryReplyTo(input.organizationId);
+      const full: ConsultoriaAccessInviteInput = {
+        ...input,
+        organizationName: input.organizationName ?? org?.name ?? 'Consultoria',
+        replyToEmail: replyTo,
+      };
+
+      const [emailResult, whatsappResult] = await Promise.all([
+        full.recipientEmail?.trim()
+          ? this.enqueueConsultoriaAccessEmail(full)
+          : Promise.resolve({
+              status: 'NOT_REQUESTED' as AccessInviteChannelStatus,
+              error: null as string | null,
+              detail: null as string | null,
+            }),
+        full.recipientPhone?.trim()
+          ? this.enqueueConsultoriaAccessWhatsapp(full)
+          : Promise.resolve({
+              status: 'NOT_REQUESTED' as AccessInviteChannelStatus,
+              error: null as string | null,
+              detail: null as string | null,
+            }),
+      ]);
+
+      return {
+        enabled,
+        email: emailResult.status,
+        whatsapp: whatsappResult.status,
+        emailError: emailResult.error ?? null,
+        whatsappError: whatsappResult.error ?? null,
+        whatsappDetail: whatsappResult.detail ?? null,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `Falha ao enfileirar convite da gestao: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
@@ -353,6 +429,71 @@ export class CommunicationsService {
           accessUrl: input.accessUrl,
         },
         relatedType: 'ClientUserMembership',
+        relatedId: input.membershipId,
+        status: this.isEnabled()
+          ? CommunicationStatus.PENDING
+          : CommunicationStatus.SKIPPED,
+        errorMessage: this.isEnabled()
+          ? null
+          : 'COMMUNICATIONS_ENABLED!=true',
+      },
+    });
+
+    if (!this.isEnabled()) return { status: 'SKIPPED' };
+    return this.deliver(row.id);
+  }
+
+  private async enqueueConsultoriaAccessEmail(
+    input: ConsultoriaAccessInviteInput,
+  ): Promise<AccessInviteChannelResult> {
+    const { subject, text } = buildConsultoriaAccessInviteEmail(input);
+    const row = await this.prisma.communicationOutbox.create({
+      data: {
+        organizationId: input.organizationId,
+        channel: CommunicationChannel.EMAIL,
+        templateKey: COMM_TEMPLATE_CONSULTORIA_ACCESS_INVITE,
+        toAddress: input.recipientEmail!.trim().toLowerCase(),
+        subject,
+        bodyText: text,
+        payload: {
+          membershipId: input.membershipId,
+          accessUrl: input.accessUrl,
+          roleLabel: input.roleLabel,
+          replyTo: input.replyToEmail,
+        },
+        relatedType: 'Membership',
+        relatedId: input.membershipId,
+        status: this.isEnabled()
+          ? CommunicationStatus.PENDING
+          : CommunicationStatus.SKIPPED,
+        errorMessage: this.isEnabled()
+          ? null
+          : 'COMMUNICATIONS_ENABLED!=true',
+      },
+    });
+
+    if (!this.isEnabled()) return { status: 'SKIPPED' };
+    return this.deliver(row.id);
+  }
+
+  private async enqueueConsultoriaAccessWhatsapp(
+    input: ConsultoriaAccessInviteInput,
+  ): Promise<AccessInviteChannelResult> {
+    const text = buildConsultoriaAccessInviteWhatsapp(input);
+    const row = await this.prisma.communicationOutbox.create({
+      data: {
+        organizationId: input.organizationId,
+        channel: CommunicationChannel.WHATSAPP,
+        templateKey: COMM_TEMPLATE_CONSULTORIA_ACCESS_INVITE,
+        toAddress: input.recipientPhone!.trim(),
+        subject: null,
+        bodyText: text,
+        payload: {
+          membershipId: input.membershipId,
+          accessUrl: input.accessUrl,
+          roleLabel: input.roleLabel,
+        },
+        relatedType: 'Membership',
         relatedId: input.membershipId,
         status: this.isEnabled()
           ? CommunicationStatus.PENDING

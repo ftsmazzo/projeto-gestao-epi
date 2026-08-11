@@ -38,6 +38,39 @@ export interface AuthResponse {
   user: AuthUser;
 }
 
+/** Membro da equipe da consultoria (gestao). */
+export interface OrganizationMember {
+  id: string;
+  userId: string;
+  role: MembershipRole;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+}
+
+export interface OrganizationMemberAccessResult {
+  member: OrganizationMember;
+  /** Null quando COMMUNICATIONS_ENABLED=true (senha so no e-mail/WhatsApp). */
+  temporaryPassword: string | null;
+  accessUrl: string;
+  createdUser?: boolean;
+  warning?: string;
+  delivery?: {
+    enabled: boolean;
+    email: AccessInviteDeliveryStatus;
+    whatsapp: AccessInviteDeliveryStatus;
+    emailError?: string | null;
+    whatsappError?: string | null;
+    whatsappDetail?: string | null;
+  };
+}
+
 export type ServedClientStatus = 'ACTIVE' | 'INACTIVE';
 
 export interface ServedClient {

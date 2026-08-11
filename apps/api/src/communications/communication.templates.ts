@@ -1,4 +1,6 @@
 export const COMM_TEMPLATE_CLIENT_ACCESS_INVITE = 'client_access_invite';
+export const COMM_TEMPLATE_CONSULTORIA_ACCESS_INVITE =
+  'consultoria_access_invite';
 export const COMM_TEMPLATE_DAILY_ALERTS = 'daily_client_alerts';
 export const COMM_TEMPLATE_FACIAL_ENROLLMENT_INVITE = 'facial_enrollment_invite';
 
@@ -11,6 +13,19 @@ export type ClientAccessInviteInput = {
   temporaryPassword: string;
   accessUrl: string;
   membershipId: string;
+  replyToEmail?: string | null;
+};
+
+export type ConsultoriaAccessInviteInput = {
+  organizationId: string;
+  organizationName: string;
+  recipientName: string;
+  recipientEmail?: string | null;
+  recipientPhone?: string | null;
+  temporaryPassword: string;
+  accessUrl: string;
+  membershipId: string;
+  roleLabel: string;
   replyToEmail?: string | null;
 };
 
@@ -55,6 +70,41 @@ export function buildClientAccessInviteWhatsapp(
     `E-mail: ${input.recipientEmail ?? '—'}`,
     `Senha temporaria: ${input.temporaryPassword}`,
     'Troque a senha no primeiro acesso.',
+  ].join('\n');
+}
+
+export function buildConsultoriaAccessInviteEmail(
+  input: ConsultoriaAccessInviteInput,
+) {
+  const subject = `Acesso a gestao — ${input.organizationName}`;
+  const text = [
+    `Ola, ${input.recipientName}.`,
+    '',
+    `Voce recebeu acesso a gestao (Consultoria) de ${input.organizationName}.`,
+    `Papel: ${input.roleLabel}`,
+    '',
+    `Link: ${input.accessUrl}`,
+    `E-mail: ${input.recipientEmail ?? '—'}`,
+    `Senha temporaria: ${input.temporaryPassword}`,
+    '',
+    'Este e o login da Consultoria/Gestao — nao o portal do cliente.',
+    'Recomendamos trocar a senha apos o primeiro acesso (Esqueci minha senha ou peca nova senha ao admin).',
+  ].join('\n');
+
+  return { subject, text };
+}
+
+export function buildConsultoriaAccessInviteWhatsapp(
+  input: ConsultoriaAccessInviteInput,
+) {
+  return [
+    `*Acesso a gestao* — ${input.organizationName}`,
+    `Ola, ${input.recipientName}.`,
+    `Papel: ${input.roleLabel}`,
+    `Link: ${input.accessUrl}`,
+    `E-mail: ${input.recipientEmail ?? '—'}`,
+    `Senha temporaria: ${input.temporaryPassword}`,
+    'Login da Consultoria/Gestao (nao o portal do cliente).',
   ].join('\n');
 }
 

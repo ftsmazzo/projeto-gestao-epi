@@ -16,12 +16,86 @@ import {
   CreateOrganizationContactDto,
   UpdateOrganizationContactDto,
 } from './dto/organization-contact.dto';
+import {
+  CreateOrganizationMemberDto,
+  TransferOrganizationOwnershipDto,
+  UpdateOrganizationMemberRoleDto,
+} from './dto/organization-member.dto';
 import { OrganizationService } from './organization.service';
 
 @Controller('organization')
 @UseGuards(JwtAuthGuard)
 export class OrganizationController {
   constructor(private readonly organization: OrganizationService) {}
+
+  @Get('members')
+  listMembers(@CurrentUser() user: JwtPayload) {
+    return this.organization.listMembers(user.organizationId);
+  }
+
+  @Post('members')
+  createMember(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateOrganizationMemberDto,
+  ) {
+    return this.organization.createMember(
+      user.organizationId,
+      user.sub,
+      user.membershipRole,
+      dto,
+    );
+  }
+
+  @Patch('members/:id/role')
+  updateMemberRole(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateOrganizationMemberRoleDto,
+  ) {
+    return this.organization.updateMemberRole(
+      user.organizationId,
+      user.sub,
+      user.membershipRole,
+      id,
+      dto,
+    );
+  }
+
+  @Post('members/transfer-ownership')
+  transferOwnership(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: TransferOrganizationOwnershipDto,
+  ) {
+    return this.organization.transferOwnership(
+      user.organizationId,
+      user.sub,
+      user.membershipRole,
+      dto.membershipId,
+    );
+  }
+
+  @Post('members/:id/reset-password')
+  resetMemberPassword(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.organization.resetMemberPassword(
+      user.organizationId,
+      user.sub,
+      user.membershipRole,
+      id,
+    );
+  }
+
+  @Delete('members/:id')
+  removeMember(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.organization.removeMember(
+      user.organizationId,
+      user.sub,
+      user.membershipRole,
+      id,
+    );
+  }
 
   @Get('contacts')
   listContacts(@CurrentUser() user: JwtPayload) {

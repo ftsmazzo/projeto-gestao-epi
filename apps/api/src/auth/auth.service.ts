@@ -619,7 +619,7 @@ export class AuthService {
     });
 
     const accessUrl = this.resolveConsultoriaAccessUrl();
-    const delivery = await this.communications.enqueueClientAccessInvite({
+    const delivery = await this.communications.enqueueConsultoriaAccessInvite({
       organizationId: membership.organizationId,
       recipientName: user.name,
       recipientEmail: user.email,
@@ -627,6 +627,12 @@ export class AuthService {
       temporaryPassword,
       accessUrl,
       membershipId: membership.id,
+      roleLabel:
+        membership.role === 'OWNER'
+          ? 'Administrador geral'
+          : membership.role === 'ADMIN'
+            ? 'Administrador'
+            : 'Membro',
     });
 
     await this.audit.log({
@@ -635,7 +641,11 @@ export class AuthService {
       userId: user.id,
       entityType: 'User',
       entityId: user.id,
-      metadata: { email, deliveryEnabled: delivery.enabled },
+      metadata: {
+        email,
+        deliveryEnabled: delivery.enabled,
+        emailStatus: delivery.email,
+      },
     });
 
     return {

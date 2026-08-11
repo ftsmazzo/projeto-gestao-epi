@@ -25,6 +25,12 @@ export const OPS_NAV: OpsNavItem[] = [
     description: 'Painel operacional por CNPJ, estrutura, PGRO e usuarios.',
   },
   {
+    href: '/equipe',
+    label: 'Equipe',
+    status: 'ready',
+    description: 'Usuarios da consultoria: admin geral, administradores e membros.',
+  },
+  {
     href: '/configuracoes',
     label: 'Configuracoes',
     status: 'ready',

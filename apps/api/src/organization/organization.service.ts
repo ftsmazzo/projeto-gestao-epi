@@ -6,9 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { MembershipRole, OrganizationContactRole } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import { rm } from 'fs/promises';
 import { join } from 'path';
 import { AuditService } from '../audit/audit.service';
+import { CommunicationsService } from '../communications/communications.service';
 import { getDeliveryEvidenceRoot } from '../portal/facial-evidence.storage';
 import { PrismaService } from '../prisma/prisma.service';
 import { getWorkerFaceReferenceRoot } from '../workers/worker-face-reference.storage';
@@ -16,6 +19,10 @@ import type {
   CreateOrganizationContactDto,
   UpdateOrganizationContactDto,
 } from './dto/organization-contact.dto';
+import type {
+  CreateOrganizationMemberDto,
+  UpdateOrganizationMemberRoleDto,
+} from './dto/organization-member.dto';
 
 export type HardResetSummary = {
   servedClients: number;
@@ -38,6 +45,7 @@ export class OrganizationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly communications: CommunicationsService,
   ) {}
 
   async listContacts(organizationId: string) {
@@ -180,6 +188,506 @@ export class OrganizationService {
     });
 
     return { ok: true as const };
+  }
+
+  async listMembers(organizationId: string) {
+    const rows = await this.prisma.membership.findMany({
+      where: { organizationId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+      orderBy: [{ role: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    return rows
+      .map((row) => this.mapMember(row))
+      .sort((a, b) => {
+        const rank = (r: MembershipRole) =>
+          r === MembershipRole.OWNER ? 0 : r === MembershipRole.ADMIN ? 1 : 2;
+        return rank(a.role) - rank(b.role) || a.user.name.localeCompare(b.user.name);
+      });
+  }
+
+  /**
+   * Cria usuario da consultoria (ADMIN/MEMBER) ou vincula Membership a User existente.
+   * OWNER so via transferOwnership.
+   */
+  async createMember(
+    organizationId: string,
+    actorUserId: string,
+    actorRole: string,
+    dto: CreateOrganizationMemberDto,
+  ) {
+    this.assertCanManageMembers(actorRole);
+
+    const role = dto.role;
+    if (role === MembershipRole.OWNER) {
+      throw new BadRequestException(
+        'Para definir o administrador geral, use a transferencia de OWNER.',
+      );
+    }
+    if (role !== MembershipRole.ADMIN && role !== MembershipRole.MEMBER) {
+      throw new BadRequestException('Papel invalido. Use ADMIN ou MEMBER.');
+    }
+
+    const email = dto.email.trim().toLowerCase();
+    const name = dto.name.trim();
+    if (!email || !name) {
+      throw new BadRequestException('Informe nome e e-mail.');
+    }
+
+    const temporaryPassword = this.generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      let user = await tx.user.findUnique({ where: { email } });
+      let createdUser = false;
+
+      if (user) {
+        const existingMembership = await tx.membership.findUnique({
+          where: {
+            userId_organizationId: {
+              userId: user.id,
+              organizationId,
+            },
+          },
+        });
+        if (existingMembership) {
+          throw new BadRequestException(
+            'Este e-mail ja possui acesso nesta consultoria.',
+          );
+        }
+        // Atualiza nome se veio vazio/legado e redefine senha temporaria
+        user = await tx.user.update({
+          where: { id: user.id },
+          data: {
+            name: name || user.name,
+            passwordHash,
+          },
+        });
+      } else {
+        user = await tx.user.create({
+          data: {
+            email,
+            name,
+            passwordHash,
+          },
+        });
+        createdUser = true;
+      }
+
+      const membership = await tx.membership.create({
+        data: {
+          userId: user.id,
+          organizationId,
+          role,
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              createdAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      });
+
+      return { membership, createdUser };
+    });
+
+    await this.audit.log({
+      action: 'organization_member.created',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'Membership',
+      entityId: result.membership.id,
+      metadata: {
+        role,
+        email,
+        createdUser: result.createdUser,
+      },
+    });
+
+    const accessUrl = this.resolveConsultoriaAccessUrl();
+    const delivery = await this.communications.enqueueConsultoriaAccessInvite({
+      organizationId,
+      recipientName: result.membership.user.name,
+      recipientEmail: result.membership.user.email,
+      recipientPhone: dto.phone?.trim() || null,
+      temporaryPassword,
+      accessUrl,
+      membershipId: result.membership.id,
+      roleLabel: this.roleLabel(role),
+    });
+
+    return {
+      member: this.mapMember(result.membership),
+      temporaryPassword: delivery.enabled ? null : temporaryPassword,
+      accessUrl,
+      createdUser: result.createdUser,
+      delivery,
+      warning: delivery.enabled
+        ? 'Convite enviado por e-mail/WhatsApp (quando informado). A senha temporaria nao e exibida quando as comunicacoes estao ativas.'
+        : 'Comunicacoes desligadas: copie e entregue a senha temporaria manualmente. Configure COMMUNICATIONS_ENABLED e o contato de suporte em Configuracoes.',
+    };
+  }
+
+  async updateMemberRole(
+    organizationId: string,
+    actorUserId: string,
+    actorRole: string,
+    membershipId: string,
+    dto: UpdateOrganizationMemberRoleDto,
+  ) {
+    this.assertCanManageMembers(actorRole);
+
+    const membership = await this.prisma.membership.findFirst({
+      where: { id: membershipId, organizationId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+    if (!membership) {
+      throw new NotFoundException('Usuario da consultoria nao encontrado.');
+    }
+
+    const nextRole = dto.role;
+    if (nextRole === MembershipRole.OWNER) {
+      throw new BadRequestException(
+        'Para tornar alguem administrador geral, use a transferencia de OWNER.',
+      );
+    }
+    if (
+      nextRole !== MembershipRole.ADMIN &&
+      nextRole !== MembershipRole.MEMBER
+    ) {
+      throw new BadRequestException('Papel invalido. Use ADMIN ou MEMBER.');
+    }
+
+    if (membership.role === MembershipRole.OWNER) {
+      throw new BadRequestException(
+        'Nao e possivel rebaixar o OWNER por aqui. Transfira o OWNER primeiro.',
+      );
+    }
+
+    if (membership.userId === actorUserId && actorRole !== MembershipRole.OWNER) {
+      throw new ForbiddenException(
+        'Voce nao pode alterar o proprio papel. Peca ao administrador geral.',
+      );
+    }
+
+    const updated = await this.prisma.membership.update({
+      where: { id: membership.id },
+      data: { role: nextRole },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+
+    await this.audit.log({
+      action: 'organization_member.role_updated',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'Membership',
+      entityId: membership.id,
+      metadata: {
+        from: membership.role,
+        to: nextRole,
+        email: membership.user.email,
+      },
+    });
+
+    return this.mapMember(updated);
+  }
+
+  /**
+   * Transfere o administrador geral (OWNER) para outro membro da equipe.
+   * O OWNER atual vira ADMIN.
+   */
+  async transferOwnership(
+    organizationId: string,
+    actorUserId: string,
+    actorRole: string,
+    targetMembershipId: string,
+  ) {
+    if (actorRole !== MembershipRole.OWNER) {
+      throw new ForbiddenException(
+        'Apenas o administrador geral (OWNER) pode transferir o OWNER.',
+      );
+    }
+
+    const currentOwner = await this.prisma.membership.findFirst({
+      where: {
+        organizationId,
+        userId: actorUserId,
+        role: MembershipRole.OWNER,
+      },
+    });
+    if (!currentOwner) {
+      throw new ForbiddenException(
+        'Sua sessao nao e o OWNER atual desta consultoria.',
+      );
+    }
+
+    const target = await this.prisma.membership.findFirst({
+      where: { id: targetMembershipId, organizationId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+    if (!target) {
+      throw new NotFoundException('Membro destino nao encontrado.');
+    }
+    if (target.id === currentOwner.id) {
+      throw new BadRequestException('Este usuario ja e o administrador geral.');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.membership.update({
+        where: { id: currentOwner.id },
+        data: { role: MembershipRole.ADMIN },
+      });
+      await tx.membership.update({
+        where: { id: target.id },
+        data: { role: MembershipRole.OWNER },
+      });
+    });
+
+    await this.audit.log({
+      action: 'organization_member.ownership_transferred',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'Membership',
+      entityId: target.id,
+      metadata: {
+        previousOwnerMembershipId: currentOwner.id,
+        newOwnerUserId: target.userId,
+        newOwnerEmail: target.user.email,
+      },
+    });
+
+    return this.listMembers(organizationId);
+  }
+
+  async resetMemberPassword(
+    organizationId: string,
+    actorUserId: string,
+    actorRole: string,
+    membershipId: string,
+  ) {
+    this.assertCanManageMembers(actorRole);
+
+    const membership = await this.prisma.membership.findFirst({
+      where: { id: membershipId, organizationId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+    if (!membership) {
+      throw new NotFoundException('Usuario da consultoria nao encontrado.');
+    }
+
+    if (
+      membership.role === MembershipRole.OWNER &&
+      actorRole !== MembershipRole.OWNER
+    ) {
+      throw new ForbiddenException(
+        'Apenas o OWNER pode redefinir a senha do administrador geral.',
+      );
+    }
+
+    const temporaryPassword = this.generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    await this.prisma.user.update({
+      where: { id: membership.userId },
+      data: { passwordHash },
+    });
+
+    await this.audit.log({
+      action: 'organization_member.password_reset',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'Membership',
+      entityId: membership.id,
+      metadata: { email: membership.user.email },
+    });
+
+    const accessUrl = this.resolveConsultoriaAccessUrl();
+    const delivery = await this.communications.enqueueConsultoriaAccessInvite({
+      organizationId,
+      recipientName: membership.user.name,
+      recipientEmail: membership.user.email,
+      recipientPhone: null,
+      temporaryPassword,
+      accessUrl,
+      membershipId: membership.id,
+      roleLabel: this.roleLabel(membership.role),
+    });
+
+    return {
+      member: this.mapMember(membership),
+      temporaryPassword: delivery.enabled ? null : temporaryPassword,
+      accessUrl,
+      delivery,
+      warning: delivery.enabled
+        ? 'Nova senha enviada por e-mail (quando as comunicacoes estiverem ativas).'
+        : 'Comunicacoes desligadas: copie a senha temporaria e entregue manualmente.',
+    };
+  }
+
+  async removeMember(
+    organizationId: string,
+    actorUserId: string,
+    actorRole: string,
+    membershipId: string,
+  ) {
+    this.assertCanManageMembers(actorRole);
+
+    const membership = await this.prisma.membership.findFirst({
+      where: { id: membershipId, organizationId },
+      include: {
+        user: { select: { id: true, email: true, name: true } },
+      },
+    });
+    if (!membership) {
+      throw new NotFoundException('Usuario da consultoria nao encontrado.');
+    }
+    if (membership.role === MembershipRole.OWNER) {
+      throw new BadRequestException(
+        'Nao e possivel remover o administrador geral. Transfira o OWNER antes.',
+      );
+    }
+    if (membership.userId === actorUserId) {
+      throw new BadRequestException(
+        'Voce nao pode remover o proprio acesso.',
+      );
+    }
+
+    await this.prisma.membership.delete({ where: { id: membership.id } });
+
+    await this.audit.log({
+      action: 'organization_member.removed',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'Membership',
+      entityId: membershipId,
+      metadata: {
+        email: membership.user.email,
+        role: membership.role,
+      },
+    });
+
+    return { ok: true as const };
+  }
+
+  private assertCanManageMembers(actorRole: string) {
+    if (
+      actorRole !== MembershipRole.OWNER &&
+      actorRole !== MembershipRole.ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Apenas OWNER ou ADMIN podem gerenciar a equipe da consultoria.',
+      );
+    }
+  }
+
+  private roleLabel(role: MembershipRole) {
+    if (role === MembershipRole.OWNER) return 'Administrador geral';
+    if (role === MembershipRole.ADMIN) return 'Administrador';
+    return 'Membro';
+  }
+
+  private mapMember(row: {
+    id: string;
+    role: MembershipRole;
+    createdAt: Date;
+    updatedAt: Date;
+    userId: string;
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      createdAt: Date;
+      updatedAt: Date;
+    };
+  }) {
+    return {
+      id: row.id,
+      userId: row.userId,
+      role: row.role,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      user: {
+        id: row.user.id,
+        name: row.user.name,
+        email: row.user.email,
+        createdAt: row.user.createdAt.toISOString(),
+        updatedAt: row.user.updatedAt.toISOString(),
+      },
+    };
+  }
+
+  private generateTemporaryPassword(): string {
+    const alphabet =
+      'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$';
+    const bytes = randomBytes(14);
+    let out = '';
+    for (let i = 0; i < 14; i += 1) {
+      out += alphabet[bytes[i] % alphabet.length];
+    }
+    return out;
+  }
+
+  private resolveConsultoriaAccessUrl(): string {
+    const fromEnv =
+      process.env.WEB_APP_URL?.trim() ||
+      process.env.CORS_ORIGIN?.split(',')[0]?.trim();
+    const base = (fromEnv || 'http://localhost:3000').replace(/\/$/, '');
+    if (base.endsWith('/login')) return base;
+    return `${base}/login`;
   }
 
   /**
