@@ -72,4 +72,14 @@ export class CreateStockMovementDto {
   @IsInt()
   @Min(0)
   minQuantity?: number | null;
+
+  /** Custo unitario em centavos (BRL). Tipico em ENTRADA. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  unitCostCents?: number | null;
+
+  @IsOptional()
+  @IsString()
+  invoiceDocumentId?: string | null;
 }

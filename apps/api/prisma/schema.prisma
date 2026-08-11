@@ -105,6 +105,7 @@ model Organization {
   workerFacialReferences WorkerFacialReference[]
   workerBiometricConsents WorkerBiometricConsent[]
   workerFacialEnrollmentLinks WorkerFacialEnrollmentLink[]
+  invoiceDocuments InvoiceDocument[]
 }
 
 /// Contato oficial da consultoria usado nas comunicacoes com clientes
@@ -197,6 +198,7 @@ model User {
   biometricConsentsUpdated WorkerBiometricConsent[] @relation("WorkerBiometricConsentUpdatedBy")
   deliveryEvidencesDeleted DeliveryEvidence[] @relation("DeliveryEvidenceDeletedBy")
   facialEnrollmentLinksCreated WorkerFacialEnrollmentLink[] @relation("WorkerFacialEnrollmentLinkCreatedBy")
+  invoiceDocuments InvoiceDocument[]
 }
 
 model Membership {
@@ -244,6 +246,7 @@ model ServedClient {
   workerFacialReferences WorkerFacialReference[]
   workerBiometricConsents WorkerBiometricConsent[]
   workerFacialEnrollmentLinks WorkerFacialEnrollmentLink[]
+  invoiceDocuments InvoiceDocument[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -529,6 +532,9 @@ model EpiItem {
   nrr              Float?
   /// NRRsf (protecao auditiva), opcional.
   nrrsf            Float?
+  /// Preco unitario de referencia em centavos (BRL). Atualizado na ultima entrada com valor.
+  defaultUnitPriceCents Int?
+  currency              String @default("BRL")
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
@@ -684,6 +690,11 @@ model EpiStockMovement {
   newQuantity      Int
   reason           String?
   notes            String?
+  /// Custo unitario na movimentacao (centavos BRL). Tipico em ENTRADA.
+  unitCostCents    Int?
+  /// Custo total = quantity * unitCostCents (denormalizado).
+  totalCostCents   Int?
+  invoiceDocumentId String?
   createdByUserId  String
   createdAt        DateTime             @default(now())
 
@@ -692,6 +703,7 @@ model EpiStockMovement {
   epiVariant    EpiVariant?   @relation(fields: [epiVariantId], references: [id], onDelete: SetNull)
   stockLocation StockLocation @relation(fields: [stockLocationId], references: [id], onDelete: Restrict)
   createdByUser User          @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  invoiceDocument InvoiceDocument? @relation(fields: [invoiceDocumentId], references: [id], onDelete: SetNull)
   deliveryItems EpiDeliveryItem[]
   deliveryReturnItems EpiDeliveryReturnItem[]
 
@@ -699,6 +711,34 @@ model EpiStockMovement {
   @@index([epiItemId])
   @@index([stockLocationId])
   @@index([type])
+  @@index([createdAt])
+  @@index([invoiceDocumentId])
+}
+
+/// Nota fiscal / comprovante de compra (anexo). OCR automatico fica para etapa futura.
+model InvoiceDocument {
+  id              String   @id @default(cuid())
+  organizationId  String
+  servedClientId  String?
+  number          String?
+  supplierName    String?
+  issuedAt        DateTime?
+  /// Caminho relativo ao storage de invoices.
+  filePath        String
+  fileHash        String?
+  mimeType        String
+  byteSize        Int
+  notes           String?
+  createdByUserId String
+  createdAt       DateTime @default(now())
+
+  organization  Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient  ServedClient?      @relation(fields: [servedClientId], references: [id], onDelete: SetNull)
+  createdByUser User               @relation(fields: [createdByUserId], references: [id], onDelete: Restrict)
+  movements     EpiStockMovement[]
+
+  @@index([organizationId])
+  @@index([servedClientId])
   @@index([createdAt])
 }
 

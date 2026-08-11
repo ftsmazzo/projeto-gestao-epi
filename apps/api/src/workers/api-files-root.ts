@@ -1,7 +1,10 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'fs';
 import { dirname, isAbsolute, join } from 'path';
 
-export type ApiFilesSubdir = 'worker-face-references' | 'delivery-evidence';
+export type ApiFilesSubdir =
+  | 'worker-face-references'
+  | 'delivery-evidence'
+  | 'invoice-documents';
 
 /**
  * Sobe diretorios a partir deste modulo ate achar o package @gestao-epi/api.

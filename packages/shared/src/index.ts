@@ -1473,10 +1473,83 @@ export interface PortalStockEntradasResult {
     epiItemId: string;
     epiNeedId: string | null;
     quantity: number;
+    unitCostCents: number | null;
+    totalCostCents: number | null;
     newQuantity: number;
     movementId: string;
     createdEpiItem: boolean;
   }>;
+}
+
+export interface PortalCustosDashboardResponse {
+  summary: {
+    stockValueCents: number;
+    purchasedCents: number;
+    deliveredCents: number;
+    purchasedQty: number;
+    deliveredQty: number;
+    pricedBalanceLines: number;
+    unpricedBalanceLines: number;
+    invoiceCount: number;
+  };
+  byEpi: Array<{
+    epiItemId: string;
+    name: string;
+    caNumber: string | null;
+    qtyInStock: number;
+    stockValueCents: number;
+    qtyPurchased: number;
+    purchaseCostCents: number;
+    qtyDelivered: number;
+    deliveryCostCents: number;
+    unitPriceCents: number | null;
+  }>;
+  bySector: Array<{
+    id: string;
+    name: string;
+    qty: number;
+    costCents: number;
+  }>;
+  byJobFunction: Array<{
+    id: string;
+    name: string;
+    qty: number;
+    costCents: number;
+  }>;
+  recentPurchases: Array<{
+    id: string;
+    epiItemId: string;
+    epiName: string;
+    caNumber: string | null;
+    quantity: number;
+    unitCostCents: number | null;
+    totalCostCents: number | null;
+    invoiceDocumentId: string | null;
+    createdAt: string;
+  }>;
+  invoices: Array<{
+    id: string;
+    number: string | null;
+    supplierName: string | null;
+    mimeType: string;
+    byteSize: number;
+    createdAt: string;
+  }>;
+  ocr: {
+    available: boolean;
+    message: string;
+  };
+}
+
+export interface PortalInvoiceUploadResult {
+  id: string;
+  number: string | null;
+  supplierName: string | null;
+  mimeType: string;
+  byteSize: number;
+  createdAt: string;
+  ocrAvailable: boolean;
+  ocrMessage: string;
 }
 
 /** Status operacional de cobertura para preparacao de entrega. */

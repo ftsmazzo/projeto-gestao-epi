@@ -429,6 +429,17 @@ export class StockService {
           include: balanceInclude,
         });
 
+    const unitCostCents =
+      dto.unitCostCents != null && Number.isInteger(dto.unitCostCents)
+        ? Math.max(0, dto.unitCostCents)
+        : null;
+    const totalCostCents =
+      unitCostCents != null &&
+      (dto.type === EpiStockMovementType.ENTRADA ||
+        dto.type === EpiStockMovementType.DEVOLUCAO)
+        ? unitCostCents * dto.quantity
+        : null;
+
     const movement = await tx.epiStockMovement.create({
       data: {
         organizationId,
@@ -441,10 +452,23 @@ export class StockService {
         newQuantity,
         reason: this.normalizeOptionalText(dto.reason),
         notes: this.normalizeOptionalText(dto.notes),
+        unitCostCents,
+        totalCostCents,
+        invoiceDocumentId: dto.invoiceDocumentId?.trim() || null,
         createdByUserId: userId,
       },
       include: movementInclude,
     });
+
+    if (
+      unitCostCents != null &&
+      dto.type === EpiStockMovementType.ENTRADA
+    ) {
+      await tx.epiItem.update({
+        where: { id: dto.epiItemId },
+        data: { defaultUnitPriceCents: unitCostCents },
+      });
+    }
 
     return { balance, movement };
   }

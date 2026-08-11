@@ -195,9 +195,9 @@ export class PortalReportsService {
       },
       cost: {
         estimatedDeliveredCost: null,
-        available: false,
+        available: true,
         message:
-          'Custo unitario ainda nao esta no dominio; indicador de custo fica pendente.',
+          'Veja o dashboard de Custos no Painel do Cliente para totais por EPI, setor e funcao.',
       },
     };
   }

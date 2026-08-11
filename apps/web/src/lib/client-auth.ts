@@ -22,6 +22,8 @@ import type {
   PortalReportsActivityResponse,
   PortalReportsStockResponse,
   PortalStockEntradasResult,
+  PortalCustosDashboardResponse,
+  PortalInvoiceUploadResult,
   PortalTrabalhadoresResponse,
   PortalValidadeResponse,
   PortalWorkerEpiSheetResponse,
@@ -465,11 +467,36 @@ export async function createPortalStockEntradas(
     epiNeedId?: string;
     caNumber?: string;
     quantity: number;
+    unitCostCents?: number;
+    invoiceDocumentId?: string;
   }>,
 ) {
   return clientApiFetch<PortalStockEntradasResult>('/portal/stock/entradas', {
     method: 'POST',
     body: JSON.stringify({ items }),
+  });
+}
+
+export async function fetchPortalCustos() {
+  return clientApiFetch<PortalCustosDashboardResponse>('/portal/custos');
+}
+
+export async function uploadPortalInvoice(input: {
+  file: File;
+  number?: string;
+  supplierName?: string;
+  notes?: string;
+}) {
+  const form = new FormData();
+  form.append('file', input.file);
+  if (input.number?.trim()) form.append('number', input.number.trim());
+  if (input.supplierName?.trim()) {
+    form.append('supplierName', input.supplierName.trim());
+  }
+  if (input.notes?.trim()) form.append('notes', input.notes.trim());
+  return clientApiFetch<PortalInvoiceUploadResult>('/portal/custos/invoices', {
+    method: 'POST',
+    body: form,
   });
 }
 

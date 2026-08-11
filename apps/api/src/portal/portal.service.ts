@@ -63,6 +63,7 @@ import {
   resolveEvidenceAbsolutePath,
   saveFacialEvidenceFile,
 } from './facial-evidence.storage';
+import { saveInvoiceDocumentFile } from './invoice-document.storage';
 import {
   computeNextReplacementAt,
   formatUsageFrequencyLabel,
@@ -382,7 +383,7 @@ export class PortalService {
       modules: {
         entregas: { ready: true },
         validade: { ready: true },
-        custos: { ready: false, reason: 'Sem precificacao/consumo valorizado.' },
+        custos: { ready: true },
         estoque: {
           ready: true,
           mode: 'stock' as const,
@@ -1345,6 +1346,21 @@ export class PortalService {
 
     const results = [];
     for (const item of dto.items) {
+      if (item.invoiceDocumentId) {
+        const invoice = await this.prisma.invoiceDocument.findFirst({
+          where: {
+            id: item.invoiceDocumentId,
+            organizationId,
+            servedClientId,
+          },
+          select: { id: true },
+        });
+        if (!invoice) {
+          throw new BadRequestException(
+            'Nota fiscal anexada nao encontrada para este cliente.',
+          );
+        }
+      }
       const resolved = await this.resolveEpiItemForEntrada(
         organizationId,
         item,
@@ -1354,6 +1370,8 @@ export class PortalService {
         stockLocationId: location.id,
         epiItemId: resolved.epiItemId,
         quantity: item.quantity,
+        unitCostCents: item.unitCostCents,
+        invoiceDocumentId: item.invoiceDocumentId,
         notes: item.epiNeedId
           ? `Entrada portal (necessidade ${item.epiNeedId})`
           : 'Entrada pelo Painel do Cliente',
@@ -1362,6 +1380,11 @@ export class PortalService {
         epiItemId: resolved.epiItemId,
         epiNeedId: item.epiNeedId ?? null,
         quantity: item.quantity,
+        unitCostCents: item.unitCostCents ?? null,
+        totalCostCents:
+          item.unitCostCents != null
+            ? item.unitCostCents * item.quantity
+            : null,
         newQuantity: result.movement.newQuantity,
         movementId: result.movement.id,
         createdEpiItem: resolved.created,
@@ -1372,6 +1395,371 @@ export class PortalService {
       locationId: location.id,
       created: results.length,
       items: results,
+    };
+  }
+
+  async uploadInvoiceDocument(
+    organizationId: string,
+    servedClientId: string,
+    userId: string,
+    file: Express.Multer.File,
+    meta?: { number?: string; supplierName?: string; notes?: string },
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    if (!userId) {
+      throw new BadRequestException(
+        'Usuario do portal sem vinculo para anexar nota.',
+      );
+    }
+    const mime = (file.mimetype || '').toLowerCase();
+    const allowed =
+      mime.includes('pdf') ||
+      mime.includes('jpeg') ||
+      mime.includes('jpg') ||
+      mime.includes('png') ||
+      mime.includes('webp') ||
+      mime.includes('octet-stream');
+    if (!allowed) {
+      throw new BadRequestException(
+        'Envie PDF ou imagem (JPG/PNG/WebP) da nota fiscal.',
+      );
+    }
+    if (!file.buffer?.length) {
+      throw new BadRequestException('Arquivo da nota vazio.');
+    }
+    if (file.buffer.byteLength > 12 * 1024 * 1024) {
+      throw new BadRequestException('Nota fiscal acima de 12 MB.');
+    }
+
+    const saved = await saveInvoiceDocumentFile({
+      organizationId,
+      servedClientId,
+      buffer: file.buffer,
+      mimeType: file.mimetype,
+      originalName: file.originalname,
+    });
+
+    const doc = await this.prisma.invoiceDocument.create({
+      data: {
+        organizationId,
+        servedClientId,
+        number: meta?.number?.trim() || null,
+        supplierName: meta?.supplierName?.trim() || null,
+        notes: meta?.notes?.trim() || null,
+        filePath: saved.relativePath,
+        fileHash: saved.fileHash,
+        mimeType: saved.mimeType,
+        byteSize: saved.byteSize,
+        createdByUserId: userId,
+      },
+    });
+
+    return {
+      id: doc.id,
+      number: doc.number,
+      supplierName: doc.supplierName,
+      mimeType: doc.mimeType,
+      byteSize: doc.byteSize,
+      createdAt: doc.createdAt.toISOString(),
+      ocrAvailable: false,
+      ocrMessage:
+        'Anexo salvo. Leitura automatica de valores/quantidades (OCR) entra em etapa futura.',
+    };
+  }
+
+  async getCustosDashboard(organizationId: string, servedClientId: string) {
+    await this.requireClient(organizationId, servedClientId);
+
+    const locationIds = (
+      await this.prisma.stockLocation.findMany({
+        where: { organizationId, servedClientId },
+        select: { id: true },
+      })
+    ).map((l) => l.id);
+
+    const [balances, purchases, deliveryItems, invoices] = await Promise.all([
+      this.prisma.epiStockBalance.findMany({
+        where: {
+          organizationId,
+          stockLocationId: { in: locationIds.length ? locationIds : ['__none__'] },
+        },
+        include: {
+          epiItem: {
+            select: {
+              id: true,
+              name: true,
+              caNumber: true,
+              defaultUnitPriceCents: true,
+            },
+          },
+        },
+      }),
+      this.prisma.epiStockMovement.findMany({
+        where: {
+          organizationId,
+          type: EpiStockMovementType.ENTRADA,
+          stockLocationId: { in: locationIds.length ? locationIds : ['__none__'] },
+        },
+        select: {
+          id: true,
+          epiItemId: true,
+          quantity: true,
+          unitCostCents: true,
+          totalCostCents: true,
+          createdAt: true,
+          invoiceDocumentId: true,
+          epiItem: {
+            select: { id: true, name: true, caNumber: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      }),
+      this.prisma.epiDeliveryItem.findMany({
+        where: {
+          delivery: {
+            organizationId,
+            servedClientId,
+            status: {
+              in: [
+                EpiDeliveryStatus.COMPLETED,
+                EpiDeliveryStatus.PARTIALLY_RETURNED,
+              ],
+            },
+          },
+        },
+        select: {
+          quantity: true,
+          returnedQuantity: true,
+          cancelledQuantity: true,
+          epiItem: {
+            select: {
+              id: true,
+              name: true,
+              caNumber: true,
+              defaultUnitPriceCents: true,
+            },
+          },
+          delivery: {
+            select: {
+              worker: {
+                select: {
+                  clientSectorId: true,
+                  clientJobFunctionId: true,
+                  clientSector: { select: { id: true, name: true } },
+                  clientJobFunction: { select: { id: true, name: true } },
+                },
+              },
+            },
+          },
+        },
+        take: 5000,
+      }),
+      this.prisma.invoiceDocument.findMany({
+        where: { organizationId, servedClientId },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: {
+          id: true,
+          number: true,
+          supplierName: true,
+          mimeType: true,
+          byteSize: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    let stockValueCents = 0;
+    let pricedBalanceLines = 0;
+    let unpricedBalanceLines = 0;
+    const byEpiMap = new Map<
+      string,
+      {
+        epiItemId: string;
+        name: string;
+        caNumber: string | null;
+        qtyInStock: number;
+        stockValueCents: number;
+        qtyPurchased: number;
+        purchaseCostCents: number;
+        qtyDelivered: number;
+        deliveryCostCents: number;
+        unitPriceCents: number | null;
+      }
+    >();
+
+    for (const bal of balances) {
+      const price = bal.epiItem.defaultUnitPriceCents;
+      const lineValue =
+        price != null ? price * Math.max(0, bal.quantity) : 0;
+      if (price != null) {
+        pricedBalanceLines += 1;
+        stockValueCents += lineValue;
+      } else if (bal.quantity > 0) {
+        unpricedBalanceLines += 1;
+      }
+      const cur = byEpiMap.get(bal.epiItemId) ?? {
+        epiItemId: bal.epiItemId,
+        name: bal.epiItem.name,
+        caNumber: bal.epiItem.caNumber,
+        qtyInStock: 0,
+        stockValueCents: 0,
+        qtyPurchased: 0,
+        purchaseCostCents: 0,
+        qtyDelivered: 0,
+        deliveryCostCents: 0,
+        unitPriceCents: price,
+      };
+      cur.qtyInStock += bal.quantity;
+      cur.stockValueCents += lineValue;
+      if (price != null) cur.unitPriceCents = price;
+      byEpiMap.set(bal.epiItemId, cur);
+    }
+
+    let purchasedCents = 0;
+    let purchasedQty = 0;
+    for (const mov of purchases) {
+      const cost =
+        mov.totalCostCents ??
+        (mov.unitCostCents != null ? mov.unitCostCents * mov.quantity : 0);
+      purchasedCents += cost;
+      purchasedQty += mov.quantity;
+      const cur = byEpiMap.get(mov.epiItemId) ?? {
+        epiItemId: mov.epiItemId,
+        name: mov.epiItem.name,
+        caNumber: mov.epiItem.caNumber,
+        qtyInStock: 0,
+        stockValueCents: 0,
+        qtyPurchased: 0,
+        purchaseCostCents: 0,
+        qtyDelivered: 0,
+        deliveryCostCents: 0,
+        unitPriceCents: mov.unitCostCents,
+      };
+      cur.qtyPurchased += mov.quantity;
+      cur.purchaseCostCents += cost;
+      if (mov.unitCostCents != null) cur.unitPriceCents = mov.unitCostCents;
+      byEpiMap.set(mov.epiItemId, cur);
+    }
+
+    let deliveredCents = 0;
+    let deliveredQty = 0;
+    const bySectorMap = new Map<
+      string,
+      { id: string; name: string; qty: number; costCents: number }
+    >();
+    const byJobMap = new Map<
+      string,
+      { id: string; name: string; qty: number; costCents: number }
+    >();
+
+    for (const item of deliveryItems) {
+      const netQty = Math.max(
+        0,
+        item.quantity - item.returnedQuantity - item.cancelledQuantity,
+      );
+      if (netQty <= 0) continue;
+      const unit = item.epiItem.defaultUnitPriceCents;
+      const cost = unit != null ? unit * netQty : 0;
+      deliveredQty += netQty;
+      deliveredCents += cost;
+
+      const cur = byEpiMap.get(item.epiItem.id) ?? {
+        epiItemId: item.epiItem.id,
+        name: item.epiItem.name,
+        caNumber: item.epiItem.caNumber,
+        qtyInStock: 0,
+        stockValueCents: 0,
+        qtyPurchased: 0,
+        purchaseCostCents: 0,
+        qtyDelivered: 0,
+        deliveryCostCents: 0,
+        unitPriceCents: unit,
+      };
+      cur.qtyDelivered += netQty;
+      cur.deliveryCostCents += cost;
+      if (unit != null) cur.unitPriceCents = unit;
+      byEpiMap.set(item.epiItem.id, cur);
+
+      const sector = item.delivery.worker.clientSector;
+      const sectorKey = sector?.id ?? '__none__';
+      const sectorRow = bySectorMap.get(sectorKey) ?? {
+        id: sector?.id ?? '',
+        name: sector?.name ?? 'Sem setor',
+        qty: 0,
+        costCents: 0,
+      };
+      sectorRow.qty += netQty;
+      sectorRow.costCents += cost;
+      bySectorMap.set(sectorKey, sectorRow);
+
+      const job = item.delivery.worker.clientJobFunction;
+      const jobKey = job?.id ?? '__none__';
+      const jobRow = byJobMap.get(jobKey) ?? {
+        id: job?.id ?? '',
+        name: job?.name ?? 'Sem funcao',
+        qty: 0,
+        costCents: 0,
+      };
+      jobRow.qty += netQty;
+      jobRow.costCents += cost;
+      byJobMap.set(jobKey, jobRow);
+    }
+
+    const byEpi = [...byEpiMap.values()].sort(
+      (a, b) =>
+        b.purchaseCostCents +
+        b.deliveryCostCents -
+        (a.purchaseCostCents + a.deliveryCostCents),
+    );
+
+    return {
+      summary: {
+        stockValueCents,
+        purchasedCents,
+        deliveredCents,
+        purchasedQty,
+        deliveredQty,
+        pricedBalanceLines,
+        unpricedBalanceLines,
+        invoiceCount: invoices.length,
+      },
+      byEpi,
+      bySector: [...bySectorMap.values()].sort(
+        (a, b) => b.costCents - a.costCents,
+      ),
+      byJobFunction: [...byJobMap.values()].sort(
+        (a, b) => b.costCents - a.costCents,
+      ),
+      recentPurchases: purchases.slice(0, 12).map((mov) => ({
+        id: mov.id,
+        epiItemId: mov.epiItemId,
+        epiName: mov.epiItem.name,
+        caNumber: mov.epiItem.caNumber,
+        quantity: mov.quantity,
+        unitCostCents: mov.unitCostCents,
+        totalCostCents:
+          mov.totalCostCents ??
+          (mov.unitCostCents != null
+            ? mov.unitCostCents * mov.quantity
+            : null),
+        invoiceDocumentId: mov.invoiceDocumentId,
+        createdAt: mov.createdAt.toISOString(),
+      })),
+      invoices: invoices.map((doc) => ({
+        id: doc.id,
+        number: doc.number,
+        supplierName: doc.supplierName,
+        mimeType: doc.mimeType,
+        byteSize: doc.byteSize,
+        createdAt: doc.createdAt.toISOString(),
+      })),
+      ocr: {
+        available: false,
+        message:
+          'Anexar foto/PDF da nota ja e possivel. Extracao automatica de valores e quantidades (OCR/IA) fica para a proxima etapa.',
+      },
     };
   }
 

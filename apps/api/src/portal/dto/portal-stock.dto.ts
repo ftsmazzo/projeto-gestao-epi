@@ -30,6 +30,17 @@ export class PortalStockEntradaItemDto {
   @IsInt()
   @Min(1)
   quantity!: number;
+
+  /** Custo unitario em centavos (BRL). Opcional na entrada. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  unitCostCents?: number;
+
+  /** Nota fiscal / comprovante ja enviado via /portal/custos/invoices. */
+  @IsOptional()
+  @IsString()
+  invoiceDocumentId?: string;
 }
 
 export class PortalStockEntradasDto {

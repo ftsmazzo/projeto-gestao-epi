@@ -675,6 +675,43 @@ export class PortalController {
     );
   }
 
+  @Get('custos')
+  custosDashboard(@CurrentUser() user: ClientJwtPayload) {
+    this.assertClient(user);
+    return this.portal.getCustosDashboard(
+      user.organizationId,
+      user.servedClientId,
+    );
+  }
+
+  @Post('custos/invoices')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 12 * 1024 * 1024 },
+    }),
+  )
+  uploadInvoice(
+    @CurrentUser() user: ClientJwtPayload,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body()
+    body: { number?: string; supplierName?: string; notes?: string },
+  ) {
+    this.assertClient(user);
+    if (!file) {
+      throw new BadRequestException(
+        'Envie o arquivo da nota no campo multipart "file".',
+      );
+    }
+    return this.portal.uploadInvoiceDocument(
+      user.organizationId,
+      user.servedClientId!,
+      user.sub,
+      file,
+      body,
+    );
+  }
+
   private assertClient(user: ClientJwtPayload) {
     if (!user.servedClientId) {
       throw new NotFoundException('Cliente do portal nao identificado.');

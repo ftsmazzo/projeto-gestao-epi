@@ -23,10 +23,23 @@ import {
   fetchPortalReportsActivity,
   fetchPortalReportsStock,
   searchPortalCaepi,
+  uploadPortalInvoice,
 } from '../../../lib/client-auth';
 
 const SEARCH_MIN = 3;
 const SEARCH_DEBOUNCE_MS = 350;
+
+/** Converte "12,50" / "12.50" em centavos. Vazio = undefined. */
+function parseReaisToCents(raw: string): number | undefined {
+  const t = raw.trim();
+  if (!t) return undefined;
+  const normalized = t.includes(',')
+    ? t.replace(/\./g, '').replace(',', '.')
+    : t;
+  const n = Number(normalized);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return Math.round(n * 100);
+}
 const STOP_WORDS = new Set([
   'de',
   'da',
@@ -121,6 +134,8 @@ type NeedRow = {
   needName: string;
   jobNames: string[];
   quantity: number;
+  /** Preco unitario em reais (texto livre, ex.: 12,50). */
+  unitPriceReais: string;
   selected: boolean;
   picked: CaCertificateSearchItem | null;
   picking: boolean;
@@ -150,6 +165,7 @@ function buildNeedRows(data: PortalEstoqueResponse): NeedRow[] {
       needName: need.needName,
       jobNames: need.jobNames,
       quantity: need.suggestedQuantity || 1,
+      unitPriceReais: '',
       selected: Boolean(picked),
       picked,
       picking: false,
@@ -192,6 +208,9 @@ function PortalEstoqueContent() {
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
   const [picked, setPicked] = useState<CaCertificateSearchItem | null>(null);
   const [freeQty, setFreeQty] = useState(1);
+  const [freeUnitPriceReais, setFreeUnitPriceReais] = useState('');
+  const [batchInvoiceFile, setBatchInvoiceFile] = useState<File | null>(null);
+  const [freeInvoiceFile, setFreeInvoiceFile] = useState<File | null>(null);
   const needSearchTimers = useRef<Record<string, number>>({});
 
   async function reload() {
@@ -392,6 +411,7 @@ function PortalEstoqueContent() {
         epiNeedId: row.needId,
         caNumber: row.picked!.caNumber,
         quantity: row.quantity,
+        unitCostCents: parseReaisToCents(row.unitPriceReais),
         needName: row.needName,
         equipmentName: row.picked!.equipmentName,
       }));
@@ -414,14 +434,22 @@ function PortalEstoqueContent() {
     setError(null);
     setSuccess(null);
     try {
+      let invoiceDocumentId: string | undefined;
+      if (batchInvoiceFile) {
+        const uploaded = await uploadPortalInvoice({ file: batchInvoiceFile });
+        invoiceDocumentId = uploaded.id;
+      }
       const result = await createPortalStockEntradas(
-        items.map(({ epiNeedId, caNumber, quantity }) => ({
+        items.map(({ epiNeedId, caNumber, quantity, unitCostCents }) => ({
           epiNeedId,
           caNumber,
           quantity,
+          ...(unitCostCents != null ? { unitCostCents } : {}),
+          ...(invoiceDocumentId ? { invoiceDocumentId } : {}),
         })),
       );
       setSuccess(`${result.created} entrada(s) registrada(s) no estoque.`);
+      setBatchInvoiceFile(null);
       setView('dashboard');
       await reload();
     } catch (err) {
@@ -443,10 +471,18 @@ function PortalEstoqueContent() {
     setError(null);
     setSuccess(null);
     try {
+      let invoiceDocumentId: string | undefined;
+      if (freeInvoiceFile) {
+        const uploaded = await uploadPortalInvoice({ file: freeInvoiceFile });
+        invoiceDocumentId = uploaded.id;
+      }
+      const unitCostCents = parseReaisToCents(freeUnitPriceReais);
       await createPortalStockEntradas([
         {
           caNumber: picked.caNumber,
           quantity: freeQty,
+          ...(unitCostCents != null ? { unitCostCents } : {}),
+          ...(invoiceDocumentId ? { invoiceDocumentId } : {}),
         },
       ]);
       setSuccess(
@@ -456,6 +492,8 @@ function PortalEstoqueContent() {
       setQuery('');
       setSuggestions([]);
       setFreeQty(1);
+      setFreeUnitPriceReais('');
+      setFreeInvoiceFile(null);
       setView('dashboard');
       await reload();
     } catch (err) {
@@ -680,6 +718,7 @@ function PortalEstoqueContent() {
                         <th scope="col">Necessidade</th>
                         <th scope="col">EPI escolhido (base CAEPI)</th>
                         <th scope="col">Qtd</th>
+                        <th scope="col">Valor un. (R$)</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -828,12 +867,45 @@ function PortalEstoqueContent() {
                               aria-label={`Qtd ${row.needName}`}
                             />
                           </td>
+                          <td>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              className="portal-qty-input"
+                              placeholder="0,00"
+                              value={row.unitPriceReais}
+                              disabled={!row.picked}
+                              onChange={(e) =>
+                                setNeedRows((prev) =>
+                                  prev.map((r, i) =>
+                                    i === index
+                                      ? { ...r, unitPriceReais: e.target.value }
+                                      : r,
+                                  ),
+                                )
+                              }
+                              aria-label={`Valor unitario ${row.needName}`}
+                            />
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
                 <div className="flow-sticky-bar">
+                  <div className="field" style={{ margin: 0, minWidth: 180 }}>
+                    <label htmlFor="batch-invoice-file" className="field-hint">
+                      Nota (foto/PDF, opcional)
+                    </label>
+                    <input
+                      id="batch-invoice-file"
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={(e) =>
+                        setBatchInvoiceFile(e.target.files?.[0] ?? null)
+                      }
+                    />
+                  </div>
                   <button
                     type="button"
                     className="btn btn-secondary"
@@ -928,6 +1000,30 @@ function PortalEstoqueContent() {
                   value={freeQty}
                   onChange={(e) =>
                     setFreeQty(Math.max(1, Number(e.target.value) || 1))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="portal-epi-price">Valor unitario (R$)</label>
+                <input
+                  id="portal-epi-price"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="Ex.: 12,50"
+                  value={freeUnitPriceReais}
+                  onChange={(e) => setFreeUnitPriceReais(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="portal-epi-invoice">
+                  Nota fiscal (foto/PDF, opcional)
+                </label>
+                <input
+                  id="portal-epi-invoice"
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={(e) =>
+                    setFreeInvoiceFile(e.target.files?.[0] ?? null)
                   }
                 />
               </div>
