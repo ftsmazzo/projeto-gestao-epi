@@ -265,11 +265,27 @@ function EquipeContent({
               <>
                 <div>
                   <dt>E-mail (envio)</dt>
-                  <dd>{oneTimeAccess.delivery.email}</dd>
+                  <dd>
+                    {oneTimeAccess.delivery.email}
+                    {oneTimeAccess.delivery.emailError ? (
+                      <span className="table-sub">
+                        {oneTimeAccess.delivery.emailError}
+                      </span>
+                    ) : null}
+                  </dd>
                 </div>
                 <div>
                   <dt>WhatsApp (envio)</dt>
-                  <dd>{oneTimeAccess.delivery.whatsapp}</dd>
+                  <dd>
+                    {oneTimeAccess.delivery.whatsapp}
+                    {oneTimeAccess.delivery.whatsappError ||
+                    oneTimeAccess.delivery.whatsappDetail ? (
+                      <span className="table-sub" style={{ color: 'var(--danger, #b42318)' }}>
+                        {oneTimeAccess.delivery.whatsappError ||
+                          oneTimeAccess.delivery.whatsappDetail}
+                      </span>
+                    ) : null}
+                  </dd>
                 </div>
               </>
             ) : null}
