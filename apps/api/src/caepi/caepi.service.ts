@@ -180,13 +180,20 @@ export class CaepiService {
     };
   }
 
-  async searchCertificates(qRaw: string, limitRaw?: number) {
+  async searchCertificates(
+    qRaw: string,
+    limitRaw?: number,
+    options?: { validOnly?: boolean },
+  ) {
     const qTrimmed = (qRaw ?? '').trim();
     const qCa = normalizeCaNumber(qTrimmed);
+    const validOnly = Boolean(options?.validOnly);
+    const maxLimit = validOnly ? 50 : 30;
     const limit = Math.min(
       Math.max(Number.isFinite(limitRaw) ? Number(limitRaw) : 10, 1),
-      20,
+      maxLimit,
     );
+    const digitsOnly = /^\d{3,}$/.test(qCa);
 
     const base = await this.getBaseCounts();
 
@@ -197,7 +204,7 @@ export class CaepiService {
         baseCertificateCount: base.certificates,
         baseIncomplete: base.incomplete,
         message:
-          'Informe ao menos 3 caracteres para buscar na base CAEPI local.',
+          'Informe ao menos 3 caracteres (ou o numero do CA) para buscar na base CAEPI local.',
       };
     }
 
@@ -212,6 +219,52 @@ export class CaepiService {
       };
     }
 
+    const select = {
+      caNumber: true,
+      status: true,
+      expiresAt: true,
+      equipmentName: true,
+      manufacturerName: true,
+      reference: true,
+      color: true,
+      sourceImportedAt: true,
+    };
+
+    // Numero de CA: lookup exato primeiro (nao depende do ranking por texto).
+    if (digitsOnly) {
+      const exact = await this.prisma.caCertificate.findUnique({
+        where: { caNumber: qCa },
+        select,
+      });
+      if (exact) {
+        if (validOnly && exact.status !== CaCertificateStatus.VALIDO) {
+          return {
+            query: qTrimmed,
+            items: [],
+            baseCertificateCount: base.certificates,
+            baseIncomplete: base.incomplete,
+            message: `CA ${qCa} encontrado, mas situacao e ${exact.status} (filtro: apenas validos).`,
+          };
+        }
+        return {
+          query: qTrimmed,
+          items: [exact],
+          baseCertificateCount: base.certificates,
+          baseIncomplete: base.incomplete,
+          message: incompleteMsg,
+        };
+      }
+      return {
+        query: qTrimmed,
+        items: [],
+        baseCertificateCount: base.certificates,
+        baseIncomplete: base.incomplete,
+        message:
+          incompleteMsg ??
+          `CA ${qCa} nao encontrado na base CAEPI local.`,
+      };
+    }
+
     const equipmentTerms = expandEquipmentSearchTerms(qTrimmed);
     const textOr = equipmentTerms.flatMap((term) => [
       { equipmentName: { contains: term, mode: 'insensitive' as const } },
@@ -223,25 +276,10 @@ export class CaepiService {
       },
       { manufacturerName: { contains: term, mode: 'insensitive' as const } },
       { reference: { contains: term, mode: 'insensitive' as const } },
+      { caNumber: { contains: qCa, mode: 'insensitive' as const } },
     ]);
 
-    const matchWhere = {
-      OR: [
-        { caNumber: { contains: qCa, mode: 'insensitive' as const } },
-        ...textOr,
-      ],
-    };
-
-    const select = {
-      caNumber: true,
-      status: true,
-      expiresAt: true,
-      equipmentName: true,
-      manufacturerName: true,
-      reference: true,
-      color: true,
-      sourceImportedAt: true,
-    };
+    const matchWhere = { OR: textOr };
 
     // Busca em duas fases: VALIDO primeiro (com validade mais longa), depois o resto.
     // Um unico findMany+take sem orderBy devolvia amostra arbitraria — quase so vencidos.
@@ -254,14 +292,19 @@ export class CaepiService {
         orderBy: [{ expiresAt: 'desc' }],
         take: SEARCH_CANDIDATE_CAP,
       }),
-      this.prisma.caCertificate.findMany({
-        where: {
-          AND: [matchWhere, { status: { not: CaCertificateStatus.VALIDO } }],
-        },
-        select,
-        orderBy: [{ expiresAt: 'desc' }],
-        take: SEARCH_CANDIDATE_CAP,
-      }),
+      validOnly
+        ? Promise.resolve([])
+        : this.prisma.caCertificate.findMany({
+            where: {
+              AND: [
+                matchWhere,
+                { status: { not: CaCertificateStatus.VALIDO } },
+              ],
+            },
+            select,
+            orderBy: [{ expiresAt: 'desc' }],
+            take: SEARCH_CANDIDATE_CAP,
+          }),
     ]);
 
     const seen = new Set<string>();
@@ -307,9 +350,11 @@ export class CaepiService {
     if (items.length === 0) {
       message =
         incompleteMsg ??
-        `Nenhum certificado encontrado para "${qTrimmed}" na base CAEPI local.`;
+        `Nenhum certificado${validOnly ? ' valido' : ''} encontrado para "${qTrimmed}" na base CAEPI local.`;
     } else if (incompleteMsg) {
       message = incompleteMsg;
+    } else if (validCandidates.length > limit) {
+      message = `Mostrando ${items.length} CAs validos (mais recentes). Digite o numero do CA se nao encontrar o seu.`;
     }
 
     return {

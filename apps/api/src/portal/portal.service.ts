@@ -1226,8 +1226,12 @@ export class PortalService {
   }
 
   /** Busca na base CAEPI local — mesmo comportamento do catalogo mestre. */
-  async searchCaepiBase(q: string, limit = 12) {
-    const result = await this.caepi.searchCertificates(q, limit);
+  async searchCaepiBase(
+    q: string,
+    limit = 12,
+    options?: { validOnly?: boolean },
+  ) {
+    const result = await this.caepi.searchCertificates(q, limit, options);
     return {
       query: result.query,
       baseCertificateCount: result.baseCertificateCount,

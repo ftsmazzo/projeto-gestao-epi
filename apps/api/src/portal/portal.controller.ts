@@ -632,10 +632,15 @@ export class PortalController {
     @CurrentUser() user: ClientJwtPayload,
     @Query('q') q = '',
     @Query('limit') limitRaw?: string,
+    @Query('validOnly') validOnlyRaw?: string,
   ) {
     this.assertClient(user);
     const limit = limitRaw ? Number(limitRaw) : 12;
-    return this.portal.searchCaepiBase(q, limit);
+    const validOnly =
+      validOnlyRaw === '1' ||
+      validOnlyRaw === 'true' ||
+      validOnlyRaw === 'yes';
+    return this.portal.searchCaepiBase(q, limit, { validOnly });
   }
 
   @Get('stock/locations')

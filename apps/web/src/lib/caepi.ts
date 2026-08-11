@@ -15,11 +15,18 @@ export function lookupCaCertificate(caNumber: string) {
   );
 }
 
-export function searchCaCertificates(q: string, limit = 10) {
+export function searchCaCertificates(
+  q: string,
+  limit = 10,
+  options?: { validOnly?: boolean },
+) {
   const params = new URLSearchParams({
     q: q.trim(),
     limit: String(limit),
   });
+  if (options?.validOnly) {
+    params.set('validOnly', '1');
+  }
   return apiFetch<CaCertificateSearchResponse>(
     `/caepi/certificates/search?${params.toString()}`,
   );

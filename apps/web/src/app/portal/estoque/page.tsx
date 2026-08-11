@@ -33,7 +33,7 @@ const STOP_WORDS = new Set([
   'em',
 ]);
 
-/** Extrai termo util para CAEPI a partir do nome da necessidade (ex.: "Luva de Vaqueta" -> "Luva"). */
+/** Extrai termos uteis para CAEPI a partir do nome da necessidade. */
 function needSearchTerms(needName: string): string[] {
   const cleaned = needName.trim();
   if (!cleaned) return [];
@@ -47,8 +47,29 @@ function needSearchTerms(needName: string): string[] {
       terms.push(token);
     }
   }
+  const folded = cleaned
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase();
+  // Nome operacional vs nome oficial CAEPI
+  if (
+    folded.includes('viseira') &&
+    !terms.some((t) => t.toLowerCase().includes('protetor facial'))
+  ) {
+    terms.push('protetor facial');
+  }
   return terms;
 }
+
+/** Termo inicial preferido ao abrir o seletor (sinonimo oficial quando houver). */
+function preferredCaepiQuery(needName: string): string {
+  const terms = needSearchTerms(needName);
+  const synonym = terms.find((t) => /protetor facial/i.test(t));
+  if (synonym) return synonym;
+  return terms[1] ?? terms[0] ?? needName;
+}
+
+const CAEPI_PICKER_LIMIT = 50;
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return '—';
@@ -125,7 +146,7 @@ function buildNeedRows(data: PortalEstoqueResponse): NeedRow[] {
       selected: Boolean(picked),
       picked,
       picking: false,
-      pickerQuery: needSearchTerms(need.needName)[1] ?? need.needName,
+      pickerQuery: preferredCaepiQuery(need.needName),
       suggestions: [],
       suggestLoading: false,
       suggestMessage: null,
@@ -192,12 +213,12 @@ function PortalEstoqueContent() {
     setSearching(true);
     setSearchMessage(null);
     const handle = window.setTimeout(() => {
-      void searchPortalCaepi(q, 12)
+      void searchPortalCaepi(q, CAEPI_PICKER_LIMIT, { validOnly: true })
         .then((res) => {
           setSuggestions(res.items);
           setSearchMessage(
             res.items.length === 0
-              ? res.message ?? 'Nenhum CA encontrado na base CAEPI.'
+              ? res.message ?? 'Nenhum CA valido encontrado na base CAEPI.'
               : res.message,
           );
         })
@@ -244,14 +265,17 @@ function PortalEstoqueContent() {
       ),
     );
     try {
-      let res = await searchPortalCaepi(query, 15);
-      // Se o nome completo da necessidade nao bate na CAEPI, tenta o primeiro termo util.
+      let res = await searchPortalCaepi(query, CAEPI_PICKER_LIMIT, {
+        validOnly: true,
+      });
+      // Se o nome operacional nao bate, tenta sinonimos / tokens (ex.: Viseira → Protetor facial).
       if (res.items.length === 0) {
-        const fallback = needSearchTerms(query).find(
-          (t) => t.toLowerCase() !== query.toLowerCase(),
-        );
-        if (fallback) {
-          res = await searchPortalCaepi(fallback, 15);
+        for (const fallback of needSearchTerms(query)) {
+          if (fallback.toLowerCase() === query.toLowerCase()) continue;
+          res = await searchPortalCaepi(fallback, CAEPI_PICKER_LIMIT, {
+            validOnly: true,
+          });
+          if (res.items.length > 0) break;
         }
       }
       setNeedRows((prev) =>
@@ -264,8 +288,8 @@ function PortalEstoqueContent() {
                 suggestMessage:
                   res.items.length === 0
                     ? res.message ??
-                      `Nenhum EPI na base CAEPI para "${query}".`
-                    : null,
+                      `Nenhum CA valido na base para "${query}". Tente o numero do CA.`
+                    : res.message,
               }
             : r,
         ),
@@ -293,9 +317,7 @@ function PortalEstoqueContent() {
     const row = needRows[index];
     if (!row) return;
     const initialQ =
-      row.pickerQuery.trim() ||
-      needSearchTerms(row.needName)[1] ||
-      row.needName;
+      row.pickerQuery.trim() || preferredCaepiQuery(row.needName);
     setNeedRows((prev) =>
       prev.map((r, i) =>
         i === index
@@ -495,8 +517,9 @@ function PortalEstoqueContent() {
               Por necessidade da empresa
             </h2>
             <p className="page-lead">
-              Clique em <strong>Escolher EPI na base</strong> para ver os CAs da
-              CAEPI com aquele nome. Selecione o que comprou e a quantidade.
+              Clique em <strong>Escolher EPI na base</strong>. Listamos CAs{' '}
+              <strong>validos</strong> (ate 50). Se o produto nao aparecer,
+              digite o <strong>numero do CA</strong> da nota/embalagem.
             </p>
 
             {needRows.length === 0 ? (
@@ -581,7 +604,7 @@ function PortalEstoqueContent() {
                                 style={{ marginTop: '0.5rem' }}
                               >
                                 <label className="field-hint" htmlFor={`need-caepi-${row.needId}`}>
-                                  Busca na base CAEPI (mesmo catalogo da Consultoria)
+                                  Nome do EPI ou numero do CA (so validos)
                                 </label>
                                 <input
                                   id={`need-caepi-${row.needId}`}
@@ -605,7 +628,7 @@ function PortalEstoqueContent() {
                                         void loadNeedSuggestions(index, value);
                                       }, SEARCH_DEBOUNCE_MS);
                                   }}
-                                  placeholder="Ex.: luva"
+                                  placeholder="Ex.: protetor facial ou 11442"
                                   autoComplete="off"
                                 />
                                 {row.suggestLoading ? (
@@ -694,12 +717,15 @@ function PortalEstoqueContent() {
               Entrada avulsa (base CAEPI)
             </h2>
             <p className="page-lead">
-              Digite o nome (ex.: luva). Aparecem os mesmos CAs do catalogo
-              mestre. Escolha o produto e a quantidade.
+              Digite o nome (ex.: protetor facial) ou o <strong>numero do CA</strong>{' '}
+              (ex.: 11442). Mostramos ate 50 CAs validos; se nao achar na lista,
+              busque pelo numero.
             </p>
             <form className="form-panel" onSubmit={onFreeEntrada}>
               <div className="field">
-                <label htmlFor="portal-caepi-search">Nome / equipamento</label>
+                <label htmlFor="portal-caepi-search">
+                  Nome / equipamento ou numero do CA
+                </label>
                 <input
                   id="portal-caepi-search"
                   value={
@@ -711,7 +737,7 @@ function PortalEstoqueContent() {
                     setPicked(null);
                     setQuery(e.target.value);
                   }}
-                  placeholder="Ex.: luva"
+                  placeholder="Ex.: protetor facial ou 11442"
                   autoComplete="off"
                 />
                 {searching ? <p className="field-hint">Buscando na CAEPI...</p> : null}

@@ -71,9 +71,14 @@ export class CaepiController {
   search(
     @Query('q') q?: string,
     @Query('limit') limitRaw?: string,
+    @Query('validOnly') validOnlyRaw?: string,
   ) {
     const limit = limitRaw ? Number(limitRaw) : undefined;
-    return this.caepi.searchCertificates(q ?? '', limit);
+    const validOnly =
+      validOnlyRaw === '1' ||
+      validOnlyRaw === 'true' ||
+      validOnlyRaw === 'yes';
+    return this.caepi.searchCertificates(q ?? '', limit, { validOnly });
   }
 
   @Get('certificates/:caNumber')

@@ -442,11 +442,18 @@ export async function lookupPortalEpiByCa(ca: string) {
   );
 }
 
-export async function searchPortalCaepi(q: string, limit = 12) {
+export async function searchPortalCaepi(
+  q: string,
+  limit = 12,
+  options?: { validOnly?: boolean },
+) {
   const params = new URLSearchParams({
     q: q.trim(),
     limit: String(limit),
   });
+  if (options?.validOnly) {
+    params.set('validOnly', '1');
+  }
   return clientApiFetch<CaCertificateSearchResponse>(
     `/portal/caepi/search?${params.toString()}`,
   );
