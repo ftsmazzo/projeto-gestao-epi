@@ -66,6 +66,8 @@ export type LivenessTrackerState = {
   /** Virada: primeiro alcancar o angulo, depois voltar ao centro. */
   turnPhase: 'turn' | 'center';
   centerHoldFrames: number;
+  /** Preview espelhada (camera frontal + CSS). Afeta yaw e seta. */
+  previewMirrored: boolean;
 };
 
 export type LivenessProgress = {
@@ -292,10 +294,14 @@ function meanEar(landmarks: FacePoint[]): number | null {
 }
 
 /**
- * Yaw aproximado no espelho CSS (scaleX -1): positivo = esquerda na tela
- * (mesmo lado que o usuario ve).
+ * Yaw com semantica de tela: positivo = esquerda na preview (como o usuario ve).
+ * Camera frontal + CSS scaleX(-1) = previewMirrored true.
+ * Camera traseira sem espelho = previewMirrored false.
  */
-function mirroredYaw(landmarks: FacePoint[]): number | null {
+function screenYaw(
+  landmarks: FacePoint[],
+  previewMirrored: boolean,
+): number | null {
   if (landmarks.length < 31) return null;
   const jawLeft = landmarks[0]!;
   const jawRight = landmarks[16]!;
@@ -303,8 +309,11 @@ function mirroredYaw(landmarks: FacePoint[]): number | null {
   const faceWidth = Math.abs(jawRight.x - jawLeft.x);
   if (faceWidth < 1) return null;
   const centerX = (jawLeft.x + jawRight.x) / 2;
-  // Inverte o sinal por causa do espelho na UI.
-  return -((nose.x - centerX) / faceWidth);
+  const raw = (nose.x - centerX) / faceWidth;
+  // Frame raw (frontal): virar a esquerda fisica move o nariz para a DIREITA do frame.
+  // Com preview espelhada, isso aparece a ESQUERDA na tela → raw positivo = esquerda na tela.
+  // Sem espelho, invertemos para manter o mesmo semantico de "esquerda na tela".
+  return previewMirrored ? raw : -raw;
 }
 
 export function pickLivenessChallenge(): LivenessChallengeType {
@@ -315,6 +324,7 @@ export function pickLivenessChallenge(): LivenessChallengeType {
 
 export function createLivenessTracker(
   challenge: LivenessChallengeType = pickLivenessChallenge(),
+  options?: { previewMirrored?: boolean },
 ): LivenessTrackerState {
   return {
     challenge,
@@ -325,6 +335,7 @@ export function createLivenessTracker(
     openEarSamples: 0,
     turnPhase: 'turn',
     centerHoldFrames: 0,
+    previewMirrored: options?.previewMirrored ?? true,
   };
 }
 
@@ -334,12 +345,21 @@ export function livenessChallengeLabel(
   return LIVENESS_CHALLENGE_LABELS[challenge];
 }
 
-/** Direcao da seta na UI (espelho: esquerda/direita como o usuario ve). */
+/**
+ * Lado da seta na UI (coordenadas da tela).
+ * Com camera frontal espelhada a seta aponta para o lado que o usuario deve virar na preview.
+ * Sem espelho, inverte em relacao ao desafio bruto do frame.
+ */
 export function livenessArrowSide(
   challenge: LivenessChallengeType,
+  previewMirrored = true,
 ): 'left' | 'right' | null {
-  if (challenge === 'turn_left') return 'left';
-  if (challenge === 'turn_right') return 'right';
+  if (challenge === 'turn_left') {
+    return previewMirrored ? 'left' : 'right';
+  }
+  if (challenge === 'turn_right') {
+    return previewMirrored ? 'right' : 'left';
+  }
   return null;
 }
 
@@ -452,7 +472,7 @@ export function evaluateLiveness(
     };
   }
 
-  const yaw = mirroredYaw(scan.landmarks);
+  const yaw = screenYaw(scan.landmarks, state.previewMirrored);
   if (yaw == null) {
     return {
       state: { ...state, turnHoldFrames: 0, centerHoldFrames: 0 },

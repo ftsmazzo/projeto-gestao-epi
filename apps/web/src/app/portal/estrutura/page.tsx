@@ -2,7 +2,8 @@
 
 import type { PortalEstruturaResponse } from '@gestao-epi/shared';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { StockDashboardKpis } from '../../../components/portal/StockDashboardKpis';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
 import { fetchPortalEstrutura } from '../../../lib/client-auth';
 
@@ -35,16 +36,63 @@ function PortalEstruturaContent() {
     };
   }, []);
 
+  const kpiItems = useMemo(() => {
+    if (!data) return [];
+    const jobs = data.sectors.reduce((acc, s) => acc + s.jobs.length, 0);
+    const needs = data.sectors.reduce(
+      (acc, s) =>
+        acc + s.jobs.reduce((jAcc, job) => jAcc + job.needs.length, 0),
+      0,
+    );
+    const riskSet = new Set<string>();
+    for (const sector of data.sectors) {
+      for (const job of sector.jobs) {
+        for (const risk of job.risks) riskSet.add(risk);
+      }
+    }
+    return [
+      {
+        id: 'units',
+        label: 'Unidades',
+        value: data.units.length,
+      },
+      {
+        id: 'sectors',
+        label: 'Setores',
+        value: data.sectors.length,
+      },
+      {
+        id: 'jobs',
+        label: 'Funcoes',
+        value: jobs,
+      },
+      {
+        id: 'needs',
+        label: 'Necessidades de EPI',
+        value: needs,
+        hint: `${riskSet.size} risco(s) distintos`,
+      },
+    ];
+  }, [data]);
+
   return (
     <div className="portal-home">
-      <header className="portal-home-header">
+      <header className="dash-page-header">
         <div>
-          <p className="page-kicker">Dia a dia</p>
-          <h1 className="page-title page-title--sm">Estrutura</h1>
+          <p className="page-kicker">Operacao</p>
+          <h1 className="page-title">Estrutura</h1>
           <p className="page-lead">
-            Visao somente leitura dos setores, funcoes, riscos e necessidades
-            implantados pela Consultoria.
+            Setores, funcoes, riscos e necessidades definidos pela Consultoria
+            (somente leitura).
           </p>
+        </div>
+        <div className="dash-page-header__actions">
+          <Link className="btn btn-secondary" href="/portal/trabalhadores">
+            Trabalhadores
+          </Link>
+          <Link className="btn btn-secondary" href="/portal">
+            Painel
+          </Link>
         </div>
       </header>
 
@@ -57,82 +105,90 @@ function PortalEstruturaContent() {
 
       {data ? (
         data.sectors.length === 0 ? (
-          <section className="portal-card">
-            <p className="page-lead">
+          <section className="dash-panel" style={{ minHeight: 0 }}>
+            <p className="dash-panel__empty" style={{ padding: '1.5rem 1rem' }}>
               Nenhum setor ativo. A Consultoria define a estrutura no workspace
               do cliente.
             </p>
-            <Link className="btn btn-secondary" href="/portal">
-              Voltar ao painel
-            </Link>
           </section>
         ) : (
-          <div className="portal-home">
-            {data.sectors.map((sector) => (
-              <section key={sector.id} className="portal-card">
-                <p className="page-kicker">Setor</p>
-                <h2 className="page-title page-title--sm">{sector.name}</h2>
-                <p className="page-lead">
-                  {sector.unitName
-                    ? `Unidade: ${sector.unitName}`
-                    : 'Sem unidade vinculada'}{' '}
-                  · {sector.jobs.length} funcao(oes)
-                </p>
-                <div className="table-wrap" style={{ marginTop: '0.75rem' }}>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Funcao</th>
-                        <th scope="col">Riscos</th>
-                        <th scope="col">Necessidades</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sector.jobs.length === 0 ? (
+          <>
+            <StockDashboardKpis items={kpiItems} />
+
+            <div className="estrutura-sector-list">
+              {data.sectors.map((sector) => (
+                <section
+                  key={sector.id}
+                  className="dash-panel estrutura-sector"
+                  style={{ minHeight: 0 }}
+                >
+                  <div className="dash-panel__head">
+                    <h2>{sector.name}</h2>
+                    <p>
+                      {sector.unitName
+                        ? `Unidade: ${sector.unitName}`
+                        : 'Sem unidade vinculada'}{' '}
+                      · {sector.jobs.length} funcao
+                      {sector.jobs.length === 1 ? '' : 'oes'}
+                    </p>
+                  </div>
+                  <div className="table-wrap">
+                    <table className="data-table data-table--refined">
+                      <thead>
                         <tr>
-                          <td colSpan={3}>Nenhuma funcao neste setor.</td>
+                          <th scope="col">Funcao</th>
+                          <th scope="col">Riscos</th>
+                          <th scope="col">Necessidades</th>
                         </tr>
-                      ) : (
-                        sector.jobs.map((job) => (
-                          <tr key={job.id}>
-                            <td>
-                              <strong>{job.name}</strong>
-                            </td>
-                            <td>
-                              {job.risks.length === 0 ? (
-                                '—'
-                              ) : (
-                                <div className="epi-need-picker">
-                                  {job.risks.map((risk) => (
-                                    <span
-                                      key={risk}
-                                      className="epi-need-chip"
-                                    >
-                                      {risk}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-                            </td>
-                            <td>
-                              {job.needs.length === 0
-                                ? '—'
-                                : job.needs.map((n) => n.name).join(', ')}
-                            </td>
+                      </thead>
+                      <tbody>
+                        {sector.jobs.length === 0 ? (
+                          <tr>
+                            <td colSpan={3}>Nenhuma funcao neste setor.</td>
                           </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            ))}
-            <div className="btn-row">
-              <Link className="btn btn-secondary" href="/portal">
-                Voltar ao painel
-              </Link>
+                        ) : (
+                          sector.jobs.map((job) => (
+                            <tr key={job.id}>
+                              <td>
+                                <strong>{job.name}</strong>
+                              </td>
+                              <td>
+                                {job.risks.length === 0 ? (
+                                  '—'
+                                ) : (
+                                  <div className="portal-risk-chips">
+                                    {job.risks.map((risk) => (
+                                      <span
+                                        key={risk}
+                                        className="portal-risk-chip"
+                                      >
+                                        {risk}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                              <td>
+                                {job.needs.length === 0 ? (
+                                  '—'
+                                ) : (
+                                  <ul className="estrutura-needs-list">
+                                    {job.needs.map((need) => (
+                                      <li key={need.id}>{need.name}</li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              ))}
             </div>
-          </div>
+          </>
         )
       ) : null}
     </div>

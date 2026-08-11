@@ -463,9 +463,9 @@ export default function FacialEnrollmentPage() {
               {phase === 'liveness' &&
               activeChallenge &&
               turnUiPhase === 'turn' &&
-              livenessArrowSide(activeChallenge) ? (
+              livenessArrowSide(activeChallenge, true) ? (
                 <div
-                  className={`face-ux__turn-arrow face-ux__turn-arrow--${livenessArrowSide(activeChallenge)}`}
+                  className={`face-ux__turn-arrow face-ux__turn-arrow--${livenessArrowSide(activeChallenge, true)}`}
                   aria-hidden
                 >
                   <span className="face-ux__turn-arrow-icon" />

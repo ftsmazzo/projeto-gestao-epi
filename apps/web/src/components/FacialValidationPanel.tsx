@@ -545,7 +545,7 @@ export function FacialValidationPanel({
     status === 'liveness' &&
     activeChallenge &&
     turnUiPhase === 'turn'
-      ? livenessArrowSide(activeChallenge)
+      ? livenessArrowSide(activeChallenge, true)
       : null;
 
   return (
