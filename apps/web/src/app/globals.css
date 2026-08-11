@@ -3378,6 +3378,43 @@ a.btn-danger:hover {
   font-size: 0.88rem;
 }
 
+.epi-doc__legal {
+  display: grid;
+  gap: 0.7rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: #111827;
+}
+
+.epi-doc__legal-intro,
+.epi-doc__legal-closing {
+  margin: 0;
+  text-align: justify;
+}
+
+.epi-doc__legal-list {
+  margin: 0;
+  padding: 0.55rem 0.75rem 0.55rem 0.85rem;
+  list-style: none;
+  border-left: 3px solid #0f766e;
+  background: #f8fafc;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.epi-doc__legal-list li {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr;
+  gap: 0.4rem;
+  align-items: start;
+}
+
+.epi-doc__legal-letter {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #0f766e;
+}
+
 .epi-doc__footer {
   margin-top: 1.25rem;
   padding-top: 0.85rem;
@@ -3715,6 +3752,17 @@ a.btn-danger:hover {
   .epi-doc__term {
     font-size: 9pt !important;
     line-height: 1.35 !important;
+  }
+
+  .epi-doc__legal {
+    font-size: 8.5pt !important;
+    line-height: 1.35 !important;
+    gap: 0.45rem !important;
+  }
+
+  .epi-doc__legal-list {
+    padding: 0.35rem 0.5rem !important;
+    gap: 0.25rem !important;
   }
 
   .epi-doc__title {

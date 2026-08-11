@@ -1640,17 +1640,72 @@ export const FACIAL_EVIDENCE_CONSENT_VERSION = 'v1-2026-07';
 export const FACIAL_EVIDENCE_CONSENT_TEXT =
   'Declaro que a imagem facial será registrada como evidência da entrega deste EPI e vinculada ao comprovante de fornecimento.';
 
-/** Declaracao / termo de responsabilidade do recibo de entrega (placeholder; trocavel). */
-export const EPI_DELIVERY_DECLARATION_VERSION = 'v1-2026-07-declaracao';
+/**
+ * Termo legal NR-06 / CLT usado na ficha de EPI e no comprovante de entrega.
+ * Estruturado para renderizacao diagramada na UI/impressao.
+ */
+export const EPI_LEGAL_DECLARATION_VERSION = 'v2-2026-08-nr06-clt';
 
-export const EPI_DELIVERY_DECLARATION_TEXT =
-  'Declaro ter recebido os Equipamentos de Protecao Individual relacionados neste comprovante, em perfeitas condicoes de uso, e comprometo-me a utiliza-los corretamente, guarda-los e conserva-los, bem como a comunicar imediatamente qualquer dano, extravio ou alteracao que os torne improprios para uso, conforme a NR-06.';
+export type EpiLegalObligation = {
+  letter: string;
+  text: string;
+};
 
-/** Termo consolidado da ficha individual de EPI (placeholder; trocavel). */
-export const EPI_SHEET_DECLARATION_VERSION = 'v1-2026-07-ficha';
+export type EpiLegalDeclaration = {
+  intro: string;
+  obligations: EpiLegalObligation[];
+  closing: string[];
+};
 
-export const EPI_SHEET_DECLARATION_TEXT =
-  'Esta ficha consolida o historico de fornecimento de EPI ao trabalhador. Declaro ciência das entregas registradas e das responsabilidades de uso, guarda e conservacao dos equipamentos, nos termos da NR-06.';
+export const EPI_LEGAL_DECLARATION: EpiLegalDeclaration = {
+  intro:
+    'Declaro para todos os efeitos legais que recebi da Empresa todos os Equipamentos de Proteção Individual constantes da lista abaixo, novos e em perfeitas condições de uso, e que estou ciente das obrigações descritas na NR 06, baixada pela Portaria MTE 3214/78, subitem 6.6.1, a saber:',
+  obligations: [
+    {
+      letter: 'a',
+      text: 'usar o fornecido pela organização, observado o disposto no item 6.5.2;',
+    },
+    {
+      letter: 'b',
+      text: 'utilizar apenas para a finalidade a que se destina;',
+    },
+    {
+      letter: 'c',
+      text: 'responsabilizar-se pela limpeza, guarda e conservação;',
+    },
+    {
+      letter: 'd',
+      text: 'comunicar à organização quando extraviado, danificado ou qualquer alteração que o torne impróprio para uso; e',
+    },
+    {
+      letter: 'e',
+      text: 'cumprir as determinações da organização sobre o uso adequado.',
+    },
+  ],
+  closing: [
+    'Declaro, também, que estou ciente das disposições do Art. 462 e § 1º da CLT, e autorizo o desconto salarial proporcional ao custo de reparação do dano que os EPIs aos meus cuidados venham apresentar.',
+    'Declaro ainda que estou ciente das disposições do artigo 158, alínea “a”, da CLT, e do item 1.4.2 da NR 01, em especial daquela do subitem 1.4.2.1, de que constitui ato faltoso a recusa injustificada de usar EPI fornecido pela empresa, incorrendo nas penas da Lei.',
+  ],
+};
+
+export function formatEpiLegalDeclarationPlain(
+  declaration: EpiLegalDeclaration = EPI_LEGAL_DECLARATION,
+): string {
+  const obligations = declaration.obligations
+    .map((item) => `${item.letter}) ${item.text}`)
+    .join('\n');
+  return [declaration.intro, obligations, ...declaration.closing].join('\n\n');
+}
+
+/** Declaracao / termo de responsabilidade do recibo de entrega. */
+export const EPI_DELIVERY_DECLARATION_VERSION = EPI_LEGAL_DECLARATION_VERSION;
+
+export const EPI_DELIVERY_DECLARATION_TEXT = formatEpiLegalDeclarationPlain();
+
+/** Termo consolidado da ficha individual de EPI (mesmo texto legal do comprovante). */
+export const EPI_SHEET_DECLARATION_VERSION = EPI_LEGAL_DECLARATION_VERSION;
+
+export const EPI_SHEET_DECLARATION_TEXT = formatEpiLegalDeclarationPlain();
 
 export const WORKER_FACE_REFERENCE_CONSENT_VERSION = 'v1-2026-07';
 

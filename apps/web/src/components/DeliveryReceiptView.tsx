@@ -11,6 +11,7 @@ import {
   createPortalDeliveryReturn,
 } from '../lib/client-auth';
 import { formatCnpj } from '../lib/cnpj';
+import { EpiLegalDeclarationBlock } from './EpiLegalDeclarationBlock';
 import { PortalFacialEvidenceThumb } from './PortalFacialEvidenceThumb';
 
 function formatDateTime(iso: string) {
@@ -370,7 +371,10 @@ export function DeliveryReceiptView({
           </div>
           <div>
             <h2 className="epi-doc__section-title">Termo de responsabilidade</h2>
-            <p className="epi-doc__term">{detail.declaration.text}</p>
+            <EpiLegalDeclarationBlock
+              version={detail.declaration.version}
+              plainText={detail.declaration.text}
+            />
             <p className="epi-doc__meta">
               Versao {detail.declaration.version}
               {detail.consent.acceptedAt
