@@ -513,8 +513,6 @@ function CaepiAdminContent({ user }: { user: AuthUser }) {
             )}
           </section>
 
-          </section>
-
           <section className="surface" aria-labelledby="caepi-consult">
             <div className="epi-form-section__head">
               <h2 id="caepi-consult" className="page-title page-title--sm">
