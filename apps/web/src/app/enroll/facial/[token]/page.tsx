@@ -11,9 +11,12 @@ import {
   evaluateLiveness,
   extractFaceDescriptorFromBlob,
   FACE_ENGINE_META,
+  LIVENESS_INTERVAL_MS,
   LIVENESS_MVP_NOTICE,
   loadFaceModels,
   livenessChallengeLabel,
+  openSelfieCamera,
+  SCAN_INTERVAL_MS,
   scanFacesInVideo,
   scanFacesWithLandmarks,
   type FaceFramingHint,
@@ -142,19 +145,13 @@ export default function FacialEnrollmentPage() {
     }
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      });
+      const stream = await openSelfieCamera();
       streamRef.current = stream;
       const video = videoRef.current;
       if (!video) throw new Error('Camera indisponivel.');
       video.srcObject = stream;
       await video.play();
+      await new Promise((r) => setTimeout(r, 450));
       setPhase('scanning');
       scanningRef.current = true;
       stableSinceRef.current = null;
@@ -235,7 +232,11 @@ export default function FacialEnrollmentPage() {
       } catch {
         // continua tentando
       }
-      await new Promise((r) => setTimeout(r, 160));
+      const delay =
+        phaseRef.current === 'liveness'
+          ? LIVENESS_INTERVAL_MS
+          : SCAN_INTERVAL_MS;
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
 

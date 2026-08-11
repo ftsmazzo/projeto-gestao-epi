@@ -15,6 +15,7 @@ import {
   extractFaceDescriptorFromBlob,
   FACE_ENGINE_META,
   loadFaceModels,
+  openSelfieCamera,
   scanFacesInVideo,
   type FaceFramingHint,
 } from '../lib/face-biometrics.client';
@@ -372,19 +373,13 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
           'Camera indisponivel neste navegador. Use HTTPS ou um dispositivo com camera.',
         );
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: 720 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      });
+      const stream = await openSelfieCamera();
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await videoRef.current.play();
       }
+      await new Promise((r) => setTimeout(r, 450));
       setPhaseSafe('scanning');
       setGuideMessage('Posicione o rosto no enquadramento');
       setGuideTone('neutral');

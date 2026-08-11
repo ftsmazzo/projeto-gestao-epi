@@ -9,9 +9,12 @@ import {
   evaluateLiveness,
   extractFaceDescriptorFromBlob,
   FACE_ENGINE_META,
+  LIVENESS_INTERVAL_MS,
   LIVENESS_MVP_NOTICE,
   loadFaceModels,
   livenessChallengeLabel,
+  openSelfieCamera,
+  SCAN_INTERVAL_MS,
   scanFacesInVideo,
   scanFacesWithLandmarks,
   type FaceFramingHint,
@@ -349,7 +352,7 @@ export function FacialValidationPanel({
       }
       const video = videoRef.current;
       if (!video || video.readyState < 2) {
-        loopTimerRef.current = setTimeout(() => void tick(), 280);
+        loopTimerRef.current = setTimeout(() => void tick(), SCAN_INTERVAL_MS);
         return;
       }
 
@@ -415,7 +418,11 @@ export function FacialValidationPanel({
           statusRef.current === 'liveness') &&
         !capturingLockRef.current
       ) {
-        loopTimerRef.current = setTimeout(() => void tick(), 280);
+        const delay =
+          statusRef.current === 'liveness'
+            ? LIVENESS_INTERVAL_MS
+            : SCAN_INTERVAL_MS;
+        loopTimerRef.current = setTimeout(() => void tick(), delay);
       }
     };
 
@@ -450,18 +457,13 @@ export function FacialValidationPanel({
           'Camera indisponivel neste navegador. Use HTTPS ou um dispositivo com camera.',
         );
       }
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'user' },
-          width: { ideal: 640 },
-          height: { ideal: 640 },
-        },
-        audio: false,
-      });
+      const stream = await openSelfieCamera();
       streamRef.current = stream;
 
       const video = await waitForVideoElement(() => videoRef.current);
       await attachStreamToVideo(video, stream);
+      // Deixa autofoco/zoom do aparelho estabilizar antes do enquadramento.
+      await new Promise((r) => setTimeout(r, 450));
 
       setGuideMessage('Posicione o rosto no enquadramento');
       runScanLoop();

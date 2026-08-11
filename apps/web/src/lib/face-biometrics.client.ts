@@ -60,6 +60,9 @@ export type LivenessTrackerState = {
   /** Frames com yaw no alvo. */
   turnHoldFrames: number;
   startedAt: number;
+  /** Media do EAR com olhos abertos (baseline no mobile). */
+  openEarBaseline: number | null;
+  openEarSamples: number;
 };
 
 export type LivenessProgress = {
@@ -117,11 +120,16 @@ let modelsReady: Promise<void> | null = null;
 /** Tempo minimo de enquadramento estavel antes da captura automatica. */
 export const AUTO_CAPTURE_STABLE_MS = 900;
 /** Timeout do desafio de liveness (MVP). */
-export const LIVENESS_TIMEOUT_MS = 12_000;
+export const LIVENESS_TIMEOUT_MS = 18_000;
+/** Intervalo do loop durante enquadramento. */
+export const SCAN_INTERVAL_MS = 260;
+/** Intervalo mais rapido no piscar — piscada natural dura ~100–200ms. */
+export const LIVENESS_INTERVAL_MS = 90;
 /** Frames com yaw no alvo para considerar virada. */
 const LIVENESS_TURN_HOLD_FRAMES = 4;
-const EAR_CLOSED = 0.19;
-const EAR_OPEN = 0.24;
+/** Limiares absolutos (fallback); no mobile usamos queda relativa ao baseline. */
+const EAR_CLOSED_ABS = 0.22;
+const EAR_OPEN_ABS = 0.26;
 /** |yaw| minimo (espelhado: positivo = esquerda na tela). */
 const YAW_TURN_THRESHOLD = 0.18;
 
@@ -227,8 +235,8 @@ export async function scanFacesWithLandmarks(
   await loadFaceModels();
   const faceapi = getFaceApi();
   const options = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 320,
-    scoreThreshold: 0.45,
+    inputSize: 416,
+    scoreThreshold: 0.4,
   });
   const detections = await faceapi
     .detectAllFaces(video, options)
@@ -292,10 +300,8 @@ function mirroredYaw(landmarks: FacePoint[]): number | null {
 
 export function pickLivenessChallenge(): LivenessChallengeType {
   // Virar a cabeca falha com frequencia no mobile (espelho/landmarks).
-  // Preferir piscar (~85%); viradas ficam raras como variacao.
-  const roll = Math.random();
-  if (roll < 0.85) return 'blink';
-  return roll < 0.925 ? 'turn_left' : 'turn_right';
+  // No MVP de entrega usamos so piscar.
+  return 'blink';
 }
 
 export function createLivenessTracker(
@@ -306,6 +312,8 @@ export function createLivenessTracker(
     blinkClosedSeen: false,
     turnHoldFrames: 0,
     startedAt: Date.now(),
+    openEarBaseline: null,
+    openEarSamples: 0,
   };
 }
 
@@ -356,9 +364,42 @@ export function evaluateLiveness(
         },
       };
     }
-    if (!state.blinkClosedSeen && ear <= EAR_CLOSED) {
+
+    // Calibra EAR com olhos abertos antes de exigir o piscar (mobile/luz/oculos).
+    let nextState = state;
+    if (!state.blinkClosedSeen && state.openEarSamples < 5 && ear >= 0.2) {
+      const n = state.openEarSamples + 1;
+      const baseline =
+        state.openEarBaseline == null
+          ? ear
+          : (state.openEarBaseline * state.openEarSamples + ear) / n;
+      nextState = {
+        ...state,
+        openEarBaseline: baseline,
+        openEarSamples: n,
+      };
+      if (n < 3) {
+        return {
+          state: nextState,
+          progress: {
+            passed: false,
+            timedOut: false,
+            message: 'Olhe para a camera…',
+          },
+        };
+      }
+    }
+
+    const baseline = nextState.openEarBaseline ?? 0.3;
+    const closedThreshold = Math.max(
+      0.14,
+      Math.min(EAR_CLOSED_ABS, baseline * 0.75),
+    );
+    const openThreshold = Math.max(EAR_OPEN_ABS, baseline * 0.9);
+
+    if (!nextState.blinkClosedSeen && ear <= closedThreshold) {
       return {
-        state: { ...state, blinkClosedSeen: true },
+        state: { ...nextState, blinkClosedSeen: true },
         progress: {
           passed: false,
           timedOut: false,
@@ -366,9 +407,9 @@ export function evaluateLiveness(
         },
       };
     }
-    if (state.blinkClosedSeen && ear >= EAR_OPEN) {
+    if (nextState.blinkClosedSeen && ear >= openThreshold) {
       return {
-        state,
+        state: nextState,
         progress: {
           passed: true,
           timedOut: false,
@@ -377,11 +418,13 @@ export function evaluateLiveness(
       };
     }
     return {
-      state,
+      state: nextState,
       progress: {
         passed: false,
         timedOut: false,
-        message: state.blinkClosedSeen ? 'Abra os olhos' : label,
+        message: nextState.blinkClosedSeen
+          ? 'Abra os olhos'
+          : 'Pisque os olhos (um piscar forte)',
       },
     };
   }
@@ -559,5 +602,54 @@ export const FACE_ENGINE_META = {
   engine: FACE_ENGINE,
   version: FACE_ENGINE_VERSION,
 } as const;
+
+/**
+ * Abre a camera frontal sem forcar crop/zoom tipico de ideal 640x640 no mobile.
+ * Tenta zerar zoom digital quando o device expõe a capability.
+ */
+export async function openSelfieCamera(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error(
+      'Camera indisponivel neste navegador. Use HTTPS ou um dispositivo com camera.',
+    );
+  }
+
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: 'user',
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      },
+    });
+  } catch {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: 'user' },
+    });
+  }
+
+  await resetSelfieZoom(stream);
+  return stream;
+}
+
+async function resetSelfieZoom(stream: MediaStream) {
+  const track = stream.getVideoTracks()[0];
+  if (!track?.getCapabilities) return;
+  try {
+    const caps = track.getCapabilities() as MediaTrackCapabilities & {
+      zoom?: { min: number; max: number; step?: number };
+    };
+    if (caps.zoom && typeof caps.zoom.min === 'number') {
+      await track.applyConstraints({
+        advanced: [{ zoom: caps.zoom.min } as MediaTrackConstraintSet],
+      });
+    }
+  } catch {
+    // Nem todo browser/device permite ajustar zoom.
+  }
+}
 
 export { LIVENESS_MVP_NOTICE };
