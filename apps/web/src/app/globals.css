@@ -2008,6 +2008,56 @@ a.btn-danger:hover {
   padding: 1rem 0;
 }
 
+.pwa-install-banner {
+  display: grid;
+  gap: 0.75rem;
+  width: min(26rem, 100%);
+  margin: 0 auto 0.85rem;
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 28%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent-muted) 70%, #fff);
+  box-shadow: var(--shadow-sm);
+}
+
+.pwa-install-banner__title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--color-accent-active);
+}
+
+.pwa-install-banner__text {
+  margin: 0.25rem 0 0;
+  font-size: 0.86rem;
+  line-height: 1.4;
+  color: var(--color-ink-secondary);
+}
+
+.pwa-install-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.pwa-install-banner__actions .btn {
+  min-height: 44px;
+}
+
+@media (display-mode: standalone) {
+  body {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .pwa-install-banner {
+    display: none !important;
+  }
+
+  .portal-shell--authed {
+    min-height: 100dvh;
+  }
+}
+
 .portal-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -4582,6 +4632,149 @@ a.btn-danger:hover {
 
 .enroll-link-banner { margin-top: 1rem; }
 .enroll-link-banner input { font-size: 0.82rem; }
+
+/* Overlay fullscreen: biometria → confirmar entrega (sem scroll da pagina) */
+.delivery-face-flow {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: var(--color-bg, #f4f7f5);
+  display: flex;
+  flex-direction: column;
+}
+
+.delivery-face-flow__sheet {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 32rem);
+  margin: 0 auto;
+  padding:
+    max(0.75rem, env(safe-area-inset-top))
+    1rem
+    max(0.75rem, env(safe-area-inset-bottom))
+    1rem;
+  box-sizing: border-box;
+}
+
+.delivery-face-flow__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex: 0 0 auto;
+  margin-bottom: 0.65rem;
+}
+
+.delivery-face-flow__header .page-title {
+  margin: 0.15rem 0 0.2rem;
+}
+
+.delivery-face-flow__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.delivery-face-flow__body .face-ux {
+  flex: 1 1 auto;
+  min-height: 0;
+  justify-content: space-between;
+}
+
+.delivery-face-flow__body .face-ux__frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: center;
+}
+
+.delivery-face-flow__body .face-ux__stage {
+  width: min(100%, 320px);
+  max-height: min(52dvh, 420px);
+  aspect-ratio: auto;
+  height: min(52dvh, 420px);
+}
+
+.delivery-face-flow__body .face-ux__actions {
+  flex: 0 0 auto;
+  margin-top: 0.5rem;
+}
+
+.delivery-face-flow__confirm {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.delivery-face-flow__preview {
+  display: grid;
+  gap: 0.65rem;
+  justify-items: center;
+  text-align: center;
+}
+
+.delivery-face-flow__thumb {
+  width: min(180px, 42vw);
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 1rem;
+  background: #0b1220;
+  transform: scaleX(-1);
+}
+
+.delivery-face-flow__thumb--empty {
+  display: grid;
+  place-content: center;
+  color: #fff;
+  font-size: 0.85rem;
+  transform: none;
+}
+
+.delivery-face-flow__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+  overflow: auto;
+  max-height: 28dvh;
+}
+
+.delivery-face-flow__items li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--color-border, #d8e0dc);
+  border-radius: 0.65rem;
+  background: var(--color-surface, #fff);
+}
+
+.delivery-face-flow__actions {
+  margin-top: auto;
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+.delivery-face-flow__actions .btn {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+}
+
+.face-ux--compact .face-ux__subtitle {
+  font-size: 0.82rem;
+}
+
+.face-ux--compact .face-ux__header {
+  margin-bottom: 0.25rem;
+}
 
 /* Mobile: uma composicao sem “cacar” o botao / redimensionar a janela */
 @media (max-width: 720px) {

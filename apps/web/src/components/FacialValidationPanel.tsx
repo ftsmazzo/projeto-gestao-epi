@@ -46,6 +46,10 @@ type Props = {
   needsReenrollment?: boolean;
   hasBiometricTemplate: boolean;
   disabled?: boolean;
+  /** Inicia a camera assim que o motor estiver pronto. */
+  autoStart?: boolean;
+  /** Layout enxuto para overlay fullscreen. */
+  compact?: boolean;
   onMatched: (result: FacialValidationResult) => void;
   onReset: () => void;
 };
@@ -95,6 +99,8 @@ export function FacialValidationPanel({
   needsReenrollment = false,
   hasBiometricTemplate,
   disabled = false,
+  autoStart = false,
+  compact = false,
   onMatched,
   onReset,
 }: Props) {
@@ -363,7 +369,7 @@ export function FacialValidationPanel({
     loopTimerRef.current = setTimeout(() => void tick(), 200);
   }, [captureFrame, setUxStatus, stopCamera, stopLoop]);
 
-  async function startCamera() {
+  const startCamera = useCallback(async () => {
     if (disabled || !hasBiometricTemplate || needsReenrollment) return;
     setCameraError(null);
     setStarting(true);
@@ -375,6 +381,8 @@ export function FacialValidationPanel({
     });
     onReset();
     capturingLockRef.current = false;
+    livenessRef.current = null;
+    livenessPassedRef.current = null;
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error(
@@ -409,18 +417,29 @@ export function FacialValidationPanel({
     } finally {
       setStarting(false);
     }
-  }
+  }, [
+    disabled,
+    hasBiometricTemplate,
+    needsReenrollment,
+    onReset,
+    runScanLoop,
+    setUxStatus,
+    stopCamera,
+  ]);
+
+  const blocked = !hasBiometricTemplate || needsReenrollment;
+
+  useEffect(() => {
+    if (!autoStart || !engineReady || blocked || disabled) return;
+    if (statusRef.current !== 'idle') return;
+    void startCamera();
+  }, [autoStart, engineReady, blocked, disabled, startCamera, workerId]);
 
   function retry() {
     onReset();
     void startCamera();
   }
 
-  const blocked = status === 'needsReenrollment';
-  const showLive =
-    status === 'capturing' ||
-    status === 'liveness' ||
-    (status === 'idle' && !thumbUrl);
   const copy =
     status === 'idle' ||
     status === 'capturing' ||
@@ -442,15 +461,19 @@ export function FacialValidationPanel({
           : guideTone;
 
   return (
-    <section className="face-ux face-ux--panel" aria-labelledby="face-ux-title">
+    <section
+      className={`face-ux face-ux--panel${compact ? ' face-ux--compact' : ''}`}
+      aria-labelledby="face-ux-title"
+    >
       <header className="face-ux__header">
-        <p className="face-ux__kicker">Passo 3</p>
+        {compact ? null : <p className="face-ux__kicker">Passo 3</p>}
         <h2 id="face-ux-title" className="face-ux__title">
           Validacao facial
         </h2>
         <p className="face-ux__subtitle">
-          Enquadre o rosto, complete o desafio de presenca e aguarde a captura
-          automatica.
+          {compact
+            ? 'Enquadre o rosto e complete o desafio. A captura e automatica.'
+            : 'Enquadre o rosto, complete o desafio de presenca e aguarde a captura automatica.'}
         </p>
       </header>
 
@@ -468,28 +491,30 @@ export function FacialValidationPanel({
 
       <div className="face-ux__frame" aria-live="polite">
         <div className={`face-ux__stage face-ux__stage--${ovalTone}`}>
-          {showLive ? (
-            <video
-              ref={videoRef}
-              className="face-ux__media"
-              playsInline
-              muted
-              autoPlay
-              aria-label="Preview da camera"
-            />
-          ) : thumbUrl ? (
+          <video
+            ref={videoRef}
+            className={`face-ux__media${
+              status === 'capturing' || status === 'liveness' ? '' : ' is-hidden'
+            }`}
+            playsInline
+            muted
+            autoPlay
+            aria-label="Preview da camera"
+          />
+          {thumbUrl && status !== 'capturing' && status !== 'liveness' ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={thumbUrl}
               alt=""
               className="face-ux__media face-ux__media--thumb"
             />
-          ) : (
+          ) : null}
+          {status === 'idle' && !thumbUrl ? (
             <div className="face-ux__placeholder">
               <span className="face-ux__placeholder-icon" aria-hidden />
-              <span>Pronto para validar</span>
+              <span>{autoStart ? 'Abrindo camera…' : 'Pronto para validar'}</span>
             </div>
-          )}
+          ) : null}
           <div className={`face-ux__oval face-ux__oval--${ovalTone}`} aria-hidden />
           {status === 'capturing' || status === 'liveness' ? (
             <p className="face-ux__live-hint" role="status">
@@ -517,17 +542,23 @@ export function FacialValidationPanel({
         </div>
       ) : null}
 
-      {capturedNote && status !== 'capturing' && status !== 'idle' ? (
+      {capturedNote &&
+      status !== 'capturing' &&
+      status !== 'liveness' &&
+      status !== 'idle' &&
+      !compact ? (
         <p className="face-ux__capture-note">Captura automatica realizada</p>
       ) : null}
 
-      <p className="face-ux__consent">
-        Ao validar a face, a imagem capturada sera registrada como evidencia
-        desta entrega. {LIVENESS_MVP_NOTICE}
-      </p>
+      {compact ? null : (
+        <p className="face-ux__consent">
+          Ao validar a face, a imagem capturada sera registrada como evidencia
+          desta entrega. {LIVENESS_MVP_NOTICE}
+        </p>
+      )}
 
       <div className="face-ux__actions face-ux__actions--stack">
-        {blocked ? null : status === 'idle' ? (
+        {blocked ? null : status === 'idle' && !autoStart ? (
           <button
             type="button"
             className="btn btn-primary face-ux__btn-main"
@@ -538,7 +569,13 @@ export function FacialValidationPanel({
           </button>
         ) : null}
 
-        {status === 'capturing' ? (
+        {status === 'idle' && autoStart && starting ? (
+          <button type="button" className="btn btn-primary face-ux__btn-main" disabled>
+            Abrindo camera...
+          </button>
+        ) : null}
+
+        {status === 'capturing' || status === 'liveness' ? (
           <button
             type="button"
             className="btn btn-secondary face-ux__btn-main"
@@ -561,7 +598,7 @@ export function FacialValidationPanel({
           </button>
         ) : null}
 
-        {status === 'matched' ? (
+        {status === 'matched' && !compact ? (
           <p className="face-ux__ready" role="status">
             Pronto para registrar a entrega.
           </p>

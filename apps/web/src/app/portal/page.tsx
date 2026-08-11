@@ -6,6 +6,7 @@ import type {
 } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { InstallAppBanner } from '../../components/InstallAppBanner';
 import { PortalDashboardCards } from '../../components/PortalDashboardCards';
 import { RequireClientAuth } from '../../components/RequireClientAuth';
 import { formatCnpj } from '../../lib/cnpj';
@@ -42,6 +43,7 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
 
   return (
     <div className="portal-home">
+      <InstallAppBanner />
       <header className="portal-home-header portal-home-header--decision">
         <div className="portal-home-brand">
           <h1 className="portal-home-title">{clientName}</h1>

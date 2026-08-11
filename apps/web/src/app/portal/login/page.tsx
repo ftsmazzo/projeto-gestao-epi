@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { BrandLockup } from '../../../components/BrandLockup';
+import { InstallAppBanner } from '../../../components/InstallAppBanner';
 import { PortalShell } from '../../../components/PortalShell';
 import { clientLoginAccount } from '../../../lib/client-auth';
 
@@ -60,6 +61,7 @@ export default function PortalLoginPage() {
         </aside>
 
         <div className="auth-split__panel">
+          <InstallAppBanner />
           <section
             className="portal-card portal-card--auth"
             aria-labelledby="portal-login-title"

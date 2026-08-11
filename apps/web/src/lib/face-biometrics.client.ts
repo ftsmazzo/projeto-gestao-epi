@@ -291,13 +291,11 @@ function mirroredYaw(landmarks: FacePoint[]): number | null {
 }
 
 export function pickLivenessChallenge(): LivenessChallengeType {
-  const options: LivenessChallengeType[] = [
-    'blink',
-    'turn_left',
-    'turn_right',
-  ];
-  const idx = Math.floor(Math.random() * options.length);
-  return options[idx]!;
+  // Virar a cabeca falha com frequencia no mobile (espelho/landmarks).
+  // Preferir piscar (~85%); viradas ficam raras como variacao.
+  const roll = Math.random();
+  if (roll < 0.85) return 'blink';
+  return roll < 0.925 ? 'turn_left' : 'turn_right';
 }
 
 export function createLivenessTracker(
