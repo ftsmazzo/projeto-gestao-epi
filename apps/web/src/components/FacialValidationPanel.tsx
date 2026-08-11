@@ -94,6 +94,50 @@ function toneForHint(hint: FaceFramingHint): GuideTone {
   return 'adjusting';
 }
 
+async function waitForVideoElement(
+  getVideo: () => HTMLVideoElement | null,
+  attempts = 20,
+): Promise<HTMLVideoElement> {
+  for (let i = 0; i < attempts; i += 1) {
+    const el = getVideo();
+    if (el) return el;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error('Elemento de video indisponivel. Feche e tente de novo.');
+}
+
+async function attachStreamToVideo(
+  video: HTMLVideoElement,
+  stream: MediaStream,
+) {
+  video.setAttribute('playsinline', 'true');
+  video.setAttribute('webkit-playsinline', 'true');
+  video.muted = true;
+  video.playsInline = true;
+  video.srcObject = stream;
+
+  if (video.readyState < 1) {
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        const onMeta = () => {
+          video.removeEventListener('loadedmetadata', onMeta);
+          resolve();
+        };
+        video.addEventListener('loadedmetadata', onMeta);
+      }),
+      new Promise<void>((resolve) => setTimeout(resolve, 2500)),
+    ]);
+  }
+
+  try {
+    await video.play();
+  } catch {
+    // Alguns browsers exigem segundo play apos metadata.
+    await new Promise((r) => setTimeout(r, 120));
+    await video.play();
+  }
+}
+
 export function FacialValidationPanel({
   workerId,
   needsReenrollment = false,
@@ -114,6 +158,12 @@ export function FacialValidationPanel({
   const livenessPassedRef = useRef<{
     challenge: LivenessChallengeType;
   } | null>(null);
+  const onMatchedRef = useRef(onMatched);
+  const onResetRef = useRef(onReset);
+  const autoStartDoneRef = useRef(false);
+
+  onMatchedRef.current = onMatched;
+  onResetRef.current = onReset;
 
   const [engineReady, setEngineReady] = useState(false);
   const [status, setStatus] = useState<FacialUxStatus>(
@@ -128,6 +178,7 @@ export function FacialValidationPanel({
   const [thumbUrl, setThumbUrl] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [capturedNote, setCapturedNote] = useState(false);
+  const [livePreview, setLivePreview] = useState(false);
 
   const setUxStatus = useCallback((next: FacialUxStatus) => {
     statusRef.current = next;
@@ -146,6 +197,7 @@ export function FacialValidationPanel({
     stopLoop();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    setLivePreview(false);
     if (videoRef.current) videoRef.current.srcObject = null;
   }, [stopLoop]);
 
@@ -163,6 +215,7 @@ export function FacialValidationPanel({
   }, [stopCamera]);
 
   useEffect(() => {
+    autoStartDoneRef.current = false;
     stopCamera();
     capturingLockRef.current = false;
     setThumbUrl((prev) => {
@@ -179,7 +232,7 @@ export function FacialValidationPanel({
     } else {
       setUxStatus('idle');
     }
-    onReset();
+    // Nao chamar onReset aqui — o pai controla o estado ao abrir/fechar o fluxo.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workerId, hasBiometricTemplate, needsReenrollment]);
 
@@ -218,7 +271,7 @@ export function FacialValidationPanel({
           setGuideTone('matched');
           setGuideMessage('Face validada');
           setStatusDetail(STATUS_COPY.matched.detail);
-          onMatched({
+          onMatchedRef.current({
             blob,
             descriptor: detection.descriptor,
             faceEngine: FACE_ENGINE_META.engine,
@@ -244,7 +297,7 @@ export function FacialValidationPanel({
         capturingLockRef.current = false;
       }
     },
-    [onMatched, setUxStatus, workerId],
+    [setUxStatus, workerId],
   );
 
   const captureFrame = useCallback(async () => {
@@ -371,6 +424,9 @@ export function FacialValidationPanel({
 
   const startCamera = useCallback(async () => {
     if (disabled || !hasBiometricTemplate || needsReenrollment) return;
+    if (starting || statusRef.current === 'capturing' || statusRef.current === 'liveness') {
+      return;
+    }
     setCameraError(null);
     setStarting(true);
     setStatusDetail(null);
@@ -379,10 +435,15 @@ export function FacialValidationPanel({
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
-    onReset();
     capturingLockRef.current = false;
     livenessRef.current = null;
     livenessPassedRef.current = null;
+    // Mostra o video antes do getUserMedia (evita tela preta / is-hidden).
+    setLivePreview(true);
+    setUxStatus('capturing');
+    setGuideMessage('Aguardando permissao da camera…');
+    setGuideTone('neutral');
+
     try {
       if (!navigator.mediaDevices?.getUserMedia) {
         throw new Error(
@@ -391,20 +452,18 @@ export function FacialValidationPanel({
       }
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'user',
-          width: { ideal: 720 },
-          height: { ideal: 720 },
+          facingMode: { ideal: 'user' },
+          width: { ideal: 640 },
+          height: { ideal: 640 },
         },
         audio: false,
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setUxStatus('capturing');
+
+      const video = await waitForVideoElement(() => videoRef.current);
+      await attachStreamToVideo(video, stream);
+
       setGuideMessage('Posicione o rosto no enquadramento');
-      setGuideTone('neutral');
       runScanLoop();
     } catch (err) {
       setCameraError(
@@ -414,6 +473,7 @@ export function FacialValidationPanel({
       );
       stopCamera();
       setUxStatus('idle');
+      autoStartDoneRef.current = false;
     } finally {
       setStarting(false);
     }
@@ -421,9 +481,9 @@ export function FacialValidationPanel({
     disabled,
     hasBiometricTemplate,
     needsReenrollment,
-    onReset,
     runScanLoop,
     setUxStatus,
+    starting,
     stopCamera,
   ]);
 
@@ -431,12 +491,17 @@ export function FacialValidationPanel({
 
   useEffect(() => {
     if (!autoStart || !engineReady || blocked || disabled) return;
-    if (statusRef.current !== 'idle') return;
+    if (autoStartDoneRef.current) return;
+    if (statusRef.current !== 'idle' && statusRef.current !== 'capturing') {
+      return;
+    }
+    autoStartDoneRef.current = true;
     void startCamera();
   }, [autoStart, engineReady, blocked, disabled, startCamera, workerId]);
 
   function retry() {
-    onReset();
+    autoStartDoneRef.current = false;
+    onResetRef.current();
     void startCamera();
   }
 
@@ -460,6 +525,9 @@ export function FacialValidationPanel({
           ? 'rejected'
           : guideTone;
 
+  const showVideo =
+    livePreview || status === 'capturing' || status === 'liveness';
+
   return (
     <section
       className={`face-ux face-ux--panel${compact ? ' face-ux--compact' : ''}`}
@@ -470,11 +538,12 @@ export function FacialValidationPanel({
         <h2 id="face-ux-title" className="face-ux__title">
           Validacao facial
         </h2>
-        <p className="face-ux__subtitle">
-          {compact
-            ? 'Enquadre o rosto e complete o desafio. A captura e automatica.'
-            : 'Enquadre o rosto, complete o desafio de presenca e aguarde a captura automatica.'}
-        </p>
+        {compact ? null : (
+          <p className="face-ux__subtitle">
+            Enquadre o rosto, complete o desafio de presenca e aguarde a captura
+            automatica.
+          </p>
+        )}
       </header>
 
       {!engineReady && !blocked ? (
@@ -493,15 +562,13 @@ export function FacialValidationPanel({
         <div className={`face-ux__stage face-ux__stage--${ovalTone}`}>
           <video
             ref={videoRef}
-            className={`face-ux__media${
-              status === 'capturing' || status === 'liveness' ? '' : ' is-hidden'
-            }`}
+            className={`face-ux__media${showVideo ? '' : ' is-hidden'}`}
             playsInline
             muted
             autoPlay
             aria-label="Preview da camera"
           />
-          {thumbUrl && status !== 'capturing' && status !== 'liveness' ? (
+          {thumbUrl && !showVideo ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={thumbUrl}
@@ -509,10 +576,14 @@ export function FacialValidationPanel({
               className="face-ux__media face-ux__media--thumb"
             />
           ) : null}
-          {status === 'idle' && !thumbUrl ? (
+          {!showVideo && !thumbUrl ? (
             <div className="face-ux__placeholder">
               <span className="face-ux__placeholder-icon" aria-hidden />
-              <span>{autoStart ? 'Abrindo camera…' : 'Pronto para validar'}</span>
+              <span>
+                {autoStart || starting
+                  ? 'Abrindo camera…'
+                  : 'Pronto para validar'}
+              </span>
             </div>
           ) : null}
           <div className={`face-ux__oval face-ux__oval--${ovalTone}`} aria-hidden />
@@ -569,10 +640,12 @@ export function FacialValidationPanel({
           </button>
         ) : null}
 
-        {status === 'idle' && autoStart && starting ? (
-          <button type="button" className="btn btn-primary face-ux__btn-main" disabled>
-            Abrindo camera...
-          </button>
+        {(status === 'idle' || status === 'capturing') &&
+        autoStart &&
+        starting ? (
+          <p className="face-ux__hint" role="status">
+            Autorize a camera para continuar…
+          </p>
         ) : null}
 
         {status === 'capturing' || status === 'liveness' ? (
@@ -584,9 +657,10 @@ export function FacialValidationPanel({
               setUxStatus('idle');
               setGuideTone('neutral');
               setGuideMessage('Posicione o rosto no enquadramento');
-              onReset();
+              autoStartDoneRef.current = false;
+              onResetRef.current();
             }}
-            disabled={disabled}
+            disabled={disabled || starting}
           >
             Cancelar
           </button>

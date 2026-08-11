@@ -79,8 +79,24 @@ type NormDraft = Pick<
 const REQUIRED_FIELDS = ['caNumber'] as const;
 /** Abaixo disso consideramos a base vazia/incompleta para mensagens operacionais. */
 export const CAEPI_BASE_INCOMPLETE_THRESHOLD = 1000;
-const SEARCH_CANDIDATE_CAP = 120;
+/** Cap por fase (VALIDO / demais). Sem orderBy no banco, um unico take puxava so vencidos. */
+const SEARCH_CANDIDATE_CAP = 250;
 const UPSERT_BATCH_SIZE = 40;
+
+/** Sinonimos comuns EPI ↔ nome oficial CAEPI (ex.: Viseira → Protetor facial). */
+function expandEquipmentSearchTerms(term: string): string[] {
+  const folded = term
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase();
+  const extras: string[] = [];
+  if (folded.includes('viseira')) extras.push('protetor facial');
+  if (folded.includes('protetor facial')) extras.push('viseira');
+  if (folded.includes('oculos')) {
+    extras.push('protetor ocular');
+  }
+  return [...new Set([term, ...extras].map((t) => t.trim()).filter(Boolean))];
+}
 
 @Injectable()
 export class CaepiService {
@@ -196,28 +212,66 @@ export class CaepiService {
       };
     }
 
-    const textTerm = qTrimmed;
-    const candidates = await this.prisma.caCertificate.findMany({
-      where: {
-        OR: [
-          { caNumber: { contains: qCa, mode: 'insensitive' } },
-          { equipmentName: { contains: textTerm, mode: 'insensitive' } },
-          { manufacturerName: { contains: textTerm, mode: 'insensitive' } },
-          { reference: { contains: textTerm, mode: 'insensitive' } },
-        ],
+    const equipmentTerms = expandEquipmentSearchTerms(qTrimmed);
+    const textOr = equipmentTerms.flatMap((term) => [
+      { equipmentName: { contains: term, mode: 'insensitive' as const } },
+      {
+        equipmentDescription: {
+          contains: term,
+          mode: 'insensitive' as const,
+        },
       },
-      select: {
-        caNumber: true,
-        status: true,
-        expiresAt: true,
-        equipmentName: true,
-        manufacturerName: true,
-        reference: true,
-        color: true,
-        sourceImportedAt: true,
+      { manufacturerName: { contains: term, mode: 'insensitive' as const } },
+      { reference: { contains: term, mode: 'insensitive' as const } },
+    ]);
+
+    const matchWhere = {
+      OR: [
+        { caNumber: { contains: qCa, mode: 'insensitive' as const } },
+        ...textOr,
+      ],
+    };
+
+    const select = {
+      caNumber: true,
+      status: true,
+      expiresAt: true,
+      equipmentName: true,
+      manufacturerName: true,
+      reference: true,
+      color: true,
+      sourceImportedAt: true,
+    };
+
+    // Busca em duas fases: VALIDO primeiro (com validade mais longa), depois o resto.
+    // Um unico findMany+take sem orderBy devolvia amostra arbitraria — quase so vencidos.
+    const [validCandidates, otherCandidates] = await Promise.all([
+      this.prisma.caCertificate.findMany({
+        where: {
+          AND: [matchWhere, { status: CaCertificateStatus.VALIDO }],
+        },
+        select,
+        orderBy: [{ expiresAt: 'desc' }],
+        take: SEARCH_CANDIDATE_CAP,
+      }),
+      this.prisma.caCertificate.findMany({
+        where: {
+          AND: [matchWhere, { status: { not: CaCertificateStatus.VALIDO } }],
+        },
+        select,
+        orderBy: [{ expiresAt: 'desc' }],
+        take: SEARCH_CANDIDATE_CAP,
+      }),
+    ]);
+
+    const seen = new Set<string>();
+    const candidates = [...validCandidates, ...otherCandidates].filter(
+      (row) => {
+        if (seen.has(row.caNumber)) return false;
+        seen.add(row.caNumber);
+        return true;
       },
-      take: SEARCH_CANDIDATE_CAP,
-    });
+    );
 
     const qCaLower = qCa.toLowerCase();
     const ranked = [...candidates].sort((a, b) => {

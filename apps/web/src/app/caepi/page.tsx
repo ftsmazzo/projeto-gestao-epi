@@ -2,12 +2,19 @@
 
 import type {
   AuthUser,
+  CaCertificate,
+  CaCertificateSearchItem,
   CaepiImportRun,
   CaepiStatusResponse,
 } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
+import {
+  lookupCaCertificate,
+  normalizeCaQuery,
+  searchCaCertificates,
+} from '../../lib/caepi';
 import {
   getCaepiImportRun,
   getCaepiStatus,
@@ -53,6 +60,28 @@ function triggeredLabel(value: CaepiImportRun['triggeredBy']) {
   }
 }
 
+function formatDate(value: string | null | undefined) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString('pt-BR');
+}
+
+function certStatusLabel(status: string) {
+  switch (status) {
+    case 'VALIDO':
+      return 'Valido';
+    case 'VENCIDO':
+      return 'Vencido';
+    case 'CANCELADO':
+      return 'Cancelado';
+    case 'SUSPENSO':
+      return 'Suspenso';
+    default:
+      return status;
+  }
+}
+
 function isAdminRole(role: string) {
   return role === 'OWNER' || role === 'ADMIN';
 }
@@ -77,6 +106,18 @@ function CaepiAdminContent({ user }: { user: AuthUser }) {
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [lookupInput, setLookupInput] = useState('');
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [lookupCert, setLookupCert] = useState<CaCertificate | null>(null);
+  const [lookupMessage, setLookupMessage] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchItems, setSearchItems] = useState<CaCertificateSearchItem[]>(
+    [],
+  );
+  const [searchMessage, setSearchMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!canManage) {
@@ -215,6 +256,64 @@ function CaepiAdminContent({ user }: { user: AuthUser }) {
       setActionError(
         err instanceof Error ? err.message : 'Falha no upload CAEPI.',
       );
+    }
+  }
+
+  async function onLookupCa(event?: FormEvent) {
+    event?.preventDefault();
+    const ca = normalizeCaQuery(lookupInput);
+    if (!ca) {
+      setLookupError('Informe o numero do CA.');
+      return;
+    }
+    setLookupLoading(true);
+    setLookupError(null);
+    setLookupMessage(null);
+    setLookupCert(null);
+    try {
+      const res = await lookupCaCertificate(ca);
+      if (res.found && res.certificate) {
+        setLookupCert(res.certificate);
+      } else {
+        setLookupMessage(
+          res.message ?? `CA ${ca} nao encontrado na base local.`,
+        );
+      }
+    } catch (err) {
+      setLookupError(
+        err instanceof Error ? err.message : 'Falha ao consultar o CA.',
+      );
+    } finally {
+      setLookupLoading(false);
+    }
+  }
+
+  async function onSearchEquipment(event?: FormEvent) {
+    event?.preventDefault();
+    const q = searchInput.trim();
+    if (q.length < 3) {
+      setSearchError('Informe ao menos 3 caracteres.');
+      return;
+    }
+    setSearchLoading(true);
+    setSearchError(null);
+    setSearchMessage(null);
+    setSearchItems([]);
+    try {
+      const res = await searchCaCertificates(q, 20);
+      setSearchItems(res.items);
+      setSearchMessage(
+        res.message ??
+          (res.items.length === 0
+            ? 'Nenhum certificado encontrado para esse termo.'
+            : null),
+      );
+    } catch (err) {
+      setSearchError(
+        err instanceof Error ? err.message : 'Falha na busca CAEPI.',
+      );
+    } finally {
+      setSearchLoading(false);
     }
   }
 
@@ -414,14 +513,159 @@ function CaepiAdminContent({ user }: { user: AuthUser }) {
             )}
           </section>
 
+          </section>
+
+          <section className="surface" aria-labelledby="caepi-consult">
+            <div className="epi-form-section__head">
+              <h2 id="caepi-consult" className="page-title page-title--sm">
+                Consultar na base local
+              </h2>
+              <p>
+                Confira se um CA oficial (ex.: 11442) foi importado, ou busque
+                por equipamento. Vencidos tambem aparecem; validos vem primeiro.
+              </p>
+            </div>
+
+            <form className="form form--wide" onSubmit={onLookupCa}>
+              <div className="field">
+                <label htmlFor="caepi-lookup-ca">Numero do CA</label>
+                <input
+                  id="caepi-lookup-ca"
+                  autoComplete="off"
+                  placeholder="Ex.: 11442"
+                  value={lookupInput}
+                  onChange={(e) => {
+                    setLookupInput(normalizeCaQuery(e.target.value));
+                    setLookupCert(null);
+                    setLookupError(null);
+                    setLookupMessage(null);
+                  }}
+                />
+              </div>
+              <button
+                type="submit"
+                className="btn btn-secondary"
+                disabled={lookupLoading || !lookupInput.trim()}
+              >
+                {lookupLoading ? 'Buscando...' : 'Buscar CA exato'}
+              </button>
+            </form>
+
+            {lookupError ? (
+              <p className="error" role="alert">
+                {lookupError}
+              </p>
+            ) : null}
+            {lookupMessage ? (
+              <p className="caepi-message" role="status">
+                {lookupMessage}
+              </p>
+            ) : null}
+            {lookupCert ? (
+              <dl className="meta-list" style={{ marginTop: '0.75rem' }}>
+                <div>
+                  <dt>CA</dt>
+                  <dd>{lookupCert.caNumber}</dd>
+                </div>
+                <div>
+                  <dt>Situacao</dt>
+                  <dd>{certStatusLabel(lookupCert.status)}</dd>
+                </div>
+                <div>
+                  <dt>Validade</dt>
+                  <dd>{formatDate(lookupCert.expiresAt)}</dd>
+                </div>
+                <div>
+                  <dt>Equipamento</dt>
+                  <dd>{lookupCert.equipmentName || '—'}</dd>
+                </div>
+                <div>
+                  <dt>Fabricante</dt>
+                  <dd>{lookupCert.manufacturerName || '—'}</dd>
+                </div>
+                <div>
+                  <dt>Referencia</dt>
+                  <dd>{lookupCert.reference || '—'}</dd>
+                </div>
+              </dl>
+            ) : null}
+
+            <form
+              className="form form--wide"
+              style={{ marginTop: '1.25rem' }}
+              onSubmit={onSearchEquipment}
+            >
+              <div className="field">
+                <label htmlFor="caepi-search-eq">Equipamento / fabricante</label>
+                <input
+                  id="caepi-search-eq"
+                  autoComplete="off"
+                  placeholder="Ex.: Viseira, Protetor facial, Carbografite"
+                  value={searchInput}
+                  onChange={(e) => {
+                    setSearchInput(e.target.value);
+                    setSearchError(null);
+                    setSearchMessage(null);
+                  }}
+                />
+              </div>
+              <button
+                type="submit"
+                className="btn btn-secondary"
+                disabled={searchLoading || searchInput.trim().length < 3}
+              >
+                {searchLoading ? 'Buscando...' : 'Buscar por texto'}
+              </button>
+            </form>
+
+            {searchError ? (
+              <p className="error" role="alert">
+                {searchError}
+              </p>
+            ) : null}
+            {searchMessage ? (
+              <p className="caepi-message" role="status">
+                {searchMessage}
+              </p>
+            ) : null}
+            {searchItems.length > 0 ? (
+              <div className="table-wrap" style={{ marginTop: '0.75rem' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>CA</th>
+                      <th>Situacao</th>
+                      <th>Validade</th>
+                      <th>Equipamento</th>
+                      <th>Fabricante</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {searchItems.map((item) => (
+                      <tr key={item.caNumber}>
+                        <td>{item.caNumber}</td>
+                        <td>{certStatusLabel(item.status)}</td>
+                        <td>{formatDate(item.expiresAt)}</td>
+                        <td>{item.equipmentName || '—'}</td>
+                        <td>{item.manufacturerName || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </section>
+
           <section className="surface" aria-labelledby="caepi-fallback">
             <div className="epi-form-section__head">
               <h2 id="caepi-fallback" className="page-title page-title--sm">
                 Fallback: upload manual
               </h2>
               <p>
-                Use apenas se a URL oficial estiver indisponivel. O fluxo
-                principal e o botao de atualizacao automatica.
+                Prefira o botao &quot;Atualizar base CAEPI agora&quot; (baixa no
+                servidor). Se enviar arquivo, use o <strong>ZIP</strong>{' '}
+                oficial — o TXT descompactado costuma passar do limite e gerar
+                &quot;too large&quot;.
               </p>
             </div>
             <button

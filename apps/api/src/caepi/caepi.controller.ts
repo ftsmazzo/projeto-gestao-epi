@@ -86,7 +86,8 @@ export class CaepiController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: memoryStorage(),
-      limits: { fileSize: 120 * 1024 * 1024 },
+      // ZIP oficial cabe; TXT descompactado costuma passar de 120 MB.
+      limits: { fileSize: 280 * 1024 * 1024 },
     }),
   )
   importFile(
@@ -95,7 +96,7 @@ export class CaepiController {
   ) {
     if (!file?.buffer?.length) {
       throw new BadRequestException(
-        'Envie o arquivo CAEPI no campo multipart "file" (CSV, TXT, XLSX ou ZIP).',
+        'Envie o arquivo CAEPI no campo multipart "file" (preferir .zip oficial; CSV, TXT ou XLSX tambem). Arquivo muito grande: use o botao "Atualizar base CAEPI agora" (baixa no servidor) ou envie o ZIP, nao o TXT.',
       );
     }
 

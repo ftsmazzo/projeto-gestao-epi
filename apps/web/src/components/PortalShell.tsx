@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useId, useState } from 'react';
 import { isPortalNavActive, PORTAL_NAV } from '../lib/nav';
 import {
-  IconChart,
   IconHome,
   IconMenu,
   IconMore,
@@ -20,12 +19,11 @@ type Props = {
   onLogout?: () => void;
 };
 
-/** Itens fixos na barra inferior (mobile). */
+/** Atalhos fixos no mobile: so o dia a dia operacional. Resto em "Mais". */
 const BOTTOM_PRIMARY = [
   '/portal',
   '/portal/entregas',
   '/portal/estoque',
-  '/portal/relatorios',
 ] as const;
 
 function bottomIcon(href: string) {
@@ -36,8 +34,6 @@ function bottomIcon(href: string) {
       return <IconTruck />;
     case '/portal/estoque':
       return <IconPackage />;
-    case '/portal/relatorios':
-      return <IconChart />;
     default:
       return <IconMore />;
   }

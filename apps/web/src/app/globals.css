@@ -4019,7 +4019,8 @@ a.btn-danger:hover {
 
   .portal-bottom-nav {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    /* Painel | Entregas | Estoque | Mais */
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     position: fixed;
     left: 0;
     right: 0;
@@ -4633,19 +4634,33 @@ a.btn-danger:hover {
 .enroll-link-banner { margin-top: 1rem; }
 .enroll-link-banner input { font-size: 0.82rem; }
 
-/* Overlay fullscreen: biometria → confirmar entrega (sem scroll da pagina) */
+/* Overlay fullscreen: biometria → confirmar entrega (portal no body) */
 .delivery-face-flow {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 200;
   background: var(--color-bg, #f4f7f5);
   display: flex;
   flex-direction: column;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+/* Esconde chrome do portal enquanto a biometria ocupa a tela */
+body.delivery-face-open .portal-topbar,
+body.delivery-face-open .portal-bottom-nav,
+body.delivery-face-open .portal-drawer,
+body.delivery-face-open .portal-drawer-backdrop,
+body.delivery-face-open .pwa-install-banner {
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .delivery-face-flow__sheet {
   flex: 1 1 auto;
   min-height: 0;
+  height: 100%;
   display: flex;
   flex-direction: column;
   width: min(100%, 32rem);
@@ -4693,9 +4708,23 @@ a.btn-danger:hover {
 
 .delivery-face-flow__body .face-ux__stage {
   width: min(100%, 320px);
-  max-height: min(52dvh, 420px);
+  /* Altura explicita: evita stage colapsado / preview invisivel no mobile */
+  height: min(56dvh, 420px);
+  min-height: 240px;
+  max-height: min(56dvh, 420px);
   aspect-ratio: auto;
-  height: min(52dvh, 420px);
+}
+
+.delivery-face-flow__body .face-ux__media {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.delivery-face-flow__body .face-ux__media.is-hidden {
+  opacity: 0;
 }
 
 .delivery-face-flow__body .face-ux__actions {

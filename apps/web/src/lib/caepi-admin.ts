@@ -45,15 +45,24 @@ export async function uploadCaepiFile(file: File) {
 
   if (!response.ok) {
     let message = `Erro HTTP ${response.status}`;
-    try {
-      const body = (await response.json()) as { message?: string | string[] };
-      if (Array.isArray(body.message)) {
-        message = body.message.join(', ');
-      } else if (body.message) {
-        message = body.message;
+    if (response.status === 413) {
+      message =
+        'Arquivo grande demais (too large). Prefira "Atualizar base CAEPI agora" ou envie o ZIP oficial, nao o TXT descompactado.';
+    } else {
+      try {
+        const body = (await response.json()) as { message?: string | string[] };
+        if (Array.isArray(body.message)) {
+          message = body.message.join(', ');
+        } else if (body.message) {
+          message = body.message;
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
+      if (/too large|file too large|payload/i.test(message)) {
+        message =
+          'Arquivo grande demais. Prefira "Atualizar base CAEPI agora" ou envie o ZIP oficial, nao o TXT.';
+      }
     }
     throw new Error(message);
   }

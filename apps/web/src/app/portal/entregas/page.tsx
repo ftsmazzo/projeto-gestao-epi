@@ -12,6 +12,7 @@ import type {
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FacialValidationPanel,
   type FacialValidationResult,
@@ -355,6 +356,7 @@ function PortalEntregasContent() {
   const [facePreviewUrl, setFacePreviewUrl] = useState<string | null>(null);
   const [faceFlowOpen, setFaceFlowOpen] = useState(false);
   const [faceFlowStep, setFaceFlowStep] = useState<'scan' | 'confirm'>('scan');
+  const [faceScanKey, setFaceScanKey] = useState(0);
   const [notes, setNotes] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -480,15 +482,32 @@ function PortalEntregasContent() {
     setError(null);
     resetFacial();
     setFaceFlowStep('scan');
+    setFaceScanKey((k) => k + 1);
     setFaceFlowOpen(true);
   }
 
+  const onFaceMatched = useCallback(
+    (result: FacialValidationResult) => {
+      setFacialResult(result);
+      setFaceMatched(true);
+      setFacePreviewUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(result.blob);
+      });
+      setError(null);
+      setFaceFlowStep('confirm');
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!faceFlowOpen) return;
-    const prev = document.body.style.overflow;
+    const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    document.body.classList.add('delivery-face-open');
     return () => {
-      document.body.style.overflow = prev;
+      document.body.style.overflow = prevOverflow;
+      document.body.classList.remove('delivery-face-open');
     };
   }, [faceFlowOpen]);
 
@@ -967,124 +986,132 @@ function PortalEntregasContent() {
         </>
       ) : null}
 
-      {faceFlowOpen && coverage ? (
-        <div
-          className="delivery-face-flow"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delivery-face-title"
-        >
-          <div className="delivery-face-flow__sheet">
-            <header className="delivery-face-flow__header">
-              <div>
-                <p className="page-kicker">Entrega</p>
-                <h2 id="delivery-face-title" className="page-title page-title--sm">
-                  {faceFlowStep === 'scan'
-                    ? 'Validacao facial'
-                    : 'Confirmar entrega'}
-                </h2>
-                <p className="table-sub">
-                  {coverage.worker.name}
-                  {selectedItems.length > 0
-                    ? ` · ${selectedItems.length} EPI${selectedItems.length === 1 ? '' : 's'}`
-                    : ''}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={closeFaceFlow}
-                disabled={submitting}
-              >
-                Fechar
-              </button>
-            </header>
-
-            {error ? (
-              <p className="error" role="alert">
-                {error}
-              </p>
-            ) : null}
-
-            {faceFlowStep === 'scan' ? (
-              <div className="delivery-face-flow__body">
-                <FacialValidationPanel
-                  workerId={coverage.worker.id}
-                  hasBiometricTemplate={coverage.workerHasBiometricTemplate}
-                  needsReenrollment={
-                    coverage.facialReference.needsReenrollment
-                  }
-                  disabled={submitting}
-                  autoStart
-                  compact
-                  onMatched={(result) => {
-                    setFacialResult(result);
-                    setFaceMatched(true);
-                    setFacePreviewUrl((prev) => {
-                      if (prev) URL.revokeObjectURL(prev);
-                      return URL.createObjectURL(result.blob);
-                    });
-                    setError(null);
-                    setFaceFlowStep('confirm');
-                  }}
-                  onReset={resetFacial}
-                />
-              </div>
-            ) : (
-              <div className="delivery-face-flow__confirm">
-                <div className="delivery-face-flow__preview">
-                  {facePreviewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={facePreviewUrl}
-                      alt="Face validada"
-                      className="delivery-face-flow__thumb"
-                    />
-                  ) : (
-                    <div className="delivery-face-flow__thumb delivery-face-flow__thumb--empty">
-                      Face validada
-                    </div>
-                  )}
-                  <p className="notice notice--ok" role="status">
-                    Biometria validada. Confirme para registrar a entrega.
-                  </p>
-                </div>
-
-                <ul className="delivery-face-flow__items" aria-label="EPIs">
-                  {selectedItems.map(({ need, sel }) => (
-                    <li key={need.epiNeedId}>
-                      <strong>{need.needName}</strong>
-                      <span className="table-sub">Qtd {sel.quantity}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="delivery-face-flow__actions">
+      {faceFlowOpen &&
+      coverage &&
+      typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="delivery-face-flow"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delivery-face-title"
+            >
+              <div className="delivery-face-flow__sheet">
+                <header className="delivery-face-flow__header">
+                  <div>
+                    <p className="page-kicker">Entrega</p>
+                    <h2
+                      id="delivery-face-title"
+                      className="page-title page-title--sm"
+                    >
+                      {faceFlowStep === 'scan'
+                        ? 'Validacao facial'
+                        : 'Confirmar entrega'}
+                    </h2>
+                    <p className="table-sub">
+                      {coverage.worker.name}
+                      {selectedItems.length > 0
+                        ? ` · ${selectedItems.length} EPI${
+                            selectedItems.length === 1 ? '' : 's'
+                          }`
+                        : ''}
+                    </p>
+                  </div>
                   <button
                     type="button"
-                    className="btn btn-primary"
-                    disabled={!canSubmit}
-                    onClick={() => void submitDelivery()}
-                  >
-                    {submitting ? 'Registrando...' : 'Entregar'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
+                    className="btn btn-ghost"
+                    onClick={closeFaceFlow}
                     disabled={submitting}
-                    onClick={() => {
-                      resetFacial();
-                      setFaceFlowStep('scan');
-                    }}
                   >
-                    Refazer biometria
+                    Fechar
                   </button>
-                </div>
+                </header>
+
+                {error ? (
+                  <p className="error" role="alert">
+                    {error}
+                  </p>
+                ) : null}
+
+                {faceFlowStep === 'scan' ? (
+                  <div className="delivery-face-flow__body">
+                    <FacialValidationPanel
+                      key={`face-scan-${coverage.worker.id}-${faceScanKey}`}
+                      workerId={coverage.worker.id}
+                      hasBiometricTemplate={
+                        coverage.workerHasBiometricTemplate
+                      }
+                      needsReenrollment={
+                        coverage.facialReference.needsReenrollment
+                      }
+                      disabled={submitting}
+                      autoStart
+                      compact
+                      onMatched={onFaceMatched}
+                      onReset={resetFacial}
+                    />
+                  </div>
+                ) : (
+                  <div className="delivery-face-flow__confirm">
+                    <div className="delivery-face-flow__preview">
+                      {facePreviewUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={facePreviewUrl}
+                          alt="Face validada"
+                          className="delivery-face-flow__thumb"
+                        />
+                      ) : (
+                        <div className="delivery-face-flow__thumb delivery-face-flow__thumb--empty">
+                          Face validada
+                        </div>
+                      )}
+                      <p className="notice notice--ok" role="status">
+                        Biometria validada. Confirme para registrar a entrega.
+                      </p>
+                    </div>
+
+                    <ul
+                      className="delivery-face-flow__items"
+                      aria-label="EPIs"
+                    >
+                      {selectedItems.map(({ need, sel }) => (
+                        <li key={need.epiNeedId}>
+                          <strong>{need.needName}</strong>
+                          <span className="table-sub">Qtd {sel.quantity}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="delivery-face-flow__actions">
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={!canSubmit}
+                        onClick={() => void submitDelivery()}
+                      >
+                        {submitting ? 'Registrando...' : 'Entregar'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={submitting}
+                        onClick={() => {
+                          resetFacial();
+                          setFaceScanKey((k) => k + 1);
+                          setFaceFlowStep('scan');
+                        }}
+                      >
+                        Refazer biometria
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
 
       <section
         className="portal-card"
