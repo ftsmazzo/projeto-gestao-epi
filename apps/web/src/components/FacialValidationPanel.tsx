@@ -12,6 +12,7 @@ import {
   LIVENESS_INTERVAL_MS,
   LIVENESS_MVP_NOTICE,
   loadFaceModels,
+  livenessArrowSide,
   livenessChallengeLabel,
   openSelfieCamera,
   SCAN_INTERVAL_MS,
@@ -182,6 +183,11 @@ export function FacialValidationPanel({
   const [starting, setStarting] = useState(false);
   const [capturedNote, setCapturedNote] = useState(false);
   const [livePreview, setLivePreview] = useState(false);
+  const [activeChallenge, setActiveChallenge] =
+    useState<LivenessChallengeType | null>(null);
+  const [turnUiPhase, setTurnUiPhase] = useState<'turn' | 'center' | null>(
+    null,
+  );
 
   const setUxStatus = useCallback((next: FacialUxStatus) => {
     statusRef.current = next;
@@ -373,6 +379,8 @@ export function FacialValidationPanel({
             } else if (now - stableSinceRef.current >= AUTO_CAPTURE_STABLE_MS) {
               const tracker = createLivenessTracker();
               livenessRef.current = tracker;
+              setActiveChallenge(tracker.challenge);
+              setTurnUiPhase('turn');
               setUxStatus('liveness');
               setGuideTone('ready');
               setGuideMessage(livenessChallengeLabel(tracker.challenge));
@@ -390,9 +398,11 @@ export function FacialValidationPanel({
           if (!tracker) {
             tracker = createLivenessTracker();
             livenessRef.current = tracker;
+            setActiveChallenge(tracker.challenge);
           }
           const { state, progress } = evaluateLiveness(scan, tracker);
           livenessRef.current = state;
+          setTurnUiPhase(state.turnPhase);
           setGuideMessage(progress.message);
           setGuideTone(progress.passed ? 'ready' : 'adjusting');
 
@@ -445,6 +455,8 @@ export function FacialValidationPanel({
     capturingLockRef.current = false;
     livenessRef.current = null;
     livenessPassedRef.current = null;
+    setActiveChallenge(null);
+    setTurnUiPhase(null);
     // Mostra o video antes do getUserMedia (evita tela preta / is-hidden).
     setLivePreview(true);
     setUxStatus('capturing');
@@ -529,6 +541,12 @@ export function FacialValidationPanel({
 
   const showVideo =
     livePreview || status === 'capturing' || status === 'liveness';
+  const arrowSide =
+    status === 'liveness' &&
+    activeChallenge &&
+    turnUiPhase === 'turn'
+      ? livenessArrowSide(activeChallenge)
+      : null;
 
   return (
     <section
@@ -589,6 +607,14 @@ export function FacialValidationPanel({
             </div>
           ) : null}
           <div className={`face-ux__oval face-ux__oval--${ovalTone}`} aria-hidden />
+          {arrowSide ? (
+            <div
+              className={`face-ux__turn-arrow face-ux__turn-arrow--${arrowSide}`}
+              aria-hidden
+            >
+              <span className="face-ux__turn-arrow-icon" />
+            </div>
+          ) : null}
           {status === 'capturing' || status === 'liveness' ? (
             <p className="face-ux__live-hint" role="status">
               {guideMessage}

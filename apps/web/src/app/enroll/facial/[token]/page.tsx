@@ -14,6 +14,7 @@ import {
   LIVENESS_INTERVAL_MS,
   LIVENESS_MVP_NOTICE,
   loadFaceModels,
+  livenessArrowSide,
   livenessChallengeLabel,
   openSelfieCamera,
   SCAN_INTERVAL_MS,
@@ -76,6 +77,11 @@ export default function FacialEnrollmentPage() {
   const [guideTone, setGuideTone] = useState<GuideTone>('neutral');
   const [guideMessage, setGuideMessage] = useState('Posicione o rosto no oval');
   const [modelsReady, setModelsReady] = useState(false);
+  const [activeChallenge, setActiveChallenge] =
+    useState<LivenessChallengeType | null>(null);
+  const [turnUiPhase, setTurnUiPhase] = useState<'turn' | 'center' | null>(
+    null,
+  );
 
   const stopCamera = useCallback(() => {
     scanningRef.current = false;
@@ -194,6 +200,8 @@ export default function FacialEnrollmentPage() {
             ) {
               const tracker = createLivenessTracker();
               livenessRef.current = tracker;
+              setActiveChallenge(tracker.challenge);
+              setTurnUiPhase('turn');
               setPhase('liveness');
               setGuideTone('ready');
               setGuideMessage(livenessChallengeLabel(tracker.challenge));
@@ -208,9 +216,12 @@ export default function FacialEnrollmentPage() {
           if (!tracker) {
             tracker = createLivenessTracker();
             livenessRef.current = tracker;
+            setActiveChallenge(tracker.challenge);
+            setTurnUiPhase('turn');
           }
           const { state, progress } = evaluateLiveness(scan, tracker);
           livenessRef.current = state;
+          setTurnUiPhase(state.turnPhase);
           setGuideMessage(progress.message);
           setGuideTone(progress.passed ? 'ready' : 'adjusting');
 
@@ -449,6 +460,17 @@ export default function FacialEnrollmentPage() {
                 className={`face-ux__oval face-ux__oval--${guideTone}`}
                 aria-hidden
               />
+              {phase === 'liveness' &&
+              activeChallenge &&
+              turnUiPhase === 'turn' &&
+              livenessArrowSide(activeChallenge) ? (
+                <div
+                  className={`face-ux__turn-arrow face-ux__turn-arrow--${livenessArrowSide(activeChallenge)}`}
+                  aria-hidden
+                >
+                  <span className="face-ux__turn-arrow-icon" />
+                </div>
+              ) : null}
               {phase === 'scanning' || phase === 'liveness' ? (
                 <p className="face-ux__live-hint" role="status">
                   {guideMessage}

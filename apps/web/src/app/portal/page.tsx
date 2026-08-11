@@ -5,9 +5,10 @@ import type {
   PortalDashboardResponse,
 } from '@gestao-epi/shared';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { InstallAppBanner } from '../../components/InstallAppBanner';
 import { PortalDashboardCards } from '../../components/PortalDashboardCards';
+import { StockDashboardKpis } from '../../components/portal/StockDashboardKpis';
 import { RequireClientAuth } from '../../components/RequireClientAuth';
 import { formatCnpj } from '../../lib/cnpj';
 import { fetchPortalDashboard } from '../../lib/client-auth';
@@ -41,17 +42,61 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
     };
   }, []);
 
+  const kpiItems = useMemo(() => {
+    if (!dash) return [];
+    return [
+      {
+        id: 'lives',
+        label: 'Vidas',
+        value: `${dash.lives.used}/${dash.lives.allocated}`,
+        hint: 'Trabalhadores ativos / franquia',
+      },
+      {
+        id: 'sectors',
+        label: 'Setores',
+        value: dash.counts.sectorsActive,
+      },
+      {
+        id: 'jobs',
+        label: 'Funcoes',
+        value: dash.counts.jobsActive,
+      },
+      {
+        id: 'attention',
+        label: 'Pontos de atencao',
+        value:
+          dash.attention?.cards.filter(
+            (c) => c.visible && c.id !== 'deliveries',
+          ).length ?? 0,
+        tone:
+          (dash.attention?.cards.filter(
+            (c) => c.visible && c.id !== 'deliveries',
+          ).length ?? 0) > 0
+            ? ('warn' as const)
+            : ('ok' as const),
+      },
+    ];
+  }, [dash]);
+
   return (
     <div className="portal-home">
       <InstallAppBanner />
-      <header className="portal-home-header portal-home-header--decision">
-        <div className="portal-home-brand">
-          <h1 className="portal-home-title">{clientName}</h1>
-          <p className="portal-home-cnpj mono">
-            CNPJ {formatCnpj(user.servedClient.cnpj)}
+      <header className="dash-page-header">
+        <div>
+          <p className="page-kicker">Painel do cliente</p>
+          <h1 className="page-title">{clientName}</h1>
+          <p className="page-lead mono">
+            CNPJ {formatCnpj(user.servedClient.cnpj)} · Ola, {user.name}
           </p>
         </div>
-        <p className="portal-home-welcome">Ola, {user.name}.</p>
+        <div className="dash-page-header__actions">
+          <Link href="/portal/entregas" className="btn btn-primary">
+            Nova entrega
+          </Link>
+          <Link href="/portal/estoque" className="btn btn-secondary">
+            Estoque
+          </Link>
+        </div>
       </header>
 
       <section className="action-strip ux-enter" aria-label="Acoes do dia">
@@ -62,21 +107,21 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
           <p className="action-tile__kicker">Principal</p>
           <h2 className="action-tile__title">Nova entrega</h2>
           <p className="action-tile__desc">
-            Selecionar trabalhador, EPI e confirmar com biometria facial.
+            Trabalhador, EPI e biometria facial.
           </p>
         </Link>
         <Link href="/portal/estoque" className="action-tile">
           <p className="action-tile__kicker">Estoque</p>
-          <h2 className="action-tile__title">Entrada e saldos</h2>
+          <h2 className="action-tile__title">Dashboard e entradas</h2>
           <p className="action-tile__desc">
-            Registrar compra com CAEPI e acompanhar quantidade.
+            Saldos, consumo e compra com CAEPI.
           </p>
         </Link>
         <Link href="/portal/validade" className="action-tile">
           <p className="action-tile__kicker">Alertas</p>
           <h2 className="action-tile__title">Validades</h2>
           <p className="action-tile__desc">
-            Ver trocas proximas e EPIs vencidos ou criticos.
+            Trocas proximas e EPIs criticos.
           </p>
         </Link>
       </section>
@@ -100,31 +145,7 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
         <p className="page-lead">Carregando indicadores...</p>
       ) : null}
 
-      {dash ? (
-        <section
-          className="quota-summary quota-summary--compact ux-enter-delay"
-          aria-label="Resumo da empresa"
-        >
-          <div className="quota-summary-item">
-            <span className="quota-summary-label">Vidas</span>
-            <strong className="quota-summary-value">
-              {dash.lives.used}/{dash.lives.allocated}
-            </strong>
-          </div>
-          <div className="quota-summary-item">
-            <span className="quota-summary-label">Setores</span>
-            <strong className="quota-summary-value">
-              {dash.counts.sectorsActive}
-            </strong>
-          </div>
-          <div className="quota-summary-item">
-            <span className="quota-summary-label">Funcoes</span>
-            <strong className="quota-summary-value">
-              {dash.counts.jobsActive}
-            </strong>
-          </div>
-        </section>
-      ) : null}
+      {dash ? <StockDashboardKpis items={kpiItems} /> : null}
 
       {dash?.attention ? (
         <PortalDashboardCards cards={dash.attention.cards} />

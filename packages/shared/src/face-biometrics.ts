@@ -72,8 +72,8 @@ export type LivenessChallengeType = 'blink' | 'turn_left' | 'turn_right';
 
 export const LIVENESS_CHALLENGE_LABELS: Record<LivenessChallengeType, string> = {
   blink: 'Pisque os olhos',
-  turn_left: 'Vire a cabeca para a esquerda',
-  turn_right: 'Vire a cabeca para a direita',
+  turn_left: 'Vire para a esquerda (siga a seta)',
+  turn_right: 'Vire para a direita (siga a seta)',
 };
 
 export const LIVENESS_MVP_NOTICE =

@@ -12,14 +12,12 @@ export function PortalDashboardCards({ cards }: Props) {
   const alertCount = visible.filter((card) => card.id !== 'deliveries').length;
 
   return (
-    <section className="portal-dash" aria-labelledby="portal-dash-title">
-      <div className="portal-dash-intro">
-        <h2 id="portal-dash-title" className="page-title page-title--sm">
-          Precisa de atencao
-        </h2>
-        <p className="page-lead">
+    <section className="portal-dash dash-panel" aria-labelledby="portal-dash-title" style={{ minHeight: 0, marginTop: '0.25rem' }}>
+      <div className="dash-panel__head portal-dash-intro">
+        <h2 id="portal-dash-title">Precisa de atencao</h2>
+        <p>
           {alertCount === 0
-            ? 'Nenhum alerta critico no momento. Entregas recentes abaixo.'
+            ? 'Nenhum alerta critico no momento.'
             : `${alertCount} ponto(s) pedindo decisao agora.`}
         </p>
       </div>

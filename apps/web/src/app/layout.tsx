@@ -1,20 +1,13 @@
 import type { Metadata, Viewport } from 'next';
-import { JetBrains_Mono, Source_Sans_3, Sora } from 'next/font/google';
+import { JetBrains_Mono, Plus_Jakarta_Sans } from 'next/font/google';
 import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
 import { ServiceWorkerRegister } from '../components/ServiceWorkerRegister';
 import './globals.css';
 
-const sora = Sora({
-  subsets: ['latin'],
-  weight: ['500', '600', '700'],
-  variable: '--font-sora',
-  display: 'swap',
-});
-
-const sourceSans = Source_Sans_3({
+const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
-  variable: '--font-source',
+  variable: '--font-jakarta',
   display: 'swap',
 });
 
@@ -67,9 +60,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR">
-      <body
-        className={`${sora.variable} ${sourceSans.variable} ${jetbrains.variable}`}
-      >
+      <body className={`${jakarta.variable} ${jetbrains.variable}`}>
         {children}
         <ServiceWorkerRegister />
       </body>

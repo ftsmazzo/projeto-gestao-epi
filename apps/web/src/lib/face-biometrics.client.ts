@@ -63,6 +63,9 @@ export type LivenessTrackerState = {
   /** Media do EAR com olhos abertos (baseline no mobile). */
   openEarBaseline: number | null;
   openEarSamples: number;
+  /** Virada: primeiro alcancar o angulo, depois voltar ao centro. */
+  turnPhase: 'turn' | 'center';
+  centerHoldFrames: number;
 };
 
 export type LivenessProgress = {
@@ -120,18 +123,24 @@ let modelsReady: Promise<void> | null = null;
 /** Tempo minimo de enquadramento estavel antes da captura automatica. */
 export const AUTO_CAPTURE_STABLE_MS = 900;
 /** Timeout do desafio de liveness (MVP). */
-export const LIVENESS_TIMEOUT_MS = 18_000;
+export const LIVENESS_TIMEOUT_MS = 20_000;
 /** Intervalo do loop durante enquadramento. */
 export const SCAN_INTERVAL_MS = 260;
-/** Intervalo mais rapido no piscar — piscada natural dura ~100–200ms. */
-export const LIVENESS_INTERVAL_MS = 90;
+/** Intervalo mais rapido no desafio de presenca. */
+export const LIVENESS_INTERVAL_MS = 100;
 /** Frames com yaw no alvo para considerar virada. */
-const LIVENESS_TURN_HOLD_FRAMES = 4;
+const LIVENESS_TURN_HOLD_FRAMES = 3;
+/** Frames de frente apos a virada (anti-spoof simples). */
+const LIVENESS_CENTER_HOLD_FRAMES = 2;
 /** Limiares absolutos (fallback); no mobile usamos queda relativa ao baseline. */
 const EAR_CLOSED_ABS = 0.22;
 const EAR_OPEN_ABS = 0.26;
-/** |yaw| minimo (espelhado: positivo = esquerda na tela). */
-const YAW_TURN_THRESHOLD = 0.18;
+/**
+ * |yaw| minimo (espelhado: positivo = esquerda na tela do usuario).
+ * Um pouco mais baixo que desktop para mobile/selfie wide.
+ */
+const YAW_TURN_THRESHOLD = 0.14;
+const YAW_CENTER_THRESHOLD = 0.09;
 
 /** Face precisa ocupar pelo menos esta fracao da largura do video. */
 const MIN_FACE_WIDTH_RATIO = 0.22;
@@ -299,9 +308,9 @@ function mirroredYaw(landmarks: FacePoint[]): number | null {
 }
 
 export function pickLivenessChallenge(): LivenessChallengeType {
-  // Virar a cabeca falha com frequencia no mobile (espelho/landmarks).
-  // No MVP de entrega usamos so piscar.
-  return 'blink';
+  // Piscar falha com frequencia no mobile (EAR + taxa de amostragem).
+  // Virar a cabeca e o desafio padrao; seta na UI indica o lado.
+  return Math.random() < 0.5 ? 'turn_left' : 'turn_right';
 }
 
 export function createLivenessTracker(
@@ -314,6 +323,8 @@ export function createLivenessTracker(
     startedAt: Date.now(),
     openEarBaseline: null,
     openEarSamples: 0,
+    turnPhase: 'turn',
+    centerHoldFrames: 0,
   };
 }
 
@@ -321,6 +332,15 @@ export function livenessChallengeLabel(
   challenge: LivenessChallengeType,
 ): string {
   return LIVENESS_CHALLENGE_LABELS[challenge];
+}
+
+/** Direcao da seta na UI (espelho: esquerda/direita como o usuario ve). */
+export function livenessArrowSide(
+  challenge: LivenessChallengeType,
+): 'left' | 'right' | null {
+  if (challenge === 'turn_left') return 'left';
+  if (challenge === 'turn_right') return 'right';
+  return null;
 }
 
 export function evaluateLiveness(
@@ -343,7 +363,11 @@ export function evaluateLiveness(
   const label = livenessChallengeLabel(state.challenge);
   if (scan.kind !== 'one' || !scan.landmarks?.length) {
     return {
-      state: { ...state, turnHoldFrames: 0 },
+      state: {
+        ...state,
+        turnHoldFrames: 0,
+        centerHoldFrames: 0,
+      },
       progress: {
         passed: false,
         timedOut: false,
@@ -365,7 +389,6 @@ export function evaluateLiveness(
       };
     }
 
-    // Calibra EAR com olhos abertos antes de exigir o piscar (mobile/luz/oculos).
     let nextState = state;
     if (!state.blinkClosedSeen && state.openEarSamples < 5 && ear >= 0.2) {
       const n = state.openEarSamples + 1;
@@ -432,7 +455,7 @@ export function evaluateLiveness(
   const yaw = mirroredYaw(scan.landmarks);
   if (yaw == null) {
     return {
-      state: { ...state, turnHoldFrames: 0 },
+      state: { ...state, turnHoldFrames: 0, centerHoldFrames: 0 },
       progress: {
         passed: false,
         timedOut: false,
@@ -445,13 +468,51 @@ export function evaluateLiveness(
     state.challenge === 'turn_left'
       ? yaw >= YAW_TURN_THRESHOLD
       : yaw <= -YAW_TURN_THRESHOLD;
+  const centered = Math.abs(yaw) <= YAW_CENTER_THRESHOLD;
 
-  if (targetOk) {
-    const hold = state.turnHoldFrames + 1;
-    const next = { ...state, turnHoldFrames: hold };
-    if (hold >= LIVENESS_TURN_HOLD_FRAMES) {
+  if (state.turnPhase === 'turn') {
+    if (targetOk) {
+      const hold = state.turnHoldFrames + 1;
+      if (hold >= LIVENESS_TURN_HOLD_FRAMES) {
+        return {
+          state: {
+            ...state,
+            turnHoldFrames: hold,
+            turnPhase: 'center',
+            centerHoldFrames: 0,
+          },
+          progress: {
+            passed: false,
+            timedOut: false,
+            message: 'Otimo — olhe de frente para a camera',
+          },
+        };
+      }
       return {
-        state: next,
+        state: { ...state, turnHoldFrames: hold },
+        progress: {
+          passed: false,
+          timedOut: false,
+          message: `${label} — mantenha`,
+        },
+      };
+    }
+    return {
+      state: { ...state, turnHoldFrames: 0 },
+      progress: {
+        passed: false,
+        timedOut: false,
+        message: label,
+      },
+    };
+  }
+
+  // Fase: voltar ao centro (prova de movimento real, nao foto estatica).
+  if (centered) {
+    const hold = state.centerHoldFrames + 1;
+    if (hold >= LIVENESS_CENTER_HOLD_FRAMES) {
+      return {
+        state: { ...state, centerHoldFrames: hold },
         progress: {
           passed: true,
           timedOut: false,
@@ -460,21 +521,21 @@ export function evaluateLiveness(
       };
     }
     return {
-      state: next,
+      state: { ...state, centerHoldFrames: hold },
       progress: {
         passed: false,
         timedOut: false,
-        message: `${label} — mantenha`,
+        message: 'Olhe de frente — quase la',
       },
     };
   }
 
   return {
-    state: { ...state, turnHoldFrames: 0 },
+    state: { ...state, centerHoldFrames: 0 },
     progress: {
       passed: false,
       timedOut: false,
-      message: label,
+      message: 'Olhe de frente para a camera',
     },
   };
 }

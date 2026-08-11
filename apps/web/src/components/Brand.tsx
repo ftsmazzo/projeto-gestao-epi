@@ -23,7 +23,7 @@ export function Brand({
         <strong>{APP_NAME}</strong>
         {!compact ? (
           <span>
-            {tone === 'portal' ? 'Painel operacional do cliente' : APP_TAGLINE}
+            {tone === 'portal' ? 'Painel do cliente' : APP_TAGLINE}
           </span>
         ) : null}
       </span>

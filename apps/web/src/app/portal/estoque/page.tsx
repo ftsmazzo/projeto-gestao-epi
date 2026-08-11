@@ -3,10 +3,15 @@
 import type {
   CaCertificateSearchItem,
   PortalEstoqueResponse,
+  PortalReportsActivityResponse,
+  PortalReportsStockResponse,
+  PortalStockBalanceRow,
 } from '@gestao-epi/shared';
 import { assessNeedEquipmentCompatibility } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { StockConsumptionCharts } from '../../../components/portal/StockConsumptionCharts';
+import { StockDashboardKpis } from '../../../components/portal/StockDashboardKpis';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
 import {
   caStatusClassName,
@@ -15,6 +20,8 @@ import {
 import {
   createPortalStockEntradas,
   fetchPortalEstoque,
+  fetchPortalReportsActivity,
+  fetchPortalReportsStock,
   searchPortalCaepi,
 } from '../../../lib/client-auth';
 
@@ -154,13 +161,28 @@ function buildNeedRows(data: PortalEstoqueResponse): NeedRow[] {
   });
 }
 
+function balanceStatus(row: PortalStockBalanceRow): {
+  key: 'ok' | 'baixo' | 'zerado';
+  label: string;
+} {
+  if (row.quantity <= 0) return { key: 'zerado', label: 'Zerado' };
+  if (row.minQuantity != null && row.quantity <= row.minQuantity) {
+    return { key: 'baixo', label: 'Baixo' };
+  }
+  return { key: 'ok', label: 'OK' };
+}
+
 function PortalEstoqueContent() {
   const [data, setData] = useState<PortalEstoqueResponse | null>(null);
+  const [stockReport, setStockReport] =
+    useState<PortalReportsStockResponse | null>(null);
+  const [activityReport, setActivityReport] =
+    useState<PortalReportsActivityResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [view, setView] = useState<'entrada' | 'saldos'>('entrada');
+  const [view, setView] = useState<'dashboard' | 'entrada'>('dashboard');
 
   const [needRows, setNeedRows] = useState<NeedRow[]>([]);
 
@@ -173,8 +195,14 @@ function PortalEstoqueContent() {
   const needSearchTimers = useRef<Record<string, number>>({});
 
   async function reload() {
-    const res = await fetchPortalEstoque();
+    const [res, stock, activity] = await Promise.all([
+      fetchPortalEstoque(),
+      fetchPortalReportsStock().catch(() => null),
+      fetchPortalReportsActivity().catch(() => null),
+    ]);
     setData(res);
+    setStockReport(stock);
+    setActivityReport(activity);
     setNeedRows(buildNeedRows(res));
     return res;
   }
@@ -394,7 +422,7 @@ function PortalEstoqueContent() {
         })),
       );
       setSuccess(`${result.created} entrada(s) registrada(s) no estoque.`);
-      setView('saldos');
+      setView('dashboard');
       await reload();
     } catch (err) {
       setError(
@@ -428,7 +456,7 @@ function PortalEstoqueContent() {
       setQuery('');
       setSuggestions([]);
       setFreeQty(1);
-      setView('saldos');
+      setView('dashboard');
       await reload();
     } catch (err) {
       setError(
@@ -439,16 +467,83 @@ function PortalEstoqueContent() {
     }
   }
 
+  const kpiItems = useMemo(() => {
+    const summary = stockReport?.summary;
+    return [
+      {
+        id: 'units',
+        label: 'Unidades em saldo',
+        value: data?.summary.totalUnits ?? 0,
+        hint: data?.location.name ? `Local: ${data.location.name}` : undefined,
+      },
+      {
+        id: 'ok',
+        label: 'Linhas OK',
+        value: summary?.ok ?? 0,
+        tone: 'ok' as const,
+        hint: `${summary?.total ?? data?.summary.balanceLines ?? 0} linhas no total`,
+      },
+      {
+        id: 'baixo',
+        label: 'Estoque baixo',
+        value: summary?.baixo ?? 0,
+        tone: (summary?.baixo ?? 0) > 0 ? ('warn' as const) : ('default' as const),
+      },
+      {
+        id: 'zerado',
+        label: 'Zerados',
+        value: summary?.zerado ?? 0,
+        tone:
+          (summary?.zerado ?? 0) > 0 ? ('danger' as const) : ('default' as const),
+        hint: `${data?.summary.needs ?? 0} necessidades ativas`,
+      },
+    ];
+  }, [data, stockReport]);
+
+  const statusChart = useMemo(() => {
+    const s = stockReport?.summary;
+    return [
+      { name: 'OK', value: s?.ok ?? 0, key: 'ok' as const },
+      { name: 'Baixo', value: s?.baixo ?? 0, key: 'baixo' as const },
+      { name: 'Zerado', value: s?.zerado ?? 0, key: 'zerado' as const },
+    ];
+  }, [stockReport]);
+
+  const consumptionChart = useMemo(() => {
+    const rows = activityReport?.bySector ?? [];
+    return [...rows]
+      .sort((a, b) => b.itemsDelivered - a.itemsDelivered)
+      .slice(0, 8)
+      .map((row) => ({
+        name:
+          row.sectorName.length > 18
+            ? `${row.sectorName.slice(0, 16)}…`
+            : row.sectorName,
+        items: row.itemsDelivered,
+      }));
+  }, [activityReport]);
+
   return (
     <div className="portal-home">
-      <header className="portal-home-header portal-home-header--decision">
+      <header className="dash-page-header">
         <div>
-          <p className="page-kicker">Dia a dia</p>
-          <h1 className="page-title page-title--sm">Estoque</h1>
+          <p className="page-kicker">Operacao</p>
+          <h1 className="page-title">Estoque</h1>
           <p className="page-lead">
-            Busque o EPI na <strong>base CAEPI</strong>, vincule a necessidade e
-            registre a entrada. Depois confira os saldos.
+            Visao de saldos, consumo recente e entrada via base CAEPI.
           </p>
+        </div>
+        <div className="dash-page-header__actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setView('entrada')}
+          >
+            Registrar entrada
+          </button>
+          <Link className="btn btn-secondary" href="/portal/entregas">
+            Ir para entregas
+          </Link>
         </div>
       </header>
 
@@ -466,30 +561,20 @@ function PortalEstoqueContent() {
 
       {data ? (
         <>
-          <section className="quota-summary" aria-label="Resumo">
-            <div className="quota-summary-item">
-              <span className="quota-summary-label">Necessidades</span>
-              <strong className="quota-summary-value">{data.summary.needs}</strong>
-            </div>
-            <div className="quota-summary-item">
-              <span className="quota-summary-label">Linhas em saldo</span>
-              <strong className="quota-summary-value">
-                {data.summary.balanceLines}
-              </strong>
-            </div>
-            <div className="quota-summary-item">
-              <span className="quota-summary-label">Unidades</span>
-              <strong className="quota-summary-value">
-                {data.summary.totalUnits}
-              </strong>
-            </div>
-          </section>
-
           <div
-            className="portal-section-tabs"
+            className="portal-section-tabs portal-section-tabs--dash"
             role="tablist"
             aria-label="Visoes do estoque"
           >
+            <button
+              type="button"
+              role="tab"
+              className={`portal-section-tab ${view === 'dashboard' ? 'is-active' : ''}`}
+              aria-selected={view === 'dashboard'}
+              onClick={() => setView('dashboard')}
+            >
+              Visao geral
+            </button>
             <button
               type="button"
               role="tab"
@@ -499,18 +584,77 @@ function PortalEstoqueContent() {
             >
               Registrar entrada
             </button>
-            <button
-              type="button"
-              role="tab"
-              className={`portal-section-tab ${view === 'saldos' ? 'is-active' : ''}`}
-              aria-selected={view === 'saldos'}
-              onClick={() => setView('saldos')}
-            >
-              Ver saldos
-            </button>
           </div>
 
-          {view === 'entrada' ? (
+          {view === 'dashboard' ? (
+            <>
+              <StockDashboardKpis items={kpiItems} />
+              <StockConsumptionCharts
+                status={statusChart}
+                consumption={consumptionChart}
+                periodLabel="Ultimos 30 dias"
+              />
+
+              <section className="portal-card" aria-labelledby="saldos-title">
+                <div className="dash-panel__head">
+                  <h2 id="saldos-title">Saldos atuais</h2>
+                  <p>
+                    Quantidades disponiveis para entrega
+                    {data.location.name ? ` · ${data.location.name}` : ''}
+                  </p>
+                </div>
+                <div className="table-wrap">
+                  <table className="data-table data-table--refined">
+                    <thead>
+                      <tr>
+                        <th scope="col">EPI</th>
+                        <th scope="col">CA</th>
+                        <th scope="col">Validade</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Qtd</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.balances.length === 0 ? (
+                        <tr>
+                          <td colSpan={5}>
+                            Nenhum saldo ainda. Use Registrar entrada para
+                            incluir EPIs.
+                          </td>
+                        </tr>
+                      ) : (
+                        data.balances.map((row) => {
+                          const status = balanceStatus(row);
+                          return (
+                            <tr key={row.id}>
+                              <td>
+                                <strong>{row.epiName}</strong>
+                                {row.usefulLifeLabel ? (
+                                  <span className="table-sub">
+                                    Vida util {row.usefulLifeLabel}
+                                  </span>
+                                ) : null}
+                              </td>
+                              <td className="mono">{row.caNumber ?? '—'}</td>
+                              <td>{formatDate(row.caExpiresAt)}</td>
+                              <td>
+                                <span
+                                  className={`stock-status stock-status--${status.key}`}
+                                >
+                                  {status.label}
+                                </span>
+                              </td>
+                              <td className="mono">{row.quantity}</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          ) : (
             <>
           <section className="portal-card" aria-labelledby="needs-stock-title">
             <h2 id="needs-stock-title" className="page-title page-title--sm">
@@ -529,7 +673,7 @@ function PortalEstoqueContent() {
             ) : (
               <>
                 <div className="table-wrap">
-                  <table className="data-table">
+                  <table className="data-table data-table--refined">
                     <thead>
                       <tr>
                         <th scope="col">Incluir</th>
@@ -693,9 +837,9 @@ function PortalEstoqueContent() {
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => setView('saldos')}
+                    onClick={() => setView('dashboard')}
                   >
-                    Ver saldos
+                    Ver dashboard
                   </button>
                   <button
                     type="button"
@@ -797,67 +941,7 @@ function PortalEstoqueContent() {
             </form>
           </section>
             </>
-          ) : (
-          <section className="portal-card" aria-labelledby="saldos-title">
-            <h2 id="saldos-title" className="page-title page-title--sm">
-              Saldos atuais
-            </h2>
-            <p className="page-lead">
-              Quantidades disponiveis para entrega. Se faltar item, volte em
-              Registrar entrada.
-            </p>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th scope="col">EPI</th>
-                    <th scope="col">CA</th>
-                    <th scope="col">Validade CA</th>
-                    <th scope="col">Vida util</th>
-                    <th scope="col">Qtd</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.balances.length === 0 ? (
-                    <tr>
-                      <td colSpan={5}>Nenhum saldo ainda neste local.</td>
-                    </tr>
-                  ) : (
-                    data.balances.map((row) => (
-                      <tr key={row.id}>
-                        <td>
-                          <strong>{row.epiName}</strong>
-                        </td>
-                        <td className="mono">{row.caNumber ?? '—'}</td>
-                        <td>{formatDate(row.caExpiresAt)}</td>
-                        <td>{row.usefulLifeLabel ?? '—'}</td>
-                        <td className="mono">{row.quantity}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <div className="btn-row" style={{ marginTop: '1rem' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setView('entrada')}
-              >
-                Registrar entrada
-              </button>
-              <Link className="btn btn-primary" href="/portal/entregas">
-                Ir para entregas
-              </Link>
-            </div>
-          </section>
           )}
-
-          <div className="btn-row">
-            <Link className="btn btn-secondary" href="/portal">
-              Voltar ao painel
-            </Link>
-          </div>
         </>
       ) : null}
     </div>

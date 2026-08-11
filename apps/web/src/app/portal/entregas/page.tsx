@@ -125,7 +125,7 @@ function formatDateTime(iso: string) {
   }
 }
 
-function NeedSelectCard({
+function NeedPickRow({
   row,
   selection,
   onChange,
@@ -135,201 +135,218 @@ function NeedSelectCard({
   onChange: (next: ItemSelection) => void;
 }) {
   const canSelect = row.status === 'DISPONIVEL';
+
+  return (
+    <label
+      className={`portal-epi-pick${selection.selected && canSelect ? ' is-selected' : ''}${!canSelect ? ' is-disabled' : ''}`}
+    >
+      <input
+        type="checkbox"
+        checked={selection.selected && canSelect}
+        disabled={!canSelect}
+        onChange={(e) =>
+          onChange({ ...selection, selected: e.target.checked })
+        }
+      />
+      <div className="portal-epi-pick__body">
+        <div className="portal-epi-pick__top">
+          <strong>{row.needName}</strong>
+          <span className={statusPillClass(row.status)}>
+            {statusLabel(row.status)}
+          </span>
+        </div>
+        {row.risks.length > 0 ? (
+          <p className="portal-risk-chips" aria-label="Riscos associados">
+            {row.risks.map((risk) => (
+              <span key={risk.id} className="portal-risk-chip">
+                {risk.name}
+              </span>
+            ))}
+          </p>
+        ) : (
+          <p className="table-sub">
+            {row.isRequired ? 'Obrigatorio' : 'Recomendado'}
+          </p>
+        )}
+        {!canSelect && row.guidance ? (
+          <p className="field-hint">
+            {row.guidance}{' '}
+            {row.status === 'SEM_ESTOQUE' ? (
+              <Link href="/portal/estoque">Registrar entrada</Link>
+            ) : null}
+          </p>
+        ) : null}
+      </div>
+    </label>
+  );
+}
+
+function NeedConfigPanel({
+  row,
+  selection,
+  onChange,
+  index,
+  total,
+}: {
+  row: PortalEpiCoverageNeedRow;
+  selection: ItemSelection;
+  onChange: (next: ItemSelection) => void;
+  index: number;
+  total: number;
+}) {
   const epi =
     row.linkedEpis.find((e) => e.epiItemId === selection.epiItemId) ??
     row.linkedEpis[0];
   const balances = epi?.balances ?? [];
 
   return (
-    <article
-      className={`portal-coverage-need${selection.selected ? ' is-selected' : ''}`}
-    >
-      <header className="portal-coverage-need__header">
-        <div>
-          <label className="portal-need-select">
-            <input
-              type="checkbox"
-              checked={selection.selected && canSelect}
-              disabled={!canSelect}
-              onChange={(e) =>
-                onChange({ ...selection, selected: e.target.checked })
-              }
-            />
-            <h3 className="portal-coverage-need__title">{row.needName}</h3>
-          </label>
-          <p className="table-sub">
-            {row.isRequired ? 'Obrigatorio' : 'Recomendado'}
-            {row.replacementLabel
-              ? ` · Periodicidade: ${row.replacementLabel}`
-              : ''}
-            {row.quantity > 1 ? ` · Qtd ${row.quantity}` : ''}
+    <article className="portal-epi-config">
+      <header className="portal-epi-config__head">
+        <p className="page-kicker">
+          EPI {index + 1} de {total}
+        </p>
+        <h3 className="page-title page-title--sm">{row.needName}</h3>
+        {row.risks.length > 0 ? (
+          <p className="portal-risk-chips" aria-label="Riscos associados">
+            <span className="table-sub">Riscos:</span>{' '}
+            {row.risks.map((risk) => (
+              <span key={risk.id} className="portal-risk-chip">
+                {risk.name}
+              </span>
+            ))}
           </p>
-          {row.risks.length > 0 ? (
-            <p className="portal-risk-chips" aria-label="Riscos associados">
-              <span className="table-sub">Riscos:</span>{' '}
-              {row.risks.map((risk) => (
-                <span key={risk.id} className="portal-risk-chip">
-                  {risk.name}
-                </span>
-              ))}
-            </p>
-          ) : null}
-        </div>
-        <span className={statusPillClass(row.status)}>
-          {statusLabel(row.status)}
-        </span>
+        ) : null}
       </header>
 
-      {row.warnings.length > 0 ? (
-        <p className="field-hint" role="status">
-          {row.warnings[0]}
-        </p>
-      ) : null}
-
-      {row.guidance ? (
-        <p className="field-hint" role="status">
-          {row.guidance}
-          {row.status === 'SEM_ESTOQUE' ? (
-            <>
-              {' '}
-              <Link href="/portal/estoque">Registrar entrada</Link>
-            </>
-          ) : null}
-        </p>
-      ) : null}
-
-      {canSelect && selection.selected ? (
-        <div className="form-grid form-grid--compact">
-          <div className="field">
-            <label>EPI real</label>
-            <select
-              value={selection.epiItemId}
-              onChange={(e) => {
-                const nextEpi = row.linkedEpis.find(
-                  (item) => item.epiItemId === e.target.value,
-                );
-                const bal =
-                  nextEpi?.balances.find((b) => b.quantity > 0) ??
-                  nextEpi?.balances[0];
-                onChange({
-                  ...selection,
-                  epiItemId: e.target.value,
-                  stockLocationId: bal?.stockLocationId ?? '',
-                  ...lifeDefaultsFromRow(row, e.target.value),
-                });
-              }}
-            >
-              {row.linkedEpis.map((item) => (
-                <option
-                  key={item.epiItemId}
-                  value={item.epiItemId}
-                  disabled={item.totalQuantity <= 0}
-                >
-                  {item.name} (saldo {item.totalQuantity})
-                  {row.suggestedEpiItemId === item.epiItemId
-                    ? ' — sugerido'
-                    : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>Local de estoque</label>
-            <select
-              value={selection.stockLocationId}
-              onChange={(e) =>
-                onChange({ ...selection, stockLocationId: e.target.value })
-              }
-            >
-              {balances.length === 0 ? (
-                <option value="">Sem saldo</option>
-              ) : (
-                balances.map((b) => (
-                  <option
-                    key={b.stockLocationId}
-                    value={b.stockLocationId}
-                    disabled={b.quantity <= 0}
-                  >
-                    {b.locationName} ({b.quantity})
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
-          <div className="field">
-            <label>Quantidade</label>
-            <input
-              type="number"
-              min={1}
-              max={
-                balances.find((b) => b.stockLocationId === selection.stockLocationId)
-                  ?.quantity ?? undefined
-              }
-              value={selection.quantity}
-              onChange={(e) =>
-                onChange({
-                  ...selection,
-                  quantity: Math.max(1, Number(e.target.value) || 1),
-                })
-              }
-            />
-          </div>
-          <div className="field">
-            <label>Vida util</label>
-            <input
-              type="number"
-              min={1}
-              placeholder="Ex.: 90"
-              value={selection.usefulLifeValue}
-              onChange={(e) =>
-                onChange({
-                  ...selection,
-                  usefulLifeValue: e.target.value,
-                })
-              }
-            />
-          </div>
-          <div className="field">
-            <label>Unidade da vida util</label>
-            <select
-              value={selection.usefulLifeUnit}
-              onChange={(e) =>
-                onChange({
-                  ...selection,
-                  usefulLifeUnit: e.target.value as 'DIAS' | 'MESES' | 'ANOS',
-                })
-              }
-            >
-              <option value="DIAS">Dias</option>
-              <option value="MESES">Meses</option>
-              <option value="ANOS">Anos</option>
-            </select>
-          </div>
-          <div className="field">
-            <label>Uso por semana</label>
-            <select
-              value={selection.usageDaysPerWeek}
-              onChange={(e) =>
-                onChange({
-                  ...selection,
-                  usageDaysPerWeek: e.target.value,
-                })
-              }
-            >
-              <option value="7">7 (diario)</option>
-              <option value="6">6 dias</option>
-              <option value="5">5 dias</option>
-              <option value="4">4 dias</option>
-              <option value="3">3 dias</option>
-              <option value="2">2 dias</option>
-              <option value="1">1 dia</option>
-            </select>
-            <p className="field-hint">
-              Ajusta a data de troca: menos dias/semana = troca mais tarde.
-            </p>
-          </div>
+      <div className="form-grid form-grid--compact portal-epi-config__form">
+        <div className="field field--span-2">
+          <label>EPI real</label>
+          <select
+            value={selection.epiItemId}
+            onChange={(e) => {
+              const nextEpi = row.linkedEpis.find(
+                (item) => item.epiItemId === e.target.value,
+              );
+              const bal =
+                nextEpi?.balances.find((b) => b.quantity > 0) ??
+                nextEpi?.balances[0];
+              onChange({
+                ...selection,
+                epiItemId: e.target.value,
+                stockLocationId: bal?.stockLocationId ?? '',
+                ...lifeDefaultsFromRow(row, e.target.value),
+              });
+            }}
+          >
+            {row.linkedEpis.map((item) => (
+              <option
+                key={item.epiItemId}
+                value={item.epiItemId}
+                disabled={item.totalQuantity <= 0}
+              >
+                {item.name} (saldo {item.totalQuantity})
+                {row.suggestedEpiItemId === item.epiItemId ? ' — sugerido' : ''}
+              </option>
+            ))}
+          </select>
         </div>
-      ) : null}
+        <div className="field">
+          <label>Local de estoque</label>
+          <select
+            value={selection.stockLocationId}
+            onChange={(e) =>
+              onChange({ ...selection, stockLocationId: e.target.value })
+            }
+          >
+            {balances.length === 0 ? (
+              <option value="">Sem saldo</option>
+            ) : (
+              balances.map((b) => (
+                <option
+                  key={b.stockLocationId}
+                  value={b.stockLocationId}
+                  disabled={b.quantity <= 0}
+                >
+                  {b.locationName} ({b.quantity})
+                </option>
+              ))
+            )}
+          </select>
+        </div>
+        <div className="field">
+          <label>Quantidade</label>
+          <input
+            type="number"
+            min={1}
+            max={
+              balances.find(
+                (b) => b.stockLocationId === selection.stockLocationId,
+              )?.quantity ?? undefined
+            }
+            value={selection.quantity}
+            onChange={(e) =>
+              onChange({
+                ...selection,
+                quantity: Math.max(1, Number(e.target.value) || 1),
+              })
+            }
+          />
+        </div>
+        <div className="field">
+          <label>Vida util</label>
+          <input
+            type="number"
+            min={1}
+            placeholder="Ex.: 90"
+            value={selection.usefulLifeValue}
+            onChange={(e) =>
+              onChange({
+                ...selection,
+                usefulLifeValue: e.target.value,
+              })
+            }
+          />
+        </div>
+        <div className="field">
+          <label>Unidade</label>
+          <select
+            value={selection.usefulLifeUnit}
+            onChange={(e) =>
+              onChange({
+                ...selection,
+                usefulLifeUnit: e.target.value as 'DIAS' | 'MESES' | 'ANOS',
+              })
+            }
+          >
+            <option value="DIAS">Dias</option>
+            <option value="MESES">Meses</option>
+            <option value="ANOS">Anos</option>
+          </select>
+        </div>
+        <div className="field field--span-2">
+          <label>Dias de uso por semana</label>
+          <select
+            value={selection.usageDaysPerWeek}
+            onChange={(e) =>
+              onChange({
+                ...selection,
+                usageDaysPerWeek: e.target.value,
+              })
+            }
+          >
+            <option value="7">7 (diario)</option>
+            <option value="6">6 dias</option>
+            <option value="5">5 dias</option>
+            <option value="4">4 dias</option>
+            <option value="3">3 dias</option>
+            <option value="2">2 dias</option>
+            <option value="1">1 dia</option>
+          </select>
+          <p className="field-hint">
+            Menos dias/semana = troca mais tarde na previsao.
+          </p>
+        </div>
+      </div>
     </article>
   );
 }
@@ -357,6 +374,8 @@ function PortalEntregasContent() {
   const [faceFlowOpen, setFaceFlowOpen] = useState(false);
   const [faceFlowStep, setFaceFlowStep] = useState<'scan' | 'confirm'>('scan');
   const [faceScanKey, setFaceScanKey] = useState(0);
+  const [epiPhase, setEpiPhase] = useState<'pick' | 'configure'>('pick');
+  const [epiConfigIndex, setEpiConfigIndex] = useState(0);
   const [notes, setNotes] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -441,6 +460,9 @@ function PortalEntregasContent() {
       .map((need) => ({ need, sel: selections[need.epiNeedId]! }));
   }, [coverage, selections]);
 
+  const pickedCount = selectedItems.length;
+  const configRow = selectedItems[epiConfigIndex] ?? null;
+
   const canProceedToFace =
     Boolean(selectedId) &&
     Boolean(coverage?.workerHasBiometricTemplate) &&
@@ -450,7 +472,8 @@ function PortalEntregasContent() {
       (row) =>
         row.sel.epiItemId &&
         row.sel.stockLocationId &&
-        row.sel.quantity > 0,
+        row.sel.quantity > 0 &&
+        row.sel.usefulLifeValue.trim() !== '',
     ) &&
     !submitting;
 
@@ -516,6 +539,8 @@ function PortalEntregasContent() {
     setReceipt(null);
     closeFaceFlow();
     setNotes('');
+    setEpiPhase('pick');
+    setEpiConfigIndex(0);
     setLoadingCoverage(true);
     setError(null);
     try {
@@ -932,54 +957,132 @@ function PortalEntregasContent() {
                     {coverage.summary.message ??
                       'Nenhum EPI necessario para este trabalhador.'}
                   </p>
-                ) : (
-                  <div className="portal-coverage-list">
-                    {coverage.needs.map((need) => (
-                      <NeedSelectCard
-                        key={need.requirementId}
-                        row={need}
-                        selection={
-                          selections[need.epiNeedId] ?? defaultSelection(need)
-                        }
-                        onChange={(next) =>
-                          setSelections((prev) => ({
-                            ...prev,
-                            [need.epiNeedId]: next,
-                          }))
-                        }
+                ) : epiPhase === 'pick' ? (
+                  <>
+                    <p className="page-lead" style={{ marginBottom: '0.75rem' }}>
+                      Marque os EPIs desta entrega. Os riscos ajudam a
+                      identificar o item certo.
+                    </p>
+                    <div className="portal-epi-pick-list" role="group">
+                      {coverage.needs.map((need) => (
+                        <NeedPickRow
+                          key={need.requirementId}
+                          row={need}
+                          selection={
+                            selections[need.epiNeedId] ??
+                            defaultSelection(need)
+                          }
+                          onChange={(next) =>
+                            setSelections((prev) => ({
+                              ...prev,
+                              [need.epiNeedId]: next,
+                            }))
+                          }
+                        />
+                      ))}
+                    </div>
+                    <div className="field" style={{ marginTop: '1rem' }}>
+                      <label htmlFor="entrega-notes">
+                        Observacoes (opcional)
+                      </label>
+                      <textarea
+                        id="entrega-notes"
+                        rows={2}
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        maxLength={2000}
                       />
-                    ))}
-                  </div>
-                )}
-
-                <div className="field" style={{ marginTop: '1rem' }}>
-                  <label htmlFor="entrega-notes">Observacoes (opcional)</label>
-                  <textarea
-                    id="entrega-notes"
-                    rows={2}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    maxLength={2000}
-                  />
-                </div>
-
-                {coverage.biometricConsentStatus === 'GRANTED' &&
-                coverage.workerHasBiometricTemplate &&
-                coverage.needs.some((n) => n.status === 'DISPONIVEL') ? (
-                  <div className="flow-sticky-bar portal-sticky-actions">
+                    </div>
+                    {coverage.biometricConsentStatus === 'GRANTED' &&
+                    coverage.workerHasBiometricTemplate &&
+                    coverage.needs.some((n) => n.status === 'DISPONIVEL') ? (
+                      <div className="flow-sticky-bar portal-sticky-actions">
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={pickedCount === 0}
+                          onClick={() => {
+                            setEpiConfigIndex(0);
+                            setEpiPhase('configure');
+                          }}
+                        >
+                          Continuar ({pickedCount} EPI
+                          {pickedCount === 1 ? '' : 's'})
+                        </button>
+                        <Link
+                          className="btn btn-secondary"
+                          href="/portal/estoque"
+                        >
+                          Ir ao estoque
+                        </Link>
+                      </div>
+                    ) : null}
+                  </>
+                ) : configRow ? (
+                  <>
+                    <NeedConfigPanel
+                      row={configRow.need}
+                      selection={configRow.sel}
+                      index={epiConfigIndex}
+                      total={pickedCount}
+                      onChange={(next) =>
+                        setSelections((prev) => ({
+                          ...prev,
+                          [configRow.need.epiNeedId]: next,
+                        }))
+                      }
+                    />
+                    <div className="flow-sticky-bar portal-sticky-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          if (epiConfigIndex <= 0) {
+                            setEpiPhase('pick');
+                            return;
+                          }
+                          setEpiConfigIndex((i) => i - 1);
+                        }}
+                      >
+                        {epiConfigIndex <= 0 ? 'Voltar a lista' : 'Anterior'}
+                      </button>
+                      {epiConfigIndex < pickedCount - 1 ? (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={
+                            !configRow.sel.epiItemId ||
+                            !configRow.sel.stockLocationId ||
+                            !configRow.sel.usefulLifeValue.trim()
+                          }
+                          onClick={() => setEpiConfigIndex((i) => i + 1)}
+                        >
+                          Proximo EPI
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={!canProceedToFace}
+                          onClick={openFaceFlow}
+                        >
+                          Validar face e entregar
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="page-lead">
+                    Nenhum EPI selecionado.{' '}
                     <button
                       type="button"
-                      className="btn btn-primary"
-                      disabled={!canProceedToFace}
-                      onClick={openFaceFlow}
+                      className="btn btn-ghost"
+                      onClick={() => setEpiPhase('pick')}
                     >
-                      Validar face e entregar
+                      Voltar a lista
                     </button>
-                    <Link className="btn btn-secondary" href="/portal/estoque">
-                      Ir ao estoque
-                    </Link>
-                  </div>
-                ) : null}
+                  </p>
+                )}
               </>
             ) : null}
           </section>
