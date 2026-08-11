@@ -500,6 +500,13 @@ export async function uploadPortalInvoice(input: {
   });
 }
 
+export async function extractPortalInvoice(invoiceId: string) {
+  return clientApiFetch<PortalInvoiceUploadResult>(
+    `/portal/custos/invoices/${invoiceId}/extract`,
+    { method: 'POST' },
+  );
+}
+
 function portalReportQuery(filters: PortalReportFiltersQuery = {}) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { StockDashboardKpis } from '../../../components/portal/StockDashboardKpis';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
 import {
+  extractPortalInvoice,
   fetchPortalCustos,
   uploadPortalInvoice,
 } from '../../../lib/client-auth';
@@ -108,9 +109,16 @@ function PortalCustosContent() {
         number: invoiceNumber,
         supplierName,
       });
-      setSuccess(
-        `Nota anexada (${res.id.slice(0, 8)}…). Na entrada de estoque, use o ID se quiser vincular.`,
-      );
+      if (res.extraction?.ok && res.extraction.suggested) {
+        const s = res.extraction.suggested;
+        setSuccess(
+          `Nota anexada. Sugestao: ${s.description ?? 'item'} · qtd ${s.quantity ?? '—'} · ${formatBrl(s.unitCostCents)}. Use em Estoque.`,
+        );
+      } else {
+        setSuccess(
+          `Nota anexada. ${res.ocrMessage || 'Confira o arquivo em anexos.'}`,
+        );
+      }
       setInvoiceNumber('');
       setSupplierName('');
       await reload();
@@ -335,8 +343,8 @@ function PortalCustosContent() {
               Anexar nota (foto ou PDF)
             </h2>
             <p className="page-lead">
-              Guarde o comprovante agora. A leitura automatica de valores e
-              quantidades vem depois.
+              PDF com texto e lido automaticamente. Foto/JPG usa Vision se a API
+              tiver <code>OPENAI_API_KEY</code>. Sempre confira os valores.
             </p>
             <div className="form-panel" style={{ maxWidth: 480 }}>
               <div className="field">
@@ -373,15 +381,83 @@ function PortalCustosContent() {
               </div>
             </div>
             {data.invoices.length > 0 ? (
-              <ul className="field-hint" style={{ marginTop: '1rem' }}>
-                {data.invoices.map((doc) => (
-                  <li key={doc.id}>
-                    {doc.number ? `NF ${doc.number}` : 'Anexo'} ·{' '}
-                    {doc.supplierName || 'sem fornecedor'} ·{' '}
-                    {formatDate(doc.createdAt)}
-                  </li>
-                ))}
-              </ul>
+              <div className="table-wrap" style={{ marginTop: '1rem' }}>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Nota</th>
+                      <th scope="col">Extracao</th>
+                      <th scope="col">Sugestao</th>
+                      <th scope="col" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.invoices.map((doc) => {
+                      const sug = doc.extraction?.suggested;
+                      return (
+                        <tr key={doc.id}>
+                          <td>
+                            <strong>
+                              {doc.number ? `NF ${doc.number}` : 'Anexo'}
+                            </strong>
+                            <span className="table-sub">
+                              {doc.supplierName || 'sem fornecedor'} ·{' '}
+                              {formatDate(doc.createdAt)}
+                            </span>
+                          </td>
+                          <td>
+                            {doc.extractionMethod || '—'}
+                            <span className="table-sub">
+                              {doc.extraction?.message || 'Sem leitura'}
+                            </span>
+                          </td>
+                          <td>
+                            {sug ? (
+                              <>
+                                <span className="mono">
+                                  {sug.quantity ?? '—'} un ·{' '}
+                                  {formatBrl(sug.unitCostCents)}
+                                </span>
+                                <span className="table-sub">
+                                  {sug.description}
+                                </span>
+                              </>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-compact"
+                              disabled={uploading}
+                              onClick={() => {
+                                setUploading(true);
+                                setError(null);
+                                void extractPortalInvoice(doc.id)
+                                  .then(async (res) => {
+                                    setSuccess(res.ocrMessage);
+                                    await reload();
+                                  })
+                                  .catch((err: unknown) => {
+                                    setError(
+                                      err instanceof Error
+                                        ? err.message
+                                        : 'Falha ao reprocessar nota.',
+                                    );
+                                  })
+                                  .finally(() => setUploading(false));
+                              }}
+                            >
+                              Reprocessar
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             ) : null}
           </section>
         </>

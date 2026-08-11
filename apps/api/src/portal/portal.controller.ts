@@ -712,6 +712,19 @@ export class PortalController {
     );
   }
 
+  @Post('custos/invoices/:id/extract')
+  extractInvoice(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+  ) {
+    this.assertClient(user);
+    return this.portal.extractInvoiceDocument(
+      user.organizationId,
+      user.servedClientId!,
+      id,
+    );
+  }
+
   private assertClient(user: ClientJwtPayload) {
     if (!user.servedClientId) {
       throw new NotFoundException('Cliente do portal nao identificado.');

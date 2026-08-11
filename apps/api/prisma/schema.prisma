@@ -715,7 +715,7 @@ model EpiStockMovement {
   @@index([invoiceDocumentId])
 }
 
-/// Nota fiscal / comprovante de compra (anexo). OCR automatico fica para etapa futura.
+/// Nota fiscal / comprovante de compra (anexo). Extracao de texto/OCR quando disponivel.
 model InvoiceDocument {
   id              String   @id @default(cuid())
   organizationId  String
@@ -729,6 +729,11 @@ model InvoiceDocument {
   mimeType        String
   byteSize        Int
   notes           String?
+  /// Resultado da extracao (linhas, sugestao, metodo).
+  extractedJson   Json?
+  extractedAt     DateTime?
+  /// PDF_TEXT | OPENAI_VISION | NONE
+  extractionMethod String?
   createdByUserId String
   createdAt       DateTime @default(now())
 

@@ -33,7 +33,7 @@ import {
 } from '@gestao-epi/shared';
 import { randomUUID } from 'crypto';
 import { existsSync } from 'fs';
-import { unlink } from 'fs/promises';
+import { unlink, readFile } from 'fs/promises';
 import { AuditService } from '../audit/audit.service';
 import { normalizeCaNumber } from '../caepi/caepi-import.utils';
 import { CaepiService } from '../caepi/caepi.service';
@@ -60,10 +60,17 @@ import {
 } from './dto/portal-delivery.dto';
 import type { PortalStockEntradasDto } from './dto/portal-stock.dto';
 import {
+  resolveInvoiceDocumentAbsolutePath,
+  saveInvoiceDocumentFile,
+} from './invoice-document.storage';
+import {
+  extractInvoiceFromFile,
+  type InvoiceExtractionResult,
+} from './invoice-extract';
+import {
   resolveEvidenceAbsolutePath,
   saveFacialEvidenceFile,
 } from './facial-evidence.storage';
-import { saveInvoiceDocumentFile } from './invoice-document.storage';
 import {
   computeNextReplacementAt,
   formatUsageFrequencyLabel,
@@ -1439,17 +1446,48 @@ export class PortalService {
       originalName: file.originalname,
     });
 
+    let extraction: InvoiceExtractionResult;
+    try {
+      extraction = await extractInvoiceFromFile({
+        buffer: file.buffer,
+        mimeType: file.mimetype,
+        originalName: file.originalname,
+      });
+    } catch (err) {
+      extraction = {
+        method: 'NONE',
+        ok: false,
+        message:
+          err instanceof Error
+            ? `Falha na extracao: ${err.message}`
+            : 'Falha na extracao.',
+        invoiceNumber: null,
+        supplierName: null,
+        lines: [],
+        suggested: null,
+        rawTextPreview: null,
+      };
+    }
+
+    const number =
+      meta?.number?.trim() || extraction.invoiceNumber || null;
+    const supplierName =
+      meta?.supplierName?.trim() || extraction.supplierName || null;
+
     const doc = await this.prisma.invoiceDocument.create({
       data: {
         organizationId,
         servedClientId,
-        number: meta?.number?.trim() || null,
-        supplierName: meta?.supplierName?.trim() || null,
+        number,
+        supplierName,
         notes: meta?.notes?.trim() || null,
         filePath: saved.relativePath,
         fileHash: saved.fileHash,
         mimeType: saved.mimeType,
         byteSize: saved.byteSize,
+        extractedJson: extraction as unknown as Prisma.InputJsonValue,
+        extractedAt: new Date(),
+        extractionMethod: extraction.method,
         createdByUserId: userId,
       },
     });
@@ -1461,9 +1499,57 @@ export class PortalService {
       mimeType: doc.mimeType,
       byteSize: doc.byteSize,
       createdAt: doc.createdAt.toISOString(),
-      ocrAvailable: false,
-      ocrMessage:
-        'Anexo salvo. Leitura automatica de valores/quantidades (OCR) entra em etapa futura.',
+      ocrAvailable: extraction.ok,
+      ocrMessage: extraction.message,
+      extraction,
+    };
+  }
+
+  async extractInvoiceDocument(
+    organizationId: string,
+    servedClientId: string,
+    invoiceId: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    const doc = await this.prisma.invoiceDocument.findFirst({
+      where: { id: invoiceId, organizationId, servedClientId },
+    });
+    if (!doc) {
+      throw new NotFoundException('Nota fiscal nao encontrada.');
+    }
+
+    const absolute = resolveInvoiceDocumentAbsolutePath(doc.filePath);
+    if (!absolute) {
+      throw new NotFoundException('Arquivo da nota nao encontrado no storage.');
+    }
+    const buffer = await readFile(absolute);
+    const extraction = await extractInvoiceFromFile({
+      buffer,
+      mimeType: doc.mimeType,
+      originalName: doc.filePath,
+    });
+
+    const updated = await this.prisma.invoiceDocument.update({
+      where: { id: doc.id },
+      data: {
+        extractedJson: extraction as unknown as Prisma.InputJsonValue,
+        extractedAt: new Date(),
+        extractionMethod: extraction.method,
+        number: doc.number || extraction.invoiceNumber || null,
+        supplierName: doc.supplierName || extraction.supplierName || null,
+      },
+    });
+
+    return {
+      id: updated.id,
+      number: updated.number,
+      supplierName: updated.supplierName,
+      mimeType: updated.mimeType,
+      byteSize: updated.byteSize,
+      createdAt: updated.createdAt.toISOString(),
+      ocrAvailable: extraction.ok,
+      ocrMessage: extraction.message,
+      extraction,
     };
   }
 
@@ -1566,6 +1652,9 @@ export class PortalService {
           mimeType: true,
           byteSize: true,
           createdAt: true,
+          extractionMethod: true,
+          extractedAt: true,
+          extractedJson: true,
         },
       }),
     ]);
@@ -1747,18 +1836,28 @@ export class PortalService {
         invoiceDocumentId: mov.invoiceDocumentId,
         createdAt: mov.createdAt.toISOString(),
       })),
-      invoices: invoices.map((doc) => ({
-        id: doc.id,
-        number: doc.number,
-        supplierName: doc.supplierName,
-        mimeType: doc.mimeType,
-        byteSize: doc.byteSize,
-        createdAt: doc.createdAt.toISOString(),
-      })),
+      invoices: invoices.map((doc) => {
+        const extraction =
+          doc.extractedJson && typeof doc.extractedJson === 'object'
+            ? (doc.extractedJson as unknown as InvoiceExtractionResult)
+            : null;
+        return {
+          id: doc.id,
+          number: doc.number,
+          supplierName: doc.supplierName,
+          mimeType: doc.mimeType,
+          byteSize: doc.byteSize,
+          createdAt: doc.createdAt.toISOString(),
+          extractionMethod: doc.extractionMethod,
+          extractedAt: doc.extractedAt?.toISOString() ?? null,
+          extraction,
+        };
+      }),
       ocr: {
-        available: false,
-        message:
-          'Anexar foto/PDF da nota ja e possivel. Extracao automatica de valores e quantidades (OCR/IA) fica para a proxima etapa.',
+        available: true,
+        message: process.env.OPENAI_API_KEY?.trim()
+          ? 'PDF com texto e fotos (OpenAI Vision) suportados. Sempre confira os valores sugeridos.'
+          : 'PDF com texto: extracao automatica ativa. Fotos: configure OPENAI_API_KEY para Vision.',
       },
     };
   }

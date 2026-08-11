@@ -1481,6 +1481,43 @@ export interface PortalStockEntradasResult {
   }>;
 }
 
+export interface PortalInvoiceExtractionLine {
+  description: string;
+  quantity: number | null;
+  unitCostCents: number | null;
+  totalCostCents: number | null;
+  caNumber: string | null;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface PortalInvoiceExtraction {
+  method: 'PDF_TEXT' | 'OPENAI_VISION' | 'NONE';
+  ok: boolean;
+  message: string;
+  invoiceNumber: string | null;
+  supplierName: string | null;
+  lines: PortalInvoiceExtractionLine[];
+  suggested: {
+    quantity: number | null;
+    unitCostCents: number | null;
+    totalCostCents: number | null;
+    description: string | null;
+  } | null;
+  rawTextPreview: string | null;
+}
+
+export interface PortalInvoiceUploadResult {
+  id: string;
+  number: string | null;
+  supplierName: string | null;
+  mimeType: string;
+  byteSize: number;
+  createdAt: string;
+  ocrAvailable: boolean;
+  ocrMessage: string;
+  extraction: PortalInvoiceExtraction;
+}
+
 export interface PortalCustosDashboardResponse {
   summary: {
     stockValueCents: number;
@@ -1534,22 +1571,14 @@ export interface PortalCustosDashboardResponse {
     mimeType: string;
     byteSize: number;
     createdAt: string;
+    extractionMethod: string | null;
+    extractedAt: string | null;
+    extraction: PortalInvoiceExtraction | null;
   }>;
   ocr: {
     available: boolean;
     message: string;
   };
-}
-
-export interface PortalInvoiceUploadResult {
-  id: string;
-  number: string | null;
-  supplierName: string | null;
-  mimeType: string;
-  byteSize: number;
-  createdAt: string;
-  ocrAvailable: boolean;
-  ocrMessage: string;
 }
 
 /** Status operacional de cobertura para preparacao de entrega. */

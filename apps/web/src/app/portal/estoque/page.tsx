@@ -40,6 +40,11 @@ function parseReaisToCents(raw: string): number | undefined {
   if (!Number.isFinite(n) || n < 0) return undefined;
   return Math.round(n * 100);
 }
+
+function centsToReaisInput(cents: number | null | undefined): string {
+  if (cents == null) return '';
+  return (cents / 100).toFixed(2).replace('.', ',');
+}
 const STOP_WORDS = new Set([
   'de',
   'da',
@@ -435,18 +440,37 @@ function PortalEstoqueContent() {
     setSuccess(null);
     try {
       let invoiceDocumentId: string | undefined;
+      let suggestedUnit: number | undefined;
+      let suggestedQty: number | undefined;
       if (batchInvoiceFile) {
         const uploaded = await uploadPortalInvoice({ file: batchInvoiceFile });
         invoiceDocumentId = uploaded.id;
+        suggestedUnit = uploaded.extraction?.suggested?.unitCostCents ?? undefined;
+        suggestedQty =
+          uploaded.extraction?.suggested?.quantity ?? undefined;
       }
-      const result = await createPortalStockEntradas(
-        items.map(({ epiNeedId, caNumber, quantity, unitCostCents }) => ({
+      const payload = items.map(
+        ({ epiNeedId, caNumber, quantity, unitCostCents }) => ({
           epiNeedId,
           caNumber,
-          quantity,
-          ...(unitCostCents != null ? { unitCostCents } : {}),
+          quantity:
+            items.length === 1 && suggestedQty != null
+              ? suggestedQty
+              : quantity,
+          unitCostCents: unitCostCents ?? suggestedUnit,
           ...(invoiceDocumentId ? { invoiceDocumentId } : {}),
-        })),
+        }),
+      );
+      const result = await createPortalStockEntradas(
+        payload.map(
+          ({ epiNeedId, caNumber, quantity, unitCostCents, invoiceDocumentId: inv }) => ({
+            epiNeedId,
+            caNumber,
+            quantity,
+            ...(unitCostCents != null ? { unitCostCents } : {}),
+            ...(inv ? { invoiceDocumentId: inv } : {}),
+          }),
+        ),
       );
       setSuccess(`${result.created} entrada(s) registrada(s) no estoque.`);
       setBatchInvoiceFile(null);
@@ -472,21 +496,31 @@ function PortalEstoqueContent() {
     setSuccess(null);
     try {
       let invoiceDocumentId: string | undefined;
+      let unitCostCents = parseReaisToCents(freeUnitPriceReais);
+      let qty = freeQty;
       if (freeInvoiceFile) {
         const uploaded = await uploadPortalInvoice({ file: freeInvoiceFile });
         invoiceDocumentId = uploaded.id;
+        const sug = uploaded.extraction?.suggested;
+        if (unitCostCents == null && sug?.unitCostCents != null) {
+          unitCostCents = sug.unitCostCents;
+          setFreeUnitPriceReais(centsToReaisInput(sug.unitCostCents));
+        }
+        if (sug?.quantity != null && sug.quantity > 0) {
+          qty = sug.quantity;
+          setFreeQty(sug.quantity);
+        }
       }
-      const unitCostCents = parseReaisToCents(freeUnitPriceReais);
       await createPortalStockEntradas([
         {
           caNumber: picked.caNumber,
-          quantity: freeQty,
+          quantity: qty,
           ...(unitCostCents != null ? { unitCostCents } : {}),
           ...(invoiceDocumentId ? { invoiceDocumentId } : {}),
         },
       ]);
       setSuccess(
-        `Entrada de ${freeQty} un. (CA ${picked.caNumber}) registrada.`,
+        `Entrada de ${qty} un. (CA ${picked.caNumber}) registrada.`,
       );
       setPicked(null);
       setQuery('');
