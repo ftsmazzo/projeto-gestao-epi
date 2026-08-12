@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useId, useState } from 'react';
 import { isPortalNavActive, PORTAL_NAV } from '../lib/nav';
+import { PoweredBy } from './PoweredBy';
 import {
   IconBuilding,
   IconChart,
@@ -129,6 +130,9 @@ export function PortalShell({ children, user, onLogout }: Props) {
           </div>
           <p className="ops-nav-label">Operacao</p>
           <nav className="portal-sidebar__nav">{navLinks}</nav>
+          <div className="ops-sidebar-note">
+            <PoweredBy compact />
+          </div>
         </aside>
       ) : null}
 

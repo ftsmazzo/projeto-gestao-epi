@@ -21,11 +21,11 @@ export default function HomePage() {
     <AppShell
       headerActions={
         <>
-          <Link className="btn btn-ghost" href="/login">
-            Entrar
+          <Link className="btn btn-ghost" href="/portal/login">
+            Portal do cliente
           </Link>
-          <Link className="btn btn-primary" href="/register">
-            Comecar agora
+          <Link className="btn btn-primary" href="/login">
+            Entrar
           </Link>
         </>
       }
@@ -40,13 +40,10 @@ export default function HomePage() {
           <h1 className="hero-title">{APP_TAGLINE}</h1>
           <p className="hero-lead">{APP_PITCH}</p>
           <div className="btn-row">
-            <Link className="btn btn-primary" href="/register">
-              Criar minha consultoria
+            <Link className="btn btn-primary" href="/login">
+              Entrar na consultoria
             </Link>
-            <Link className="btn btn-secondary" href="/login">
-              Ja tenho acesso
-            </Link>
-            <Link className="btn btn-ghost" href="/portal/login">
+            <Link className="btn btn-secondary" href="/portal/login">
               Portal do cliente
             </Link>
           </div>

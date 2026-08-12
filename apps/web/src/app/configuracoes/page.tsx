@@ -7,6 +7,7 @@ import { Suspense } from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
 import { BiometriaSection } from '../../components/settings/BiometriaSection';
 import { ContatosSection } from '../../components/settings/ContatosSection';
+import { MarcaSection } from '../../components/settings/MarcaSection';
 import { EquipeSection } from '../../components/settings/EquipeSection';
 import { ResetSection } from '../../components/settings/ResetSection';
 import {
@@ -44,7 +45,7 @@ function ConfiguracoesHub({ user }: { user: AuthUser }) {
           <p className="page-kicker">Consultoria</p>
           <h1 className="page-title">Configuracoes</h1>
           <p className="page-lead">
-            Conta de <strong>{user.organization.name}</strong>: contatos,
+            Conta de <strong>{user.organization.name}</strong>: marca, contatos,
             equipe, retencao biometrica e reset geral — no mesmo lugar.
           </p>
         </div>
@@ -104,7 +105,9 @@ function SettingsSectionBody({
     case 'reset':
       return <ResetSection role={user.membershipRole} />;
     case 'contatos':
-    default:
       return <ContatosSection />;
+    case 'marca':
+    default:
+      return <MarcaSection user={user} />;
   }
 }

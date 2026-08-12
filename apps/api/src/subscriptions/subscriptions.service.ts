@@ -180,19 +180,6 @@ export class SubscriptionsService {
     this.assertCanManage(membershipRole);
     const pricing = await this.getOrCreatePricing(organizationId);
 
-    if (dto.contractedLifeQuota !== undefined) {
-      const quota = await this.servedClients.getQuotaSummary(organizationId);
-      if (dto.contractedLifeQuota < quota.allocated) {
-        throw new BadRequestException(
-          `A franquia nao pode ficar abaixo das ${quota.allocated} vidas ja alocadas.`,
-        );
-      }
-      await this.prisma.organization.update({
-        where: { id: organizationId },
-        data: { contractedLifeQuota: dto.contractedLifeQuota },
-      });
-    }
-
     await this.prisma.organizationLifePricing.update({
       where: { id: pricing.id },
       data: {

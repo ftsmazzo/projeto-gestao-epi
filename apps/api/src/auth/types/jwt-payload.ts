@@ -1,12 +1,13 @@
-export type JwtAudience = 'consultoria' | 'client';
+export type JwtAudience = 'consultoria' | 'client' | 'plataforma';
 
 export type JwtPayload = {
   sub: string;
   email: string;
+  /** Vazio no token da plataforma SaaS. */
   organizationId: string;
   /** Tokens antigos sem audience sao tratados como consultoria. */
   audience?: JwtAudience;
-  /** Papel no tenant (consultoria) ou espelho do clientRole no portal. */
+  /** Papel no tenant (consultoria), portal, ou PLATFORM_ADMIN. */
   membershipRole: string;
   servedClientId?: string;
   clientRole?: string;

@@ -6,8 +6,14 @@ import {
   Param,
   Patch,
   Post,
+  Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
+import { memoryStorage } from 'multer';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtPayload } from '../auth/types/jwt-payload';
@@ -144,6 +150,44 @@ export class OrganizationController {
       user.sub,
       user.membershipRole,
       dto.confirmation,
+    );
+  }
+
+  @Get('branding')
+  branding(@CurrentUser() user: JwtPayload) {
+    return this.organization.getBranding(user.organizationId);
+  }
+
+  @Get('logo')
+  logo(@CurrentUser() user: JwtPayload, @Res() res: Response) {
+    return this.organization.streamLogo(user.organizationId, res);
+  }
+
+  @Post('logo')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  uploadLogo(
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    return this.organization.uploadLogo(
+      user.organizationId,
+      user.sub,
+      user.membershipRole,
+      file,
+    );
+  }
+
+  @Delete('logo')
+  deleteLogo(@CurrentUser() user: JwtPayload) {
+    return this.organization.deleteLogo(
+      user.organizationId,
+      user.sub,
+      user.membershipRole,
     );
   }
 }

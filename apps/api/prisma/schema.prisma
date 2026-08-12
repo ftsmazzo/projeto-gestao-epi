@@ -34,6 +34,12 @@ enum ServedClientStatus {
   INACTIVE
 }
 
+/// Estado do contrato SaaS da consultoria com a ProntEPI.
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
 /// Estado comercial da assinatura do cliente atendido (CNPJ).
 enum ClientSubscriptionStatus {
   TRIAL
@@ -77,15 +83,22 @@ enum EpiCategory {
   OUTROS
 }
 
-/// Empresa usuaria do software (tenant). Nao e cliente atendido nem unidade operacional.
+/// Empresa usuaria do software (tenant / consultoria). Cliente da ProntEPI.
 model Organization {
-  id                  String   @id @default(cuid())
-  name                String
-  slug                String   @unique
-  /// Franquia total de vidas contratadas (preparacao para billing/cotas futuras).
-  contractedLifeQuota Int      @default(0)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                      String             @id @default(cuid())
+  name                    String
+  slug                    String             @unique
+  /// Franquia de vidas vendida pela ProntEPI a esta consultoria.
+  contractedLifeQuota     Int                @default(0)
+  /// Preco de atacado mensal por vida (centavos BRL) cobrado pela ProntEPI.
+  wholesaleUnitPriceCents Int                @default(0)
+  status                  OrganizationStatus @default(ACTIVE)
+  logoPath                String?
+  logoMimeType            String?
+  suspendedAt             DateTime?
+  suspendReason           String?
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
   memberships       Membership[]
   clientUserMemberships ClientUserMembership[]
@@ -186,12 +199,14 @@ model CommunicationOutbox {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String
-  passwordHash String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String
+  passwordHash    String
+  /// Admin da plataforma ProntEPI (Painel SaaS). Distinto do Membership da consultoria.
+  isPlatformAdmin Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   memberships     Membership[]
   clientUserMemberships ClientUserMembership[]

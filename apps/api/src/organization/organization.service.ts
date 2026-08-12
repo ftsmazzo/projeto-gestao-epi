@@ -8,8 +8,10 @@ import {
 import { MembershipRole, OrganizationContactRole } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
+import { createReadStream, existsSync } from 'fs';
 import { rm } from 'fs/promises';
 import { join } from 'path';
+import type { Response } from 'express';
 import { AuditService } from '../audit/audit.service';
 import { CommunicationsService } from '../communications/communications.service';
 import { getDeliveryEvidenceRoot } from '../portal/facial-evidence.storage';
@@ -23,6 +25,11 @@ import type {
   CreateOrganizationMemberDto,
   UpdateOrganizationMemberRoleDto,
 } from './dto/organization-member.dto';
+import {
+  deleteOrgLogoFile,
+  resolveOrgLogoAbsolutePath,
+  saveOrgLogoFile,
+} from './org-logo.storage';
 
 export type HardResetSummary = {
   servedClients: number;
@@ -621,6 +628,135 @@ export class OrganizationService {
     });
 
     return { ok: true as const };
+  }
+
+  async getBranding(organizationId: string) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { id: true, name: true, logoPath: true },
+    });
+    if (!organization) {
+      throw new NotFoundException('Organizacao nao encontrada.');
+    }
+    return {
+      name: organization.name,
+      hasLogo: Boolean(organization.logoPath),
+    };
+  }
+
+  async uploadLogo(
+    organizationId: string,
+    actorUserId: string,
+    actorRole: string,
+    file: Express.Multer.File | undefined,
+  ) {
+    this.assertCanManageBrand(actorRole);
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Envie um arquivo de logo.');
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      throw new BadRequestException('Logo deve ter no maximo 2 MB.');
+    }
+
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { logoPath: true },
+    });
+    if (!organization) {
+      throw new NotFoundException('Organizacao nao encontrada.');
+    }
+
+    let saved;
+    try {
+      saved = await saveOrgLogoFile({
+        organizationId,
+        buffer: file.buffer,
+        mimeType: file.mimetype,
+        originalName: file.originalname,
+      });
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Nao foi possivel gravar o logo.',
+      );
+    }
+
+    if (organization.logoPath && organization.logoPath !== saved.relativePath) {
+      await deleteOrgLogoFile(organization.logoPath);
+    }
+
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: {
+        logoPath: saved.relativePath,
+        logoMimeType: saved.mimeType,
+      },
+    });
+
+    await this.audit.log({
+      action: 'organization.logo_uploaded',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'Organization',
+      entityId: organizationId,
+    });
+
+    return { hasLogo: true };
+  }
+
+  async deleteLogo(
+    organizationId: string,
+    actorUserId: string,
+    actorRole: string,
+  ) {
+    this.assertCanManageBrand(actorRole);
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { logoPath: true },
+    });
+    if (!organization) {
+      throw new NotFoundException('Organizacao nao encontrada.');
+    }
+    await deleteOrgLogoFile(organization.logoPath);
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { logoPath: null, logoMimeType: null },
+    });
+    await this.audit.log({
+      action: 'organization.logo_removed',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'Organization',
+      entityId: organizationId,
+    });
+    return { hasLogo: false };
+  }
+
+  async streamLogo(organizationId: string, res: Response) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { logoPath: true, logoMimeType: true },
+    });
+    if (!organization?.logoPath) {
+      throw new NotFoundException('Esta consultoria ainda nao enviou logo.');
+    }
+    const absolute = resolveOrgLogoAbsolutePath(organization.logoPath);
+    if (!absolute || !existsSync(absolute)) {
+      throw new NotFoundException('Arquivo de logo nao encontrado.');
+    }
+    res.setHeader('Content-Type', organization.logoMimeType || 'image/png');
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    createReadStream(absolute).pipe(res);
+  }
+
+  private assertCanManageBrand(actorRole: string) {
+    if (
+      actorRole !== MembershipRole.OWNER &&
+      actorRole !== MembershipRole.ADMIN
+    ) {
+      throw new ForbiddenException(
+        'Apenas OWNER ou ADMIN podem alterar a marca da consultoria.',
+      );
+    }
   }
 
   private assertCanManageMembers(actorRole: string) {

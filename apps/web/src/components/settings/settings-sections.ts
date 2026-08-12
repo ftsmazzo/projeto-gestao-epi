@@ -1,4 +1,5 @@
 export const SETTINGS_SECTION_IDS = [
+  'marca',
   'contatos',
   'equipe',
   'biometria',
@@ -25,6 +26,11 @@ export const SETTINGS_NAV: SettingsNavGroup[] = [
     id: 'conta',
     label: 'Conta',
     items: [
+      {
+        id: 'marca',
+        label: 'Marca',
+        hint: 'Logo da consultoria no painel do gestor',
+      },
       {
         id: 'contatos',
         label: 'Contatos',
@@ -68,5 +74,5 @@ export function parseSettingsSection(
   if (raw && (SETTINGS_SECTION_IDS as readonly string[]).includes(raw)) {
     return raw as SettingsSectionId;
   }
-  return 'contatos';
+  return 'marca';
 }

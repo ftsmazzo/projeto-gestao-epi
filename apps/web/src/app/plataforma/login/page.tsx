@@ -4,10 +4,10 @@ import { APP_NAME } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AuthLayout } from '../../components/AuthLayout';
-import { loginAccount } from '../../lib/auth';
+import { AuthLayout } from '../../../components/AuthLayout';
+import { loginPlatform } from '../../../lib/platform-auth';
 
-export default function LoginPage() {
+export default function PlatformLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,8 +19,8 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      await loginAccount({ email, password });
-      router.push('/dashboard');
+      await loginPlatform({ email, password });
+      router.push('/plataforma');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha no login');
     } finally {
@@ -30,28 +30,29 @@ export default function LoginPage() {
 
   return (
     <AuthLayout
-      kicker={`${APP_NAME} · Consultoria`}
+      kicker={`${APP_NAME} · Plataforma`}
       footer={
         <>
-          Ainda nao tem acesso? A {APP_NAME} cria sua consultoria.
+          Consultoria? <Link href="/login">Entrar no painel do gestor</Link>
           <br />
           Empresa cliente? <Link href="/portal/login">Entrar no portal</Link>
         </>
       }
     >
-      <p className="page-kicker">Acesso da gestao</p>
-      <h1 id="login-title" className="page-title">
+      <p className="page-kicker">Painel SaaS</p>
+      <h1 id="platform-login-title" className="page-title">
         Entrar
       </h1>
       <p className="page-lead">
-        Painel da consultoria. Gestores da empresa usam o portal do cliente.
+        Gestao das consultorias clientes da {APP_NAME}: franquia, preco de
+        atacado e status do contrato.
       </p>
 
       <form className="form" onSubmit={onSubmit} noValidate>
         <div className="field">
-          <label htmlFor="login-email">Email</label>
+          <label htmlFor="platform-email">Email</label>
           <input
-            id="login-email"
+            id="platform-email"
             type="email"
             autoComplete="email"
             required
@@ -60,17 +61,9 @@ export default function LoginPage() {
           />
         </div>
         <div className="field">
-          <div className="field-label-row">
-            <label htmlFor="login-password">Senha</label>
-            <Link
-              className="field-link"
-              href={`/esqueci-senha?email=${encodeURIComponent(email)}`}
-            >
-              Esqueci a senha
-            </Link>
-          </div>
+          <label htmlFor="platform-password">Senha</label>
           <input
-            id="login-password"
+            id="platform-password"
             type="password"
             autoComplete="current-password"
             required

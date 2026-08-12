@@ -19,11 +19,15 @@ export interface HealthResponse {
 
 export type MembershipRole = 'OWNER' | 'ADMIN' | 'MEMBER';
 
+export type OrganizationStatus = 'ACTIVE' | 'SUSPENDED';
+
 export interface AuthOrganization {
   id: string;
   name: string;
   slug: string;
   contractedLifeQuota: number;
+  status: OrganizationStatus;
+  hasLogo: boolean;
 }
 
 export interface AuthUser {
@@ -32,6 +36,63 @@ export interface AuthUser {
   name: string;
   membershipRole: MembershipRole;
   organization: AuthOrganization;
+}
+
+/** Usuario do Painel SaaS da ProntEPI (nao e Membership de consultoria). */
+export interface PlatformAuthUser {
+  id: string;
+  email: string;
+  name: string;
+  isPlatformAdmin: true;
+}
+
+export interface PlatformAuthResponse {
+  accessToken: string;
+  user: PlatformAuthUser;
+}
+
+export interface PlatformTenantOwner {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface PlatformTenantRow {
+  id: string;
+  name: string;
+  slug: string;
+  status: OrganizationStatus;
+  contractedLifeQuota: number;
+  allocatedLives: number;
+  usedLives: number;
+  availableLives: number;
+  wholesaleUnitPriceCents: number;
+  /** Franquia × preco de atacado (o que a ProntEPI cobra da consultoria). */
+  wholesaleMonthlyCents: number;
+  activeClients: number;
+  owner: PlatformTenantOwner | null;
+  createdAt: string;
+  suspendedAt: string | null;
+  suspendReason: string | null;
+}
+
+export interface PlatformOverview {
+  tenants: { total: number; active: number; suspended: number };
+  lives: { contracted: number; allocated: number; used: number };
+  wholesaleMonthlyCents: number;
+  rows: PlatformTenantRow[];
+}
+
+export interface CreatePlatformTenantResult {
+  tenant: PlatformTenantRow;
+  owner: {
+    name: string;
+    email: string;
+    temporaryPassword: string | null;
+    accessUrl: string;
+    createdUser: boolean;
+    deliveryEnabled: boolean;
+  };
 }
 
 export interface AuthResponse {

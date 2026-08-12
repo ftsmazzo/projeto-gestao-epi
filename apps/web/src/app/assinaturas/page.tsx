@@ -191,9 +191,8 @@ function AssinaturasContent({ user }: { user: AuthUser }) {
           unitPriceCents: cents,
           defaultTrialDays: Number(trialDays) || 14,
           defaultTrialLives: Number(trialLives) || 5,
-          contractedLifeQuota: Number(franchise) || 0,
         }),
-      'Tabela de preco e franquia atualizadas.',
+      'Tabela de preco atualizada.',
     );
   }
 
@@ -230,9 +229,9 @@ function AssinaturasContent({ user }: { user: AuthUser }) {
           <p className="page-kicker">Consultoria</p>
           <h1 className="page-title">Assinaturas e entradas</h1>
           <p className="page-lead">
-            A cobranca e <strong>por vida</strong>: custo da vida × vidas
-            contratadas. Exemplo: 100 vidas a R$ 1,20 = R$ 120,00 / mes. Redutor
-            de volume e desconto extra em cima disso.
+            Quanto cobrar dos seus CNPJs: custo da vida × vidas alocadas.
+            A franquia total e definida pela ProntEPI. Redutor de volume e
+            desconto extra em cima da sua tabela.
           </p>
         </div>
       </header>
@@ -308,14 +307,16 @@ function AssinaturasContent({ user }: { user: AuthUser }) {
                     />
                   </div>
                   <div className="field">
-                    <label htmlFor="franchise">Franquia total (vidas)</label>
+                    <label htmlFor="franchise">Franquia ProntEPI (vidas)</label>
                     <input
                       id="franchise"
                       value={franchise}
-                      onChange={(e) => setFranchise(e.target.value)}
-                      disabled={!canManage || saving}
-                      inputMode="numeric"
+                      readOnly
+                      disabled
                     />
+                    <p className="field-hint">
+                      Teto vendido pela ProntEPI. So o Painel SaaS altera.
+                    </p>
                   </div>
                   <div className="field">
                     <label htmlFor="trial-days">Dias de teste padrao</label>

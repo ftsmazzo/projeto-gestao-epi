@@ -1,6 +1,6 @@
 import {
   BadRequestException,
-  ConflictException,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -9,6 +9,7 @@ import {
   ClientUserAccessStatus,
   ClientUserRole,
   MembershipRole,
+  OrganizationStatus,
   ServedClientStatus,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
@@ -23,16 +24,6 @@ import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
 import type { ClientJwtPayload, JwtPayload } from './types/jwt-payload';
 
-function slugify(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48);
-}
-
 @Injectable()
 export class AuthService {
   constructor(
@@ -42,74 +33,91 @@ export class AuthService {
     private readonly communications: CommunicationsService,
   ) {}
 
-  async register(dto: RegisterDto) {
+  async register(_dto: RegisterDto) {
+    throw new ForbiddenException(
+      'O cadastro de consultoria e feito pela ProntEPI no Painel SaaS.',
+    );
+  }
+
+  private parsePlatformAdminEmails() {
+    return (process.env.PLATFORM_ADMIN_EMAILS ?? '')
+      .split(',')
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  private assertOrganizationActive(status: OrganizationStatus) {
+    if (status === OrganizationStatus.SUSPENDED) {
+      throw new UnauthorizedException(
+        'Esta consultoria esta suspensa. Fale com a ProntEPI.',
+      );
+    }
+  }
+
+  async platformLogin(dto: LoginDto) {
     const email = dto.email.trim().toLowerCase();
-    const existing = await this.prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      throw new ConflictException('Email ja cadastrado');
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      throw new UnauthorizedException('Credenciais invalidas');
     }
 
-    const baseSlug = slugify(dto.organizationName) || 'organizacao';
-    const slug = await this.ensureUniqueSlug(baseSlug);
-    const passwordHash = await bcrypt.hash(dto.password, 12);
-    const contractedLifeQuota = dto.contractedLifeQuota ?? 0;
+    const valid = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!valid) {
+      throw new UnauthorizedException('Credenciais invalidas');
+    }
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      const organization = await tx.organization.create({
-        data: {
-          name: dto.organizationName.trim(),
-          slug,
-          contractedLifeQuota,
-        },
+    const allowlisted = this.parsePlatformAdminEmails().includes(email);
+    if (!user.isPlatformAdmin && !allowlisted) {
+      throw new UnauthorizedException(
+        'Este usuario nao tem acesso ao Painel SaaS da ProntEPI.',
+      );
+    }
+
+    if (!user.isPlatformAdmin && allowlisted) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { isPlatformAdmin: true },
       });
-
-      const user = await tx.user.create({
-        data: {
-          email,
-          name: dto.name.trim(),
-          passwordHash,
-        },
-      });
-
-      const membership = await tx.membership.create({
-        data: {
-          userId: user.id,
-          organizationId: organization.id,
-          role: MembershipRole.OWNER,
-        },
-      });
-
-      return { organization, user, membership };
-    });
+    }
 
     await this.audit.log({
-      action: 'auth.register',
-      organizationId: result.organization.id,
-      userId: result.user.id,
-      entityType: 'Organization',
-      entityId: result.organization.id,
-      metadata: {
-        email: result.user.email,
-        membershipRole: result.membership.role,
-        contractedLifeQuota: result.organization.contractedLifeQuota,
-      },
+      action: 'auth.platform_login',
+      userId: user.id,
+      entityType: 'User',
+      entityId: user.id,
+      metadata: { email: user.email },
     });
 
     const accessToken = await this.signToken({
-      sub: result.user.id,
-      email: result.user.email,
-      organizationId: result.organization.id,
-      audience: 'consultoria',
-      membershipRole: result.membership.role,
+      sub: user.id,
+      email: user.email,
+      organizationId: '',
+      audience: 'plataforma',
+      membershipRole: 'PLATFORM_ADMIN',
     });
 
     return {
       accessToken,
-      user: this.toPublicUser(
-        result.user,
-        result.organization,
-        result.membership.role,
-      ),
+      user: this.toPlatformUser(user),
+    };
+  }
+
+  async platformMe(payload: JwtPayload) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+    });
+    if (!user || !user.isPlatformAdmin) {
+      throw new UnauthorizedException('Sessao invalida');
+    }
+    return this.toPlatformUser(user);
+  }
+
+  private toPlatformUser(user: { id: string; email: string; name: string }) {
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      isPlatformAdmin: true as const,
     };
   }
 
@@ -141,6 +149,8 @@ export class AuthService {
         'Usuario sem organizacao vinculada. Se voce e gestor de cliente, use o portal do cliente.',
       );
     }
+
+    this.assertOrganizationActive(membership.organization.status);
 
     await this.audit.log({
       action: 'auth.login',
@@ -185,6 +195,7 @@ export class AuthService {
     }
 
     const membership = user.memberships[0];
+    this.assertOrganizationActive(membership.organization.status);
     return this.toPublicUser(user, membership.organization, membership.role);
   }
 
@@ -221,7 +232,7 @@ export class AuthService {
       },
       include: {
         servedClient: true,
-        organization: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true, status: true } },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -246,7 +257,7 @@ export class AuthService {
         },
         include: {
           servedClient: true,
-          organization: { select: { id: true, name: true } },
+          organization: { select: { id: true, name: true, status: true } },
         },
         orderBy: { createdAt: 'asc' },
       });
@@ -343,9 +354,10 @@ export class AuthService {
         cnpj: string;
         status: ServedClientStatus;
       };
-      organization: { id: string; name: string };
+      organization: { id: string; name: string; status: OrganizationStatus };
     },
   ) {
+    this.assertOrganizationActive(membership.organization.status);
     const updated = await this.prisma.clientUserMembership.update({
       where: { id: membership.id },
       data: {
@@ -354,7 +366,7 @@ export class AuthService {
       },
       include: {
         servedClient: true,
-        organization: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true, status: true } },
       },
     });
 
@@ -401,13 +413,14 @@ export class AuthService {
       },
       include: {
         servedClient: true,
-        organization: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true, status: true } },
         user: { select: { id: true, email: true, name: true } },
       },
     });
     if (!membership || !membership.user) {
       throw new UnauthorizedException('Sessao invalida');
     }
+    this.assertOrganizationActive(membership.organization.status);
     const trialExpired = await expireTrialForClient(
       this.prisma,
       servedClientId,
@@ -430,7 +443,7 @@ export class AuthService {
     role: ClientUserRole;
     mustChangePassword: boolean;
     accessStatus: ClientUserAccessStatus;
-    organization: { id: string; name: string };
+    organization: { id: string; name: string; status?: OrganizationStatus };
     servedClient: {
       id: string;
       legalName: string;
@@ -464,18 +477,6 @@ export class AuthService {
 
   private async signToken(payload: JwtPayload) {
     return this.jwt.signAsync(payload);
-  }
-
-  private async ensureUniqueSlug(base: string) {
-    let candidate = base;
-    let suffix = 1;
-    while (
-      await this.prisma.organization.findUnique({ where: { slug: candidate } })
-    ) {
-      candidate = `${base}-${suffix}`;
-      suffix += 1;
-    }
-    return candidate;
   }
 
   /**
@@ -708,6 +709,8 @@ export class AuthService {
       name: string;
       slug: string;
       contractedLifeQuota: number;
+      status: OrganizationStatus;
+      logoPath?: string | null;
     },
     membershipRole: MembershipRole,
   ) {
@@ -721,6 +724,8 @@ export class AuthService {
         name: organization.name,
         slug: organization.slug,
         contractedLifeQuota: organization.contractedLifeQuota,
+        status: organization.status,
+        hasLogo: Boolean(organization.logoPath),
       },
     };
   }

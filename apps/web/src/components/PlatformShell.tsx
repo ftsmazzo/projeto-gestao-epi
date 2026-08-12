@@ -1,54 +1,20 @@
 'use client';
 
-import type { AuthUser } from '@gestao-epi/shared';
+import type { PlatformAuthUser } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
-import { OPS_NAV } from '../lib/nav';
-import { PoweredBy } from './PoweredBy';
-import { TenantBrand } from './TenantBrand';
-import {
-  IconBuilding,
-  IconHome,
-  IconMenu,
-  IconPackage,
-  IconSettings,
-  IconWallet,
-} from './ui/NavIcons';
+import { PLATFORM_NAV } from '../lib/nav';
+import { Brand } from './Brand';
+import { IconBuilding, IconMenu } from './ui/NavIcons';
 
-type OpsShellProps = {
+type Props = {
   children: ReactNode;
-  user?: AuthUser | null;
+  user?: PlatformAuthUser | null;
   onLogout?: () => void;
 };
 
-function navIcon(href: string) {
-  switch (href) {
-    case '/dashboard':
-      return <IconHome />;
-    case '/clientes':
-      return <IconBuilding />;
-    case '/assinaturas':
-      return <IconWallet />;
-    case '/configuracoes':
-      return <IconSettings />;
-    case '/epis':
-      return <IconPackage />;
-    default:
-      return <IconHome />;
-  }
-}
-
-function currentNavLabel(pathname: string) {
-  const match = OPS_NAV.find(
-    (item) =>
-      pathname === item.href ||
-      (item.href !== '/dashboard' && pathname.startsWith(item.href)),
-  );
-  return match?.label ?? 'Consultoria';
-}
-
-export function OpsShell({ children, user, onLogout }: OpsShellProps) {
+export function PlatformShell({ children, user, onLogout }: Props) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -63,26 +29,19 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
       </a>
 
       <aside
-        id="ops-nav"
+        id="platform-nav"
         className={`ops-sidebar ${menuOpen ? 'is-open' : ''}`}
-        aria-label="Navegacao da consultoria"
+        aria-label="Navegacao da plataforma"
       >
         <div className="ops-sidebar-brand">
-          {user ? (
-            <TenantBrand
-              name={user.organization.name}
-              hasLogo={user.organization.hasLogo}
-            />
-          ) : (
-            <TenantBrand name="Consultoria" />
-          )}
+          <Brand href="/plataforma" compact />
+          <span className="ops-sidebar-brand__meta">SaaS</span>
         </div>
-        <p className="ops-nav-label">Principal</p>
+        <p className="ops-nav-label">Plataforma</p>
         <nav className="ops-nav">
-          {OPS_NAV.map((item) => {
+          {PLATFORM_NAV.map((item) => {
             const active =
-              pathname === item.href ||
-              (item.href !== '/dashboard' && pathname.startsWith(item.href));
+              pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
               <Link
                 key={item.href}
@@ -91,7 +50,9 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
                 onClick={() => setMenuOpen(false)}
               >
                 <span className="ops-nav-link__row">
-                  <span className="ops-nav-link__icon">{navIcon(item.href)}</span>
+                  <span className="ops-nav-link__icon">
+                    <IconBuilding />
+                  </span>
                   <span>{item.label}</span>
                 </span>
               </Link>
@@ -100,10 +61,9 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
         </nav>
         <div className="ops-sidebar-note">
           <p className="field-hint">
-            Implante o cliente aqui. O dia a dia da empresa acontece no painel
-            do cliente.
+            Venda de franquia para consultorias. A Inseg e qualquer outra sao
+            tenants aqui.
           </p>
-          <PoweredBy compact />
         </div>
       </aside>
 
@@ -123,19 +83,19 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
               type="button"
               className="btn btn-secondary ops-menu-toggle"
               aria-expanded={menuOpen}
-              aria-controls="ops-nav"
+              aria-controls="platform-nav"
               aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
               onClick={() => setMenuOpen((open) => !open)}
             >
               <IconMenu />
             </button>
-            <span className="ops-topbar-crumb">{currentNavLabel(pathname)}</span>
+            <span className="ops-topbar-crumb">Painel SaaS</span>
           </div>
           <div className="ops-topbar-right">
             {user ? (
               <div className="ops-user">
                 <span className="ops-user-name">{user.name}</span>
-                <span className="ops-user-org">{user.organization.name}</span>
+                <span className="ops-user-org">ProntEPI</span>
               </div>
             ) : null}
             {onLogout ? (

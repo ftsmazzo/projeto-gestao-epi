@@ -5,7 +5,7 @@ import type {
   OrganizationMember,
   OrganizationMemberAccessResult,
 } from '@gestao-epi/shared';
-import { apiFetch } from './auth';
+import { apiFetch, getAccessToken, getApiUrl } from './auth';
 
 export type HardResetSummary = {
   servedClients: number;
@@ -122,6 +122,49 @@ export function removeOrganizationMember(membershipId: string) {
   return apiFetch<{ ok: true }>(`/organization/members/${membershipId}`, {
     method: 'DELETE',
   });
+}
+
+export function getOrganizationBranding() {
+  return apiFetch<{ name: string; hasLogo: boolean }>('/organization/branding');
+}
+
+export async function uploadOrganizationLogo(file: File) {
+  const token = getAccessToken();
+  const body = new FormData();
+  body.append('file', file);
+  const response = await fetch(`${getApiUrl()}/organization/logo`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body,
+  });
+  if (!response.ok) {
+    let message = `Erro HTTP ${response.status}`;
+    try {
+      const payload = (await response.json()) as { message?: string | string[] };
+      if (Array.isArray(payload.message)) message = payload.message.join(', ');
+      else if (payload.message) message = payload.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as { hasLogo: boolean };
+}
+
+export function deleteOrganizationLogo() {
+  return apiFetch<{ hasLogo: boolean }>('/organization/logo', {
+    method: 'DELETE',
+  });
+}
+
+export async function fetchOrganizationLogoObjectUrl() {
+  const token = getAccessToken();
+  const response = await fetch(`${getApiUrl()}/organization/logo`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!response.ok) return null;
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
 }
 
 export function membershipRoleLabel(role: MembershipRole) {

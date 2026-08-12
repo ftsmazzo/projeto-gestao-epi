@@ -53,3 +53,27 @@ export class ClientJwtAuthGuard extends AuthGuard('jwt') {
     return user;
   }
 }
+
+@Injectable()
+export class PlatformJwtAuthGuard extends AuthGuard('jwt') {
+  handleRequest<TUser = JwtPayload>(
+    err: unknown,
+    user: TUser | false,
+    _info?: unknown,
+    _context?: ExecutionContext,
+    _status?: unknown,
+  ): TUser {
+    if (err || !user) {
+      throw err instanceof Error
+        ? err
+        : new UnauthorizedException('Sessao invalida');
+    }
+    const payload = user as unknown as JwtPayload;
+    if (payload.audience !== 'plataforma') {
+      throw new UnauthorizedException(
+        'Token da consultoria ou do portal nao autenticado no Painel SaaS.',
+      );
+    }
+    return user;
+  }
+}

@@ -5,7 +5,11 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { ClientJwtAuthGuard, JwtAuthGuard } from './jwt-auth.guard';
+import {
+  ClientJwtAuthGuard,
+  JwtAuthGuard,
+  PlatformJwtAuthGuard,
+} from './jwt-auth.guard';
 import type { ClientJwtPayload, JwtPayload } from './types/jwt-payload';
 
 @Controller('auth')
@@ -51,5 +55,16 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
   ) {
     return this.authService.clientChangePassword(user, dto);
+  }
+
+  @Post('platform/login')
+  platformLogin(@Body() dto: LoginDto) {
+    return this.authService.platformLogin(dto);
+  }
+
+  @UseGuards(PlatformJwtAuthGuard)
+  @Get('platform/me')
+  platformMe(@CurrentUser() user: JwtPayload) {
+    return this.authService.platformMe(user);
   }
 }

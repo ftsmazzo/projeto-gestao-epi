@@ -17,6 +17,7 @@ import { PgroModule } from './pgro/pgro.module';
 import { OrganizationModule } from './organization/organization.module';
 import { PortalModule } from './portal/portal.module';
 import { CommunicationsModule } from './communications/communications.module';
+import { PlatformModule } from './platform/platform.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
@@ -42,6 +43,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     PortalModule,
     CommunicationsModule,
     SubscriptionsModule,
+    PlatformModule,
     HealthModule,
   ],
 })
