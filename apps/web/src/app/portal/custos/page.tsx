@@ -132,17 +132,17 @@ function PortalCustosContent() {
   }
 
   return (
-    <div className="portal-page">
-      <header className="page-header">
+    <div className="portal-home">
+      <header className="dash-page-header">
         <div>
-          <p className="eyebrow">Painel do Cliente</p>
+          <p className="page-kicker">Painel do Cliente</p>
           <h1 className="page-title">Custos</h1>
           <p className="page-lead">
             Preco por EPI, totais por item, setor e funcao. Informe o valor na
             entrada de estoque.
           </p>
         </div>
-        <div className="btn-row">
+        <div className="dash-page-header__actions">
           <Link href="/portal/estoque" className="btn btn-primary">
             Entrada com valor
           </Link>
@@ -157,11 +157,9 @@ function PortalCustosContent() {
         <>
           <StockDashboardKpis items={kpis} />
 
-          <p className="field-hint" style={{ marginTop: '0.75rem' }}>
-            {data.ocr.message}
-          </p>
+          <p className="field-hint">{data.ocr.message}</p>
 
-          <div className="dash-panel-grid" style={{ marginTop: '1.25rem' }}>
+          <div className="dash-panel-grid">
             <section className="dash-panel" aria-labelledby="custos-epi-title">
               <h2 id="custos-epi-title" className="dash-panel__title">
                 Por EPI
@@ -289,7 +287,6 @@ function PortalCustosContent() {
 
           <section
             className="dash-panel"
-            style={{ marginTop: '1.25rem' }}
             aria-labelledby="custos-compras-title"
           >
             <h2 id="custos-compras-title" className="dash-panel__title">
@@ -336,7 +333,6 @@ function PortalCustosContent() {
 
           <section
             className="dash-panel"
-            style={{ marginTop: '1.25rem' }}
             aria-labelledby="custos-nota-title"
           >
             <h2 id="custos-nota-title" className="dash-panel__title">

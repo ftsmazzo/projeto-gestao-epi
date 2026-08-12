@@ -71,7 +71,10 @@ a.btn-ghost:hover {
 /* ——— Consultoria shell: AdminLTE grid ——— */
 .ops-shell {
   display: flex;
+  flex-direction: row;
+  align-items: stretch;
   min-height: 100vh;
+  min-height: 100dvh;
   background: var(--color-bg);
 }
 
@@ -180,20 +183,29 @@ a.btn-ghost:hover {
 }
 
 .ops-content {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  background: var(--color-bg);
 }
 
 .ops-topbar {
   position: sticky;
   top: 0;
-  min-height: var(--header-height);
-  padding: 0.45rem 1rem;
+  z-index: 20;
+  min-height: 3.75rem;
+  padding: 0.7rem 1.35rem;
   background: #fff;
   border-bottom: 1px solid var(--color-border);
   box-shadow: none;
+  justify-content: space-between;
+}
+
+.ops-topbar-right {
+  margin-left: auto;
+  gap: 1rem;
+  padding-left: 1rem;
 }
 
 .ops-topbar-crumb {
@@ -209,7 +221,7 @@ a.btn-ghost:hover {
 .ops-main {
   max-width: none;
   width: 100%;
-  padding: 1rem 1.25rem 2rem;
+  padding: 1.35rem 1.5rem 2.25rem;
 }
 
 @media (min-width: 960px) {
@@ -217,9 +229,13 @@ a.btn-ghost:hover {
     position: sticky;
     top: 0;
     inset: auto;
-    height: 100vh;
+    align-self: stretch;
+    width: var(--sidebar-width);
+    min-height: 100vh;
+    height: auto;
     transform: none;
     flex-shrink: 0;
+    background: var(--color-sidebar);
   }
 
   .ops-menu-toggle {
@@ -268,10 +284,27 @@ a.btn-ghost:hover {
 }
 
 .portal-topbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
   background: #fff;
   border-bottom: 1px solid var(--color-border);
   backdrop-filter: none;
-  min-height: var(--header-height);
+  min-height: 3.75rem;
+  padding: 0.7rem 1.35rem;
+}
+
+.portal-topbar-right {
+  margin-left: auto;
+  gap: 1rem;
+  padding-left: 1.25rem;
+  flex-shrink: 0;
+}
+
+.portal-user {
+  padding-right: 0.15rem;
 }
 
 .portal-brand-kicker {
@@ -285,7 +318,7 @@ a.btn-ghost:hover {
 .portal-main {
   width: 100%;
   max-width: none;
-  padding: 1rem 1.15rem 5.5rem;
+  padding: 1.25rem 1.35rem 5.75rem;
 }
 
 @media (min-width: 960px) {
@@ -298,12 +331,14 @@ a.btn-ghost:hover {
     flex-direction: column;
     width: var(--sidebar-width);
     flex-shrink: 0;
+    align-self: stretch;
     background: var(--color-sidebar);
     color: #c2c7d0;
     min-height: 100vh;
+    min-height: 100dvh;
+    height: auto;
     position: sticky;
     top: 0;
-    height: 100vh;
     overflow-y: auto;
   }
 
@@ -362,7 +397,7 @@ a.btn-ghost:hover {
   }
 
   .portal-main {
-    padding: 1rem 1.25rem 2rem;
+    padding: 1.35rem 1.5rem 2.25rem;
   }
 
   .portal-logout-desktop,
@@ -672,6 +707,92 @@ a.btn-ghost:hover {
 
 .journey-step--current {
   box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.18);
+}
+
+.portal-page,
+.module-page,
+.portal-home,
+.catalog-page,
+.settings-page {
+  display: grid;
+  gap: 1.35rem;
+}
+
+.page-header,
+.dash-page-header,
+.ux-page-header,
+.module-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+  margin: 0;
+}
+
+.page-header .btn-row,
+.dash-page-header .btn-row,
+.dash-page-header__actions {
+  margin: 0;
+  padding-top: 0.15rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.35rem;
+  color: var(--color-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dash-panel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+@media (max-width: 860px) {
+  .dash-panel-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dash-panel__title {
+  margin: 0;
+  padding: 0.95rem 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.dash-panel > .page-lead,
+.dash-panel > .field-hint,
+.dash-panel > .form-panel {
+  padding-top: 0.35rem;
+}
+
+.dash-kpi-grid,
+.quota-summary,
+.dash-charts,
+.action-strip,
+.estrutura-sector-list,
+.catalog-split,
+.dash-panel-grid {
+  gap: 1.25rem;
+}
+
+.dash-kpi-grid,
+.quota-summary,
+.dash-charts,
+.action-strip {
+  margin-bottom: 0;
+}
+
+.ops-main,
+.portal-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 
 @media print {
