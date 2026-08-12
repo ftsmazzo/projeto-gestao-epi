@@ -34,6 +34,14 @@ enum ServedClientStatus {
   INACTIVE
 }
 
+/// Estado comercial da assinatura do cliente atendido (CNPJ).
+enum ClientSubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+}
+
 enum OperationalUnitStatus {
   ACTIVE
   INACTIVE
@@ -106,6 +114,8 @@ model Organization {
   workerBiometricConsents WorkerBiometricConsent[]
   workerFacialEnrollmentLinks WorkerFacialEnrollmentLink[]
   invoiceDocuments InvoiceDocument[]
+  lifePricing      OrganizationLifePricing?
+  clientSubscriptions ClientSubscription[]
 }
 
 /// Contato oficial da consultoria usado nas comunicacoes com clientes
@@ -247,10 +257,68 @@ model ServedClient {
   workerBiometricConsents WorkerBiometricConsent[]
   workerFacialEnrollmentLinks WorkerFacialEnrollmentLink[]
   invoiceDocuments InvoiceDocument[]
+  subscription     ClientSubscription?
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
   @@index([status])
+}
+
+/// Tabela de preco do produto: custo unitario da vida + redutores por volume.
+model OrganizationLifePricing {
+  id                String   @id @default(cuid())
+  organizationId    String   @unique
+  /// Custo mensal de 1 vida, em centavos BRL.
+  unitPriceCents    Int      @default(0)
+  currency          String   @default("BRL")
+  defaultTrialDays  Int      @default(14)
+  defaultTrialLives Int      @default(5)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reducers     LifePriceReducer[]
+}
+
+/// Quanto mais vidas, maior o desconto no valor unitario.
+model LifePriceReducer {
+  id         String   @id @default(cuid())
+  pricingId  String
+  minLives   Int
+  percentOff Int
+  label      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  pricing OrganizationLifePricing @relation(fields: [pricingId], references: [id], onDelete: Cascade)
+
+  @@unique([pricingId, minLives])
+  @@index([pricingId])
+}
+
+/// Assinatura comercial de um cliente atendido (entrada no produto).
+model ClientSubscription {
+  id                        String                   @id @default(cuid())
+  organizationId            String
+  servedClientId            String                   @unique
+  status                    ClientSubscriptionStatus
+  trialLives                Int?
+  trialEndsAt               DateTime?
+  /// Quando preenchido, substitui o valor de tabela (aumento ou reducao).
+  monthlyPriceCentsOverride Int?
+  /// Vidas no momento da suspensao, para restaurar depois do pagamento.
+  livesSnapshot             Int?
+  suspendReason             String?
+  suspendedAt               DateTime?
+  notes                     String?
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, status])
 }
 
 /// Usuario operacional da empresa cliente (gestor / estoque). Nao consome vidas.

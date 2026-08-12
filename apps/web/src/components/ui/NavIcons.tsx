@@ -110,6 +110,16 @@ export function IconShield(props: IconProps) {
   );
 }
 
+export function IconWallet(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <path d="M3 8.5A2.5 2.5 0 0 1 5.5 6H19a1 1 0 0 1 1 1v2" />
+      <path d="M3 8.5V18a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7H8.5" />
+      <circle cx="16.5" cy="14" r="1" />
+    </IconBase>
+  );
+}
+
 export function IconMenu(props: IconProps) {
   return (
     <IconBase {...props}>

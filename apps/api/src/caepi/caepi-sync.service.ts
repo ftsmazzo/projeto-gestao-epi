@@ -78,7 +78,15 @@ export class CaepiSyncService {
       usesOfficialDefaults: !config.sourceUrlOverride,
       autoSyncEnabled: config.autoSyncEnabled,
       syncCron: config.syncCron,
-      lastImport: lastRun,
+      lastImport: lastRun
+        ? {
+            ...lastRun,
+            errorMessage:
+              lastRun.status === CaepiImportRunStatus.FAILED
+                ? lastRun.errorMessage
+                : null,
+          }
+        : lastRun,
       activeRun: running,
       operationalMessage: this.buildOperationalMessage(
         base.certificates,
@@ -324,15 +332,17 @@ export class CaepiSyncService {
           rowsSkipped: result.rowsSkipped,
           certificatesTotalAfter: result.certificatesTotalAfter,
           normsTotalAfter: result.normsTotalAfter,
-          errorMessage:
-            downloaded.attemptErrors.length > 0
-              ? `Fontes anteriores falharam antes do sucesso: ${downloaded.attemptErrors
-                  .slice(0, 5)
-                  .join(' | ')}`.slice(0, 2000)
-              : null,
+          errorMessage: null,
         },
       });
 
+      if (downloaded.attemptErrors.length > 0) {
+        this.logger.warn(
+          `Sync CAEPI ${runId} SUCCESS apos fallback. Tentativas: ${downloaded.attemptErrors
+            .slice(0, 5)
+            .join(' | ')}`,
+        );
+      }
       this.logger.log(
         `Sync CAEPI ${runId} SUCCESS fonte=${downloaded.sourceUrl} certs=${result.certificatesTotalAfter}`,
       );

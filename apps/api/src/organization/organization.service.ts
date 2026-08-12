@@ -798,6 +798,7 @@ export class OrganizationService {
         await tx.clientJobFunction.deleteMany({ where: { organizationId } });
         await tx.clientSector.deleteMany({ where: { organizationId } });
         await tx.operationalUnit.deleteMany({ where: { organizationId } });
+        await tx.clientSubscription.deleteMany({ where: { organizationId } });
         await tx.servedClient.deleteMany({ where: { organizationId } });
 
         // 5) Catalogo do tenant

@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Guia de gravação — ProntEPI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --teal: #0f766e;
+      --teal-h: #0d9488;
+      --teal-d: #115e59;
+      --teal-m: #e6f5f3;
+      --ink: #0b1220;
+      --ink2: #334155;
+      --muted: #64748b;
+      --bg: #e9eef3;
+      --surface: #fff;
+      --border: #d7dee8;
+      --warn: #b45309;
+      --warn-bg: #fffbeb;
+      --ok: #047857;
+      --ok-bg: #ecfdf5;
+      --danger: #b91c1c;
+      --graphite: #0f172a;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(900px 400px at 10% -10%, #c6ece7 0%, transparent 50%),
+        linear-gradient(180deg, #f7fafb 0%, var(--bg) 50%, #e2e9f0 100%);
+      line-height: 1.5;
+    }
+    a { color: var(--teal); }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+    header.hero {
+      background: var(--graphite);
+      color: #fff;
+      border-radius: 20px;
+      padding: 2rem 2rem 1.75rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
+    }
+    header.hero .brand {
+      font-size: 0.78rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: #5eead4;
+      font-weight: 700;
+    }
+    header.hero h1 { margin: 0.35rem 0 0.4rem; font-size: 2rem; letter-spacing: -0.03em; }
+    header.hero p { margin: 0; color: #cbd5e1; max-width: 52rem; }
+    .meta {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.1rem;
+    }
+    .chip {
+      background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+      border-radius: 999px; padding: 0.28rem 0.7rem; font-size: 0.8rem; font-weight: 600;
+    }
+    nav.toc {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1rem 1.2rem;
+      margin-bottom: 1.5rem;
+    }
+    nav.toc h2 { margin: 0 0 0.6rem; font-size: 0.95rem; }
+    nav.toc ol { margin: 0; padding-left: 1.2rem; columns: 2; gap: 2rem; }
+    nav.toc a { text-decoration: none; font-weight: 600; }
+    @media (max-width: 720px) { nav.toc ol { columns: 1; } }
+
+    section.block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.25rem 1.35rem 1.4rem;
+      margin-bottom: 1.1rem;
+    }
+    section.block h2 { margin: 0 0 0.4rem; font-size: 1.25rem; letter-spacing: -0.02em; }
+    .lead { color: var(--ink2); margin: 0 0 0.8rem; }
+    .note {
+      background: var(--warn-bg);
+      border: 1px solid #fcd34d;
+      color: #78350f;
+      border-radius: 12px;
+      padding: 0.75rem 0.9rem;
+      font-size: 0.92rem;
+    }
+    .okbox {
+      background: var(--ok-bg);
+      border: 1px solid #6ee7b7;
+      color: #065f46;
+      border-radius: 12px;
+      padding: 0.75rem 0.9rem;
+      font-size: 0.92rem;
+    }
+    ul.check { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+    ul.check li { margin: 0.2rem 0; }
+
+    .scene {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      margin: 1.1rem 0 0;
+      background: #f8fafc;
+    }
+    .scene-head {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.8rem;
+      padding: 0.75rem 1rem;
+      background: var(--teal-m);
+      border-bottom: 1px solid #b7e0da;
+    }
+    .scene-head strong { font-size: 1.02rem; }
+    .badge {
+      font-size: 0.72rem; font-weight: 800; letter-spacing: 0.04em;
+      text-transform: uppercase; background: var(--teal); color: #fff;
+      border-radius: 999px; padding: 0.18rem 0.5rem;
+    }
+    .badge.v2 { background: #0e7490; }
+    .mins { color: var(--teal-d); font-weight: 700; font-size: 0.85rem; }
+    .where {
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 0.78rem; background: #fff; border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.12rem 0.4rem; color: var(--ink2);
+    }
+    .scene-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    @media (max-width: 860px) { .scene-body { grid-template-columns: 1fr; } }
+    .col { padding: 1rem; }
+    .col + .col { border-left: 1px solid var(--border); }
+    @media (max-width: 860px) { .col + .col { border-left: 0; border-top: 1px solid var(--border); } }
+    .col h3 { margin: 0 0 0.45rem; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+    .fala {
+      background: #fff;
+      border-left: 4px solid var(--teal);
+      padding: 0.75rem 0.85rem;
+      border-radius: 0 12px 12px 0;
+      font-size: 0.95rem;
+      color: var(--ink);
+    }
+    .cliques { margin: 0; padding-left: 1.1rem; font-size: 0.9rem; color: var(--ink2); }
+    .cliques li { margin: 0.25rem 0; }
+
+    /* Mock browser */
+    .mock {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    }
+    .mock-bar {
+      display: flex; align-items: center; gap: 0.45rem;
+      background: #f1f5f9; padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border);
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #cbd5e1; }
+    .url {
+      flex: 1; background: #fff; border: 1px solid var(--border); border-radius: 8px;
+      font-size: 0.68rem; color: var(--muted); padding: 0.18rem 0.45rem;
+      font-family: "JetBrains Mono", monospace; white-space: nowrap; overflow: hidden;
+    }
+    .mock-app { display: grid; grid-template-columns: 148px 1fr; min-height: 210px; }
+    .mock-nav { background: var(--graphite); color: #cbd5e1; padding: 0.65rem 0.55rem; font-size: 0.68rem; }
+    .mock-nav .logo { color: #5eead4; font-weight: 800; font-size: 0.78rem; margin-bottom: 0.55rem; }
+    .mock-nav .item { padding: 0.28rem 0.4rem; border-radius: 6px; margin: 0.12rem 0; }
+    .mock-nav .item.on { background: #134e4a; color: #fff; font-weight: 700; }
+    .mock-main { padding: 0.7rem 0.75rem; background: #f8fafc; }
+    .mock-main .kicker { font-size: 0.62rem; color: var(--teal); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mock-main h4 { margin: 0.15rem 0 0.35rem; font-size: 0.95rem; }
+    .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem; }
+    .kpi { background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 0.4rem; }
+    .kpi span { display: block; font-size: 0.58rem; color: var(--muted); font-weight: 700; }
+    .kpi b { font-size: 0.95rem; }
+    .kpi.warn { background: var(--warn-bg); border-color: #fcd34d; }
+    table.mini { width: 100%; border-collapse: collapse; font-size: 0.65rem; background: #fff; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-top: 0.4rem; }
+    table.mini th, table.mini td { text-align: left; padding: 0.28rem 0.4rem; border-bottom: 1px solid var(--border); }
+    table.mini th { background: #f1f5f9; color: var(--muted); font-size: 0.58rem; }
+    .btn { display: inline-block; background: var(--teal); color: #fff; font-size: 0.62rem; font-weight: 700; border-radius: 6px; padding: 0.28rem 0.5rem; margin-top: 0.4rem; }
+    .face {
+      margin-top: 0.4rem; height: 92px; border-radius: 10px; background: #0b1220;
+      display: grid; place-items: center; color: #5eead4; font-size: 0.7rem; font-weight: 700;
+      position: relative; overflow: hidden;
+    }
+    .face::before {
+      content: "";
+      width: 56px; height: 70px; border: 2px dashed #5eead4; border-radius: 40px;
+    }
+    .arrow { position: absolute; right: 18px; font-size: 1.4rem; }
+
+    .tool {
+      display: grid; grid-template-columns: 1.2fr 1fr; gap: 1rem;
+    }
+    @media (max-width: 800px) { .tool { grid-template-columns: 1fr; } }
+    .tool article {
+      border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem 1rem; background: #fff;
+    }
+    .tool article.best { border-color: var(--teal); box-shadow: 0 0 0 3px var(--teal-m); }
+    footer { color: var(--muted); font-size: 0.82rem; text-align: center; margin-top: 1.5rem; }
+    .print-btn {
+      position: sticky; top: 0.7rem; float: right; z-index: 2;
+      background: var(--teal); color: #fff; border: 0; border-radius: 10px;
+      padding: 0.45rem 0.75rem; font-weight: 700; cursor: pointer;
+      font-family: inherit;
+    }
+    @media print {
+      .print-btn, nav.toc { display: none; }
+      .scene { break-inside: avoid; }
+      header.hero { box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <button class="print-btn" type="button" onclick="window.print()">Imprimir / PDF</button>
+    <header class="hero">
+      <div class="brand">ProntEPI · Guia interno</div>
+      <h1>Como gravar a demonstração</h1>
+      <p>
+        Roteiro com <strong>falas prontas</strong> e <strong>prints-modelo</strong> das telas.
+        Grave em cenas. Não precisa decorar: leia a fala, pause, clique o que está em “Caminho”.
+      </p>
+      <div class="meta">
+        <span class="chip">2 vídeos</span>
+        <span class="chip">Gestão ~10 min</span>
+        <span class="chip">Portal ~15 min</span>
+        <span class="chip">1920×1080 · 125% zoom</span>
+      </div>
+    </header>
+
+    <nav class="toc">
+      <h2>Índice</h2>
+      <ol>
+        <li><a href="#prep">Preparação</a></li>
+        <li><a href="#v1">Vídeo 1 — Gestão</a></li>
+        <li><a href="#v2">Vídeo 2 — Portal do Cliente</a></li>
+        <li><a href="#short">Short da entrega facial</a></li>
+        <li><a href="#ferramenta">Melhor ferramenta para gravar</a></li>
+      </ol>
+    </nav>
+
+    <section class="block" id="prep">
+      <h2>1. Preparação (faça no dia anterior)</h2>
+      <p class="lead">Se isso falhar no dia, o vídeo trava. Marque tudo.</p>
+      <div class="okbox">
+        <strong>Dois logins, duas janelas.</strong> Gestão em <code>/login</code>. Cliente em <code>/portal/login</code>.
+        Nunca misture: o cliente não entra pela gestão.
+      </div>
+      <ul class="check">
+        <li>Cliente piloto com PGRO já importado (não grave o parse do PDF inteiro).</li>
+        <li>Pelo menos 3 trabalhadores com função; 1 com biometria facial ok; 1 sem (para contrastar).</li>
+        <li>Estoque com saldo (senão a entrega falha no vídeo).</li>
+        <li>1 EPI com preço (para a tela de Custos não ficar zerada).</li>
+        <li>Zoom do Chrome 125%. Feche e-mail, Slack, WhatsApp Web.</li>
+        <li>Luz de frente para a webcam (cena da face). Fundo limpo.</li>
+        <li>Não mostre senha, CPF completo, chave API, QR da Evolution.</li>
+      </ul>
+      <p class="note" style="margin-top:0.8rem">
+        <strong>Como gravar:</strong> uma cena por vez (1–3 min). Se errar a fala, recorte. Fale <em>antes</em> de clicar.
+        Pause 1 segundo quando a tela carregar.
+      </p>
+    </section>
+
+    <section class="block" id="v1">
+      <h2>2. Vídeo 1 — Consultoria / Gestão</h2>
+      <p class="lead">Público: equipe da consultoria e quem implanta cliente. Não mostre entrega nem estoque operacional aqui.</p>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge">Vídeo 1</span>
+          <strong>Cena 0 — Abertura</strong>
+          <span class="mins">~20 s</span>
+          <span class="where">/login</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala</h3>
+            <div class="fala">
+              “Olá. Este é o ProntEPI: da implantação ao comprovante facial, conformidade NR-06 no ritmo da operação.
+              Neste vídeo eu mostro a <strong>gestão da consultoria</strong> — o lado de quem implanta o cliente.
+              O dia a dia da empresa fica no Painel do Cliente, no próximo vídeo.”
+            </div>
+            <h3 style="margin-top:0.8rem">Caminho</h3>
+            <ul class="cliques">
+              <li>Tela de login da gestão, sem digitar senha em close-up.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">prontepi…/login</div></div>
+              <div class="mock-main" style="min-height:180px;display:grid;place-items:center">
+                <div style="width:70%;background:#fff;border:1px solid var(--border);border-radius:12px;padding:1rem;text-align:center">
+                  <div class="kicker">Consultoria</div>
+                  <h4>Entrar na gestão</h4>
+                  <div style="height:28px;background:#f1f5f9;border-radius:8px;margin:0.4rem 0"></div>
+                  <div style="height:28px;background:#f1f5f9;border-radius:8px;margin:0.4rem 0"></div>
+                  <span class="btn">Entrar</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge">Vídeo 1</span>
+          <strong>Cena 1 — Dashboard</strong>
+          <span class="mins">~50 s</span>
+          <span class="where">/dashboard</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala</h3>
+            <div class="fala">
+              “Aqui a consultoria vê a carteira: vidas contratadas, clientes atendidos e o que pede atenção.
+              Importante: estoque, entrega e custo do CNPJ <strong>não</strong> ficam nesta tela. Isso é do portal da empresa.”
+            </div>
+            <h3 style="margin-top:0.8rem">Caminho</h3>
+            <ul class="cliques">
+              <li>Aponte os cards de vidas / clientes.</li>
+              <li>Passe o mouse no menu: Clientes, Assinaturas, Configurações, Catálogo de EPIs.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">…/dashboard</div></div>
+              <div class="mock-app">
+                <aside class="mock-nav">
+                  <div class="logo">ProntEPI</div>
+                  <div class="item on">Dashboard</div>
+                  <div class="item">Clientes</div>
+                  <div class="item">Assinaturas</div>
+                  <div class="item">Configurações</div>
+                  <div class="item">Catálogo de EPIs</div>
+                </aside>
+                <div class="mock-main">
+                  <div class="kicker">Consultoria</div>
+                  <h4>Visão geral</h4>
+                  <div class="kpis">
+                    <div class="kpi"><span>Vidas</span><b>86/120</b></div>
+                    <div class="kpi"><span>Clientes</span><b>4</b></div>
+                    <div class="kpi warn"><span>Atenção</span><b>3</b></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge">Vídeo 1</span>
+          <strong>Cena 2 — Cliente + acesso do gestor</strong>
+          <span class="mins">~1 min 20 s</span>
+          <span class="where">/clientes → usuários</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala</h3>
+            <div class="fala">
+              “Cadastramos o CNPJ e já criamos o gestor do portal. O convite sai por e-mail — e por WhatsApp se informarmos o número.
+              A resposta do e-mail usa o contato de suporte em Configurações.
+              Quem opera almoxarifado é usuário do <strong>portal</strong>, não desta gestão.”
+            </div>
+            <h3 style="margin-top:0.8rem">Caminho</h3>
+            <ul class="cliques">
+              <li>Abra um cliente já existente (mais rápido que criar do zero).</li>
+              <li>Vá em Usuários. Mostre gestor + operador de estoque.</li>
+              <li>Não reenvie senha de verdade no vídeo.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">…/clientes/abc/usuarios</div></div>
+              <div class="mock-main">
+                <div class="kicker">Cliente · Metalúrgica Exemplo</div>
+                <h4>Usuários do portal</h4>
+                <table class="mini">
+                  <tr><th>Nome</th><th>Papel</th><th>Canal</th></tr>
+                  <tr><td>Ana Souza</td><td>Gestor</td><td>E-mail · Zap</td></tr>
+                  <tr><td>Carlos Lima</td><td>Estoque</td><td>E-mail</td></tr>
+                </table>
+                <span class="btn">Adicionar usuário</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge">Vídeo 1</span>
+          <strong>Cena 3 — PGRO e estrutura</strong>
+          <span class="mins">~1 min 40 s</span>
+          <span class="where">importar PGRO / estrutura</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala</h3>
+            <div class="fala">
+              “O pulo da implantação é o PGRO. A consultoria sobe o PDF; o sistema lê setores, funções, riscos e necessidades de EPI.
+              A estrutura fica pronta para o cliente: cada função já nasce com os EPIs que o trabalhador precisa.
+              A consultoria valida. Quem entrega é o portal.”
+            </div>
+            <h3 style="margin-top:0.8rem">Caminho</h3>
+            <ul class="cliques">
+              <li>Mostre um PGRO já confirmado (ou só a tela de resultado).</li>
+              <li>Abra estrutura: 1 setor → 1 função → lista de EPIs obrigatórios.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">…/clientes/abc/estrutura</div></div>
+              <div class="mock-main">
+                <div class="kicker">Estrutura</div>
+                <h4>Produção → Soldador</h4>
+                <table class="mini">
+                  <tr><th>Necessidade</th><th>Risco</th></tr>
+                  <tr><td>Protetor facial</td><td>Partículas / UV</td></tr>
+                  <tr><td>Luva nitrílica</td><td>Químico</td></tr>
+                  <tr><td>Calçado de segurança</td><td>Impacto</td></tr>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge">Vídeo 1</span>
+          <strong>Cena 4 — Catálogo de EPIs e configurações</strong>
+          <span class="mins">~1 min 30 s</span>
+          <span class="where">/epis · /configuracoes?aba=equipe</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala</h3>
+            <div class="fala">
+              “No Catálogo de EPIs o gestor consulta a base oficial CAEPI: nome do equipamento ou número do CA, validade e fabricante.
+              Não é cadastro interno — cadastro de estoque fica no portal da empresa.
+              Em Configurações ficam juntos contatos, equipe, retenção biométrica e o reset geral.
+              O administrador geral adiciona quem vai usar a gestão: administrador ou membro.
+              O convite também vai por e-mail e WhatsApp, com resposta para o suporte.”
+            </div>
+            <h3 style="margin-top:0.8rem">Caminho</h3>
+            <ul class="cliques">
+              <li>Catálogo: busque “protetor facial” ou CA 11442 (exemplo conhecido).</li>
+              <li>Configurações → Equipe: só passe a lista, sem criar usuário real.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">…/configuracoes?aba=equipe</div></div>
+              <div class="mock-app">
+                <aside class="mock-nav">
+                  <div class="logo">ProntEPI</div>
+                  <div class="item">Dashboard</div>
+                  <div class="item on">Configurações</div>
+                </aside>
+                <div class="mock-main">
+                  <h4>Equipe da consultoria</h4>
+                  <table class="mini">
+                    <tr><th>Nome</th><th>Papel</th></tr>
+                    <tr><td>Você</td><td>Admin geral</td></tr>
+                    <tr><td>Membro 1</td><td>Administrador</td></tr>
+                    <tr><td>Membro 2</td><td>Membro</td></tr>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge">Vídeo 1</span>
+          <strong>Cena 5 — Fecho</strong>
+          <span class="mins">~15 s</span>
+        </div>
+        <div class="scene-body">
+          <div class="col" style="grid-column:1/-1">
+            <div class="fala">
+              “Resumo da gestão: cadastrar o CNPJ, importar o PGRO, validar a estrutura e liberar o portal.
+              No próximo vídeo, o dia a dia: estoque, custo, entrega com biometria facial e validade.”
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="block" id="v2">
+      <h2>3. Vídeo 2 — Painel do Cliente (o principal)</h2>
+      <p class="lead">Público: gestor SST e almoxarife. Este é o vídeo comercial. Grave com calma na entrega.</p>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge v2">Vídeo 2</span>
+          <strong>Cena 0 — Login do portal</strong>
+          <span class="mins">~20 s</span>
+          <span class="where">/portal/login</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala</h3>
+            <div class="fala">
+              “Agora o Painel do Cliente. Este login é da <strong>empresa</strong> — CNPJ — não da consultoria.
+              É aqui que o almoxarife e o SST trabalham todo dia.”
+            </div>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">…/portal/login</div></div>
+              <div class="mock-main" style="min-height:160px;display:grid;place-items:center">
+                <div style="width:72%;background:#fff;border:1px solid var(--border);border-radius:12px;padding:0.9rem;text-align:center">
+                  <div class="kicker">Painel do Cliente</div>
+                  <h4>Entrar</h4>
+                  <span class="btn">Acessar portal</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge v2">Vídeo 2</span>
+          <strong>Cena 1 — Painel</strong>
+          <span class="mins">~45 s</span>
+          <span class="where">/portal</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala</h3>
+            <div class="fala">
+              “A home mostra o que pede atenção hoje: troca de EPI, CA vencendo, estoque baixo e biometria pendente.
+              O time não precisa caçar planilha. O painel aponta o próximo passo.”
+            </div>
+            <h3 style="margin-top:0.8rem">Caminho</h3>
+            <ul class="cliques">
+              <li>Passe pelos KPIs. Clique num card de atenção se houver.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">…/portal</div></div>
+              <div class="mock-app">
+                <aside class="mock-nav">
+                  <div class="logo">Portal</div>
+                  <div class="item on">Painel</div>
+                  <div class="item">Entregas</div>
+                  <div class="item">Estoque</div>
+                  <div class="item">Custos</div>
+                </aside>
+                <div class="mock-main">
+                  <div class="kicker">Metalúrgica Exemplo</div>
+                  <h4>O que pede atenção</h4>
+                  <div class="kpis">
+                    <div class="kpi"><span>Vidas</span><b>42/50</b></div>
+                    <div class="kpi warn"><span>Trocas</span><b>5</b></div>
+                    <div class="kpi warn"><span>CA</span><b>2</b></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge v2">Vídeo 2</span>
+          <strong>Cena 2 — Estrutura e trabalhadores</strong>
+          <span class="mins">~1 min 20 s</span>
+          <span class="where">/portal/estrutura · /trabalhadores</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala</h3>
+            <div class="fala">
+              “A estrutura veio do PGRO: setor, função e EPIs obrigatórios.
+              No trabalhador, a função é o que destrava a entrega. Sem função, o sistema não sabe o que entregar.
+              Dá para enviar o link de cadastro facial no WhatsApp — o colaborador faz no celular, em menos de um minuto.”
+            </div>
+            <h3 style="margin-top:0.8rem">Caminho</h3>
+            <ul class="cliques">
+              <li>Estrutura: abra uma função com 2–3 EPIs.</li>
+              <li>Trabalhadores: mostre um com face ok e um “sem biometria”.</li>
+              <li>Não abra o CPF completo.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">…/portal/trabalhadores</div></div>
+              <div class="mock-main">
+                <h4>Trabalhadores</h4>
+                <table class="mini">
+                  <tr><th>Nome</th><th>Função</th><th>Face</th></tr>
+                  <tr><td>João P.</td><td>Soldador</td><td>OK</td></tr>
+                  <tr><td>Maria F.</td><td>Aux. produção</td><td>Pendente</td></tr>
+                </table>
+                <span class="btn">Enviar cadastro facial</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge v2">Vídeo 2</span>
+          <strong>Cena 3 — Estoque com valor</strong>
+          <span class="mins">~2 min</span>
+          <span class="where">/portal/estoque</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala</h3>
+            <div class="fala">
+              “Estoque começa pelo que a função precisa. Escolho o CA na base oficial — só válidos — informo a quantidade e o <strong>valor unitário</strong>.
+              Se tiver a nota, anexo foto ou PDF. Se o PDF tiver texto, o sistema sugere valor e quantidade. Sempre conferimos antes de salvar.
+              Esse preço vira o custo do EPI na empresa.”
+            </div>
+            <h3 style="margin-top:0.8rem">Caminho</h3>
+            <ul class="cliques">
+              <li>Dashboard de estoque (KPIs) → aba/entrada.</li>
+              <li>Uma linha: CA + qtd + valor (ex.: 12,50).</li>
+              <li>Pode só apontar o campo da nota, sem enviar arquivo real se preferir.</li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">…/portal/estoque</div></div>
+              <div class="mock-main">
+                <h4>Entrada no estoque</h4>
+                <table class="mini">
+                  <tr><th>Necessidade</th><th>CA</th><th>Qtd</th><th>R$ un.</th></tr>
+                  <tr><td>Luva nitrílica</td><td>12345</td><td>10</td><td>12,50</td></tr>
+                  <tr><td>Protetor facial</td><td>11442</td><td>4</td><td>38,00</td></tr>
+                </table>
+                <span class="btn">Incluir no estoque</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge v2">Vídeo 2</span>
+          <strong>Cena 4 — Custos</strong>
+          <span class="mins">~50 s</span>
+          <span class="where">/portal/custos</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala</h3>
+            <div class="fala">
+              “Custos junta o preço da entrada com as entregas. Dá para ver valor em estoque, o que foi comprado e o que saiu por EPI, por setor e por função.
+              A direção enxerga quanto cada área consome de proteção.”
+            </div>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">…/portal/custos</div></div>
+              <div class="mock-main">
+                <div class="kpis">
+                  <div class="kpi"><span>Estoque</span><b>R$ 4.820</b></div>
+                  <div class="kpi"><span>Compras</span><b>R$ 1.250</b></div>
+                  <div class="kpi"><span>Entregas</span><b>R$ 890</b></div>
+                </div>
+                <table class="mini">
+                  <tr><th>Setor</th><th>Custo</th></tr>
+                  <tr><td>Produção</td><td>R$ 610</td></tr>
+                  <tr><td>Manutenção</td><td>R$ 280</td></tr>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge v2">Vídeo 2</span>
+          <strong>Cena 5 — Entrega facial (o ouro)</strong>
+          <span class="mins">~3 min 30 s</span>
+          <span class="where">/portal/entregas</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala — parte A (lista)</h3>
+            <div class="fala">
+              “Vou entregar EPI. Escolho o trabalhador. O sistema mostra só o que a função exige, com o risco ao lado.
+              Marco os itens. Não é uma tela cheia de campo: primeiro a lista, depois um EPI por vez.”
+            </div>
+            <h3 style="margin-top:0.7rem">Fala — parte B (um EPI)</h3>
+            <div class="fala">
+              “Neste EPI eu confirmo o CA, o local de estoque, a quantidade, a vida útil e quantos dias por semana ele usa.
+              Isso calcula a próxima troca com calendário real — não só ‘vence em 12 meses’.”
+            </div>
+            <h3 style="margin-top:0.7rem">Fala — parte C (face)</h3>
+            <div class="fala">
+              “Para fechar, a biometria. A câmera pede para olhar de frente e virar o rosto — a seta acompanha.
+              Isso prova quem recebeu. Gera o comprovante com foto. NR-06 na prática, sem papel solto.”
+            </div>
+            <h3 style="margin-top:0.8rem">Caminho</h3>
+            <ul class="cliques">
+              <li>Trabalhador com face já cadastrada e estoque ok.</li>
+              <li>Fase 1: checkboxes + chips de risco.</li>
+              <li>Fase 2: um EPI (não apresse).</li>
+              <li>Face: enquadre, vire o rosto, confirme.</li>
+              <li>Abra o PDF do comprovante no final.</li>
+            </ul>
+            <p class="note" style="margin-top:0.7rem">Se a câmera falhar, recorte e regrave só esta cena. Não refaça o vídeo inteiro.</p>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">…/portal/entregas</div></div>
+              <div class="mock-main">
+                <div class="kicker">Entrega · João P. · Soldador</div>
+                <h4>1 de 2 — Protetor facial</h4>
+                <table class="mini">
+                  <tr><th>Campo</th><th>Valor</th></tr>
+                  <tr><td>CA</td><td>11442 · válido</td></tr>
+                  <tr><td>Local</td><td>Estoque principal</td></tr>
+                  <tr><td>Qtd</td><td>1</td></tr>
+                  <tr><td>Uso</td><td>5 dias/semana</td></tr>
+                </table>
+                <div class="face"><span class="arrow">→</span></div>
+                <div style="font-size:0.62rem;color:var(--muted);margin-top:0.25rem">Vire o rosto no sentido da seta</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="scene">
+        <div class="scene-head">
+          <span class="badge v2">Vídeo 2</span>
+          <strong>Cena 6 — Validade, relatórios, fecho</strong>
+          <span class="mins">~1 min 10 s</span>
+          <span class="where">/portal/validade · /relatorios</span>
+        </div>
+        <div class="scene-body">
+          <div class="col">
+            <h3>Fala</h3>
+            <div class="fala">
+              “Validade mostra CA vencendo e troca perto do prazo.
+              Relatórios servem para auditoria e reunião com a direção.
+              Resumo do portal: estrutura certa, estoque com preço, entrega com face, custo e validade no radar.
+              O ProntEPI tira o EPI do caderno e coloca no comprovante.”
+            </div>
+          </div>
+          <div class="col">
+            <h3>Print-modelo</h3>
+            <div class="mock">
+              <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><div class="url">…/portal/validade</div></div>
+              <div class="mock-main">
+                <h4>Validade e trocas</h4>
+                <div class="kpis">
+                  <div class="kpi warn"><span>Troca 5 dias</span><b>4</b></div>
+                  <div class="kpi"><span>CA ok</span><b>31</b></div>
+                  <div class="kpi warn"><span>CA a vencer</span><b>2</b></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="block" id="short">
+      <h2>4. Short de 45–60 s (WhatsApp / Instagram)</h2>
+      <p class="lead">Grave no celular, vertical, só a entrega. Sem login.</p>
+      <div class="fala">
+        “Trabalhador chega. O sistema já sabe o EPI da função. Confere o CA. Tira a foto do rosto — vira a cabeça.
+        Pronto: comprovante. Sem papel, sem dúvida de quem recebeu. ProntEPI.”
+      </div>
+    </section>
+
+    <section class="block" id="ferramenta">
+      <h2>5. Melhor ferramenta para gravar</h2>
+      <p class="lead">Para este guia (Windows, tela + voz, depois cortes e legenda), a combinação abaixo é a que melhor equilibra qualidade e simplicidade.</p>
+      <div class="tool">
+        <article class="best">
+          <div class="kicker">Recomendado</div>
+          <h3 style="margin:0.2rem 0 0.4rem">OBS Studio (gravar) + CapCut (editar)</h3>
+          <p style="margin:0 0 0.5rem;color:var(--ink2);font-size:0.92rem">
+            O OBS grava a tela em qualidade alta, sem marca d’água e sem limitar tempo.
+            O CapCut (grátis) corta cenas, coloca legenda automática e exporta 1080p para WhatsApp.
+          </p>
+          <ul class="check">
+            <li>OBS: <a href="https://obsproject.com/pt-br/download" target="_blank" rel="noreferrer">obsproject.com</a> — cena “Display Capture” + microfone.</li>
+            <li>Canvas 1920×1080, 30 fps, áudio 48 kHz.</li>
+            <li>Gravação: MKV ou MP4. Bitrate ~12–15 Mbps (tela com UI fica nítida).</li>
+            <li>CapCut: cole as cenas na ordem deste guia. Legenda em português. Música bem baixa ou nenhuma.</li>
+          </ul>
+        </article>
+        <article>
+          <div class="kicker">Se quiser uma ferramenta só</div>
+          <h3 style="margin:0.2rem 0 0.4rem">Microsoft Clipchamp</h3>
+          <p style="margin:0;color:var(--ink2);font-size:0.92rem">
+            Já vem no Windows 11 (e na Store no Windows 10). Menos controle que o OBS, mas o funcionário grava e edita no mesmo app.
+            Use se o OBS parecer pesado. Evite o Gravador de Xbox (Game Bar): qualidade e cortes são fracos para demo de software.
+          </p>
+          <p style="margin:0.7rem 0 0;font-size:0.92rem">
+            <strong>Pago, se for rotina mensal:</strong> Camtasia. Cursor destacado, zoom no clique e templates — caro, só vale se forem muitos vídeos.
+          </p>
+        </article>
+      </div>
+      <div class="okbox" style="margin-top:1rem">
+        <strong>Setup OBS em 1 minuto:</strong> Fontes → Captura de tela (monitor principal) + Captura de áudio (microfone).
+        Filtro no mic: “Supressão de ruído”. Não capture webcam neste vídeo (exceto o short da face, no próprio sistema).
+        Teste 15 segundos, ouça o áudio, depois grave cena por cena.
+      </div>
+    </section>
+
+    <footer>
+      ProntEPI · Guia interno de gravação · abra este arquivo no Chrome e use “Imprimir / PDF” se for mandar ao funcionário.
+    </footer>
+  </div>
+</body>
+</html>

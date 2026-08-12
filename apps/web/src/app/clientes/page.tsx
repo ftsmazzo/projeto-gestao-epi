@@ -616,6 +616,12 @@ function ClientesContent() {
                         >
                           Abrir
                         </Link>
+                        <Link
+                          className="btn btn-secondary"
+                          href={`/assinaturas?cliente=${client.id}`}
+                        >
+                          Assinatura
+                        </Link>
                         <button
                           type="button"
                           className="btn btn-secondary"

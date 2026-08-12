@@ -25,34 +25,24 @@ export const OPS_NAV: OpsNavItem[] = [
     description: 'Painel operacional por CNPJ, estrutura, PGRO e usuarios.',
   },
   {
-    href: '/equipe',
-    label: 'Equipe',
+    href: '/assinaturas',
+    label: 'Assinaturas',
     status: 'ready',
-    description: 'Usuarios da consultoria: admin geral, administradores e membros.',
+    description:
+      'Custo da vida, redutores, trial, mensalidade e bloqueio por falta de pagamento.',
   },
   {
     href: '/configuracoes',
     label: 'Configuracoes',
     status: 'ready',
-    description: 'Contatos da consultoria para comunicacoes com clientes.',
-  },
-  {
-    href: '/caepi',
-    label: 'Base CAEPI',
-    status: 'ready',
-    description: 'Base oficial de CAs (global).',
+    description:
+      'Contatos, equipe, retencao biometrica e reset geral da consultoria.',
   },
   {
     href: '/epis',
     label: 'Catalogo de EPIs',
     status: 'ready',
-    description: 'Cadastro mestre de EPIs do tenant (sem estoque operacional).',
-  },
-  {
-    href: '/biometria-retencao',
-    label: 'Retencao biometrica',
-    status: 'ready',
-    description: 'Exclusao segura de referencias e evidencias faciais (LGPD).',
+    description: 'Consulta da base oficial CAEPI (CA, validade, fabricante).',
   },
 ];
 

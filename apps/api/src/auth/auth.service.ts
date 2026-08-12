@@ -16,6 +16,7 @@ import { randomBytes } from 'crypto';
 import { AuditService } from '../audit/audit.service';
 import { CommunicationsService } from '../communications/communications.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { expireTrialForClient } from '../subscriptions/trial-expire';
 import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { ForgotPasswordDto } from './dto/forgot-password.dto';
 import type { LoginDto } from './dto/login.dto';
@@ -406,6 +407,15 @@ export class AuthService {
     });
     if (!membership || !membership.user) {
       throw new UnauthorizedException('Sessao invalida');
+    }
+    const trialExpired = await expireTrialForClient(
+      this.prisma,
+      servedClientId,
+    );
+    if (trialExpired) {
+      throw new UnauthorizedException(
+        'Periodo de teste encerrado. A consultoria precisa ativar a assinatura.',
+      );
     }
     if (membership.servedClient.status !== ServedClientStatus.ACTIVE) {
       throw new UnauthorizedException('Cliente inativo.');

@@ -18,8 +18,7 @@ function EstoqueRetiredContent() {
         </p>
         <ul>
           <li>
-            <strong>Consultoria:</strong> catalogo de EPIs e base CAEPI
-            (atualizacao da base).
+            <strong>Consultoria:</strong> consulta do catalogo oficial CAEPI.
           </li>
           <li>
             <strong>Painel do Cliente:</strong> estoque operacional (entrada,
@@ -34,15 +33,11 @@ function EstoqueRetiredContent() {
           Estoque operacional saiu daqui
         </h1>
         <p className="page-lead">
-          Use o catalogo e a base CA para manter o cadastro. A empresa opera o
-          saldo no portal.
+          Consulte CAs oficiais no catalogo. A empresa opera o saldo no portal.
         </p>
         <div className="btn-row">
           <Link className="btn btn-primary" href="/epis">
             Catalogo de EPIs
-          </Link>
-          <Link className="btn btn-secondary" href="/caepi">
-            Base CAEPI
           </Link>
           <Link className="btn btn-ghost" href="/portal/login">
             Ir ao portal do cliente

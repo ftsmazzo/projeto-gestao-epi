@@ -6,6 +6,7 @@ export const APP_PITCH =
 export const API_DEFAULT_PORT = 3001;
 
 export * from './face-biometrics';
+export * from './life-pricing';
 import type { LivenessChallengeType } from './face-biometrics';
 
 export type HealthStatus = 'ok' | 'degraded' | 'down';
