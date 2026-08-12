@@ -1,11 +1,10 @@
 'use client';
 
-import { APP_NAME, APP_TAGLINE } from '@gestao-epi/shared';
+import { APP_NAME } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { AppShell } from '../../components/AppShell';
-import { BrandLockup } from '../../components/BrandLockup';
+import { AuthLayout } from '../../components/AuthLayout';
 import {
   requestPasswordReset,
   type ForgotPasswordResponse,
@@ -73,18 +72,7 @@ function ForgotPasswordForm() {
   }
 
   return (
-    <div className="auth-split">
-      <aside className="auth-split__brand">
-        <BrandLockup subtitle="Recuperacao de acesso" />
-        <h2>{APP_TAGLINE}</h2>
-        <p>
-          Reset seguro com senha temporaria. No piloto, se o envio por
-          e-mail/WhatsApp estiver desligado, a senha aparece nesta tela.
-        </p>
-      </aside>
-
-      <div className="auth-split__panel">
-        <section className="auth-panel" aria-labelledby="forgot-title">
+    <>
           <p className="page-kicker">
             {APP_NAME} · {isPortal ? 'Portal' : 'Consultoria'}
           </p>
@@ -169,32 +157,16 @@ function ForgotPasswordForm() {
               </p>
             </form>
           )}
-        </section>
-      </div>
-    </div>
+    </>
   );
 }
 
 export default function ForgotPasswordPage() {
   return (
-    <AppShell
-      headerActions={
-        <Link className="btn btn-secondary" href="/login">
-          Entrar
-        </Link>
-      }
-    >
-      <Suspense
-        fallback={
-          <div className="auth-split__panel">
-            <section className="auth-panel">
-              <p className="page-lead">Carregando...</p>
-            </section>
-          </div>
-        }
-      >
+    <AuthLayout kicker={`${APP_NAME} · Recuperar acesso`}>
+      <Suspense fallback={<p className="page-lead">Carregando...</p>}>
         <ForgotPasswordForm />
       </Suspense>
-    </AppShell>
+    </AuthLayout>
   );
 }

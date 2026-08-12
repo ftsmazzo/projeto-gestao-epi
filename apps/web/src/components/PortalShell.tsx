@@ -6,11 +6,17 @@ import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useId, useState } from 'react';
 import { isPortalNavActive, PORTAL_NAV } from '../lib/nav';
 import {
+  IconBuilding,
+  IconChart,
   IconHome,
   IconMenu,
   IconMore,
   IconPackage,
+  IconSettings,
+  IconShield,
   IconTruck,
+  IconUsers,
+  IconWallet,
 } from './ui/NavIcons';
 
 type Props = {
@@ -19,14 +25,13 @@ type Props = {
   onLogout?: () => void;
 };
 
-/** Atalhos fixos no mobile: so o dia a dia operacional. Resto em "Mais". */
 const BOTTOM_PRIMARY = [
   '/portal',
   '/portal/entregas',
   '/portal/estoque',
 ] as const;
 
-function bottomIcon(href: string) {
+function portalIcon(href: string) {
   switch (href) {
     case '/portal':
       return <IconHome />;
@@ -34,9 +39,26 @@ function bottomIcon(href: string) {
       return <IconTruck />;
     case '/portal/estoque':
       return <IconPackage />;
+    case '/portal/validade':
+      return <IconShield />;
+    case '/portal/trabalhadores':
+      return <IconUsers />;
+    case '/portal/relatorios':
+      return <IconChart />;
+    case '/portal/estrutura':
+      return <IconBuilding />;
+    case '/portal/custos':
+      return <IconWallet />;
+    case '/portal/conta':
+      return <IconSettings />;
     default:
       return <IconMore />;
   }
+}
+
+function currentPortalLabel(pathname: string) {
+  const match = PORTAL_NAV.find((item) => isPortalNavActive(pathname, item));
+  return match?.label ?? 'Painel';
 }
 
 export function PortalShell({ children, user, onLogout }: Props) {
@@ -69,117 +91,142 @@ export function PortalShell({ children, user, onLogout }: Props) {
     return () => window.removeEventListener('keydown', onKey);
   }, [menuOpen]);
 
+  const navLinks = (
+    <>
+      {PORTAL_NAV.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={`portal-sidebar__link ${
+            isPortalNavActive(pathname, item) ? 'is-active' : ''
+          }`}
+          onClick={() => setMenuOpen(false)}
+        >
+          <span className="portal-sidebar__icon" aria-hidden="true">
+            {portalIcon(item.href)}
+          </span>
+          <span>{item.label}</span>
+        </Link>
+      ))}
+    </>
+  );
+
   return (
     <div className={`portal-shell${user ? ' portal-shell--authed' : ''}`}>
       <a className="skip-link" href="#portal-conteudo">
         Ir para o conteudo
       </a>
-      <header className="portal-topbar">
-        <div className="portal-topbar-brand">
-          <Link href="/portal" className="portal-brand">
-            <span className="portal-brand-kicker">ProntEPI</span>
-            <strong className="portal-brand-name">
-              {clientName ?? 'Painel do cliente'}
-            </strong>
-          </Link>
-        </div>
-        {user ? (
-          <nav className="portal-nav portal-nav--desktop" aria-label="Dia a dia da empresa">
-            {PORTAL_NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`portal-nav-link ${
-                  isPortalNavActive(pathname, item) ? 'is-active' : ''
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        ) : null}
-        <div className="portal-topbar-right">
-          {user ? (
-            <div className="portal-user">
-              <span className="portal-user-name">{user.name}</span>
-              <span className="portal-user-role">
-                {user.role === 'CLIENT_MANAGER'
-                  ? 'Gestor'
-                  : user.role === 'STOCK_OPERATOR'
-                    ? 'Estoque'
-                    : user.role}
-              </span>
-            </div>
-          ) : null}
-          {user ? (
-            <button
-              type="button"
-              className="btn btn-secondary portal-menu-toggle"
-              aria-expanded={menuOpen}
-              aria-controls={drawerId}
-              aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
-              onClick={() => setMenuOpen((v) => !v)}
-            >
-              <IconMenu />
-            </button>
-          ) : null}
-          {onLogout ? (
-            <button
-              type="button"
-              className="btn btn-ghost portal-logout-desktop"
-              onClick={onLogout}
-            >
-              Sair
-            </button>
-          ) : null}
-        </div>
-      </header>
-
-      {user && menuOpen ? (
-        <div
-          className="portal-drawer-backdrop"
-          role="presentation"
-          onClick={() => setMenuOpen(false)}
-        />
-      ) : null}
 
       {user ? (
-        <aside
-          id={drawerId}
-          className={`portal-drawer${menuOpen ? ' is-open' : ''}`}
-          aria-hidden={!menuOpen}
-          aria-label="Menu do portal"
-        >
-          <p className="portal-drawer__title">Navegacao</p>
-          <nav className="portal-drawer__nav">
-            {PORTAL_NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`portal-drawer__link ${
-                  isPortalNavActive(pathname, item) ? 'is-active' : ''
-                }`}
-                onClick={() => setMenuOpen(false)}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-          {onLogout ? (
-            <button
-              type="button"
-              className="btn btn-secondary portal-drawer__logout"
-              onClick={onLogout}
-            >
-              Sair
-            </button>
-          ) : null}
+        <aside className="portal-sidebar" aria-label="Navegacao do portal">
+          <div className="portal-sidebar__brand">
+            <Link href="/portal" className="portal-brand">
+              <span className="portal-brand-kicker">ProntEPI</span>
+              <strong className="portal-brand-name">
+                {clientName ?? 'Painel do cliente'}
+              </strong>
+            </Link>
+          </div>
+          <p className="ops-nav-label">Operacao</p>
+          <nav className="portal-sidebar__nav">{navLinks}</nav>
         </aside>
       ) : null}
 
-      <main id="portal-conteudo" className="portal-main ux-enter">
-        {children}
-      </main>
+      <div className="portal-content">
+        <header className="portal-topbar">
+          <div className="portal-topbar-brand">
+            {user ? (
+              <span className="ops-topbar-crumb">{currentPortalLabel(pathname)}</span>
+            ) : (
+              <Link href="/portal" className="portal-brand">
+                <span className="portal-brand-kicker">ProntEPI</span>
+                <strong className="portal-brand-name">Painel do cliente</strong>
+              </Link>
+            )}
+          </div>
+          <div className="portal-topbar-right">
+            {user ? (
+              <div className="portal-user">
+                <span className="portal-user-name">{user.name}</span>
+                <span className="portal-user-role">
+                  {user.role === 'CLIENT_MANAGER'
+                    ? 'Gestor'
+                    : user.role === 'STOCK_OPERATOR'
+                      ? 'Estoque'
+                      : user.role}
+                </span>
+              </div>
+            ) : null}
+            {user ? (
+              <button
+                type="button"
+                className="btn btn-secondary portal-menu-toggle"
+                aria-expanded={menuOpen}
+                aria-controls={drawerId}
+                aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                <IconMenu />
+              </button>
+            ) : null}
+            {onLogout ? (
+              <button
+                type="button"
+                className="btn btn-ghost portal-logout-desktop"
+                onClick={onLogout}
+              >
+                Sair
+              </button>
+            ) : null}
+          </div>
+        </header>
+
+        {user && menuOpen ? (
+          <div
+            className="portal-drawer-backdrop"
+            role="presentation"
+            onClick={() => setMenuOpen(false)}
+          />
+        ) : null}
+
+        {user ? (
+          <aside
+            id={drawerId}
+            className={`portal-drawer${menuOpen ? ' is-open' : ''}`}
+            aria-hidden={!menuOpen}
+            aria-label="Menu do portal"
+          >
+            <p className="portal-drawer__title">Navegacao</p>
+            <nav className="portal-drawer__nav">
+              {PORTAL_NAV.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`portal-drawer__link ${
+                    isPortalNavActive(pathname, item) ? 'is-active' : ''
+                  }`}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+            {onLogout ? (
+              <button
+                type="button"
+                className="btn btn-secondary portal-drawer__logout"
+                onClick={onLogout}
+              >
+                Sair
+              </button>
+            ) : null}
+          </aside>
+        ) : null}
+
+        <main id="portal-conteudo" className="portal-main ux-enter">
+          {children}
+        </main>
+      </div>
 
       {user ? (
         <nav className="portal-bottom-nav" aria-label="Atalhos do portal">
@@ -192,7 +239,7 @@ export function PortalShell({ children, user, onLogout }: Props) {
               }`}
             >
               <span className="portal-bottom-nav__icon" aria-hidden="true">
-                {bottomIcon(item.href)}
+                {portalIcon(item.href)}
               </span>
               <span className="portal-bottom-nav__label">{item.label}</span>
             </Link>

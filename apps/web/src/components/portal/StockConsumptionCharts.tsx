@@ -11,10 +11,11 @@ import {
   YAxis,
 } from 'recharts';
 
-const TEAL = '#0f766e';
-const WARN = '#b45309';
-const DANGER = '#b91c1c';
-const MUTED = '#64748b';
+const PRIMARY = '#0d6efd';
+const SUCCESS = '#198754';
+const WARN = '#ffc107';
+const DANGER = '#dc3545';
+const MUTED = '#6c757d';
 
 type StatusPoint = { name: string; value: number; key: 'ok' | 'baixo' | 'zerado' };
 type ConsumptionPoint = { name: string; items: number };
@@ -26,7 +27,7 @@ type Props = {
 };
 
 function statusColor(key: StatusPoint['key']) {
-  if (key === 'ok') return TEAL;
+  if (key === 'ok') return SUCCESS;
   if (key === 'baixo') return WARN;
   return DANGER;
 }
@@ -67,14 +68,14 @@ export function StockConsumptionCharts({
                   width={32}
                 />
                 <Tooltip
-                  cursor={{ fill: 'rgba(15, 118, 110, 0.06)' }}
+                  cursor={{ fill: 'rgba(13, 110, 253, 0.06)' }}
                   contentStyle={{
-                    borderRadius: 8,
-                    border: '1px solid #d7dee8',
+                    borderRadius: 6,
+                    border: '1px solid #dee2e6',
                     fontSize: 13,
                   }}
                 />
-                <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={48}>
+                <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={48}>
                   {status.map((entry) => (
                     <Cell key={entry.key} fill={statusColor(entry.key)} />
                   ))}
@@ -119,14 +120,14 @@ export function StockConsumptionCharts({
                   tickLine={false}
                 />
                 <Tooltip
-                  cursor={{ fill: 'rgba(15, 118, 110, 0.06)' }}
+                  cursor={{ fill: 'rgba(13, 110, 253, 0.06)' }}
                   contentStyle={{
-                    borderRadius: 8,
-                    border: '1px solid #d7dee8',
+                    borderRadius: 6,
+                    border: '1px solid #dee2e6',
                     fontSize: 13,
                   }}
                 />
-                <Bar dataKey="items" name="Itens" fill={TEAL} radius={[0, 6, 6, 0]} maxBarSize={22} />
+                <Bar dataKey="items" name="Itens" fill={PRIMARY} radius={[0, 4, 4, 0]} maxBarSize={22} />
               </BarChart>
             </ResponsiveContainer>
           )}

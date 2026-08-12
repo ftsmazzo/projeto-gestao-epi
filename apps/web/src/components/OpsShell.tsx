@@ -38,6 +38,15 @@ function navIcon(href: string) {
   }
 }
 
+function currentNavLabel(pathname: string) {
+  const match = OPS_NAV.find(
+    (item) =>
+      pathname === item.href ||
+      (item.href !== '/dashboard' && pathname.startsWith(item.href)),
+  );
+  return match?.label ?? 'Consultoria';
+}
+
 export function OpsShell({ children, user, onLogout }: OpsShellProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -52,78 +61,82 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
         Ir para o conteudo
       </a>
 
-      <header className="ops-topbar">
-        <div className="ops-topbar-left">
-          <button
-            type="button"
-            className="btn btn-secondary ops-menu-toggle"
-            aria-expanded={menuOpen}
-            aria-controls="ops-nav"
-            aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            <IconMenu />
-          </button>
+      <aside
+        id="ops-nav"
+        className={`ops-sidebar ${menuOpen ? 'is-open' : ''}`}
+        aria-label="Navegacao da consultoria"
+      >
+        <div className="ops-sidebar-brand">
           <Brand href="/dashboard" compact />
+          <span className="ops-sidebar-brand__meta">Gestao</span>
         </div>
-        <div className="ops-topbar-right">
-          {user ? (
-            <div className="ops-user">
-              <span className="ops-user-name">{user.name}</span>
-              <span className="ops-user-org">{user.organization.name}</span>
-            </div>
-          ) : null}
-          {onLogout ? (
-            <button type="button" className="btn btn-ghost" onClick={onLogout}>
-              Sair
+        <p className="ops-nav-label">Principal</p>
+        <nav className="ops-nav">
+          {OPS_NAV.map((item) => {
+            const active =
+              pathname === item.href ||
+              (item.href !== '/dashboard' && pathname.startsWith(item.href));
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`ops-nav-link ${active ? 'is-active' : ''}`}
+                onClick={() => setMenuOpen(false)}
+              >
+                <span className="ops-nav-link__row">
+                  <span className="ops-nav-link__icon">{navIcon(item.href)}</span>
+                  <span>{item.label}</span>
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+        <div className="ops-sidebar-note">
+          <p className="field-hint">
+            Implante o cliente aqui. O dia a dia da empresa acontece no painel
+            do cliente.
+          </p>
+        </div>
+      </aside>
+
+      {menuOpen ? (
+        <button
+          type="button"
+          className="ops-backdrop"
+          aria-label="Fechar menu"
+          onClick={() => setMenuOpen(false)}
+        />
+      ) : null}
+
+      <div className="ops-content">
+        <header className="ops-topbar">
+          <div className="ops-topbar-left">
+            <button
+              type="button"
+              className="btn btn-secondary ops-menu-toggle"
+              aria-expanded={menuOpen}
+              aria-controls="ops-nav"
+              aria-label={menuOpen ? 'Fechar menu' : 'Abrir menu'}
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <IconMenu />
             </button>
-          ) : null}
-        </div>
-      </header>
-
-      <div className="ops-body">
-        <aside
-          id="ops-nav"
-          className={`ops-sidebar ${menuOpen ? 'is-open' : ''}`}
-          aria-label="Navegacao da consultoria"
-        >
-          <p className="ops-nav-label">Consultoria</p>
-          <nav className="ops-nav">
-            {OPS_NAV.map((item) => {
-              const active =
-                pathname === item.href ||
-                (item.href !== '/dashboard' && pathname.startsWith(item.href));
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`ops-nav-link ${active ? 'is-active' : ''}`}
-                  onClick={() => setMenuOpen(false)}
-                >
-                  <span className="ops-nav-link__row">
-                    <span className="ops-nav-link__icon">{navIcon(item.href)}</span>
-                    <span>{item.label}</span>
-                  </span>
-                </Link>
-              );
-            })}
-          </nav>
-          <div className="ops-sidebar-note">
-            <p className="field-hint">
-              Implante o cliente aqui. O dia a dia da empresa acontece no painel
-              do cliente.
-            </p>
+            <span className="ops-topbar-crumb">{currentNavLabel(pathname)}</span>
           </div>
-        </aside>
-
-        {menuOpen ? (
-          <button
-            type="button"
-            className="ops-backdrop"
-            aria-label="Fechar menu"
-            onClick={() => setMenuOpen(false)}
-          />
-        ) : null}
+          <div className="ops-topbar-right">
+            {user ? (
+              <div className="ops-user">
+                <span className="ops-user-name">{user.name}</span>
+                <span className="ops-user-org">{user.organization.name}</span>
+              </div>
+            ) : null}
+            {onLogout ? (
+              <button type="button" className="btn btn-ghost" onClick={onLogout}>
+                Sair
+              </button>
+            ) : null}
+          </div>
+        </header>
 
         <main id="conteudo" className="ops-main ux-enter">
           {children}

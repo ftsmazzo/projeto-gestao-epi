@@ -1,11 +1,10 @@
 'use client';
 
-import { APP_NAME, APP_TAGLINE } from '@gestao-epi/shared';
+import { APP_NAME } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AppShell } from '../../components/AppShell';
-import { BrandLockup } from '../../components/BrandLockup';
+import { AuthLayout } from '../../components/AuthLayout';
 import { registerAccount } from '../../lib/auth';
 
 export default function RegisterPage() {
@@ -39,50 +38,23 @@ export default function RegisterPage() {
   }
 
   return (
-    <AppShell
-      headerActions={
-        <Link className="btn btn-secondary" href="/login">
-          Entrar
-        </Link>
+    <AuthLayout
+      wide
+      kicker={`${APP_NAME} · Nova organizacao`}
+      footer={
+        <>
+          Ja tem conta? <Link href="/login">Acesse a consultoria</Link>
+        </>
       }
     >
-      <div className="auth-split">
-        <aside className="auth-split__brand">
-          <BrandLockup subtitle="Nova organizacao" />
-          <h2>{APP_TAGLINE}</h2>
-          <p>
-            Crie a organizacao, defina a franquia de vidas e implante o primeiro
-            cliente com PGRO, estrutura e portal operacional.
-          </p>
-          <ol className="auth-split__steps">
-            <li>
-              <span>1</span>
-              Registrar tenant e dono
-            </li>
-            <li>
-              <span>2</span>
-              Cadastrar cliente e cotas
-            </li>
-            <li>
-              <span>3</span>
-              Liberar o painel da empresa
-            </li>
-          </ol>
-        </aside>
-
-        <div className="auth-split__panel">
-          <section
-            className="auth-panel auth-panel--wide"
-            aria-labelledby="register-title"
-          >
-            <p className="page-kicker">{APP_NAME}</p>
-            <h1 id="register-title" className="page-title">
-              Crie sua consultoria
-            </h1>
-            <p className="page-lead">
-              Cria a empresa usuaria (tenant) e o usuario dono. Depois voce
-              cadastra os clientes atendidos.
-            </p>
+      <p className="page-kicker">Cadastro</p>
+      <h1 id="register-title" className="page-title">
+        Crie sua consultoria
+      </h1>
+      <p className="page-lead">
+        Cria a empresa usuaria (tenant) e o usuario dono. Depois voce cadastra
+        os clientes atendidos.
+      </p>
 
             <form className="form" onSubmit={onSubmit} noValidate>
               <div className="field">
@@ -158,12 +130,6 @@ export default function RegisterPage() {
               </button>
             </form>
 
-            <p className="form-footer">
-              Ja tem conta? <Link href="/login">Acesse a consultoria</Link>
-            </p>
-          </section>
-        </div>
-      </div>
-    </AppShell>
+    </AuthLayout>
   );
 }

@@ -1,55 +1,58 @@
 :root {
   color-scheme: light;
 
-  /* Brand — teal industrial (seguranca / conformidade), nao "SaaS roxo" */
-  --color-accent: #0f766e;
-  --color-accent-hover: #0d9488;
-  --color-accent-active: #115e59;
-  --color-accent-muted: #e6f5f3;
+  /* AdminLTE 4 / Bootstrap 5.3 — dashboard profissional */
+  --color-accent: #0d6efd;
+  --color-accent-hover: #0b5ed7;
+  --color-accent-active: #0a58ca;
+  --color-accent-muted: #e7f1ff;
   --color-accent-ink: #ffffff;
+  --color-info: #0dcaf0;
+  --color-info-ink: #055160;
 
-  /* Surfaces — ardósia fria + branco limpo */
-  --color-bg: #e9eef3;
-  --color-bg-elevated: #f5f7fa;
+  --color-bg: #f4f6f9;
+  --color-bg-elevated: #e9ecef;
   --color-surface: #ffffff;
-  --color-surface-muted: #f1f4f8;
-  --color-ink: #0b1220;
-  --color-ink-secondary: #334155;
-  --color-muted: #64748b;
-  --color-border: #d7dee8;
-  --color-border-strong: #a8b3c5;
+  --color-surface-muted: #f8f9fa;
+  --color-ink: #212529;
+  --color-ink-secondary: #495057;
+  --color-muted: #6c757d;
+  --color-border: #dee2e6;
+  --color-border-strong: #adb5bd;
   --color-text: var(--color-ink);
 
-  /* Focus / feedback */
-  --color-focus: #0f766e;
-  --color-danger: #b91c1c;
-  --color-danger-bg: #fef2f2;
-  --color-success: #047857;
-  --color-success-bg: #ecfdf5;
-  --color-warn: #b45309;
-  --color-warn-bg: #fffbeb;
+  --color-focus: #86b7fe;
+  --color-danger: #dc3545;
+  --color-danger-bg: #f8d7da;
+  --color-success: #198754;
+  --color-success-bg: #d1e7dd;
+  --color-warn: #ffc107;
+  --color-warn-ink: #664d03;
+  --color-warn-bg: #fff3cd;
 
-  /* Graphite technical */
-  --color-graphite: #0f172a;
-  --color-graphite-soft: #1e293b;
+  --color-graphite: #343a40;
+  --color-graphite-soft: #495057;
+  --color-sidebar: #343a40;
+  --color-sidebar-hover: rgba(255, 255, 255, 0.08);
+  --color-sidebar-active: #0d6efd;
 
-  /* Elevation + motion */
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 6px 20px rgba(15, 23, 42, 0.06);
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  --radius-sm: 0.375rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --ease-out: ease-in-out;
   --touch-min: 44px;
+  --sidebar-width: 16.5rem;
+  --header-height: 3.5rem;
 
-  /* Uma familia limpa para UI + titulos; mono so para dados */
-  --font-display: var(--font-jakarta), 'Plus Jakarta Sans', sans-serif;
-  --font-sans: var(--font-jakarta), 'Plus Jakarta Sans', sans-serif;
+  --font-display: var(--font-source), 'Source Sans 3', system-ui, sans-serif;
+  --font-sans: var(--font-source), 'Source Sans 3', system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), 'JetBrains Mono', ui-monospace, monospace;
-  --space-page: clamp(1rem, 2.8vw, 1.75rem);
-  --content-narrow: 28rem;
-  --content-wide: 44rem;
-  --content-app: 72rem;
+  --space-page: 1.15rem;
+  --content-narrow: 26rem;
+  --content-wide: 40rem;
+  --content-app: 80rem;
 }
 
 * {
@@ -64,11 +67,9 @@ body {
 
 body {
   font-family: var(--font-sans);
+  font-size: 1rem;
   color: var(--color-ink);
-  background:
-    radial-gradient(900px 420px at 8% -8%, rgba(15, 118, 110, 0.12) 0%, transparent 55%),
-    radial-gradient(700px 380px at 100% 0%, rgba(15, 23, 42, 0.06) 0%, transparent 50%),
-    linear-gradient(180deg, #f7fafb 0%, var(--color-bg) 52%, #e2e9f0 100%);
+  background: var(--color-bg);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }

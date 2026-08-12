@@ -1,13 +1,14 @@
 import type { Metadata, Viewport } from 'next';
-import { JetBrains_Mono, Plus_Jakarta_Sans } from 'next/font/google';
+import { JetBrains_Mono, Source_Sans_3 } from 'next/font/google';
 import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
 import { ServiceWorkerRegister } from '../components/ServiceWorkerRegister';
 import './globals.css';
+import './adminlte-skin.css';
 
-const jakarta = Plus_Jakarta_Sans({
+const sourceSans = Source_Sans_3({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
-  variable: '--font-jakarta',
+  variable: '--font-source',
   display: 'swap',
 });
 
@@ -48,8 +49,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#0f766e' },
-    { media: '(prefers-color-scheme: dark)', color: '#0f766e' },
+    { media: '(prefers-color-scheme: light)', color: '#343a40' },
+    { media: '(prefers-color-scheme: dark)', color: '#343a40' },
   ],
 };
 
@@ -59,8 +60,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
-      <body className={`${jakarta.variable} ${jetbrains.variable}`}>
+    <html lang="pt-BR" className={`${sourceSans.variable} ${jetbrains.variable}`}>
+      <body>
         {children}
         <ServiceWorkerRegister />
       </body>
