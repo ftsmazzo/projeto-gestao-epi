@@ -30,7 +30,26 @@ export const DEFAULT_OCCUPATIONAL_RISK_SEEDS: DefaultRiskSeed[] = [
     name: 'Produto quimico',
     category: OccupationalRiskCategory.QUIMICO,
     description: 'Contato ou inalacao de produtos quimicos.',
-    aliases: ['quimico', 'produto quimico', 'substancia quimica'],
+    aliases: [
+      'quimico',
+      'produto quimico',
+      'substancia quimica',
+      'fumos metalicos',
+      'fumos de solda',
+      'fumos',
+    ],
+  },
+  {
+    name: 'Radiacao nao ionizante',
+    category: OccupationalRiskCategory.FISICO,
+    description: 'Radiacao solar / solda / nao ionizante.',
+    aliases: [
+      'radiacao nao ionizante',
+      'luz solar',
+      'radiacao solar',
+      'radiacao',
+      'uv de solda',
+    ],
   },
   {
     name: 'Agentes biologicos',

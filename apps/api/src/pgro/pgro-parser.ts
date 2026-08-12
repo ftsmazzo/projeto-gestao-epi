@@ -149,7 +149,7 @@ const STOP_WORDS = new Set([
 ]);
 
 const JOB_HINT_RE =
-  /\b(auxiliar|assistente|encarregado|operador|motorista|vendedor|tecnico|técnico|analista|supervisor|coordenador|gerente|diretor|diretora|ajudante|instalador|servente|faxineir|limpeza|mecanico|mecânico|eletricista|soldador|pedreiro|pintor|almoxarife|recepcionista|secretario|secretário)\b/i;
+  /\b(auxiliar|assistente|encarregado|operador|motorista|vendedor|tecnico|técnico|analista|supervisor|coordenador|gerente|diretor|diretora|ajudante|instalador|servente|faxineir|limpeza|mecanico|mecânico|eletricista|soldador|pedreiro|pintor|almoxarife|recepcionista|secretario|secretário|montador|solda|pedreir|carpinteiro|mestre de obras|servente|office boy|jovem aprendiz)\b/i;
 
 const ACTIVITY_START_RE =
   /\b(executar|realizar|classificar|operar|controlar|efetuar|desenvolver|auxiliar nas|responsaveis em|esta sob as responsabilidades|selecionam os|um vendedor|o auxiliar|o encarregado|realizacao de transporte|realização de transporte)\b/i;
@@ -158,11 +158,17 @@ const ENVIRONMENT_LINE_RE =
   /^(trabalham em|trabalhos externos|ambiente interno|ambiente administrativo|balc[aã]o de atendimento|interno e ventilado|interno e climatizado|em diversos locais)/i;
 
 const SECTOR_HINT_RE =
-  /^(produc|classific|administr|vendas|transporte|apoio|torref|manutenc|qualidade|logistica|expedicao|almoxarif)/i;
+  /^(produc|classific|administr|vendas|transporte|apoio|torref|manutenc|qualidade|logistica|expedicao|almoxarif|servic|extern|intern|obra|canteiro|campo|oficina|montag)/i;
 
 /** Setores conhecidos do layout real (para split mesma linha e detecção). */
 const KNOWN_SECTOR_RE =
-  /^(PRODU[CÇ][AÃ]O|CLASSIFICA[CÇ][AÃ]O|ADMINISTRATIVO|VENDAS|TRANSPORTE|APOIO\s*ADM|TORREFA[CÇ][AÃ]O|MANUTEN[CÇ][AÃ]O|QUALIDADE|LOG[IÍ]STICA|EXPEDI[CÇ][AÃ]O|ALMOXARIFADO)\b/i;
+  /^(PRODU[CÇ][AÃ]O|CLASSIFICA[CÇ][AÃ]O|ADMINISTRATIVO|VENDAS|TRANSPORTE|APOIO\s*ADM|TORREFA[CÇ][AÃ]O|MANUTEN[CÇ][AÃ]O|QUALIDADE|LOG[IÍ]STICA|EXPEDI[CÇ][AÃ]O|ALMOXARIFADO|SERVI[CÇ]OS?\s+EXTERNOS?|SERVI[CÇ]OS?\s+INTERNOS?|OBRAS?|CANTEIRO(?:\s+DE\s+OBRAS?)?)\b/i;
+
+const PLACEHOLDER_RE =
+  /^(?:[\s\-_*•.]+|\*{2,}|_{2,}|x{2,}|n\/a|s\/n|nao informado|não informado)$/i;
+
+const ELABORADORA_HEAD_RE =
+  /IDENTIFICA[CÇ][AÃ]O DA EMPRESA ELABORADORA|EMPRESA ELABORADORA(?:\s+DO\s+PGR)?/i;
 
 export function normalizeTextKey(value: string): string {
   return value
@@ -173,6 +179,16 @@ export function normalizeTextKey(value: string): string {
     .replace(/,/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function isNegatedAliasHit(textKey: string, alias: string): boolean {
+  const index = textKey.indexOf(alias);
+  if (index < 0) return false;
+  const window = textKey.slice(
+    Math.max(0, index - 48),
+    index + alias.length + 48,
+  );
+  return /nao existente|inexistente|sem exposicao|n\/a\b/.test(window);
 }
 
 /** Normaliza nome de função para dedupe: espaços, caixa e variação I,II,III. */
@@ -247,6 +263,66 @@ function extractCnpj(text: string): string | null {
   return match[1].replace(/[^\dA-Za-z]/g, '').toUpperCase();
 }
 
+function firstValueLine(raw: string): string | null {
+  for (const line of raw.split('\n').map((item) => cleanLine(item))) {
+    if (!line || PLACEHOLDER_RE.test(line)) continue;
+    if (
+      /^(CNPJ|CEP|UF|CNAE|C\.N\.A\.E|MATRIZ|FILIAL|Complemento|Bairro|Endere[cç]o|Nome Empresarial|Nome de Fantasia|Raz[aã]o Social|Cidade|Munic[ií]pio(?:\s*\/\s*Estado)?|Identifica[cç][aã]o(?:\s+CONTRATADA)?|Grau de Risco|Descri[cç][aã]o CNAE)$/i.test(
+        line,
+      )
+    ) {
+      continue;
+    }
+    if (/^\d{2}\.?\d{3}\.?\d{3}\/\d{4}-?\d{2}$/.test(line)) continue;
+    return line;
+  }
+  return null;
+}
+
+function isLikelyTocHit(text: string, index: number) {
+  const newline = text.indexOf('\n', index);
+  const line = text.slice(index, newline === -1 ? index + 180 : newline);
+  return /\.{6,}|…{2,}|\.{3,}\s*\d+\s*$/.test(line);
+}
+
+function findNonTocIndex(text: string, re: RegExp): number {
+  const flags = re.flags.includes('g') ? re.flags : `${re.flags}g`;
+  const global = new RegExp(re.source, flags);
+  let match: RegExpExecArray | null;
+  while ((match = global.exec(text)) != null) {
+    if (isLikelyTocHit(text, match.index)) continue;
+    return match.index;
+  }
+  return -1;
+}
+
+/** Prefere o bloco da empresa contratada, nao o da consultoria que redigiu o PGR. */
+function sliceClientCompanyBlock(text: string): string {
+  const elaboradora = findNonTocIndex(text, ELABORADORA_HEAD_RE);
+  const contracted = findNonTocIndex(text, /Identifica[cç][aã]o\s+CONTRATADA/i);
+  const companyHead = findNonTocIndex(
+    text,
+    /IDENTIFICA[CÇ][AÃ]O DA EMPRESA(?!\s+ELABORADORA)/i,
+  );
+
+  const startCandidates = [contracted, companyHead].filter(
+    (index) => index >= 0 && (elaboradora < 0 || index < elaboradora),
+  );
+  const start = startCandidates.length > 0 ? Math.min(...startCandidates) : -1;
+
+  if (start >= 0) {
+    const end =
+      elaboradora > start
+        ? elaboradora
+        : Math.min(text.length, start + 3500);
+    return text.slice(start, end);
+  }
+  if (elaboradora > 80) {
+    return text.slice(0, elaboradora);
+  }
+  return text.slice(0, Math.min(text.length, 4500));
+}
+
 function fieldUntilStop(
   text: string,
   labels: string[],
@@ -255,40 +331,96 @@ function fieldUntilStop(
   for (const label of labels) {
     const stop = stopLabels.map((s) => s.replace(/\s+/g, '\\s+')).join('|');
     const re = new RegExp(
-      `${label}\\s*[:\\-–]?\\s*([\\s\\S]{1,120}?)(?=${stop}|\\n\\s*\\n|$)`,
+      `${label}\\s*[:\\-–]?\\s*([\\s\\S]{1,220}?)(?=${stop}|$)`,
       'i',
     );
     const match = text.match(re);
     if (match?.[1]) {
-      const value = cleanLine(match[1].split('\n')[0] ?? match[1]);
-      if (value) return value;
+      const value = firstValueLine(match[1]) ?? cleanLine(match[1]);
+      if (value && !PLACEHOLDER_RE.test(value)) return value;
     }
   }
   return null;
 }
 
+function isLikelyAddressLine(value: string | null): boolean {
+  if (!value || PLACEHOLDER_RE.test(value)) return false;
+  if (/^\d{2}\.?\d{3}\.?\d{3}/.test(value)) return false;
+  if (!/[A-Za-zÀ-ÿ]{3,}/.test(value)) return false;
+  if (/^(cnpj|matriz|filial|complemento)$/i.test(value)) return false;
+  return true;
+}
+
+function cleanCompanyName(value: string | null): string | null {
+  if (!value) return null;
+  const name = cleanLine(value)
+    .replace(/^\d{2}\.?\d{3}\.?\d{3}(?:\/\d{4}-?\d{2})?\s+/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!name || PLACEHOLDER_RE.test(name)) return null;
+  if (/^(matriz|filial|cnpj|nome empresarial|razao social|razão social)$/i.test(name)) {
+    return null;
+  }
+  if (name.length < 4) return null;
+  return name;
+}
+
 function extractCompany(text: string, warnings: string[]): PgroCompanyData {
-  const cnpj = extractCnpj(text);
-  const legalName =
+  const scope = sliceClientCompanyBlock(text);
+  const cnpj = extractCnpj(scope) ?? extractCnpj(text);
+  const legalNameRaw =
+    firstValueLine(
+      fieldUntilStop(
+        scope,
+        [
+          'Nome Empresarial',
+          'Razao Social',
+          'Razão Social',
+          'Nome da Empresa',
+          'Empregador',
+          'Identificacao CONTRATADA',
+          'Identificação CONTRATADA',
+        ],
+        [
+          'CNPJ',
+          'Nome Fantasia',
+          'Nome de Fantasia',
+          'Endereco',
+          'Endereço',
+          'Municipio',
+          'Município',
+          'Cidade',
+        ],
+      ) ?? '',
+    ) ??
     fieldUntilStop(
-      text,
+      scope,
       ['Razao Social', 'Razão Social', 'Nome da Empresa', 'Empregador'],
       ['CNPJ', 'Nome Fantasia', 'Endereco', 'Endereço', 'Municipio', 'Município'],
-    ) ?? null;
+    ) ??
+    null;
+  const legalName = cleanCompanyName(legalNameRaw);
 
-  const tradeName =
-    fieldUntilStop(text, ['Nome Fantasia', 'Fantasia'], [
+  const tradeNameRaw = fieldUntilStop(
+    scope,
+    ['Nome de Fantasia', 'Nome Fantasia', 'Fantasia'],
+    [
       'CNPJ',
       'Endereco',
       'Endereço',
       'Municipio',
       'Município',
+      'Cidade',
       'Razao',
       'Razão',
-    ]) ?? null;
+      'Complemento',
+    ],
+  );
+  const tradeName =
+    tradeNameRaw && !PLACEHOLDER_RE.test(tradeNameRaw) ? tradeNameRaw : null;
 
-  const addressLine =
-    fieldUntilStop(text, ['Endereco', 'Endereço', 'Logradouro'], [
+  let addressLine =
+    fieldUntilStop(scope, ['Endereco', 'Endereço', 'Logradouro'], [
       'Municipio',
       'Município',
       'Cidade',
@@ -296,12 +428,21 @@ function extractCompany(text: string, warnings: string[]): PgroCompanyData {
       'Estado',
       'CEP',
       'CNAE',
+      'Complemento',
+      'Bairro',
     ]) ?? null;
+  if (!isLikelyAddressLine(addressLine)) {
+    const street = scope.match(
+      /\b(?:RUA|R\.|AV(?:ENIDA|\.)?|AL(?:AMEDA|\.)?|ROD(?:OVIA|\.)?|R)\s+[A-ZÀ-Ÿ][^\n]{4,80}/i,
+    );
+    addressLine = street ? cleanLine(street[0]) : null;
+  }
+  if (!isLikelyAddressLine(addressLine)) addressLine = null;
 
   let city: string | null = null;
   let state: string | null = null;
 
-  const cityStateMatch = text.match(
+  const cityStateMatch = scope.match(
     /Munic[ií]pio\s*[:\-]?\s*([A-Za-zÀ-ÿ' .\-]+?)\s+(?:Estado|UF)\s*[:\-]?\s*([A-Za-z]{2})\b/i,
   );
   if (cityStateMatch) {
@@ -309,16 +450,16 @@ function extractCompany(text: string, warnings: string[]): PgroCompanyData {
     state = cityStateMatch[2].toUpperCase();
   } else {
     const cityOnly = fieldUntilStop(
-      text,
+      scope,
       ['Municipio', 'Município', 'Cidade'],
-      ['Estado', 'UF', 'CEP', 'CNAE', 'Grau'],
+      ['Estado', 'UF', 'CEP', 'CNAE', 'Grau', 'Bairro', 'Complemento'],
     );
     if (cityOnly) {
       city = cleanLine(
         cityOnly.replace(/\bEstado\b.*$/i, '').replace(/\bUF\b.*$/i, ''),
       );
     }
-    const ufMatch = text.match(/\b(?:Estado|UF)\s*[:\-]?\s*([A-Za-z]{2})\b/i);
+    const ufMatch = scope.match(/\b(?:Estado|UF)\s*[:\-]?\s*([A-Za-z]{2})\b/i);
     if (ufMatch) state = ufMatch[1].toUpperCase();
   }
 
@@ -328,6 +469,11 @@ function extractCompany(text: string, warnings: string[]): PgroCompanyData {
       .replace(/\bUF\b.*$/i, '')
       .replace(/\s+/g, ' ')
       .trim();
+    const cityUf = city.match(/^([A-Za-zÀ-ÿ' .\-]+?)\s*[–\-]\s*([A-Za-z]{2})$/);
+    if (cityUf) {
+      city = cleanLine(cityUf[1]);
+      if (!state) state = cityUf[2].toUpperCase();
+    }
   }
 
   if (state && !BR_UFS.has(state)) {
@@ -341,23 +487,29 @@ function extractCompany(text: string, warnings: string[]): PgroCompanyData {
   }
 
   let cnae: string | null = null;
-  const cnaeMatch = text.match(
+  const cnaeMatch = scope.match(
     /CNAE\s*[:\-]?\s*(\d{2}\.?\d{2}-?\d(?:-\d{2})?|\d{4,7}(?:-\d{1,2})?)/i,
   );
   if (cnaeMatch) cnae = cleanLine(cnaeMatch[1]);
 
   let riskGrade: string | null = null;
-  const riskMatch = text.match(/Grau\s+de\s+[Rr]isco\s*[:\-]?\s*([1-4])\b/);
+  const riskMatch = scope.match(/Grau\s+de\s+[Rr]isco\s*[:\-]?\s*([1-4])\b/);
   if (riskMatch) riskGrade = riskMatch[1];
 
   let employeeCount: number | null = null;
-  const empMatch = text.match(
-    /(?:N[ºo°]\.?\s*(?:de\s*)?(?:Funcion[aá]rios|trabalhadores)|Numero\s+de\s+Funcionarios|Total\s+de\s+trabalhadores)\s*[:\-]?\s*(\d{1,5})/i,
+  const empMatch = scope.match(
+    /(?:N[ºo°]\.?\s*(?:de\s*)?(?:Funcion[aá]rios|trabalhadores)|Numero\s+de\s+Funcionarios|Total\s+de\s+(?:funcion[aá]rios|trabalhadores)|Funcion[aá]rios por sexo)\s*[:\-]?\s*(\d{1,5})/i,
   );
   if (empMatch) employeeCount = Number(empMatch[1]);
+  if (employeeCount == null) {
+    const totalMatch = scope.match(
+      /Total\s+de\s+funcion[aá]rios\s+(\d{1,5})/i,
+    );
+    if (totalMatch) employeeCount = Number(totalMatch[1]);
+  }
 
   return {
-    legalName: legalName ? cleanLine(legalName) : null,
+    legalName,
     tradeName: tradeName ? cleanLine(tradeName) : null,
     cnpj,
     addressLine,
@@ -424,7 +576,7 @@ function isIncompleteJobFragment(name: string): boolean {
   if (
     words.length === 1 &&
     JOB_HINT_RE.test(cleaned) &&
-    !/^(diretor|diretora|motorista|gerente|supervisor|coordenador|vendedor|pedreiro|pintor|soldador|eletricista)$/i.test(
+    !/^(diretor|diretora|motorista|gerente|supervisor|coordenador|vendedor|pedreiro|pintor|soldador|eletricista|montador)$/i.test(
       cleaned,
     )
   ) {
@@ -532,6 +684,13 @@ function splitSectorAndFunctionSameLine(
 
 function isValidSectorName(name: string): boolean {
   const cleaned = cleanLine(name);
+  if (
+    /^(fun[cç][aã]o(?:es)?|setor|ghe|cbo|anexo|descri[cç][aã]o(?:\s+do\s+cargo)?|local|epi|epc|servi[cç]os?|externos?|internos?|ambiente)$/i.test(
+      cleaned,
+    )
+  ) {
+    return false;
+  }
   if (isJunkName(cleaned)) return false;
   if (isEnvironmentLine(cleaned)) return false;
   if (cleaned.length > 40) return false;
@@ -603,6 +762,15 @@ export function expandFunctionNames(raw: string): string[] {
   const chunks = raw
     .split(/\n|;|\|/)
     .flatMap((part) => (part.includes('/') ? part.split('/') : [part]))
+    .flatMap((part) => {
+      if (/[IVX]+/i.test(part) && /,(?:\s*(?:III|II|IV|V|I)\b)/i.test(part)) {
+        return [part];
+      }
+      if (/,/.test(part) && looksLikeJobTitle(part)) {
+        return part.split(/\s*,\s*/);
+      }
+      return [part];
+    })
     .map((part) => cleanLine(part.replace(/^[-•*]\s*/, '')))
     .filter(Boolean);
 
@@ -670,6 +838,109 @@ function extractGheBlocks(text: string): GheBlock[] {
     });
   }
 
+  return mergeGheBlocks(blocks, extractCargoTableGheBlocks(text));
+}
+
+function mergeGheBlocks(primary: GheBlock[], extra: GheBlock[]): GheBlock[] {
+  if (extra.length === 0) return primary;
+  if (primary.length === 0) return extra;
+  const byNumber = new Map<string, GheBlock>();
+  for (const block of [...primary, ...extra]) {
+    const existing = byNumber.get(block.gheNumber);
+    if (!existing) {
+      byNumber.set(block.gheNumber, block);
+      continue;
+    }
+    existing.pairs = [...existing.pairs, ...block.pairs];
+    existing.body = `${existing.body}\n${block.body}`;
+  }
+  return [...byNumber.values()];
+}
+
+function pickFirstValidSector(
+  ...candidates: Array<string | null | undefined>
+): string | null {
+  const valid: string[] = [];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const cleaned = cleanLine(candidate);
+    if (!isValidSectorName(cleaned)) continue;
+    valid.push(cleaned.toUpperCase());
+  }
+  if (valid.length === 0) return null;
+  valid.sort((a, b) => b.length - a.length);
+  return valid[0];
+}
+
+function extractSetorField(slice: string): string | null {
+  const labeled = [
+    ...slice.matchAll(/SETOR\s*[:\-]\s*([A-Za-zÀ-ÿ0-9 .\/-]{3,60})/gi),
+  ];
+  for (const match of labeled) {
+    const raw = cleanLine(match[1].replace(/\s+GHE\s*[:.]?\s*\d+.*$/i, ''));
+    if (isValidSectorName(raw)) return raw.toUpperCase();
+  }
+  return null;
+}
+
+/**
+ * Layout tipo "TABELA DE DESCRIÇÃO DE CARGOS" / inventario (sem Caracterizacao do GHE).
+ * Ex.: GHE 01 + Serviços Externos + FUNÇÃO Montador
+ */
+function extractCargoTableGheBlocks(text: string): GheBlock[] {
+  const blocks: GheBlock[] = [];
+  const headerRe = /\bGHE\s*0*(\d+)\b\s*[\n\r]+\s*([^\n]{3,80})/gi;
+  const headers: Array<{ index: number; number: string; label: string }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = headerRe.exec(text)) != null) {
+    const label = cleanLine(match[2]);
+    if (/^P[aá]gina\b|^ANEXO\b|^FUN[CÇ]/i.test(label)) continue;
+    headers.push({
+      index: match.index,
+      number: match[1].padStart(2, '0'),
+      label,
+    });
+  }
+
+  for (let i = 0; i < headers.length; i += 1) {
+    const header = headers[i];
+    const hardStop = text.slice(header.index).search(
+      /\n\s*(ANEXO\s+[IVX]+|INVENT[AÁ]RIO DE RISCO|LEVANTAMENTO DE PERIGOS)/i,
+    );
+    const naturalEnd =
+      hardStop > 0
+        ? header.index + hardStop
+        : (headers[i + 1]?.index ?? Math.min(text.length, header.index + 2200));
+    const slice = text.slice(header.index, naturalEnd);
+    const pairs: SectorFunctionPair[] = [];
+    const sector = pickFirstValidSector(extractSetorField(slice), header.label);
+    const fnMatches = [
+      ...slice.matchAll(
+        /FUN[CÇ][AÃ]O(?:ES)?\s*[:\-]?\s*([A-Za-zÀ-ÿ0-9 ,.\-/]{3,80})/gi,
+      ),
+    ];
+    for (const fn of fnMatches) {
+      const rawName = firstValueLine(fn[1]) ?? cleanLine(fn[1]);
+      if (/^(CBO|DESCRI|SETOR|GHE|N[ºo°])/i.test(rawName)) continue;
+      for (const name of expandFunctionNames(rawName)) {
+        pairs.push({
+          sectorName: sector,
+          functionName: name,
+          activity: null,
+          environment: null,
+          rawText: rawName,
+        });
+      }
+    }
+    if (pairs.length === 0) continue;
+    blocks.push({
+      gheNumber: header.number,
+      gheName: `GHE ${header.number} – ${header.label}`,
+      headerLabel: header.label,
+      pairs,
+      body: slice.slice(0, 2500),
+    });
+  }
   return blocks;
 }
 
@@ -704,6 +975,7 @@ function extractSectorFunctionPairsFromGheBody(
   const lines = mergeBrokenJobTitleLines(rawLines);
   let currentSector: string | null = null;
   let sawTableFunction = false;
+  let awaitingFunction = false;
 
   const pushFunction = (fnRaw: string, sector: string | null, rawText: string) => {
     const names = expandFunctionNames(fnRaw);
@@ -739,8 +1011,23 @@ function extractSectorFunctionPairsFromGheBody(
       continue;
     }
 
+    if (/^(?:Cargo\/?Fun[cç][aã]o|Cargo|Fun[cç][aã]o(?:es)?)\s*[:\-–]?\s*$/i.test(line)) {
+      awaitingFunction = true;
+      continue;
+    }
+    if (awaitingFunction) {
+      awaitingFunction = false;
+      if (
+        !/^(CBO|DESCRI|SETOR|GHE|N[ºo°]|JORNADA|LOCAL)\b/i.test(line) &&
+        (looksLikeJobTitle(line) || isValidFunctionName(line))
+      ) {
+        pushFunction(line, currentSector, line);
+        continue;
+      }
+    }
+
     const functionLabel = line.match(
-      /^(?:Cargo\/?Fun[cç][aã]o|Cargo|Fun[cç][aã]o)\s*[:\-–]?\s*(.+)$/i,
+      /^(?:Cargo\/?Fun[cç][aã]o|Cargo|Fun[cç][aã]o(?:es)?)\s*[:\-–]?\s+(.+)$/i,
     );
     if (functionLabel) {
       pushFunction(functionLabel[1], currentSector, line);
@@ -838,7 +1125,10 @@ function extractRisksFromBlocks(
     for (const seed of DEFAULT_OCCUPATIONAL_RISK_SEEDS) {
       const aliases = [seed.name, ...seed.aliases].map(normalizeTextKey);
       const hit = aliases.some(
-        (alias) => alias.length >= 4 && textKey.includes(alias),
+        (alias) =>
+          alias.length >= 4 &&
+          textKey.includes(alias) &&
+          !isNegatedAliasHit(textKey, alias),
       );
       if (!hit) continue;
       risks.push({
@@ -877,6 +1167,8 @@ function extractRisksFromBlocks(
   } else {
     pushSeedHits(fullText, allFunctionNames, null, 'KEYWORD');
   }
+
+  pushSeedHits(fullText, allFunctionNames, null, 'KEYWORD');
 
   const byName = new Map<string, PgroExtractedRisk>();
   for (const risk of risks) {
@@ -973,6 +1265,9 @@ function extractEpiNeedsFromBlocks(
   } else {
     scan(fullText, allFunctionNames, null, 'GLOBAL');
   }
+
+  // Outros layouts (tabela de cargos / inventario) listam EPIs fora do APRHO.
+  scan(fullText, allFunctionNames, null, 'KEYWORD');
 
   const byName = new Map<string, PgroExtractedEpiNeed>();
   for (const item of found) {

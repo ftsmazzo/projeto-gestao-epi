@@ -276,6 +276,120 @@ assert(
 assert(result.risks.length >= 5, `too few risks: ${result.risks.length}`);
 assert(result.epiNeeds.length >= 3, `too few epis: ${result.epiNeeds.length}`);
 
+/** Layout de outra consultoria: contratada x elaboradora + tabela de cargos. */
+const SAMPLE_CONTRACTED = `
+IDENTIFICAÇÃO DA EMPRESA
+
+
+Identificação CONTRATADA
+Nome Empresarial
+    
+ 
+55.959.918 FERNANDA ABREU DOS SANTOS
+ 
+Nome de Fantasia
+    
+************************
+Endereço
+  
+Complemento
+-----------------
+CNPJ
+55.959.918/0001-54
+MATRIZ
+    R PROCOPIO FERREIRA – n - 124  
+CEP
+08.583-660
+Cidade
+ITAQUAQUECETUBA
+Bairro
+PARQUE PIRATININGA
+UF
+SP
+CNAE
+43.29-1-01
+Grau de Risco
+3
+Total de funcionários 02
+
+IDENTIFICAÇÃO DA EMPRESA ELABORADORA DO PGR
+Razão Social
+SHALOM SERV LTDA
+Nome de Fantasia
+EMPREITEIRAEMANUEL
+Município / Estado
+RESENDE – RJ
+48.347.667/0001-91 MATRIZ
+CNPJ
+
+TABELA DE DESCRIÇÃO DE CARGOS, ATIVIDADES E EPIs
+GHE 01
+Serviços Externos
+FUNÇÃO
+Montador
+CBO
+7242-05
+FUNÇÃO
+Auxiliar de montagem
+CBO
+725105
+SETOR : Serviços Externos
+FUNÇÕES
+Montador, Auxiliar de montagem
+EPI(s)
+Protetor Auricular Tipo Plug, Calçado de Segurança, Capacete de Segurança, Avental de Raspa, Luva de Raspa, Máscara de Solda Celeron, Perneira de Raspa, RESPIRADOR PURIFICADOR DE AR TIPO PEÇA SEMIFACIAL FILTRANTE PARA PARTÍCULAS PFF2, Cinturão tipo para-quedista, Dispositivo Trava Quedas.
+`;
+
+const contracted = parsePgroText(SAMPLE_CONTRACTED);
+assert(
+  /FERNANDA ABREU/i.test(contracted.company.legalName ?? ''),
+  `cliente misturado: ${contracted.company.legalName}`,
+);
+assert(
+  !/SHALOM/i.test(contracted.company.legalName ?? ''),
+  'pegou elaboradora como razao social',
+);
+assert(
+  contracted.company.cnpj === '55959918000154',
+  `cnpj: ${contracted.company.cnpj}`,
+);
+assert(
+  /ITAQUAQUECETUBA/i.test(contracted.company.city ?? ''),
+  `cidade: ${contracted.company.city}`,
+);
+assert(contracted.company.state === 'SP', `uf: ${contracted.company.state}`);
+assert(
+  /PROCOPIO|FERREIRA/i.test(contracted.company.addressLine ?? ''),
+  `endereco: ${contracted.company.addressLine}`,
+);
+assert(
+  !/RESENDE|SHALOM|EMANUEL/i.test(
+    `${contracted.company.legalName ?? ''} ${contracted.company.city ?? ''}`,
+  ),
+  'misturou elaboradora em cidade/razao',
+);
+assert(
+  contracted.sectors.some((s) => /SERVI[CÇ]OS\s+EXTERNOS/i.test(s.name)),
+  `setores: ${contracted.sectors.map((s) => s.name).join(' | ')}`,
+);
+assert(
+  hasPair(contracted.functions, 'SERVIÇOS EXTERNOS', /MONTADOR/i) ||
+    hasPair(contracted.functions, 'SERVICOS EXTERNOS', /MONTADOR/i),
+  `sem montador: ${contracted.functions.map((f) => `${f.sectorName}:${f.name}`).join(' | ')}`,
+);
+assert(
+  contracted.functions.some((f) => /AUXILIAR DE MONTAGEM/i.test(f.name)),
+  'sem auxiliar de montagem',
+);
+assert(
+  contracted.epiNeeds.some((e) => /mascara de solda/i.test(e.suggestedName)),
+  `epis: ${contracted.epiNeeds.map((e) => e.suggestedName).join(', ')}`,
+);
+assert(
+  contracted.epiNeeds.some((e) => /pff2|respirador/i.test(e.suggestedName)),
+  'sem respirador/pff2',
+);
+
 console.log('pgro-parser.selftest OK');
 console.log(
   JSON.stringify(
