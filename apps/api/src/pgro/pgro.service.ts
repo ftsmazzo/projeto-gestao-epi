@@ -6,9 +6,11 @@ import {
 } from '@nestjs/common';
 import {
   MembershipRole,
+  OccupationalRiskCategory,
   Prisma,
   PgroImportStatus,
   ServedClientStatus,
+  WorkerStatus,
 } from '@prisma/client';
 import pdfParse from 'pdf-parse';
 import { AuditService } from '../audit/audit.service';
@@ -18,11 +20,21 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ServedClientsService } from '../served-clients/served-clients.service';
 import type { ConfirmPgroImportDto } from './dto/pgro-import.dto';
 import {
+  assessPgroCompanyMatch,
+  buildPgroStructureDiff,
+  functionKey,
+  type ExistingPgroSector,
+} from './pgro-diff';
+import {
   normalizeTextKey,
   parsePgroText,
   type PgroExtractedEpiNeed,
   type PgroParseResult,
 } from './pgro-parser';
+
+type ConfirmOptions = {
+  skipManagementRole?: boolean;
+};
 
 @Injectable()
 export class PgroService {
@@ -49,8 +61,11 @@ export class PgroService {
     membershipRole: string,
     file: Express.Multer.File | undefined,
     servedClientId?: string | null,
+    options?: ConfirmOptions,
   ) {
-    this.assertManagementRole(membershipRole);
+    if (!options?.skipManagementRole) {
+      this.assertManagementRole(membershipRole);
+    }
     if (!file?.buffer?.length) {
       throw new BadRequestException('Envie um arquivo PDF.');
     }
@@ -165,8 +180,11 @@ export class PgroService {
     membershipRole: string,
     id: string,
     dto: ConfirmPgroImportDto,
+    options?: ConfirmOptions,
   ) {
-    this.assertManagementRole(membershipRole);
+    if (!options?.skipManagementRole) {
+      this.assertManagementRole(membershipRole);
+    }
     const run = await this.prisma.pgroImportRun.findFirst({
       where: { id, organizationId },
     });
@@ -193,8 +211,13 @@ export class PgroService {
       createdClient: false,
       sectorsCreated: 0,
       sectorsExisting: 0,
+      sectorsReactivated: 0,
+      sectorsArchived: 0,
       functionsCreated: 0,
       functionsExisting: 0,
+      functionsReactivated: 0,
+      functionsArchived: 0,
+      workersInArchivedFunctions: 0,
       risksCreated: 0,
       risksExisting: 0,
       riskLinksCreated: 0,
@@ -259,20 +282,22 @@ export class PgroService {
         }
       } else {
         await this.requireClientTx(tx, organizationId, servedClientId);
-        const contactEmail = dto.company.contactEmail?.trim();
-        const contactPhone = dto.company.contactPhone?.trim();
-        if (contactEmail !== undefined || contactPhone !== undefined) {
-          await tx.servedClient.update({
-            where: { id: servedClientId },
-            data: {
-              ...(contactEmail !== undefined
-                ? { contactEmail: contactEmail || null }
-                : {}),
-              ...(contactPhone !== undefined
-                ? { contactPhone: contactPhone || null }
-                : {}),
-            },
-          });
+        if (!dto.skipCompanyUpdate) {
+          const contactEmail = dto.company.contactEmail?.trim();
+          const contactPhone = dto.company.contactPhone?.trim();
+          if (contactEmail !== undefined || contactPhone !== undefined) {
+            await tx.servedClient.update({
+              where: { id: servedClientId },
+              data: {
+                ...(contactEmail !== undefined
+                  ? { contactEmail: contactEmail || null }
+                  : {}),
+                ...(contactPhone !== undefined
+                  ? { contactPhone: contactPhone || null }
+                  : {}),
+              },
+            });
+          }
         }
       }
 
@@ -299,6 +324,8 @@ export class PgroService {
       }
 
       const sectorIdByName = new Map<string, string>();
+      const keepSectorKeys = new Set<string>();
+      const keepFunctionKeys = new Set<string>();
       const includedSectors = dto.sectors.filter((s) => s.included);
       for (const sector of includedSectors) {
         const name = sector.name.trim();
@@ -312,8 +339,17 @@ export class PgroService {
         });
         if (existing) {
           sectorIdByName.set(normalizeTextKey(name), existing.id);
-          summary.sectorsExisting += 1;
-          warnings.push(`Setor ja existia: ${name}`);
+          keepSectorKeys.add(normalizeTextKey(name));
+          if (!existing.isActive) {
+            await tx.clientSector.update({
+              where: { id: existing.id },
+              data: { isActive: true },
+            });
+            summary.sectorsReactivated += 1;
+          } else {
+            summary.sectorsExisting += 1;
+            warnings.push(`Setor ja existia: ${name}`);
+          }
         } else {
           const created = await tx.clientSector.create({
             data: {
@@ -324,6 +360,7 @@ export class PgroService {
             },
           });
           sectorIdByName.set(normalizeTextKey(name), created.id);
+          keepSectorKeys.add(normalizeTextKey(name));
           summary.sectorsCreated += 1;
         }
       }
@@ -344,7 +381,16 @@ export class PgroService {
         });
         if (existing) {
           sectorIdByName.set(key, existing.id);
-          summary.sectorsExisting += 1;
+          keepSectorKeys.add(key);
+          if (!existing.isActive) {
+            await tx.clientSector.update({
+              where: { id: existing.id },
+              data: { isActive: true },
+            });
+            summary.sectorsReactivated += 1;
+          } else {
+            summary.sectorsExisting += 1;
+          }
         } else {
           const created = await tx.clientSector.create({
             data: {
@@ -355,6 +401,7 @@ export class PgroService {
             },
           });
           sectorIdByName.set(key, created.id);
+          keepSectorKeys.add(key);
           summary.sectorsCreated += 1;
         }
       }
@@ -373,6 +420,14 @@ export class PgroService {
         });
         if (existing) {
           defaultSectorId = existing.id;
+          keepSectorKeys.add(normalizeTextKey(name));
+          if (!existing.isActive) {
+            await tx.clientSector.update({
+              where: { id: existing.id },
+              data: { isActive: true },
+            });
+            summary.sectorsReactivated += 1;
+          }
           return existing.id;
         }
         const created = await tx.clientSector.create({
@@ -384,6 +439,7 @@ export class PgroService {
           },
         });
         defaultSectorId = created.id;
+        keepSectorKeys.add(normalizeTextKey(name));
         summary.sectorsCreated += 1;
         warnings.push(
           'Funcoes sem setor foram vinculadas ao setor "Geral".',
@@ -392,9 +448,18 @@ export class PgroService {
       };
 
       const jobIdByName = new Map<string, string>();
+      const rememberJob = (
+        name: string,
+        sectorName: string | null,
+        id: string,
+      ) => {
+        jobIdByName.set(normalizeTextKey(name), id);
+        jobIdByName.set(functionKey(sectorName, name), id);
+      };
       for (const fn of dto.functions.filter((f) => f.included)) {
         const name = fn.name.trim();
         let sectorId: string | null = null;
+        let resolvedSectorName = fn.sectorName?.trim() || null;
         if (fn.sectorName?.trim()) {
           sectorId =
             sectorIdByName.get(normalizeTextKey(fn.sectorName.trim())) ??
@@ -402,6 +467,7 @@ export class PgroService {
         }
         if (!sectorId) {
           sectorId = await ensureDefaultSector();
+          resolvedSectorName = resolvedSectorName || 'Geral';
           warnings.push(`Funcao com dados incompletos de setor: ${name}`);
         }
 
@@ -413,9 +479,25 @@ export class PgroService {
           },
         });
         if (existing) {
-          jobIdByName.set(normalizeTextKey(name), existing.id);
-          summary.functionsExisting += 1;
-          warnings.push(`Funcao ja existia: ${name}`);
+          rememberJob(name, resolvedSectorName, existing.id);
+          keepFunctionKeys.add(functionKey(resolvedSectorName, name));
+          if (!existing.isActive) {
+            await tx.clientJobFunction.update({
+              where: { id: existing.id },
+              data: {
+                isActive: true,
+                description:
+                  fn.activityDescription?.trim() || existing.description,
+                environmentDescription:
+                  fn.environmentDescription?.trim() ||
+                  existing.environmentDescription,
+              },
+            });
+            summary.functionsReactivated += 1;
+          } else {
+            summary.functionsExisting += 1;
+            warnings.push(`Funcao ja existia: ${name}`);
+          }
         } else {
           const created = await tx.clientJobFunction.create({
             data: {
@@ -428,7 +510,8 @@ export class PgroService {
                 fn.environmentDescription?.trim() || null,
             },
           });
-          jobIdByName.set(normalizeTextKey(name), created.id);
+          rememberJob(name, resolvedSectorName, created.id);
+          keepFunctionKeys.add(functionKey(resolvedSectorName, name));
           summary.functionsCreated += 1;
         }
       }
@@ -584,6 +667,18 @@ export class PgroService {
         }
       }
 
+      if (dto.archiveMissing) {
+        await this.archiveMissingStructure(
+          tx,
+          organizationId,
+          servedClientId!,
+          keepSectorKeys,
+          keepFunctionKeys,
+          summary,
+          warnings,
+        );
+      }
+
       const updated = await tx.pgroImportRun.update({
         where: { id: run.id },
         data: {
@@ -645,6 +740,347 @@ export class PgroService {
       confirmWarnings: warnings,
       initialAccess,
     };
+  }
+
+  async previewForClient(
+    organizationId: string,
+    userId: string,
+    servedClientId: string,
+    file: Express.Multer.File | undefined,
+  ) {
+    const client = await this.requirePortalClient(
+      organizationId,
+      servedClientId,
+    );
+    const run = await this.preview(
+      organizationId,
+      userId,
+      MembershipRole.OWNER,
+      file,
+      servedClientId,
+      { skipManagementRole: true },
+    );
+    const existing = await this.loadExistingStructure(
+      organizationId,
+      servedClientId,
+    );
+    const diff = buildPgroStructureDiff({
+      existingSectors: existing,
+      parsedSectors: this.asNamedItems(run.sectors),
+      parsedFunctions: this.asNamedItems(run.functions).map((item) => ({
+        name: item.name,
+        sectorName: item.sectorName,
+        included: item.included,
+      })),
+    });
+    const parsedCompany = this.readCompanyJson(run.company);
+    const companyAssess = assessPgroCompanyMatch({
+      clientCnpj: client.cnpj,
+      parsedCnpj: parsedCompany.cnpj,
+    });
+    const warnings = [...(run.warnings ?? [])];
+    if (companyAssess.warning) warnings.push(companyAssess.warning);
+
+    return {
+      run,
+      diff,
+      company: {
+        clientLegalName: client.legalName,
+        clientCnpj: client.cnpj,
+        parsedLegalName: parsedCompany.legalName,
+        parsedCnpj: parsedCompany.cnpj,
+        cnpjMatches: companyAssess.cnpjMatches,
+        canConfirm:
+          companyAssess.canConfirm && run.status === PgroImportStatus.PARSED,
+      },
+      warnings,
+    };
+  }
+
+  async confirmForClient(
+    organizationId: string,
+    userId: string,
+    servedClientId: string,
+    runId: string,
+  ) {
+    const client = await this.requirePortalClient(
+      organizationId,
+      servedClientId,
+    );
+    const run = await this.prisma.pgroImportRun.findFirst({
+      where: { id: runId, organizationId, servedClientId },
+    });
+    if (!run) {
+      throw new NotFoundException('Importacao PGR nao encontrada.');
+    }
+    const parsedCnpj =
+      run.companyData &&
+      typeof run.companyData === 'object' &&
+      !Array.isArray(run.companyData)
+        ? String(
+            (run.companyData as { cnpj?: string | null }).cnpj ?? '',
+          ) || null
+        : null;
+    const companyAssess = assessPgroCompanyMatch({
+      clientCnpj: client.cnpj,
+      parsedCnpj,
+    });
+    if (!companyAssess.canConfirm) {
+      throw new BadRequestException(
+        companyAssess.warning ??
+          'O CNPJ do PDF nao confere com a empresa logada.',
+      );
+    }
+
+    const dto = this.dtoFromStoredRun(run, servedClientId, client);
+    return this.confirm(
+      organizationId,
+      userId,
+      MembershipRole.OWNER,
+      runId,
+      dto,
+      { skipManagementRole: true },
+    );
+  }
+
+  private dtoFromStoredRun(
+    run: {
+      extractedSectors: Prisma.JsonValue | null;
+      extractedFunctions: Prisma.JsonValue | null;
+      extractedRisks: Prisma.JsonValue | null;
+      extractedEpiNeeds: Prisma.JsonValue | null;
+    },
+    servedClientId: string,
+    client: { legalName: string; cnpj: string },
+  ): ConfirmPgroImportDto {
+    const sectors = Array.isArray(run.extractedSectors)
+      ? run.extractedSectors
+      : [];
+    const functions = Array.isArray(run.extractedFunctions)
+      ? run.extractedFunctions
+      : [];
+    const risks = Array.isArray(run.extractedRisks) ? run.extractedRisks : [];
+    const epiNeeds = Array.isArray(run.extractedEpiNeeds)
+      ? run.extractedEpiNeeds
+      : [];
+
+    return {
+      servedClientId,
+      archiveMissing: true,
+      skipCompanyUpdate: true,
+      company: {
+        legalName: client.legalName,
+        cnpj: client.cnpj,
+      },
+      sectors: sectors.map((item) => {
+        const s = item as {
+          tempId?: string;
+          name?: string;
+          included?: boolean;
+        };
+        return {
+          tempId: String(s.tempId ?? s.name ?? 'sector'),
+          name: String(s.name ?? '').trim(),
+          included: s.included !== false,
+        };
+      }),
+      functions: functions.map((item) => {
+        const f = item as {
+          tempId?: string;
+          name?: string;
+          sectorName?: string | null;
+          activityDescription?: string | null;
+          environmentDescription?: string | null;
+          included?: boolean;
+        };
+        return {
+          tempId: String(f.tempId ?? f.name ?? 'function'),
+          name: String(f.name ?? '').trim(),
+          sectorName: f.sectorName ?? null,
+          activityDescription: f.activityDescription ?? null,
+          environmentDescription: f.environmentDescription ?? null,
+          included: f.included !== false,
+        };
+      }),
+      risks: risks.map((item) => {
+        const r = item as {
+          tempId?: string;
+          name?: string;
+          category?: ConfirmPgroImportDto['risks'][number]['category'];
+          functionNames?: string[];
+          included?: boolean;
+        };
+        return {
+          tempId: String(r.tempId ?? r.name ?? 'risk'),
+          name: String(r.name ?? '').trim(),
+          category: r.category ?? OccupationalRiskCategory.OUTROS,
+          functionNames: r.functionNames ?? [],
+          included: r.included !== false,
+        };
+      }),
+      epiNeeds: epiNeeds.map((item) => {
+        const e = item as {
+          tempId?: string;
+          suggestedName?: string;
+          matchedEpiNeedId?: string | null;
+          createNew?: boolean;
+          functionNames?: string[];
+          riskNames?: string[];
+          included?: boolean;
+        };
+        return {
+          tempId: String(e.tempId ?? e.suggestedName ?? 'epi'),
+          suggestedName: String(e.suggestedName ?? '').trim(),
+          matchedEpiNeedId: e.matchedEpiNeedId ?? null,
+          createNew: e.createNew !== false,
+          functionNames: e.functionNames ?? [],
+          riskNames: e.riskNames ?? [],
+          included: e.included !== false,
+        };
+      }),
+    };
+  }
+
+  private async loadExistingStructure(
+    organizationId: string,
+    servedClientId: string,
+  ): Promise<ExistingPgroSector[]> {
+    const sectors = await this.prisma.clientSector.findMany({
+      where: { organizationId, servedClientId },
+      select: {
+        name: true,
+        isActive: true,
+        operationalUnitId: true,
+        jobFunctions: {
+          select: {
+            name: true,
+            isActive: true,
+            _count: {
+              select: {
+                workers: { where: { status: WorkerStatus.ACTIVE } },
+              },
+            },
+          },
+        },
+      },
+    });
+    return sectors.map((sector) => ({
+      name: sector.name,
+      isActive: sector.isActive,
+      operationalUnitId: sector.operationalUnitId,
+      jobs: sector.jobFunctions.map((job) => ({
+        name: job.name,
+        isActive: job.isActive,
+        workerCount: job._count.workers,
+      })),
+    }));
+  }
+
+  private async archiveMissingStructure(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    servedClientId: string,
+    keepSectorKeys: Set<string>,
+    keepFunctionKeys: Set<string>,
+    summary: {
+      sectorsArchived: number;
+      functionsArchived: number;
+      workersInArchivedFunctions: number;
+    },
+    warnings: string[],
+  ) {
+    const sectors = await tx.clientSector.findMany({
+      where: { organizationId, servedClientId, operationalUnitId: null },
+      include: {
+        jobFunctions: {
+          include: {
+            _count: {
+              select: {
+                workers: { where: { status: WorkerStatus.ACTIVE } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    for (const sector of sectors) {
+      for (const job of sector.jobFunctions) {
+        const key = functionKey(sector.name, job.name);
+        if (keepFunctionKeys.has(key) || !job.isActive) continue;
+        await tx.clientJobFunction.update({
+          where: { id: job.id },
+          data: { isActive: false },
+        });
+        summary.functionsArchived += 1;
+        summary.workersInArchivedFunctions += job._count.workers;
+        if (job._count.workers > 0) {
+          warnings.push(
+            `${job._count.workers} trabalhador(es) em "${job.name}" (${sector.name}) precisam ser realocados.`,
+          );
+        }
+      }
+    }
+
+    for (const sector of sectors) {
+      const key = normalizeTextKey(sector.name);
+      if (keepSectorKeys.has(key)) continue;
+      const remaining = await tx.clientJobFunction.count({
+        where: { sectorId: sector.id, isActive: true },
+      });
+      if (remaining > 0 || !sector.isActive) continue;
+      await tx.clientSector.update({
+        where: { id: sector.id },
+        data: { isActive: false },
+      });
+      summary.sectorsArchived += 1;
+    }
+  }
+
+  private asNamedItems(value: unknown): Array<{
+    name: string;
+    sectorName?: string | null;
+    included?: boolean;
+  }> {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+      const rec = item as Record<string, unknown>;
+      if (typeof rec.name !== 'string' || !rec.name.trim()) return [];
+      return [
+        {
+          name: rec.name,
+          sectorName:
+            typeof rec.sectorName === 'string' ? rec.sectorName : null,
+          included: rec.included !== false,
+        },
+      ];
+    });
+  }
+
+  private readCompanyJson(value: Prisma.JsonValue | null | undefined) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return { legalName: null as string | null, cnpj: null as string | null };
+    }
+    const rec = value as Record<string, unknown>;
+    return {
+      legalName: typeof rec.legalName === 'string' ? rec.legalName : null,
+      cnpj: typeof rec.cnpj === 'string' ? rec.cnpj : null,
+    };
+  }
+
+  private async requirePortalClient(
+    organizationId: string,
+    servedClientId: string,
+  ) {
+    const client = await this.prisma.servedClient.findFirst({
+      where: { id: servedClientId, organizationId },
+      select: { id: true, legalName: true, cnpj: true },
+    });
+    if (!client) {
+      throw new NotFoundException('Cliente do portal nao encontrado.');
+    }
+    return client;
   }
 
   private async matchEpiNeeds(

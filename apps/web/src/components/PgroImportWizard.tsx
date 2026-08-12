@@ -272,6 +272,8 @@ export function PgroImportWizard({
     try {
       const payload: ConfirmPgroImportPayload = {
         servedClientId,
+        archiveMissing: isUpdateMode,
+        skipCompanyUpdate: isUpdateMode,
         company: {
           legalName: company.legalName,
           tradeName: company.tradeName,
@@ -368,7 +370,7 @@ export function PgroImportWizard({
           </h1>
           <p className="page-lead">
             {isUpdateMode
-              ? 'Envie o PDF neste ambiente do cliente, revise os dados e confirme. Nada e gravado so com o upload.'
+              ? 'Envie o PDF neste ambiente do cliente, revise os dados e confirme. Setores e funcoes que sumirem do PGR saem das telas operacionais, mas o historico permanece.'
               : 'Envie o PDF, revise os dados extraidos em blocos e confirme a implantacao. Nada e gravado apenas pelo upload.'}
           </p>
         </div>

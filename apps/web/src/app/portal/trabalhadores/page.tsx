@@ -1074,6 +1074,9 @@ function PortalTrabalhadoresContent() {
                             worker.role ||
                             worker.department ||
                             'Sem funcao'}
+                          {worker.needsReallocation
+                            ? ' · funcao arquivada — realoque'
+                            : ''}
                           {worker.unitName ? ` · ${worker.unitName}` : ''}
                         </p>
                       </div>
@@ -1085,6 +1088,11 @@ function PortalTrabalhadoresContent() {
                         >
                           {worker.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
                         </span>
+                        {worker.needsReallocation ? (
+                          <span className="status-pill status-pill--warn">
+                            Realocar
+                          </span>
+                        ) : null}
                         <span
                           className={`status-pill ${
                             bio.ok ? 'status-pill--active' : 'status-pill--warn'

@@ -13,6 +13,7 @@ import {
   UseGuards,
   UseInterceptors,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { plainToInstance } from 'class-transformer';
@@ -35,6 +36,7 @@ import { PortalStockEntradasDto } from './dto/portal-stock.dto';
 import { PortalPdfService } from './portal-pdf.service';
 import { PortalReportsService } from './portal-reports.service';
 import type { PortalReportFilters } from './portal-reports.service';
+import { PgroService } from '../pgro/pgro.service';
 import { PortalService } from './portal.service';
 
 @Controller('portal')
@@ -44,6 +46,7 @@ export class PortalController {
     private readonly portal: PortalService,
     private readonly reports: PortalReportsService,
     private readonly portalPdf: PortalPdfService,
+    private readonly pgro: PgroService,
   ) {}
 
   @Get('dashboard')
@@ -162,6 +165,42 @@ export class PortalController {
   estrutura(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);
     return this.portal.getEstrutura(user.organizationId, user.servedClientId);
+  }
+
+  @Post('estrutura/pgr/preview')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 15 * 1024 * 1024 },
+    }),
+  )
+  previewPgrUpdate(
+    @CurrentUser() user: ClientJwtPayload,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    this.assertClient(user);
+    this.assertClientManager(user);
+    return this.pgro.previewForClient(
+      user.organizationId,
+      user.sub,
+      user.servedClientId,
+      file,
+    );
+  }
+
+  @Post('estrutura/pgr/:id/confirm')
+  confirmPgrUpdate(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+  ) {
+    this.assertClient(user);
+    this.assertClientManager(user);
+    return this.pgro.confirmForClient(
+      user.organizationId,
+      user.sub,
+      user.servedClientId,
+      id,
+    );
   }
 
   @Get('entregas/preparacao')
@@ -728,6 +767,14 @@ export class PortalController {
   private assertClient(user: ClientJwtPayload) {
     if (!user.servedClientId) {
       throw new NotFoundException('Cliente do portal nao identificado.');
+    }
+  }
+
+  private assertClientManager(user: ClientJwtPayload) {
+    if (user.clientRole !== 'CLIENT_MANAGER') {
+      throw new ForbiddenException(
+        'Apenas o gestor da empresa pode atualizar o PGR.',
+      );
     }
   }
 

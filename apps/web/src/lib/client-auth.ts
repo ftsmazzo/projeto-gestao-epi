@@ -24,6 +24,8 @@ import type {
   PortalStockEntradasResult,
   PortalCustosDashboardResponse,
   PortalInvoiceUploadResult,
+  PortalPgroPreview,
+  PgroImportConfirmResult,
   PortalTrabalhadoresResponse,
   PortalValidadeResponse,
   PortalWorkerEpiSheetResponse,
@@ -173,6 +175,22 @@ export async function fetchPortalValidade() {
 
 export async function fetchPortalEstrutura() {
   return clientApiFetch<PortalEstruturaResponse>('/portal/estrutura');
+}
+
+export async function previewPortalPgr(file: File) {
+  const form = new FormData();
+  form.append('file', file);
+  return clientApiFetch<PortalPgroPreview>('/portal/estrutura/pgr/preview', {
+    method: 'POST',
+    body: form,
+  });
+}
+
+export async function confirmPortalPgr(runId: string) {
+  return clientApiFetch<PgroImportConfirmResult>(
+    `/portal/estrutura/pgr/${runId}/confirm`,
+    { method: 'POST' },
+  );
 }
 
 export async function fetchPortalTrabalhadores() {

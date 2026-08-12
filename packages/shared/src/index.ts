@@ -1129,8 +1129,13 @@ export interface PgroImportConfirmSummary {
   createdClient: boolean;
   sectorsCreated: number;
   sectorsExisting: number;
+  sectorsReactivated?: number;
+  sectorsArchived?: number;
   functionsCreated: number;
   functionsExisting: number;
+  functionsReactivated?: number;
+  functionsArchived?: number;
+  workersInArchivedFunctions?: number;
   risksCreated: number;
   risksExisting: number;
   riskLinksCreated: number;
@@ -1168,8 +1173,43 @@ export interface PgroImportConfirmResult extends PgroImportRun {
   initialAccess?: ClientInitialAccess | null;
 }
 
+export interface PgroDiffRow {
+  name: string;
+  sectorName: string | null;
+  workerCount: number;
+}
+
+export interface PgroStructureDiff {
+  sectorsAdded: PgroDiffRow[];
+  sectorsKept: PgroDiffRow[];
+  sectorsReactivated: PgroDiffRow[];
+  sectorsToArchive: PgroDiffRow[];
+  functionsAdded: PgroDiffRow[];
+  functionsKept: PgroDiffRow[];
+  functionsReactivated: PgroDiffRow[];
+  functionsToArchive: PgroDiffRow[];
+}
+
+export interface PortalPgroPreview {
+  run: PgroImportRun;
+  diff: PgroStructureDiff;
+  company: {
+    clientLegalName: string;
+    clientCnpj: string;
+    parsedLegalName: string | null;
+    parsedCnpj: string | null;
+    cnpjMatches: boolean | null;
+    canConfirm: boolean;
+  };
+  warnings: string[];
+}
+
 export interface ConfirmPgroImportPayload {
   servedClientId?: string | null;
+  /** Atualizacao: arquiva setor/funcao que sumiu do PGR (isActive=false). */
+  archiveMissing?: boolean;
+  /** Nao sobrescreve razao social/CNPJ do cliente ja cadastrado. */
+  skipCompanyUpdate?: boolean;
   company: {
     legalName?: string | null;
     tradeName?: string | null;
@@ -1328,6 +1368,12 @@ export interface PortalValidadeResponse {
 }
 
 export interface PortalEstruturaResponse {
+  lastPgroImport: {
+    id: string;
+    fileName: string;
+    createdAt: string;
+    finishedAt: string | null;
+  } | null;
   units: Array<{
     id: string;
     name: string;
@@ -1403,6 +1449,7 @@ export interface PortalTrabalhadoresResponse {
     unitName: string | null;
     sectorName: string | null;
     jobFunctionName: string | null;
+    needsReallocation: boolean;
     admissionDate: string | null;
     hasValidBiometrics: boolean;
     biometricStatus:

@@ -160,6 +160,14 @@ export class ConfirmPgroImportDto {
   @IsString()
   servedClientId?: string | null;
 
+  @IsOptional()
+  @IsBoolean()
+  archiveMissing?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  skipCompanyUpdate?: boolean;
+
   @ValidateNested()
   @Type(() => ConfirmPgroCompanyDto)
   company!: ConfirmPgroCompanyDto;

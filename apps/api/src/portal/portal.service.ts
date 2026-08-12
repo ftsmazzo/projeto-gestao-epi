@@ -582,7 +582,7 @@ export class PortalService {
   async getEstrutura(organizationId: string, servedClientId: string) {
     await this.requireClient(organizationId, servedClientId);
 
-    const [sectors, units] = await Promise.all([
+    const [sectors, units, lastPgro] = await Promise.all([
       this.prisma.clientSector.findMany({
         where: { organizationId, servedClientId, isActive: true },
         orderBy: { name: 'asc' },
@@ -615,9 +615,31 @@ export class PortalService {
         orderBy: { name: 'asc' },
         select: { id: true, name: true, code: true },
       }),
+      this.prisma.pgroImportRun.findFirst({
+        where: {
+          organizationId,
+          servedClientId,
+          status: 'CONFIRMED',
+        },
+        orderBy: { finishedAt: 'desc' },
+        select: {
+          id: true,
+          fileName: true,
+          createdAt: true,
+          finishedAt: true,
+        },
+      }),
     ]);
 
     return {
+      lastPgroImport: lastPgro
+        ? {
+            id: lastPgro.id,
+            fileName: lastPgro.fileName,
+            createdAt: lastPgro.createdAt.toISOString(),
+            finishedAt: lastPgro.finishedAt?.toISOString() ?? null,
+          }
+        : null,
       units: units.map((unit) => ({
         id: unit.id,
         name: unit.name,
@@ -681,7 +703,9 @@ export class PortalService {
         include: {
           operationalUnit: { select: { id: true, name: true } },
           clientSector: { select: { id: true, name: true } },
-          clientJobFunction: { select: { id: true, name: true } },
+          clientJobFunction: {
+            select: { id: true, name: true, isActive: true },
+          },
         },
       }),
       this.prisma.epiDeliveryItem.findMany({
@@ -837,6 +861,9 @@ export class PortalService {
         unitName: w.operationalUnit?.name ?? null,
         sectorName: w.clientSector?.name ?? null,
         jobFunctionName: w.clientJobFunction?.name ?? null,
+        needsReallocation: Boolean(
+          w.clientJobFunctionId && w.clientJobFunction && !w.clientJobFunction.isActive,
+        ),
         admissionDate: w.admissionDate?.toISOString() ?? null,
         hasValidBiometrics: bio.hasValidBiometrics,
         biometricStatus: bio.biometricStatus,

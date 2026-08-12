@@ -9,5 +9,6 @@ import { PgroService } from './pgro.service';
   imports: [PrismaModule, AuditModule, ServedClientsModule],
   controllers: [PgroController],
   providers: [PgroService],
+  exports: [PgroService],
 })
 export class PgroModule {}

@@ -24,7 +24,8 @@ function DocumentosRetiredContent() {
         </h1>
         <p className="page-lead">
           Acesse o portal da empresa para imprimir ou baixar comprovantes e
-          fichas. PGRO e estrutura continuam na Consultoria.
+          fichas. A primeira estrutura vem da Consultoria; o gestor reenvia o
+          PGR pelo Painel do Cliente.
         </p>
         <div className="btn-row">
           <Link className="btn btn-primary" href="/portal/login">

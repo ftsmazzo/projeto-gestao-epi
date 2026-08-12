@@ -1,13 +1,25 @@
 'use client';
 
-import type { PortalEstruturaResponse } from '@gestao-epi/shared';
+import type {
+  ClientPortalUser,
+  PortalEstruturaResponse,
+} from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { StockDashboardKpis } from '../../../components/portal/StockDashboardKpis';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
 import { fetchPortalEstrutura } from '../../../lib/client-auth';
 
-function PortalEstruturaContent() {
+function formatWhen(iso: string | null | undefined) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleString('pt-BR');
+  } catch {
+    return iso;
+  }
+}
+
+function PortalEstruturaContent({ user }: { user: ClientPortalUser }) {
   const [data, setData] = useState<PortalEstruturaResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -82,11 +94,16 @@ function PortalEstruturaContent() {
           <p className="page-kicker">Operacao</p>
           <h1 className="page-title">Estrutura</h1>
           <p className="page-lead">
-            Setores, funcoes, riscos e necessidades definidos pela Consultoria
-            (somente leitura).
+            Setores, funcoes, riscos e necessidades ativos. O gestor pode
+            reenviar o PGR quando a empresa mudar cargos ou setores.
           </p>
         </div>
         <div className="dash-page-header__actions">
+          {user.role === 'CLIENT_MANAGER' ? (
+            <Link className="btn btn-primary" href="/portal/estrutura/atualizar-pgr">
+              Atualizar PGR
+            </Link>
+          ) : null}
           <Link className="btn btn-secondary" href="/portal/trabalhadores">
             Trabalhadores
           </Link>
@@ -103,12 +120,22 @@ function PortalEstruturaContent() {
       ) : null}
       {loading ? <p className="page-lead">Carregando estrutura...</p> : null}
 
+      {data?.lastPgroImport ? (
+        <p className="page-lead">
+          Ultimo PGR confirmado: {data.lastPgroImport.fileName}
+          {formatWhen(data.lastPgroImport.finishedAt) ||
+          formatWhen(data.lastPgroImport.createdAt)
+            ? ` · ${formatWhen(data.lastPgroImport.finishedAt) ?? formatWhen(data.lastPgroImport.createdAt)}`
+            : ''}
+        </p>
+      ) : null}
+
       {data ? (
         data.sectors.length === 0 ? (
           <section className="dash-panel" style={{ minHeight: 0 }}>
             <p className="dash-panel__empty" style={{ padding: '1.5rem 1rem' }}>
-              Nenhum setor ativo. A Consultoria define a estrutura no workspace
-              do cliente.
+              Nenhum setor ativo. A primeira estrutura vem da Consultoria; o
+              gestor pode reenviar o PGR depois.
             </p>
           </section>
         ) : (
@@ -198,7 +225,7 @@ function PortalEstruturaContent() {
 export default function PortalEstruturaPage() {
   return (
     <RequireClientAuth>
-      {() => <PortalEstruturaContent />}
+      {(user) => <PortalEstruturaContent user={user} />}
     </RequireClientAuth>
   );
 }
