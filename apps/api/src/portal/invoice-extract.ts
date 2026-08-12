@@ -26,13 +26,50 @@ export type InvoiceExtractionResult = {
   rawTextPreview: string | null;
 };
 
-const MONEY_RE = /(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2})/g;
+const MONEY_RE = /(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2})/g;
 const FISCAL_NOISE_RE =
-  /base\s*calc|total\s*(cbs|pis|cofins|ibs|nota|produtos|tribut)|inf\.\s*(fisco|contribuinte)|valor do (icms|ipi|frete|seguro)|v\.\s*(total|icms|tot|imp)|duplicata|fatura|peso\s*(bruto|l[ií]quido)|protocolo de autoriz|chave de acesso|consulta de autenticidade|natureza da opera|inscri[cç][aã]o estadual|destinat[aá]rio/i;
+  /base\s*calc|total\s*(cbs|pis|cofins|ibs|nota|produtos|tribut)|inf\.\s*(fisco|contribuinte)|valor do (icms|ipi|frete|seguro)|v\.\s*(total|icms|tot|imp)|duplicata|fatura|peso\s*(bruto|l[ií]quido)|protocolo de autoriz|chave de acesso|consulta de autenticidade|natureza da opera|inscri[cç][aã]o|destinat[aá]rio|cnpj|cpf|n[ºo°]\.?|valor\s*r\$|folha|s[eé]rie|encomendas|transportador|volume/i;
 
-/** DANFE: NCM CST CFOP UN QTD UNITARIO TOTAL */
+/** DANFE: NCM CST CFOP UN QTD UNITARIO TOTAL (com ou sem espacos). */
 const DANFE_ITEM_RE =
-  /(?:CA[:\s./-]*(\d{4,6})\s+)?(\d{8})\s+(\d{1,3}(?:\/\d{2,3})?)\s+(\d{4})\s+([A-Z]{2,4})\s+(\d{1,6}(?:[.,]\d{1,4})?)\s+(\d{1,6}(?:[.,]\d{1,4})?)\s+(\d{1,3}(?:\.\d{3})*,\d{2})/i;
+  /(?:CA[:\s./-]*(\d{4,6})\s+)?(\d{8})\s+(\d{1,3}(?:\/\d{2,3})?)\s+(\d{4})\s+([A-Z]{2,4})\s+(\d{1,6}(?:[.,]\d{1,4})?)\s+(\d{1,6}(?:[.,]\d{1,4})?)\s+(\d{1,3}(?:\.\d{3})*,\d{2})/gi;
+
+/**
+ * pdf-parse costuma colar as celulas da tabela DANFE:
+ * `5/006102PC200,00009,70001.940,00` em vez de `5/00 6102 PC 200,0000 9,7000 1.940,00`.
+ */
+const DANFE_UN_RE = 'UN|UND|PC|PR|KG|LT|M2|M3|CX|PCT|PAR|CJ|FL|RL|JG|KIT|BD|BL|FD|SC|TB';
+
+export function unglueDanfeText(text: string): string {
+  let out = text.replace(
+    new RegExp(
+      `(\\d{1,2}/\\d{2})(\\d{4})(${DANFE_UN_RE})(\\d{1,6},\\d{1,4})(\\d{1,6},\\d{1,4})(\\d{1,3}(?:\\.\\d{3})*,\\d{2})`,
+      'gi',
+    ),
+    '$1 $2 $3 $4 $5 $6 ',
+  );
+  out = out
+    .replace(/(^|[\s])(\d{5,8})(?=[A-ZÁ-Ú])/gm, '$1$2 ')
+    .replace(/ITEM\s*0\s*-+(?=\d)/gi, 'ITEM 0 - ')
+    .replace(/(CA[:\s./-]*\d{4,6})(?=\d{8})/gi, '$1 ');
+
+  let prev = '';
+  for (let i = 0; i < 8 && out !== prev; i += 1) {
+    prev = out;
+    out = out
+      .replace(/(\d{1,3}\.\d{3},\d{2})(?=\d)/g, '$1 ')
+      .replace(/(,\d{2})(?=\d{1,3}\.\d{3},\d{2}|\d{1,3},\d{2})/g, '$1 ');
+  }
+  return out.replace(/[ \t]+/g, ' ');
+}
+
+function stripFiscalIdentifiers(text: string): string {
+  return text
+    .replace(/\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b/g, ' ')
+    .replace(/\b\d{1,3}(?:\.\d{3}){2,3}\b/g, ' ')
+    .replace(/\b\d{14}\b/g, ' ')
+    .replace(/\b\d{11}\b/g, ' ');
+}
 
 export function parseMoneyToCents(raw: string): number | null {
   const t = raw.trim();
@@ -125,8 +162,18 @@ function amountsAgree(
   totalCostCents: number,
 ): boolean {
   const expected = unitCostCents * quantity;
-  const tol = Math.max(100, Math.round(unitCostCents * 0.02));
+  const tol = Math.max(2, Math.round(expected * 0.015));
   return Math.abs(expected - totalCostCents) <= tol;
+}
+
+function descriptionBeforeDanfeMatch(before: string): string {
+  const chunks = [
+    ...before.matchAll(
+      /(\d{5,8})\s+([A-ZÁ-Ú][A-ZÁ-Ú0-9 /.&+\-]{6,90})/gi,
+    ),
+  ];
+  const last = chunks[chunks.length - 1]?.[2] ?? before;
+  return cleanProductDescription(last);
 }
 
 export function pickInvoiceLine(
@@ -163,17 +210,12 @@ function parseDanfeProductItems(text: string): InvoiceExtractedLine[] {
   const sectionMatch = text.match(
     /DADOS DOS PRODUTOS[\s\S]*?(?=DADOS ADICIONAIS|INFORMA[CÇ][OÕ]ES COMPLEMENTARES|$)/i,
   );
-  const section = sectionMatch?.[0] ?? text;
-  const rawLines = section
-    .split('\n')
-    .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter(Boolean);
+  const scoped = sectionMatch?.[0] ?? text;
+  const flat = unglueDanfeText(scoped).replace(/\s+/g, ' ').trim();
   const items: InvoiceExtractedLine[] = [];
+  const itemRe = new RegExp(DANFE_ITEM_RE.source, 'gi');
 
-  for (let i = 0; i < rawLines.length; i += 1) {
-    const line = rawLines[i];
-    const match = line.match(DANFE_ITEM_RE);
-    if (!match) continue;
+  for (const match of flat.matchAll(itemRe)) {
     const quantity = parseQty(match[6]);
     const unitCostCents = parseMoneyToCents(match[7]);
     const totalCostCents = parseMoneyToCents(match[8]);
@@ -182,17 +224,13 @@ function parseDanfeProductItems(text: string): InvoiceExtractedLine[] {
     }
     if (!amountsAgree(unitCostCents, quantity, totalCostCents)) continue;
 
-    let description = cleanProductDescription(line.slice(0, match.index ?? 0));
-    if (description.length < 6 && i > 0) {
-      description = cleanProductDescription(rawLines[i - 1]);
-    }
+    const index = match.index ?? 0;
+    const before = flat.slice(Math.max(0, index - 200), index);
+    const description = descriptionBeforeDanfeMatch(before);
     if (description.length < 3) continue;
     if (FISCAL_NOISE_RE.test(description)) continue;
 
-    let caNumber: string | null = match[1] ?? findCaInLine(line);
-    if (!caNumber && i > 0 && !DANFE_ITEM_RE.test(rawLines[i - 1])) {
-      caNumber = findCaInLine(rawLines[i - 1]);
-    }
+    const caNumber = match[1] ?? findCaInLine(before.slice(-48));
 
     items.push({
       description,
@@ -227,9 +265,13 @@ export function parseInvoiceText(text: string): InvoiceExtractionResult {
 
   const danfeLines = parseDanfeProductItems(cleaned);
   const lines: InvoiceExtractedLine[] = [...danfeLines];
+  const hasDanfeSection = /DADOS DOS PRODUTOS/i.test(cleaned);
 
-  if (danfeLines.length === 0) {
-    const rawLines = cleaned.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (danfeLines.length === 0 && !hasDanfeSection) {
+    const rawLines = stripFiscalIdentifiers(cleaned)
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
 
     for (const line of rawLines) {
       if (line.length < 8 || line.length > 220) continue;

@@ -75,9 +75,68 @@ Inf. fisco: TOTAL BASE CALC CBS: 3.106,55 TOTAL CBS: 27,96 TOTAL BASE CALC COFIN
   assert.strictEqual(picked?.quantity, 200);
   assert.strictEqual(picked?.unitCostCents, 970);
 
+  const gluedDanfe = `
+RECEBEMOS DE NORTEL SUPRIMENTOS INDUSTRIAIS LTDA OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL ELETRÔNICA INDICADA AO LADO.
+Nº.
+000.599.669
+CNPJ / CPF
+46.044.053/0054-17
+CNPJ / CPF
+58.568.130/0001-05
+ValorR$ 1.945,00
+ValorR$ 1.945,00
+CNPJ / CPF
+09.377.597/0001-62
+DADOS DOS PRODUTOS / SERVIÇOS
+CÓDIGO PRODUTODESCRIÇÃO DO PRODUTO / SERVIÇONCM/SHO/CSTCFOPUNQUANTVALOR UNITVALOR TOTAL
+1503343RESPIRADOR DESC BR C/VALV PFF2-S 8822 HB004835516
+ITEM 0 - CA: 5657
+63079010
+
+5/006102PC200,00009,70001.940,000,001.940,00232,8012,00
+116868FILTRO MEC CL P2 PART 5N11 H0002260174 ITEM 0 -59119000
+
+5/006102PR100,000019,50001.950,000,001.950,00234,0012,00
+DADOS ADICIONAIS
+ENCOMENDAS CENTRO OESTE LTDA CPF/CNPJ:05.209.691/0001-51 INS. ESTADUAL:214140761115 6
+Inf. fisco: TOTAL BASE CALC CBS: 3.106,55 TOTAL CBS: 27,96
+`;
+
+  const glued = parseInvoiceText(gluedDanfe);
+  assert.ok(glued.ok, glued.message);
+  assert.strictEqual(glued.invoiceNumber, '599669');
+  assert.strictEqual(
+    glued.lines.length,
+    2,
+    JSON.stringify(glued.lines, null, 2),
+  );
+  const gluedMask = glued.lines.find((line) => /respirador/i.test(line.description));
+  assert.ok(gluedMask, glued.lines.map((l) => l.description).join(' | '));
+  assert.strictEqual(gluedMask.quantity, 200);
+  assert.strictEqual(gluedMask.unitCostCents, 970);
+  assert.strictEqual(gluedMask.totalCostCents, 194000);
+  assert.strictEqual(gluedMask.caNumber, '5657');
+  const gluedFilter = glued.lines.find((line) => /filtro/i.test(line.description));
+  assert.ok(gluedFilter);
+  assert.strictEqual(gluedFilter.quantity, 100);
+  assert.strictEqual(gluedFilter.unitCostCents, 1950);
+  assert.strictEqual(gluedFilter.totalCostCents, 195000);
+  assert.notStrictEqual(gluedFilter.caNumber, '5657');
+  assert.ok(
+    !glued.lines.some((line) => /n[ºo]|valor\s*r|encomendas/i.test(line.description)),
+    'pegou cabecalho/CNPJ/fatura como item',
+  );
+
   console.log('invoice-extract.selftest ok', {
     simple: result.suggested,
     danfe: nf.lines.map((line) => ({
+      d: line.description,
+      q: line.quantity,
+      u: line.unitCostCents,
+      t: line.totalCostCents,
+      ca: line.caNumber,
+    })),
+    glued: glued.lines.map((line) => ({
       d: line.description,
       q: line.quantity,
       u: line.unitCostCents,
