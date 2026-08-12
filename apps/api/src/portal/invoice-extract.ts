@@ -189,7 +189,7 @@ function parseDanfeProductItems(text: string): InvoiceExtractedLine[] {
     if (description.length < 3) continue;
     if (FISCAL_NOISE_RE.test(description)) continue;
 
-    let caNumber = match[1] ?? findCaInLine(line);
+    let caNumber: string | null = match[1] ?? findCaInLine(line);
     if (!caNumber && i > 0 && !DANFE_ITEM_RE.test(rawLines[i - 1])) {
       caNumber = findCaInLine(rawLines[i - 1]);
     }
