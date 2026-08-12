@@ -129,9 +129,49 @@ a.btn-ghost:hover {
 
 .platform-main {
   width: 100%;
-  max-width: 72rem;
+  max-width: 90rem;
   margin: 0 auto;
   padding: 1.5rem 1.5rem 2.5rem;
+}
+
+.saas-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(17rem, 22rem);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.saas-toolbar {
+  margin-top: 1rem;
+}
+
+.life-bar {
+  display: block;
+  height: 0.4rem;
+  margin-top: 0.45rem;
+  background: #e5e7eb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.life-bar__fill {
+  display: block;
+  height: 100%;
+  background: #198754;
+}
+
+.life-bar__fill.is-warn {
+  background: #fd7e14;
+}
+
+.life-bar__fill.is-full {
+  background: #dc3545;
+}
+
+@media (max-width: 1100px) {
+  .saas-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ——— Consultoria shell: AdminLTE grid ——— */

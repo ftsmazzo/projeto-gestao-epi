@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   CommunicationChannel,
   CommunicationStatus,
-  OrganizationContactRole,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { BrevoEmailSender } from './brevo-email.sender';
@@ -535,7 +534,7 @@ export class CommunicationsService {
             : null;
         await this.emailSender.sendEmail({
           to: row.toAddress,
-          subject: row.subject ?? 'Gestao EPI',
+          subject: row.subject ?? 'ProntEPI',
           text: row.bodyText,
           replyTo,
         });
@@ -577,20 +576,17 @@ export class CommunicationsService {
     }
   }
 
-  private async resolvePrimaryReplyTo(organizationId: string) {
-    const primary = await this.prisma.organizationContact.findFirst({
-      where: {
-        organizationId,
-        isActive: true,
-        email: { not: null },
-        OR: [
-          { isPrimary: true },
-          { role: OrganizationContactRole.SUPPORT },
-        ],
-      },
-      orderBy: [{ isPrimary: 'desc' }, { role: 'asc' }],
-      select: { email: true },
-    });
-    return primary?.email ?? null;
+  private resolvePlatformReplyTo() {
+    return (
+      process.env.PLATFORM_SUPPORT_EMAIL?.trim() ||
+      process.env.BREVO_SENDER_EMAIL?.trim() ||
+      null
+    );
+  }
+
+  private async resolvePrimaryReplyTo(_organizationId: string) {
+    const platform = this.resolvePlatformReplyTo();
+    if (platform) return platform;
+    return null;
   }
 }

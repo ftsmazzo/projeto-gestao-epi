@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   MembershipRole,
+  OrganizationContactRole,
   OrganizationStatus,
   ServedClientStatus,
   WorkerStatus,
@@ -16,7 +17,9 @@ import { randomBytes } from 'crypto';
 import { rm } from 'fs/promises';
 import { join } from 'path';
 import { AuditService } from '../audit/audit.service';
+import { COMM_TEMPLATE_CONSULTORIA_ACCESS_INVITE } from '../communications/communication.templates';
 import { CommunicationsService } from '../communications/communications.service';
+import { normalizeWhatsappNumber } from '../communications/evolution-whatsapp.sender';
 import { deleteOrgLogoFile } from '../organization/org-logo.storage';
 import { getInvoiceDocumentsRoot } from '../portal/invoice-document.storage';
 import { getDeliveryEvidenceRoot } from '../portal/facial-evidence.storage';
@@ -24,6 +27,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { getWorkerFaceReferenceRoot } from '../workers/worker-face-reference.storage';
 import type { CreatePlatformTenantDto } from './dto/create-tenant.dto';
 import type { DestroyPlatformTenantDto } from './dto/destroy-tenant.dto';
+import type { GrantPlatformLivesDto } from './dto/grant-lives.dto';
 import type { SuspendPlatformTenantDto } from './dto/suspend-tenant.dto';
 import type { UpdatePlatformTenantDto } from './dto/update-tenant.dto';
 
@@ -61,21 +65,99 @@ export class PlatformService {
       },
     });
 
+    const orgIds = orgs.map((org) => org.id);
+    const [contacts, invites] = await Promise.all([
+      orgIds.length
+        ? this.prisma.organizationContact.findMany({
+            where: { organizationId: { in: orgIds }, isPrimary: true },
+            select: {
+              organizationId: true,
+              phone: true,
+              email: true,
+            },
+          })
+        : Promise.resolve([]),
+      orgIds.length
+        ? this.prisma.communicationOutbox.findMany({
+            where: {
+              organizationId: { in: orgIds },
+              templateKey: COMM_TEMPLATE_CONSULTORIA_ACCESS_INVITE,
+            },
+            orderBy: { createdAt: 'desc' },
+            select: {
+              organizationId: true,
+              channel: true,
+              status: true,
+              errorMessage: true,
+              createdAt: true,
+            },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const phoneByOrg = new Map(
+      contacts.map((row) => [row.organizationId, row.phone]),
+    );
+    const inviteByOrg = new Map<
+      string,
+      {
+        email: string | null;
+        whatsapp: string | null;
+        emailError: string | null;
+        whatsappError: string | null;
+        at: string | null;
+      }
+    >();
+    for (const row of invites) {
+      const current = inviteByOrg.get(row.organizationId) ?? {
+        email: null,
+        whatsapp: null,
+        emailError: null,
+        whatsappError: null,
+        at: row.createdAt.toISOString(),
+      };
+      if (row.channel === 'EMAIL' && !current.email) {
+        current.email = row.status;
+        current.emailError = row.errorMessage;
+        current.at = row.createdAt.toISOString();
+      }
+      if (row.channel === 'WHATSAPP' && !current.whatsapp) {
+        current.whatsapp = row.status;
+        current.whatsappError = row.errorMessage;
+        if (!current.at) current.at = row.createdAt.toISOString();
+      }
+      inviteByOrg.set(row.organizationId, current);
+    }
+
     const rows = await Promise.all(
-      orgs.map((org) => this.toTenantRow(org)),
+      orgs.map((org) =>
+        this.toTenantRow(org, {
+          ownerPhone: phoneByOrg.get(org.id) ?? null,
+          invite: inviteByOrg.get(org.id) ?? null,
+        }),
+      ),
     );
 
     const active = rows.filter((row) => row.status === 'ACTIVE');
+    const contracted = rows.reduce((sum, row) => sum + row.contractedLifeQuota, 0);
+    const allocated = rows.reduce((sum, row) => sum + row.allocatedLives, 0);
     return {
       tenants: {
         total: rows.length,
         active: active.length,
         suspended: rows.length - active.length,
+        nearLimit: active.filter(
+          (row) =>
+            row.contractedLifeQuota > 0 &&
+            row.availableLives / row.contractedLifeQuota <= 0.1,
+        ).length,
       },
       lives: {
-        contracted: rows.reduce((sum, row) => sum + row.contractedLifeQuota, 0),
-        allocated: rows.reduce((sum, row) => sum + row.allocatedLives, 0),
+        contracted,
+        allocated,
         used: rows.reduce((sum, row) => sum + row.usedLives, 0),
+        occupancyPercent:
+          contracted > 0 ? Math.round((allocated / contracted) * 100) : 0,
       },
       wholesaleMonthlyCents: active.reduce(
         (sum, row) => sum + row.wholesaleMonthlyCents,
@@ -89,8 +171,14 @@ export class PlatformService {
     const name = dto.name.trim();
     const ownerName = dto.ownerName.trim();
     const ownerEmail = dto.ownerEmail.trim().toLowerCase();
+    const ownerPhone = normalizeWhatsappNumber(dto.ownerPhone);
     if (!name || !ownerName || !ownerEmail) {
       throw new BadRequestException('Informe consultoria, gestor e e-mail.');
+    }
+    if (!ownerPhone) {
+      throw new BadRequestException(
+        'Informe o WhatsApp do gestor com DDD (ex.: 11999999999).',
+      );
     }
 
     const existingUser = await this.prisma.user.findUnique({
@@ -144,26 +232,44 @@ export class PlatformService {
         },
       });
 
+      await tx.organizationContact.create({
+        data: {
+          organizationId: organization.id,
+          name: ownerName,
+          email: ownerEmail,
+          phone: ownerPhone,
+          role: OrganizationContactRole.SUPPORT,
+          isPrimary: true,
+          isActive: true,
+        },
+      });
+
       return { organization, user, membership };
     });
 
     const accessUrl = this.resolveConsultoriaAccessUrl();
-    const delivery = reuseUser
-      ? {
-          enabled: false,
-          email: 'SKIPPED' as const,
-          whatsapp: 'SKIPPED' as const,
-        }
-      : await this.communications.enqueueConsultoriaAccessInvite({
-          organizationId: created.organization.id,
-          recipientName: ownerName,
-          recipientEmail: ownerEmail,
-          recipientPhone: null,
-          temporaryPassword: temporaryPassword as string,
-          accessUrl,
-          membershipId: created.membership.id,
-          roleLabel: 'Administrador geral',
-        });
+    const keepCurrentPassword = Boolean(existingUser?.isPlatformAdmin);
+    const invitePassword =
+      temporaryPassword ??
+      (keepCurrentPassword
+        ? 'use a senha ja cadastrada'
+        : this.generateTemporaryPassword());
+    if (reuseUser && !keepCurrentPassword) {
+      await this.prisma.user.update({
+        where: { id: created.user.id },
+        data: { passwordHash: await bcrypt.hash(invitePassword, 12) },
+      });
+    }
+    const delivery = await this.communications.enqueueConsultoriaAccessInvite({
+      organizationId: created.organization.id,
+      recipientName: ownerName,
+      recipientEmail: ownerEmail,
+      recipientPhone: ownerPhone,
+      temporaryPassword: invitePassword,
+      accessUrl,
+      membershipId: created.membership.id,
+      roleLabel: 'Administrador geral',
+    });
 
     await this.audit.log({
       action: 'platform.tenant_created',
@@ -184,14 +290,18 @@ export class PlatformService {
       owner: {
         name: ownerName,
         email: ownerEmail,
-        temporaryPassword: reuseUser
-          ? null
-          : delivery.enabled
+        phone: ownerPhone,
+        temporaryPassword:
+          keepCurrentPassword || delivery.email === 'SENT'
             ? null
-            : temporaryPassword,
+            : invitePassword,
         accessUrl,
         createdUser: !reuseUser,
         deliveryEnabled: delivery.enabled,
+        emailStatus: delivery.email,
+        whatsappStatus: delivery.whatsapp,
+        emailError: delivery.emailError ?? null,
+        whatsappError: delivery.whatsappError ?? null,
       },
     };
   }
@@ -230,6 +340,40 @@ export class PlatformService {
       },
     });
 
+    if (dto.ownerPhone !== undefined) {
+      const phone = normalizeWhatsappNumber(dto.ownerPhone);
+      if (!phone) {
+        throw new BadRequestException(
+          'Informe o WhatsApp do gestor com DDD (ex.: 11999999999).',
+        );
+      }
+      const ownerMembership = await this.prisma.membership.findFirst({
+        where: { organizationId, role: MembershipRole.OWNER },
+        include: { user: { select: { name: true, email: true } } },
+      });
+      const existingContact = await this.prisma.organizationContact.findFirst({
+        where: { organizationId, isPrimary: true },
+      });
+      if (existingContact) {
+        await this.prisma.organizationContact.update({
+          where: { id: existingContact.id },
+          data: { phone, isActive: true },
+        });
+      } else {
+        await this.prisma.organizationContact.create({
+          data: {
+            organizationId,
+            name: ownerMembership?.user.name ?? organization.name,
+            email: ownerMembership?.user.email ?? null,
+            phone,
+            role: OrganizationContactRole.SUPPORT,
+            isPrimary: true,
+            isActive: true,
+          },
+        });
+      }
+    }
+
     await this.audit.log({
       action: 'platform.tenant_updated',
       organizationId,
@@ -244,6 +388,118 @@ export class PlatformService {
     });
 
     return this.getTenantRow(organizationId);
+  }
+
+  async grantLives(
+    actorUserId: string,
+    organizationId: string,
+    dto: GrantPlatformLivesDto,
+  ) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+    });
+    if (!organization) {
+      throw new NotFoundException('Consultoria nao encontrada.');
+    }
+    const nextQuota = organization.contractedLifeQuota + dto.addLives;
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { contractedLifeQuota: nextQuota },
+    });
+    await this.audit.log({
+      action: 'platform.lives_granted',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'Organization',
+      entityId: organizationId,
+      metadata: {
+        addLives: dto.addLives,
+        previous: organization.contractedLifeQuota,
+        next: nextQuota,
+      },
+    });
+    return this.getTenantRow(organizationId);
+  }
+
+  async resendAccess(actorUserId: string, organizationId: string) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      include: {
+        memberships: {
+          where: { role: MembershipRole.OWNER },
+          take: 1,
+          include: { user: true },
+        },
+        contacts: {
+          where: { isPrimary: true },
+          take: 1,
+        },
+      },
+    });
+    if (!organization) {
+      throw new NotFoundException('Consultoria nao encontrada.');
+    }
+    const owner = organization.memberships[0]?.user;
+    if (!owner) {
+      throw new BadRequestException('Consultoria sem gestor dono.');
+    }
+    const phone =
+      normalizeWhatsappNumber(organization.contacts[0]?.phone ?? '') || null;
+
+    const keepCurrentPassword = owner.isPlatformAdmin;
+    const temporaryPassword = keepCurrentPassword
+      ? 'use a senha ja cadastrada'
+      : this.generateTemporaryPassword();
+    if (!keepCurrentPassword) {
+      await this.prisma.user.update({
+        where: { id: owner.id },
+        data: { passwordHash: await bcrypt.hash(temporaryPassword, 12) },
+      });
+    }
+
+    const accessUrl = this.resolveConsultoriaAccessUrl();
+    const delivery = await this.communications.enqueueConsultoriaAccessInvite({
+      organizationId,
+      recipientName: owner.name,
+      recipientEmail: owner.email,
+      recipientPhone: phone,
+      temporaryPassword,
+      accessUrl,
+      membershipId: organization.memberships[0].id,
+      roleLabel: 'Administrador geral',
+    });
+
+    await this.audit.log({
+      action: 'platform.access_resent',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'User',
+      entityId: owner.id,
+      metadata: {
+        email: delivery.email,
+        whatsapp: delivery.whatsapp,
+      },
+    });
+
+    return {
+      tenant: await this.getTenantRow(organizationId),
+      owner: {
+        name: owner.name,
+        email: owner.email,
+        phone,
+        temporaryPassword:
+          keepCurrentPassword || delivery.email === 'SENT'
+            ? null
+            : temporaryPassword,
+        accessUrl,
+        createdUser: false,
+        deliveryEnabled: delivery.enabled,
+        emailStatus: delivery.email,
+        whatsappStatus: delivery.whatsapp,
+        emailError: delivery.emailError ?? null,
+        whatsappError: delivery.whatsappError ?? null,
+      },
+    };
   }
 
   async suspendTenant(
@@ -481,23 +737,75 @@ export class PlatformService {
     if (!org) {
       throw new NotFoundException('Consultoria nao encontrada.');
     }
-    return this.toTenantRow(org);
+    const [contact, inviteRows] = await Promise.all([
+      this.prisma.organizationContact.findFirst({
+        where: { organizationId, isPrimary: true },
+        select: { phone: true },
+      }),
+      this.prisma.communicationOutbox.findMany({
+        where: {
+          organizationId,
+          templateKey: COMM_TEMPLATE_CONSULTORIA_ACCESS_INVITE,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 4,
+        select: {
+          channel: true,
+          status: true,
+          errorMessage: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+    const invite = {
+      email: null as string | null,
+      whatsapp: null as string | null,
+      emailError: null as string | null,
+      whatsappError: null as string | null,
+      at: inviteRows[0]?.createdAt.toISOString() ?? null,
+    };
+    for (const row of inviteRows) {
+      if (row.channel === 'EMAIL' && !invite.email) {
+        invite.email = row.status;
+        invite.emailError = row.errorMessage;
+      }
+      if (row.channel === 'WHATSAPP' && !invite.whatsapp) {
+        invite.whatsapp = row.status;
+        invite.whatsappError = row.errorMessage;
+      }
+    }
+    return this.toTenantRow(org, {
+      ownerPhone: contact?.phone ?? null,
+      invite,
+    });
   }
 
-  private async toTenantRow(org: {
-    id: string;
-    name: string;
-    slug: string;
-    status: OrganizationStatus;
-    contractedLifeQuota: number;
-    wholesaleUnitPriceCents: number;
-    createdAt: Date;
-    suspendedAt: Date | null;
-    suspendReason: string | null;
-    memberships: Array<{
-      user: { id: string; name: string; email: string };
-    }>;
-  }) {
+  private async toTenantRow(
+    org: {
+      id: string;
+      name: string;
+      slug: string;
+      status: OrganizationStatus;
+      contractedLifeQuota: number;
+      wholesaleUnitPriceCents: number;
+      createdAt: Date;
+      suspendedAt: Date | null;
+      suspendReason: string | null;
+      memberships: Array<{
+        user: { id: string; name: string; email: string };
+      }>;
+    },
+    extras?: {
+      ownerPhone?: string | null;
+      invite?: {
+        email: string | null;
+        whatsapp: string | null;
+        emailError: string | null;
+        whatsappError: string | null;
+        at: string | null;
+      } | null;
+    },
+  ) {
     const [allocatedAgg, used, activeClients] = await Promise.all([
       this.prisma.servedClient.aggregate({
         where: { organizationId: org.id, status: ServedClientStatus.ACTIVE },
@@ -531,9 +839,19 @@ export class PlatformService {
       wholesaleMonthlyCents:
         org.contractedLifeQuota * org.wholesaleUnitPriceCents,
       activeClients,
+      occupancyPercent:
+        org.contractedLifeQuota > 0
+          ? Math.round((allocatedLives / org.contractedLifeQuota) * 100)
+          : 0,
       owner: owner
-        ? { id: owner.id, name: owner.name, email: owner.email }
+        ? {
+            id: owner.id,
+            name: owner.name,
+            email: owner.email,
+            phone: extras?.ownerPhone ?? null,
+          }
         : null,
+      invite: extras?.invite ?? null,
       createdAt: org.createdAt.toISOString(),
       suspendedAt: org.suspendedAt?.toISOString() ?? null,
       suspendReason: org.suspendReason,
@@ -574,6 +892,7 @@ export class PlatformService {
   private resolveConsultoriaAccessUrl(): string {
     const fromEnv =
       process.env.WEB_APP_URL?.trim() ||
+      process.env.PUBLIC_WEB_URL?.trim() ||
       process.env.CORS_ORIGIN?.split(',')[0]?.trim();
     const base = (fromEnv || 'http://localhost:3000').replace(/\/$/, '');
     if (base.endsWith('/login')) return base;

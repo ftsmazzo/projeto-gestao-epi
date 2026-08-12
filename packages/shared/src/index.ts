@@ -55,6 +55,22 @@ export interface PlatformTenantOwner {
   id: string;
   name: string;
   email: string;
+  phone?: string | null;
+}
+
+export type PlatformInviteStatus =
+  | 'PENDING'
+  | 'SENT'
+  | 'FAILED'
+  | 'SKIPPED'
+  | 'NOT_REQUESTED';
+
+export interface PlatformInviteSnapshot {
+  email: string | null;
+  whatsapp: string | null;
+  emailError: string | null;
+  whatsappError: string | null;
+  at: string | null;
 }
 
 export interface PlatformTenantRow {
@@ -66,19 +82,31 @@ export interface PlatformTenantRow {
   allocatedLives: number;
   usedLives: number;
   availableLives: number;
+  occupancyPercent: number;
   wholesaleUnitPriceCents: number;
   /** Franquia × preco de atacado (o que a ProntEPI cobra da consultoria). */
   wholesaleMonthlyCents: number;
   activeClients: number;
   owner: PlatformTenantOwner | null;
+  invite: PlatformInviteSnapshot | null;
   createdAt: string;
   suspendedAt: string | null;
   suspendReason: string | null;
 }
 
 export interface PlatformOverview {
-  tenants: { total: number; active: number; suspended: number };
-  lives: { contracted: number; allocated: number; used: number };
+  tenants: {
+    total: number;
+    active: number;
+    suspended: number;
+    nearLimit: number;
+  };
+  lives: {
+    contracted: number;
+    allocated: number;
+    used: number;
+    occupancyPercent: number;
+  };
   wholesaleMonthlyCents: number;
   rows: PlatformTenantRow[];
 }
@@ -93,10 +121,15 @@ export interface CreatePlatformTenantResult {
   owner: {
     name: string;
     email: string;
+    phone?: string | null;
     temporaryPassword: string | null;
     accessUrl: string;
     createdUser: boolean;
     deliveryEnabled: boolean;
+    emailStatus?: PlatformInviteStatus;
+    whatsappStatus?: PlatformInviteStatus;
+    emailError?: string | null;
+    whatsappError?: string | null;
   };
 }
 

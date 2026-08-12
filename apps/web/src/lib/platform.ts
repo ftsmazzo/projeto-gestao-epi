@@ -14,6 +14,7 @@ export function createPlatformTenant(input: {
   name: string;
   ownerName: string;
   ownerEmail: string;
+  ownerPhone: string;
   contractedLifeQuota: number;
   wholesaleUnitPriceCents: number;
 }) {
@@ -29,6 +30,7 @@ export function updatePlatformTenant(
     name?: string;
     contractedLifeQuota?: number;
     wholesaleUnitPriceCents?: number;
+    ownerPhone?: string;
   },
 ) {
   return platformFetch<PlatformTenantRow>(`/platform/tenants/${id}`, {
@@ -48,6 +50,20 @@ export function activatePlatformTenant(id: string) {
   return platformFetch<PlatformTenantRow>(`/platform/tenants/${id}/activate`, {
     method: 'POST',
   });
+}
+
+export function grantPlatformLives(id: string, addLives: number) {
+  return platformFetch<PlatformTenantRow>(`/platform/tenants/${id}/lives`, {
+    method: 'POST',
+    body: JSON.stringify({ addLives }),
+  });
+}
+
+export function resendPlatformAccess(id: string) {
+  return platformFetch<CreatePlatformTenantResult>(
+    `/platform/tenants/${id}/resend-access`,
+    { method: 'POST' },
+  );
 }
 
 export function destroyPlatformTenant(id: string, confirmation: string) {

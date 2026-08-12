@@ -13,6 +13,10 @@ export class CreatePlatformTenantDto {
   @IsEmail()
   ownerEmail!: string;
 
+  @IsString()
+  @MinLength(10)
+  ownerPhone!: string;
+
   @Type(() => Number)
   @IsInt()
   @Min(0)

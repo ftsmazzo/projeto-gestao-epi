@@ -43,18 +43,18 @@ export type DailyClientAlertsInput = {
 };
 
 export function buildClientAccessInviteEmail(input: ClientAccessInviteInput) {
-  const subject = `Acesso ao portal — ${input.organizationName}`;
+  const subject = `ProntEPI — acesso ao portal (${input.organizationName})`;
   const text = [
     `Ola, ${input.recipientName}.`,
     '',
-    `A consultoria ${input.organizationName} liberou seu acesso ao portal do cliente.`,
+    `A ProntEPI liberou seu acesso ao portal do cliente, pela consultoria ${input.organizationName}.`,
     '',
     `Link: ${input.accessUrl}`,
     `E-mail: ${input.recipientEmail ?? '—'}`,
     `Senha temporaria: ${input.temporaryPassword}`,
     '',
-    'No primeiro acesso, voce devera trocar a senha.',
-    'Use apenas o portal do cliente — nao o login da Consultoria.',
+    'No primeiro acesso, troque a senha.',
+    'Dúvidas: fale com a ProntEPI. Este canal atende consultorias e empresas clientes.',
   ].join('\n');
 
   return { subject, text };
@@ -64,31 +64,32 @@ export function buildClientAccessInviteWhatsapp(
   input: ClientAccessInviteInput,
 ) {
   return [
-    `*Acesso ao portal* — ${input.organizationName}`,
+    `*ProntEPI* — acesso ao portal`,
     `Ola, ${input.recipientName}.`,
+    `Consultoria: ${input.organizationName}`,
     `Link: ${input.accessUrl}`,
     `E-mail: ${input.recipientEmail ?? '—'}`,
     `Senha temporaria: ${input.temporaryPassword}`,
-    'Troque a senha no primeiro acesso.',
+    'Troque a senha no primeiro acesso. Suporte: ProntEPI.',
   ].join('\n');
 }
 
 export function buildConsultoriaAccessInviteEmail(
   input: ConsultoriaAccessInviteInput,
 ) {
-  const subject = `Acesso a gestao — ${input.organizationName}`;
+  const subject = `ProntEPI — acesso a gestao (${input.organizationName})`;
   const text = [
     `Ola, ${input.recipientName}.`,
     '',
-    `Voce recebeu acesso a gestao (Consultoria) de ${input.organizationName}.`,
+    `A ProntEPI liberou o painel de gestao da consultoria ${input.organizationName}.`,
     `Papel: ${input.roleLabel}`,
     '',
     `Link: ${input.accessUrl}`,
     `E-mail: ${input.recipientEmail ?? '—'}`,
     `Senha temporaria: ${input.temporaryPassword}`,
     '',
-    'Este e o login da Consultoria/Gestao — nao o portal do cliente.',
-    'Recomendamos trocar a senha apos o primeiro acesso (Esqueci minha senha ou peca nova senha ao admin).',
+    'Este e o login da consultoria — nao o portal do cliente.',
+    'Dúvidas: fale com a ProntEPI. Este canal atende consultorias e empresas clientes.',
   ].join('\n');
 
   return { subject, text };
@@ -98,13 +99,14 @@ export function buildConsultoriaAccessInviteWhatsapp(
   input: ConsultoriaAccessInviteInput,
 ) {
   return [
-    `*Acesso a gestao* — ${input.organizationName}`,
+    `*ProntEPI* — acesso a gestao`,
     `Ola, ${input.recipientName}.`,
+    `Consultoria: ${input.organizationName}`,
     `Papel: ${input.roleLabel}`,
     `Link: ${input.accessUrl}`,
     `E-mail: ${input.recipientEmail ?? '—'}`,
     `Senha temporaria: ${input.temporaryPassword}`,
-    'Login da Consultoria/Gestao (nao o portal do cliente).',
+    'Login da consultoria (nao o portal do cliente). Suporte: ProntEPI.',
   ].join('\n');
 }
 
@@ -130,7 +132,7 @@ export function buildDailyClientAlertsEmail(input: DailyClientAlertsInput) {
     );
   }
   lines.push('', `Painel: ${input.portalUrl}`, '');
-  lines.push('Acesse o portal do cliente para agir.');
+  lines.push('Acesse o portal do cliente para agir. Suporte: ProntEPI.');
   return { subject, text: lines.join('\n') };
 }
 
@@ -151,6 +153,7 @@ export function buildDailyClientAlertsWhatsapp(input: DailyClientAlertsInput) {
     lines.push(`Sem biometria: ${input.biometricsMissing}`);
   }
   lines.push(`Painel: ${input.portalUrl}`);
+  lines.push('Suporte: ProntEPI.');
   return lines.join('\n');
 }
 

@@ -9,7 +9,7 @@ export class BrevoEmailSender implements EmailSender {
     const apiKey = process.env.BREVO_API_KEY?.trim();
     const senderEmail = process.env.BREVO_SENDER_EMAIL?.trim();
     const senderName =
-      process.env.BREVO_SENDER_NAME?.trim() || 'Gestao EPI';
+      process.env.BREVO_SENDER_NAME?.trim() || 'ProntEPI';
 
     if (!apiKey || !senderEmail) {
       throw new Error(

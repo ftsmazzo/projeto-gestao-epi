@@ -18,4 +18,9 @@ export class UpdatePlatformTenantDto {
   @IsInt()
   @Min(0)
   wholesaleUnitPriceCents?: number;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(10)
+  ownerPhone?: string;
 }
