@@ -68,6 +68,72 @@ a.btn-ghost:hover {
   max-width: none;
 }
 
+/* ——— Plataforma SaaS (sem menu lateral) ——— */
+.platform-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+}
+
+.platform-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 3.75rem;
+  padding: 0.7rem 1.5rem;
+  background: var(--color-sidebar);
+  color: #fff;
+}
+
+.platform-topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #fff;
+  text-decoration: none;
+}
+
+.platform-topbar__brand .brand,
+.platform-topbar__brand .brand-text strong {
+  color: #fff;
+}
+
+.platform-topbar__meta {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.platform-topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.platform-topbar .ops-user-name,
+.platform-topbar .ops-user-org {
+  color: #fff;
+}
+
+.platform-topbar .ops-user-org {
+  opacity: 0.65;
+}
+
+.platform-topbar .btn-ghost {
+  color: #fff;
+}
+
+.platform-main {
+  width: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 2.5rem;
+}
+
 /* ——— Consultoria shell: AdminLTE grid ——— */
 .ops-shell {
   display: flex;

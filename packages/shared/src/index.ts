@@ -83,6 +83,11 @@ export interface PlatformOverview {
   rows: PlatformTenantRow[];
 }
 
+export interface DestroyPlatformTenantResult {
+  ok: true;
+  name: string;
+}
+
 export interface CreatePlatformTenantResult {
   tenant: PlatformTenantRow;
   owner: {

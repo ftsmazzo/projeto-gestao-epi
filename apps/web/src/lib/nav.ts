@@ -69,18 +69,6 @@ export const PORTAL_NAV: PortalNavItem[] = [
   { href: '/portal/conta', label: 'Minha conta' },
 ];
 
-/**
- * Navegacao do Painel SaaS da ProntEPI (nao misturar com OPS_NAV).
- */
-export const PLATFORM_NAV: OpsNavItem[] = [
-  {
-    href: '/plataforma',
-    label: 'Consultorias',
-    status: 'ready',
-    description: 'Franquia de vidas, preco de atacado e status do tenant.',
-  },
-];
-
 export function isPortalNavActive(pathname: string, item: PortalNavItem) {
   if (item.exact) return pathname === item.href;
   return pathname === item.href || pathname.startsWith(`${item.href}/`);

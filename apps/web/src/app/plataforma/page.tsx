@@ -11,6 +11,7 @@ import { RequirePlatformAuth } from '../../components/RequirePlatformAuth';
 import {
   activatePlatformTenant,
   createPlatformTenant,
+  destroyPlatformTenant,
   getPlatformOverview,
   suspendPlatformTenant,
   updatePlatformTenant,
@@ -48,6 +49,8 @@ function PlataformaContent({ userName }: { userName: string }) {
   const [editQuota, setEditQuota] = useState('');
   const [editWholesale, setEditWholesale] = useState('');
   const [suspendReason, setSuspendReason] = useState('');
+  const [destroyId, setDestroyId] = useState<string | null>(null);
+  const [destroyName, setDestroyName] = useState('');
 
   const reload = useCallback(async () => {
     const overview = await getPlatformOverview();
@@ -129,6 +132,26 @@ function PlataformaContent({ userName }: { userName: string }) {
     }
   }
 
+  async function onDestroy(tenant: PlatformTenantRow) {
+    if (destroyName.trim().toLowerCase() !== tenant.name.trim().toLowerCase()) {
+      setError(`Digite ${tenant.name} para confirmar a exclusao.`);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await destroyPlatformTenant(tenant.id, destroyName);
+      setSuccess(`${tenant.name} foi zerada e removida. Pode criar de novo.`);
+      setDestroyId(null);
+      setDestroyName('');
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao zerar.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onToggleStatus(tenant: PlatformTenantRow) {
     setSaving(true);
     setError(null);
@@ -154,11 +177,11 @@ function PlataformaContent({ userName }: { userName: string }) {
       <header className="dash-page-header">
         <div>
           <p className="page-kicker">ProntEPI · SaaS</p>
-          <h1 className="page-title">Consultorias</h1>
+          <h1 className="page-title">Consultorias clientes</h1>
           <p className="page-lead">
-            Ola, {userName}. Aqui a ProntEPI vende o sistema: libera vidas e
-            define o preco de atacado. A Inseg e qualquer outra consultoria sao
-            clientes neste painel.
+            Ola, {userName}. Crie a consultoria, solte a franquia de vidas e
+            defina o preco de atacado. Zerar apaga o tenant por completo para
+            comecar de novo.
           </p>
         </div>
       </header>
@@ -412,6 +435,46 @@ function PlataformaContent({ userName }: { userName: string }) {
                               onClick={() => void onToggleStatus(tenant)}
                             >
                               Reativar
+                            </button>
+                          )}
+                          {destroyId === tenant.id ? (
+                            <>
+                              <input
+                                value={destroyName}
+                                onChange={(e) => setDestroyName(e.target.value)}
+                                placeholder={`Digite ${tenant.name}`}
+                                aria-label="Confirmar nome para zerar"
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-danger btn-compact"
+                                disabled={saving}
+                                onClick={() => void onDestroy(tenant)}
+                              >
+                                Confirmar zerar
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-compact"
+                                onClick={() => {
+                                  setDestroyId(null);
+                                  setDestroyName('');
+                                }}
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-compact"
+                              disabled={saving}
+                              onClick={() => {
+                                setDestroyId(tenant.id);
+                                setDestroyName('');
+                              }}
+                            >
+                              Zerar
                             </button>
                           )}
                         </div>

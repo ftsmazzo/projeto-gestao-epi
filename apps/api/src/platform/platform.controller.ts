@@ -1,8 +1,18 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PlatformJwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtPayload } from '../auth/types/jwt-payload';
 import { CreatePlatformTenantDto } from './dto/create-tenant.dto';
+import { DestroyPlatformTenantDto } from './dto/destroy-tenant.dto';
 import { SuspendPlatformTenantDto } from './dto/suspend-tenant.dto';
 import { UpdatePlatformTenantDto } from './dto/update-tenant.dto';
 import { PlatformService } from './platform.service';
@@ -46,5 +56,14 @@ export class PlatformController {
   @Post('tenants/:id/activate')
   activate(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.platform.activateTenant(user.sub, id);
+  }
+
+  @Delete('tenants/:id')
+  destroy(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: DestroyPlatformTenantDto,
+  ) {
+    return this.platform.destroyTenant(user.sub, id, dto);
   }
 }

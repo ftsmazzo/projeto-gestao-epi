@@ -1,5 +1,6 @@
 import type {
   CreatePlatformTenantResult,
+  DestroyPlatformTenantResult,
   PlatformOverview,
   PlatformTenantRow,
 } from '@gestao-epi/shared';
@@ -46,5 +47,12 @@ export function suspendPlatformTenant(id: string, reason?: string) {
 export function activatePlatformTenant(id: string) {
   return platformFetch<PlatformTenantRow>(`/platform/tenants/${id}/activate`, {
     method: 'POST',
+  });
+}
+
+export function destroyPlatformTenant(id: string, confirmation: string) {
+  return platformFetch<DestroyPlatformTenantResult>(`/platform/tenants/${id}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ confirmation }),
   });
 }

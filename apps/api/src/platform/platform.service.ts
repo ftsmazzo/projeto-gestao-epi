@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -12,10 +13,17 @@ import {
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
+import { rm } from 'fs/promises';
+import { join } from 'path';
 import { AuditService } from '../audit/audit.service';
 import { CommunicationsService } from '../communications/communications.service';
+import { deleteOrgLogoFile } from '../organization/org-logo.storage';
+import { getInvoiceDocumentsRoot } from '../portal/invoice-document.storage';
+import { getDeliveryEvidenceRoot } from '../portal/facial-evidence.storage';
 import { PrismaService } from '../prisma/prisma.service';
+import { getWorkerFaceReferenceRoot } from '../workers/worker-face-reference.storage';
 import type { CreatePlatformTenantDto } from './dto/create-tenant.dto';
+import type { DestroyPlatformTenantDto } from './dto/destroy-tenant.dto';
 import type { SuspendPlatformTenantDto } from './dto/suspend-tenant.dto';
 import type { UpdatePlatformTenantDto } from './dto/update-tenant.dto';
 
@@ -31,6 +39,8 @@ function slugify(value: string): string {
 
 @Injectable()
 export class PlatformService {
+  private readonly logger = new Logger(PlatformService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -85,16 +95,22 @@ export class PlatformService {
 
     const existingUser = await this.prisma.user.findUnique({
       where: { email: ownerEmail },
+      include: { memberships: { take: 1 } },
     });
-    if (existingUser) {
+    if (existingUser && existingUser.memberships.length > 0) {
       throw new ConflictException(
-        'Este e-mail ja possui acesso. Use outro gestor para a nova consultoria.',
+        'Este e-mail ja e gestor de outra consultoria.',
       );
     }
 
     const slug = await this.ensureUniqueSlug(slugify(name) || 'consultoria');
-    const temporaryPassword = this.generateTemporaryPassword();
-    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    const reuseUser = Boolean(existingUser);
+    const temporaryPassword = reuseUser
+      ? null
+      : this.generateTemporaryPassword();
+    const passwordHash = reuseUser
+      ? null
+      : await bcrypt.hash(temporaryPassword as string, 12);
 
     const created = await this.prisma.$transaction(async (tx) => {
       const organization = await tx.organization.create({
@@ -107,13 +123,18 @@ export class PlatformService {
         },
       });
 
-      const user = await tx.user.create({
-        data: {
-          email: ownerEmail,
-          name: ownerName,
-          passwordHash,
-        },
-      });
+      const user = existingUser
+        ? await tx.user.update({
+            where: { id: existingUser.id },
+            data: { name: ownerName || existingUser.name },
+          })
+        : await tx.user.create({
+            data: {
+              email: ownerEmail,
+              name: ownerName,
+              passwordHash: passwordHash as string,
+            },
+          });
 
       const membership = await tx.membership.create({
         data: {
@@ -127,16 +148,22 @@ export class PlatformService {
     });
 
     const accessUrl = this.resolveConsultoriaAccessUrl();
-    const delivery = await this.communications.enqueueConsultoriaAccessInvite({
-      organizationId: created.organization.id,
-      recipientName: ownerName,
-      recipientEmail: ownerEmail,
-      recipientPhone: null,
-      temporaryPassword,
-      accessUrl,
-      membershipId: created.membership.id,
-      roleLabel: 'Administrador geral',
-    });
+    const delivery = reuseUser
+      ? {
+          enabled: false,
+          email: 'SKIPPED' as const,
+          whatsapp: 'SKIPPED' as const,
+        }
+      : await this.communications.enqueueConsultoriaAccessInvite({
+          organizationId: created.organization.id,
+          recipientName: ownerName,
+          recipientEmail: ownerEmail,
+          recipientPhone: null,
+          temporaryPassword: temporaryPassword as string,
+          accessUrl,
+          membershipId: created.membership.id,
+          roleLabel: 'Administrador geral',
+        });
 
     await this.audit.log({
       action: 'platform.tenant_created',
@@ -157,9 +184,13 @@ export class PlatformService {
       owner: {
         name: ownerName,
         email: ownerEmail,
-        temporaryPassword: delivery.enabled ? null : temporaryPassword,
+        temporaryPassword: reuseUser
+          ? null
+          : delivery.enabled
+            ? null
+            : temporaryPassword,
         accessUrl,
-        createdUser: true,
+        createdUser: !reuseUser,
         deliveryEnabled: delivery.enabled,
       },
     };
@@ -280,6 +311,158 @@ export class PlatformService {
     });
 
     return this.getTenantRow(organizationId);
+  }
+
+  async destroyTenant(
+    actorUserId: string,
+    organizationId: string,
+    dto: DestroyPlatformTenantDto,
+  ) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      include: {
+        memberships: { select: { userId: true } },
+        clientUserMemberships: { select: { userId: true } },
+      },
+    });
+    if (!organization) {
+      throw new NotFoundException('Consultoria nao encontrada.');
+    }
+    if (
+      dto.confirmation.trim().toLowerCase() !==
+      organization.name.trim().toLowerCase()
+    ) {
+      throw new BadRequestException(
+        `Digite exatamente o nome da consultoria (${organization.name}) para zerar.`,
+      );
+    }
+
+    const candidateUserIds = [
+      ...new Set(
+        [
+          ...organization.memberships.map((row) => row.userId),
+          ...organization.clientUserMemberships
+            .map((row) => row.userId)
+            .filter((id): id is string => Boolean(id)),
+        ].filter((id) => id !== actorUserId),
+      ),
+    ];
+
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.epiDeliveryReturnItem.deleteMany({
+          where: { returnEvent: { organizationId } },
+        });
+        await tx.epiDeliveryReturn.deleteMany({ where: { organizationId } });
+        await tx.deliveryEvidence.deleteMany({
+          where: { delivery: { organizationId } },
+        });
+        await tx.epiDeliveryItem.deleteMany({
+          where: { delivery: { organizationId } },
+        });
+        await tx.epiDelivery.deleteMany({ where: { organizationId } });
+        await tx.workerFacialEnrollmentLink.deleteMany({
+          where: { organizationId },
+        });
+        await tx.workerBiometricConsent.deleteMany({
+          where: { organizationId },
+        });
+        await tx.workerFacialReference.deleteMany({
+          where: { organizationId },
+        });
+        await tx.epiStockMovement.deleteMany({ where: { organizationId } });
+        await tx.epiStockBalance.deleteMany({ where: { organizationId } });
+        await tx.stockLocation.deleteMany({ where: { organizationId } });
+        await tx.invoiceDocument.deleteMany({ where: { organizationId } });
+        await tx.epiItemNeed.deleteMany({ where: { organizationId } });
+        await tx.jobFunctionEpiRequirement.deleteMany({
+          where: { organizationId },
+        });
+        await tx.jobFunctionRisk.deleteMany({ where: { organizationId } });
+        await tx.pgroImportRun.deleteMany({ where: { organizationId } });
+        await tx.clientUserMembership.deleteMany({
+          where: { organizationId },
+        });
+        await tx.communicationOutbox.deleteMany({ where: { organizationId } });
+        await tx.worker.deleteMany({ where: { organizationId } });
+        await tx.clientJobFunction.deleteMany({ where: { organizationId } });
+        await tx.clientSector.deleteMany({ where: { organizationId } });
+        await tx.operationalUnit.deleteMany({ where: { organizationId } });
+        await tx.clientSubscription.deleteMany({ where: { organizationId } });
+        await tx.servedClient.deleteMany({ where: { organizationId } });
+        await tx.epiVariant.deleteMany({ where: { organizationId } });
+        await tx.epiItem.deleteMany({ where: { organizationId } });
+        await tx.epiNeed.deleteMany({ where: { organizationId } });
+        await tx.occupationalRisk.deleteMany({ where: { organizationId } });
+        await tx.lifePriceReducer.deleteMany({
+          where: { pricing: { organizationId } },
+        });
+        await tx.organizationLifePricing.deleteMany({
+          where: { organizationId },
+        });
+        await tx.organizationContact.deleteMany({ where: { organizationId } });
+        await tx.membership.deleteMany({ where: { organizationId } });
+        await tx.auditLog.deleteMany({ where: { organizationId } });
+        await tx.organization.delete({ where: { id: organizationId } });
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Falha ao zerar a consultoria.';
+      this.logger.error(`Destroy tenant falhou: ${message}`);
+      throw new BadRequestException(
+        `Nao foi possivel zerar a consultoria: ${message.slice(0, 240)}`,
+      );
+    }
+
+    if (candidateUserIds.length > 0) {
+      const leftover = await this.prisma.user.findMany({
+        where: { id: { in: candidateUserIds } },
+        select: {
+          id: true,
+          isPlatformAdmin: true,
+          _count: {
+            select: { memberships: true, clientUserMemberships: true },
+          },
+        },
+      });
+      const orphanIds = leftover
+        .filter(
+          (user) =>
+            !user.isPlatformAdmin &&
+            user._count.memberships === 0 &&
+            user._count.clientUserMemberships === 0,
+        )
+        .map((user) => user.id);
+      if (orphanIds.length > 0) {
+        await this.prisma.user.deleteMany({ where: { id: { in: orphanIds } } });
+      }
+    }
+
+    await Promise.all([
+      deleteOrgLogoFile(organization.logoPath),
+      rm(join(getWorkerFaceReferenceRoot(), organizationId), {
+        recursive: true,
+        force: true,
+      }).catch(() => undefined),
+      rm(join(getDeliveryEvidenceRoot(), organizationId), {
+        recursive: true,
+        force: true,
+      }).catch(() => undefined),
+      rm(join(getInvoiceDocumentsRoot(), organizationId), {
+        recursive: true,
+        force: true,
+      }).catch(() => undefined),
+    ]);
+
+    await this.audit.log({
+      action: 'platform.tenant_destroyed',
+      userId: actorUserId,
+      entityType: 'Organization',
+      entityId: organizationId,
+      metadata: { name: organization.name, slug: organization.slug },
+    });
+
+    return { ok: true as const, name: organization.name };
   }
 
   private async getTenantRow(organizationId: string) {
