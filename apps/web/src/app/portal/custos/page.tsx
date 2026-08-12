@@ -412,7 +412,25 @@ function PortalCustosContent() {
                             </span>
                           </td>
                           <td>
-                            {sug ? (
+                            {(doc.extraction?.lines?.length ?? 0) > 0 ? (
+                              <ul className="invoice-extract-lines">
+                                {doc.extraction!.lines.slice(0, 8).map((line, idx) => (
+                                  <li key={`${doc.id}-${idx}`}>
+                                    <span className="mono">
+                                      {line.quantity ?? '—'} un ·{' '}
+                                      {formatBrl(line.unitCostCents)}
+                                      {line.totalCostCents != null
+                                        ? ` = ${formatBrl(line.totalCostCents)}`
+                                        : ''}
+                                    </span>
+                                    <span className="table-sub">
+                                      {line.description}
+                                      {line.caNumber ? ` · CA ${line.caNumber}` : ''}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : sug ? (
                               <>
                                 <span className="mono">
                                   {sug.quantity ?? '—'} un ·{' '}

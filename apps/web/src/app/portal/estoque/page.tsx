@@ -3,6 +3,8 @@
 import type {
   CaCertificateSearchItem,
   PortalEstoqueResponse,
+  PortalInvoiceExtraction,
+  PortalInvoiceExtractionLine,
   PortalReportsActivityResponse,
   PortalReportsStockResponse,
   PortalStockBalanceRow,
@@ -44,6 +46,45 @@ function parseReaisToCents(raw: string): number | undefined {
 function centsToReaisInput(cents: number | null | undefined): string {
   if (cents == null) return '';
   return (cents / 100).toFixed(2).replace('.', ',');
+}
+
+function normalizeInvoiceKey(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function matchInvoiceLine(
+  extraction: PortalInvoiceExtraction | null | undefined,
+  hint: { caNumber?: string | null; description?: string | null },
+): PortalInvoiceExtractionLine | null {
+  const lines = extraction?.lines ?? [];
+  if (lines.length === 0) return null;
+  const ca = hint.caNumber?.replace(/\D/g, '') ?? '';
+  if (ca) {
+    const byCa = lines.find((line) => line.caNumber === ca);
+    if (byCa) return byCa;
+  }
+  const tokens = normalizeInvoiceKey(hint.description ?? '')
+    .split(' ')
+    .filter((token) => token.length >= 4);
+  if (tokens.length > 0) {
+    let best: PortalInvoiceExtractionLine | null = null;
+    let score = 0;
+    for (const line of lines) {
+      const desc = normalizeInvoiceKey(line.description);
+      const hit = tokens.filter((token) => desc.includes(token)).length;
+      if (hit > score) {
+        score = hit;
+        best = line;
+      }
+    }
+    if (best && score > 0) return best;
+  }
+  return lines.length === 1 ? lines[0] : null;
 }
 const STOP_WORDS = new Set([
   'de',
@@ -440,26 +481,26 @@ function PortalEstoqueContent() {
     setSuccess(null);
     try {
       let invoiceDocumentId: string | undefined;
-      let suggestedUnit: number | undefined;
-      let suggestedQty: number | undefined;
+      let extraction: PortalInvoiceExtraction | undefined;
       if (batchInvoiceFile) {
         const uploaded = await uploadPortalInvoice({ file: batchInvoiceFile });
         invoiceDocumentId = uploaded.id;
-        suggestedUnit = uploaded.extraction?.suggested?.unitCostCents ?? undefined;
-        suggestedQty =
-          uploaded.extraction?.suggested?.quantity ?? undefined;
+        extraction = uploaded.extraction;
       }
       const payload = items.map(
-        ({ epiNeedId, caNumber, quantity, unitCostCents }) => ({
-          epiNeedId,
-          caNumber,
-          quantity:
-            items.length === 1 && suggestedQty != null
-              ? suggestedQty
-              : quantity,
-          unitCostCents: unitCostCents ?? suggestedUnit,
-          ...(invoiceDocumentId ? { invoiceDocumentId } : {}),
-        }),
+        ({ epiNeedId, caNumber, quantity, unitCostCents, needName }) => {
+          const matched = matchInvoiceLine(extraction, {
+            caNumber,
+            description: needName,
+          });
+          return {
+            epiNeedId,
+            caNumber,
+            quantity: matched?.quantity ?? quantity,
+            unitCostCents: unitCostCents ?? matched?.unitCostCents ?? undefined,
+            ...(invoiceDocumentId ? { invoiceDocumentId } : {}),
+          };
+        },
       );
       const result = await createPortalStockEntradas(
         payload.map(
@@ -501,14 +542,17 @@ function PortalEstoqueContent() {
       if (freeInvoiceFile) {
         const uploaded = await uploadPortalInvoice({ file: freeInvoiceFile });
         invoiceDocumentId = uploaded.id;
-        const sug = uploaded.extraction?.suggested;
-        if (unitCostCents == null && sug?.unitCostCents != null) {
-          unitCostCents = sug.unitCostCents;
-          setFreeUnitPriceReais(centsToReaisInput(sug.unitCostCents));
+        const matched = matchInvoiceLine(uploaded.extraction, {
+          caNumber: picked.caNumber,
+          description: picked.equipmentName,
+        });
+        if (unitCostCents == null && matched?.unitCostCents != null) {
+          unitCostCents = matched.unitCostCents;
+          setFreeUnitPriceReais(centsToReaisInput(matched.unitCostCents));
         }
-        if (sug?.quantity != null && sug.quantity > 0) {
-          qty = sug.quantity;
-          setFreeQty(sug.quantity);
+        if (matched?.quantity != null && matched.quantity > 0) {
+          qty = matched.quantity;
+          setFreeQty(matched.quantity);
         }
       }
       await createPortalStockEntradas([

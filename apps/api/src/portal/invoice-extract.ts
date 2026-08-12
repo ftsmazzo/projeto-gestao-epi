@@ -27,7 +27,12 @@ export type InvoiceExtractionResult = {
 };
 
 const MONEY_RE = /(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+\.\d{2})/g;
-const CA_RE = /\b(?:CA[\s./-]*)?(\d{4,6})\b/gi;
+const FISCAL_NOISE_RE =
+  /base\s*calc|total\s*(cbs|pis|cofins|ibs|nota|produtos|tribut)|inf\.\s*(fisco|contribuinte)|valor do (icms|ipi|frete|seguro)|v\.\s*(total|icms|tot|imp)|duplicata|fatura|peso\s*(bruto|l[ií]quido)|protocolo de autoriz|chave de acesso|consulta de autenticidade|natureza da opera|inscri[cç][aã]o estadual|destinat[aá]rio/i;
+
+/** DANFE: NCM CST CFOP UN QTD UNITARIO TOTAL */
+const DANFE_ITEM_RE =
+  /(?:CA[:\s./-]*(\d{4,6})\s+)?(\d{8})\s+(\d{1,3}(?:\/\d{2,3})?)\s+(\d{4})\s+([A-Z]{2,4})\s+(\d{1,6}(?:[.,]\d{1,4})?)\s+(\d{1,6}(?:[.,]\d{1,4})?)\s+(\d{1,3}(?:\.\d{3})*,\d{2})/i;
 
 export function parseMoneyToCents(raw: string): number | null {
   const t = raw.trim();
@@ -40,7 +45,29 @@ export function parseMoneyToCents(raw: string): number | null {
   return Math.round(n * 100);
 }
 
+function parseQty(raw: string): number | null {
+  const n = Number(raw.trim().replace(/\./g, '').replace(',', '.'));
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const rounded = Math.round(n);
+  if (rounded < 1 || rounded > 999_999) return null;
+  return rounded;
+}
+
+function normalizeKey(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 function extractInvoiceNumber(text: string): string | null {
+  const dotted = text.match(/n[ºo°]\.?\s*(\d{1,3}(?:\.\d{3}){1,3})/i);
+  if (dotted?.[1]) {
+    const digits = dotted[1].replace(/\D/g, '').replace(/^0+/, '');
+    if (digits.length >= 3 && digits.length <= 12) return digits;
+  }
   const patterns = [
     /n[ºo°.]?\s*(?:da\s*)?nota[:\s]*(\d{3,12})/i,
     /n[úu]mero[:\s]*(\d{3,12})/i,
@@ -49,28 +76,134 @@ function extractInvoiceNumber(text: string): string | null {
   ];
   for (const re of patterns) {
     const m = text.match(re);
-    if (m?.[1]) return m[1];
+    if (m?.[1] && m[1].length <= 12) return m[1];
   }
   return null;
 }
 
 function extractSupplierName(text: string): string | null {
+  const received = text.match(
+    /RECEBEMOS DE\s+([A-ZÀ-Ÿ0-9][A-ZÀ-Ÿ0-9 .,&\-]{4,90}?)\s+OS PRODUTOS/i,
+  );
+  if (received?.[1]) {
+    return received[1].replace(/\s+/g, ' ').trim().slice(0, 120);
+  }
+  const emit = text.match(
+    /IDENTIFICA[CÇ][AÃ]O DO EMITENTE\s+([A-ZÀ-Ÿ0-9][^\n]{4,90})/i,
+  );
+  if (emit?.[1] && !/danfe|documento auxiliar/i.test(emit[1])) {
+    return emit[1].replace(/\s+/g, ' ').trim().slice(0, 120);
+  }
   const m =
     text.match(/emitente[:\s]+([^\n]{3,80})/i) ||
     text.match(/razao\s*social[:\s]+([^\n]{3,80})/i) ||
     text.match(/fornecedor[:\s]+([^\n]{3,80})/i);
-  if (!m?.[1]) return null;
+  if (!m?.[1] || /destinat/i.test(m[1])) return null;
   return m[1].replace(/\s+/g, ' ').trim().slice(0, 120);
 }
 
 function findCaInLine(line: string): string | null {
-  const matches = [...line.matchAll(CA_RE)];
-  for (const m of matches) {
-    const n = m[1];
-    // evita anos / CEP curtos: CA tipico 5-6 digitos; aceita 4+
-    if (n.length >= 4 && n.length <= 6) return n;
-  }
+  const labeled = line.match(/\bCA[\s./:-]*(\d{4,6})\b/i);
+  if (labeled?.[1]) return labeled[1];
   return null;
+}
+
+function cleanProductDescription(raw: string): string {
+  return raw
+    .replace(/^\d{4,10}\s+/, '')
+    .replace(/\bITEM\s*\d+\s*-?\s*/gi, '')
+    .replace(/\bCA[\s./:-]*\d{4,6}\b/gi, '')
+    .replace(/\b[A-Z]{1,3}\d{6,}\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 160);
+}
+
+function amountsAgree(
+  unitCostCents: number,
+  quantity: number,
+  totalCostCents: number,
+): boolean {
+  const expected = unitCostCents * quantity;
+  const tol = Math.max(100, Math.round(unitCostCents * 0.02));
+  return Math.abs(expected - totalCostCents) <= tol;
+}
+
+export function pickInvoiceLine(
+  lines: InvoiceExtractedLine[],
+  hint?: { caNumber?: string | null; description?: string | null },
+): InvoiceExtractedLine | null {
+  if (lines.length === 0) return null;
+  const ca = hint?.caNumber?.replace(/\D/g, '') ?? '';
+  if (ca) {
+    const byCa = lines.find((line) => line.caNumber === ca);
+    if (byCa) return byCa;
+  }
+  const hintKey = normalizeKey(hint?.description ?? '');
+  const tokens = hintKey.split(' ').filter((token) => token.length >= 4);
+  if (tokens.length > 0) {
+    let best: InvoiceExtractedLine | null = null;
+    let score = 0;
+    for (const line of lines) {
+      const desc = normalizeKey(line.description);
+      const hit = tokens.filter(
+        (token) => desc.includes(token) || token.includes(desc.split(' ')[0] ?? ''),
+      ).length;
+      if (hit > score) {
+        score = hit;
+        best = line;
+      }
+    }
+    if (best && score > 0) return best;
+  }
+  return lines.find((line) => line.confidence === 'high') ?? lines[0];
+}
+
+function parseDanfeProductItems(text: string): InvoiceExtractedLine[] {
+  const sectionMatch = text.match(
+    /DADOS DOS PRODUTOS[\s\S]*?(?=DADOS ADICIONAIS|INFORMA[CÇ][OÕ]ES COMPLEMENTARES|$)/i,
+  );
+  const section = sectionMatch?.[0] ?? text;
+  const rawLines = section
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const items: InvoiceExtractedLine[] = [];
+
+  for (let i = 0; i < rawLines.length; i += 1) {
+    const line = rawLines[i];
+    const match = line.match(DANFE_ITEM_RE);
+    if (!match) continue;
+    const quantity = parseQty(match[6]);
+    const unitCostCents = parseMoneyToCents(match[7]);
+    const totalCostCents = parseMoneyToCents(match[8]);
+    if (quantity == null || unitCostCents == null || totalCostCents == null) {
+      continue;
+    }
+    if (!amountsAgree(unitCostCents, quantity, totalCostCents)) continue;
+
+    let description = cleanProductDescription(line.slice(0, match.index ?? 0));
+    if (description.length < 6 && i > 0) {
+      description = cleanProductDescription(rawLines[i - 1]);
+    }
+    if (description.length < 3) continue;
+    if (FISCAL_NOISE_RE.test(description)) continue;
+
+    let caNumber = match[1] ?? findCaInLine(line);
+    if (!caNumber && i > 0 && !DANFE_ITEM_RE.test(rawLines[i - 1])) {
+      caNumber = findCaInLine(rawLines[i - 1]);
+    }
+
+    items.push({
+      description,
+      quantity,
+      unitCostCents,
+      totalCostCents,
+      caNumber,
+      confidence: 'high',
+    });
+  }
+  return items;
 }
 
 /**
@@ -92,100 +225,106 @@ export function parseInvoiceText(text: string): InvoiceExtractionResult {
     };
   }
 
-  const lines: InvoiceExtractedLine[] = [];
-  const rawLines = cleaned.split('\n').map((l) => l.trim()).filter(Boolean);
+  const danfeLines = parseDanfeProductItems(cleaned);
+  const lines: InvoiceExtractedLine[] = [...danfeLines];
 
-  for (const line of rawLines) {
-    if (line.length < 8 || line.length > 220) continue;
-    if (/^(total|imposto|icms|ipi|cfop|chave|protocolo|pagina)/i.test(line)) {
-      continue;
-    }
+  if (danfeLines.length === 0) {
+    const rawLines = cleaned.split('\n').map((l) => l.trim()).filter(Boolean);
 
-    const moneyMatches = [...line.matchAll(MONEY_RE)].map((m) => m[1]);
-    if (moneyMatches.length === 0) continue;
-
-    const amounts = moneyMatches
-      .map(parseMoneyToCents)
-      .filter((v): v is number => v != null && v > 0);
-    if (amounts.length === 0) continue;
-
-    // Quantidade: inteiro isolado antes dos valores (ex.: ... 10 12,50 125,00)
-    let quantity: number | null = null;
-    const qtyMatch = line.match(
-      /(?:qtd[e.]?|quant(?:idade)?|qtde)[:\s]*(\d+(?:[.,]\d+)?)/i,
-    );
-    if (qtyMatch?.[1]) {
-      quantity = Math.max(1, Math.round(Number(qtyMatch[1].replace(',', '.'))));
-    } else {
-      const beforeMoney = line
-        .slice(0, line.indexOf(moneyMatches[0]))
-        .match(/(?:^|\s)(\d{1,4})(?:\s|$)/g);
-      if (beforeMoney?.length) {
-        const last = beforeMoney[beforeMoney.length - 1].trim();
-        const q = Number(last);
-        if (Number.isInteger(q) && q >= 1 && q <= 9999) quantity = q;
+    for (const line of rawLines) {
+      if (line.length < 8 || line.length > 220) continue;
+      if (FISCAL_NOISE_RE.test(line)) continue;
+      if (/^(total|imposto|icms|ipi|cfop|chave|protocolo|pagina)/i.test(line)) {
+        continue;
       }
-    }
 
-    let unitCostCents: number | null = null;
-    let totalCostCents: number | null = null;
+      const moneyMatches = [...line.matchAll(MONEY_RE)].map((m) => m[1]);
+      if (moneyMatches.length === 0 || moneyMatches.length > 3) continue;
 
-    if (amounts.length === 1) {
-      unitCostCents = amounts[0];
-      if (quantity != null) totalCostCents = unitCostCents * quantity;
-    } else if (amounts.length >= 2) {
-      // tipico: unitario + total (ultimo = total)
-      unitCostCents = amounts[amounts.length - 2];
-      totalCostCents = amounts[amounts.length - 1];
-      if (
-        quantity == null &&
-        unitCostCents > 0 &&
-        totalCostCents >= unitCostCents
-      ) {
-        const inferred = Math.round(totalCostCents / unitCostCents);
-        if (inferred >= 1 && inferred <= 9999) quantity = inferred;
+      const amounts = moneyMatches
+        .map(parseMoneyToCents)
+        .filter((v): v is number => v != null && v > 0);
+      if (amounts.length === 0) continue;
+
+      let quantity: number | null = null;
+      const qtyMatch = line.match(
+        /(?:qtd[e.]?|quant(?:idade)?|qtde)[:\s]*(\d+(?:[.,]\d+)?)/i,
+      );
+      if (qtyMatch?.[1]) {
+        quantity = parseQty(qtyMatch[1]);
+      } else {
+        const beforeMoney = line
+          .slice(0, line.indexOf(moneyMatches[0]))
+          .match(/(?:^|\s)(\d{1,4})(?:\s|$)/g);
+        if (beforeMoney?.length) {
+          const last = beforeMoney[beforeMoney.length - 1].trim();
+          const q = Number(last);
+          if (Number.isInteger(q) && q >= 1 && q <= 9999) quantity = q;
+        }
       }
-      // se unit * qtd != total, preferir unitario e recalcular
-      if (
-        quantity != null &&
-        unitCostCents != null &&
-        Math.abs(unitCostCents * quantity - totalCostCents) >
-          Math.max(100, unitCostCents * 0.05)
-      ) {
-        // manter ambos; UI pode escolher
+
+      let unitCostCents: number | null = null;
+      let totalCostCents: number | null = null;
+
+      if (amounts.length === 1) {
+        unitCostCents = amounts[0];
+        if (quantity != null) totalCostCents = unitCostCents * quantity;
+      } else {
+        unitCostCents = amounts[0];
+        totalCostCents = amounts[amounts.length - 1];
+        if (
+          quantity == null &&
+          unitCostCents > 0 &&
+          totalCostCents >= unitCostCents
+        ) {
+          const inferred = Math.round(totalCostCents / unitCostCents);
+          if (
+            inferred >= 1 &&
+            inferred <= 9999 &&
+            amountsAgree(unitCostCents, inferred, totalCostCents)
+          ) {
+            quantity = inferred;
+          }
+        }
+        if (
+          quantity != null &&
+          !amountsAgree(unitCostCents, quantity, totalCostCents)
+        ) {
+          continue;
+        }
       }
+
+      const description = cleanProductDescription(
+        line
+          .replace(MONEY_RE, ' ')
+          .replace(/\b\d{1,4}\b/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      );
+
+      if (!description || description.length < 3) continue;
+      if (/valor\s*total|desconto|frete|outras\s*despesas/i.test(description)) {
+        continue;
+      }
+
+      const confidence: InvoiceExtractedLine['confidence'] =
+        quantity != null && unitCostCents != null && totalCostCents != null
+          ? 'high'
+          : unitCostCents != null
+            ? 'medium'
+            : 'low';
+
+      lines.push({
+        description,
+        quantity,
+        unitCostCents,
+        totalCostCents,
+        caNumber: findCaInLine(line),
+        confidence,
+      });
     }
-
-    const description = line
-      .replace(MONEY_RE, ' ')
-      .replace(/\b\d{1,4}\b/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 160);
-
-    if (!description || description.length < 3) continue;
-    if (/valor\s*total|desconto|frete|outras\s*despesas/i.test(description)) {
-      continue;
-    }
-
-    const confidence: InvoiceExtractedLine['confidence'] =
-      quantity != null && unitCostCents != null
-        ? 'high'
-        : unitCostCents != null
-          ? 'medium'
-          : 'low';
-
-    lines.push({
-      description,
-      quantity,
-      unitCostCents,
-      totalCostCents,
-      caNumber: findCaInLine(line),
-      confidence,
-    });
   }
 
-  // Dedup grosseiro por descricao+preco
   const deduped: InvoiceExtractedLine[] = [];
   const seen = new Set<string>();
   for (const row of lines) {
@@ -195,14 +334,7 @@ export function parseInvoiceText(text: string): InvoiceExtractionResult {
     deduped.push(row);
   }
 
-  const ranked = [...deduped].sort((a, b) => {
-    const score = (x: InvoiceExtractedLine) =>
-      (x.confidence === 'high' ? 3 : x.confidence === 'medium' ? 2 : 1) +
-      (x.totalCostCents ?? 0) / 1_000_000;
-    return score(b) - score(a);
-  });
-
-  const best = ranked[0] ?? null;
+  const best = pickInvoiceLine(deduped);
   const suggested = best
     ? {
         quantity: best.quantity,
@@ -214,14 +346,14 @@ export function parseInvoiceText(text: string): InvoiceExtractionResult {
 
   return {
     method: 'PDF_TEXT',
-    ok: ranked.length > 0,
+    ok: deduped.length > 0,
     message:
-      ranked.length > 0
-        ? `Encontramos ${ranked.length} linha(s) com valor. Confira antes de usar.`
+      deduped.length > 0
+        ? `Encontramos ${deduped.length} item(ns) na nota. Confira antes de usar.`
         : 'Nao achamos linhas com quantidade/valor no texto da nota.',
     invoiceNumber: extractInvoiceNumber(cleaned),
     supplierName: extractSupplierName(cleaned),
-    lines: ranked.slice(0, 40),
+    lines: deduped.slice(0, 40),
     suggested,
     rawTextPreview: cleaned.slice(0, 500),
   };

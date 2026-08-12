@@ -1232,6 +1232,15 @@ a.btn-danger:hover {
   font-size: 0.85rem;
 }
 
+.invoice-extract-lines {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.invoice-extract-lines li + li {
+  margin-top: 0.45rem;
+}
+
 .mono {
   font-family: var(--font-mono);
   font-size: 0.9rem;
