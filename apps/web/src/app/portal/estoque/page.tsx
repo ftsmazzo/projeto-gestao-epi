@@ -32,6 +32,10 @@ const SEARCH_MIN = 3;
 const SEARCH_DEBOUNCE_MS = 350;
 
 /** Converte "12,50" / "12.50" em centavos. Vazio = undefined. */
+function caDigits(raw: string): string {
+  return raw.replace(/\D/g, '');
+}
+
 function parseReaisToCents(raw: string): number | undefined {
   const t = raw.trim();
   if (!t) return undefined;
@@ -155,21 +159,23 @@ function CaepiSuggestionButton({
 }) {
   return (
     <button type="button" className="caepi-suggest-item" onClick={onSelect}>
-      <span className="caepi-suggest-item__ca">CA {item.caNumber}</span>
-      <span className={caStatusClassName(item.status)}>
-        {formatCaStatusLabel(item.status)}
+      <span className="caepi-suggest-item__top">
+        <span className="caepi-suggest-item__ca">CA {item.caNumber}</span>
+        <span className={caStatusClassName(item.status)}>
+          {formatCaStatusLabel(item.status)}
+        </span>
       </span>
-      <span className="caepi-suggest-item__meta">
+      <span className="caepi-suggest-item__name">
         {item.equipmentName || 'Equipamento nao informado'}
       </span>
       <span className="caepi-suggest-item__meta">
-        {item.manufacturerName || 'Fabricante nao informado'}
-      </span>
-      {item.reference ? (
-        <span className="caepi-suggest-item__meta">Ref. {item.reference}</span>
-      ) : null}
-      <span className="caepi-suggest-item__meta">
-        Validade {formatDate(item.expiresAt)}
+        {[
+          item.manufacturerName,
+          item.reference ? `Ref. ${item.reference}` : null,
+          `Val. ${formatDate(item.expiresAt)}`,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
       </span>
     </button>
   );
@@ -255,6 +261,7 @@ function PortalEstoqueContent() {
   const [picked, setPicked] = useState<CaCertificateSearchItem | null>(null);
   const [freeQty, setFreeQty] = useState(1);
   const [freeUnitPriceReais, setFreeUnitPriceReais] = useState('');
+  const [freeMode, setFreeMode] = useState<'manual' | 'invoice'>('manual');
   const [batchInvoiceFile, setBatchInvoiceFile] = useState<File | null>(null);
   const [freeInvoiceFile, setFreeInvoiceFile] = useState<File | null>(null);
   const needSearchTimers = useRef<Record<string, number>>({});
@@ -306,12 +313,13 @@ function PortalEstoqueContent() {
     setSearching(true);
     setSearchMessage(null);
     const handle = window.setTimeout(() => {
-      void searchPortalCaepi(q, CAEPI_PICKER_LIMIT, { validOnly: true })
+      void searchPortalCaepi(q, CAEPI_PICKER_LIMIT)
         .then((res) => {
           setSuggestions(res.items);
           setSearchMessage(
             res.items.length === 0
-              ? res.message ?? 'Nenhum CA valido encontrado na base CAEPI.'
+              ? res.message ??
+                'Nenhum CA encontrado. Digite o numero completo e inclua mesmo assim.'
               : res.message,
           );
         })
@@ -513,9 +521,11 @@ function PortalEstoqueContent() {
           }),
         ),
       );
-      setSuccess(`${result.created} entrada(s) registrada(s) no estoque.`);
+      setSuccess(
+        `${result.created} entrada(s) registrada(s)` +
+          (invoiceDocumentId ? ' com nota.' : ' sem nota.'),
+      );
       setBatchInvoiceFile(null);
-      setView('dashboard');
       await reload();
     } catch (err) {
       setError(
@@ -526,10 +536,25 @@ function PortalEstoqueContent() {
     }
   }
 
+  function resolveFreeCaNumber(): string | null {
+    if (picked?.caNumber) return picked.caNumber;
+    const typed = caDigits(query);
+    if (typed.length < 3) return null;
+    const exact = suggestions.find(
+      (item) => caDigits(item.caNumber) === typed,
+    );
+    return exact?.caNumber ?? typed;
+  }
+
   async function onFreeEntrada(event: FormEvent) {
     event.preventDefault();
-    if (!picked) {
-      setError('Selecione um EPI da base CAEPI.');
+    const caNumber = resolveFreeCaNumber();
+    if (!caNumber) {
+      setError('Informe o numero do CA (ou escolha um resultado da lista).');
+      return;
+    }
+    if (freeMode === 'invoice' && !freeInvoiceFile) {
+      setError('No fluxo com nota, anexe o PDF ou a foto da NF.');
       return;
     }
     setSaving(true);
@@ -539,12 +564,12 @@ function PortalEstoqueContent() {
       let invoiceDocumentId: string | undefined;
       let unitCostCents = parseReaisToCents(freeUnitPriceReais);
       let qty = freeQty;
-      if (freeInvoiceFile) {
+      if (freeMode === 'invoice' && freeInvoiceFile) {
         const uploaded = await uploadPortalInvoice({ file: freeInvoiceFile });
         invoiceDocumentId = uploaded.id;
         const matched = matchInvoiceLine(uploaded.extraction, {
-          caNumber: picked.caNumber,
-          description: picked.equipmentName,
+          caNumber,
+          description: picked?.equipmentName ?? query,
         });
         if (unitCostCents == null && matched?.unitCostCents != null) {
           unitCostCents = matched.unitCostCents;
@@ -557,14 +582,15 @@ function PortalEstoqueContent() {
       }
       await createPortalStockEntradas([
         {
-          caNumber: picked.caNumber,
+          caNumber,
           quantity: qty,
           ...(unitCostCents != null ? { unitCostCents } : {}),
           ...(invoiceDocumentId ? { invoiceDocumentId } : {}),
         },
       ]);
       setSuccess(
-        `Entrada de ${qty} un. (CA ${picked.caNumber}) registrada.`,
+        `Entrada de ${qty} un. (CA ${caNumber}) registrada` +
+          (invoiceDocumentId ? ' com nota.' : ' sem nota.'),
       );
       setPicked(null);
       setQuery('');
@@ -572,7 +598,6 @@ function PortalEstoqueContent() {
       setFreeQty(1);
       setFreeUnitPriceReais('');
       setFreeInvoiceFile(null);
-      setView('dashboard');
       await reload();
     } catch (err) {
       setError(
@@ -772,14 +797,162 @@ function PortalEstoqueContent() {
             </>
           ) : (
             <>
+          <section className="portal-card" aria-labelledby="entrada-livre-title">
+            <h2 id="entrada-livre-title" className="page-title page-title--sm">
+              Entrada por CA
+            </h2>
+            <p className="page-lead">
+              Dois caminhos: so CA + quantidade + preco, ou o mesmo com nota
+              fiscal anexada. A nota nunca e obrigatoria no primeiro.
+            </p>
+            <div
+              className="portal-section-tabs"
+              role="tablist"
+              aria-label="Tipo de entrada"
+            >
+              <button
+                type="button"
+                role="tab"
+                className={`portal-section-tab ${freeMode === 'manual' ? 'is-active' : ''}`}
+                aria-selected={freeMode === 'manual'}
+                onClick={() => {
+                  setFreeMode('manual');
+                  setFreeInvoiceFile(null);
+                }}
+              >
+                Sem nota
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className={`portal-section-tab ${freeMode === 'invoice' ? 'is-active' : ''}`}
+                aria-selected={freeMode === 'invoice'}
+                onClick={() => setFreeMode('invoice')}
+              >
+                Com nota fiscal
+              </button>
+            </div>
+            <form className="form-panel" onSubmit={onFreeEntrada}>
+              <div className="field">
+                <label htmlFor="portal-caepi-search">Numero do CA</label>
+                <input
+                  id="portal-caepi-search"
+                  value={
+                    picked
+                      ? `CA ${picked.caNumber} — ${picked.equipmentName ?? ''}`
+                      : query
+                  }
+                  onChange={(e) => {
+                    setPicked(null);
+                    setQuery(e.target.value);
+                  }}
+                  placeholder="Ex.: 11442 ou protetor facial"
+                  autoComplete="off"
+                />
+                {searching ? <p className="field-hint">Buscando na CAEPI...</p> : null}
+                {searchMessage ? (
+                  <p className="field-hint">{searchMessage}</p>
+                ) : null}
+                {!picked && suggestions.length > 0 ? (
+                  <ul
+                    className="caepi-suggest-list caepi-suggest-list--slot"
+                    role="listbox"
+                  >
+                    {suggestions.map((item) => (
+                      <li key={item.caNumber}>
+                        <CaepiSuggestionButton
+                          item={item}
+                          onSelect={() => {
+                            setPicked(item);
+                            setQuery('');
+                            setSuggestions([]);
+                            setSearchMessage(null);
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+
+              {picked ? (
+                <p className="field-hint">
+                  Selecionado: <strong>CA {picked.caNumber}</strong> ·{' '}
+                  {picked.equipmentName} · Val.{' '}
+                  {formatDate(picked.expiresAt)}
+                </p>
+              ) : null}
+
+              <div className="form-grid">
+                <div className="field">
+                  <label htmlFor="portal-epi-qty">Quantidade</label>
+                  <input
+                    id="portal-epi-qty"
+                    type="number"
+                    min={1}
+                    required
+                    value={freeQty}
+                    onChange={(e) =>
+                      setFreeQty(Math.max(1, Number(e.target.value) || 1))
+                    }
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="portal-epi-price">Valor unitario (R$)</label>
+                  <input
+                    id="portal-epi-price"
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Ex.: 12,50"
+                    value={freeUnitPriceReais}
+                    onChange={(e) => setFreeUnitPriceReais(e.target.value)}
+                  />
+                </div>
+              </div>
+              {freeMode === 'invoice' ? (
+                <div className="field">
+                  <label htmlFor="portal-epi-invoice">
+                    Nota fiscal (PDF ou foto)
+                  </label>
+                  <input
+                    id="portal-epi-invoice"
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(e) =>
+                      setFreeInvoiceFile(e.target.files?.[0] ?? null)
+                    }
+                  />
+                </div>
+              ) : (
+                <p className="field-hint">
+                  Sem anexo. O saldo entra so com CA, quantidade e preco.
+                </p>
+              )}
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={
+                  saving ||
+                  (!picked && caDigits(query).length < 3 && query.trim().length < SEARCH_MIN)
+                }
+              >
+                {saving
+                  ? 'Salvando...'
+                  : freeMode === 'invoice'
+                    ? 'Incluir com nota'
+                    : 'Incluir sem nota'}
+              </button>
+            </form>
+          </section>
+
           <section className="portal-card" aria-labelledby="needs-stock-title">
             <h2 id="needs-stock-title" className="page-title page-title--sm">
               Por necessidade da empresa
             </h2>
             <p className="page-lead">
-              Clique em <strong>Escolher EPI na base</strong>. Listamos CAs{' '}
-              <strong>validos</strong> (ate 50). Se o produto nao aparecer,
-              digite o <strong>numero do CA</strong> da nota/embalagem.
+              Opcional: amarra o CA a uma necessidade do PGR. A nota no rodape
+              tambem e opcional — use <strong>Incluir sem nota</strong> se nao
+              tiver DANFE.
             </p>
 
             {needRows.length === 0 ? (
@@ -860,12 +1033,9 @@ function PortalEstoqueContent() {
                             )}
 
                             {row.picking ? (
-                              <div
-                                className="caepi-suggest-wrap"
-                                style={{ marginTop: '0.5rem' }}
-                              >
-                                <label className="field-hint" htmlFor={`need-caepi-${row.needId}`}>
-                                  Nome do EPI ou numero do CA (so validos)
+                              <div className="field caepi-picker">
+                                <label htmlFor={`need-caepi-${row.needId}`}>
+                                  Nome do EPI ou numero do CA
                                 </label>
                                 <input
                                   id={`need-caepi-${row.needId}`}
@@ -973,7 +1143,7 @@ function PortalEstoqueContent() {
                 <div className="flow-sticky-bar">
                   <div className="field" style={{ margin: 0, minWidth: 180 }}>
                     <label htmlFor="batch-invoice-file" className="field-hint">
-                      Nota (foto/PDF, opcional)
+                      Nota (opcional)
                     </label>
                     <input
                       id="batch-invoice-file"
@@ -999,120 +1169,13 @@ function PortalEstoqueContent() {
                   >
                     {saving
                       ? 'Salvando...'
-                      : `Incluir no estoque (${selectedNeedCount})`}
+                      : batchInvoiceFile
+                        ? `Incluir com nota (${selectedNeedCount})`
+                        : `Incluir sem nota (${selectedNeedCount})`}
                   </button>
                 </div>
               </>
             )}
-          </section>
-
-          <section className="portal-card" aria-labelledby="entrada-livre-title">
-            <h2 id="entrada-livre-title" className="page-title page-title--sm">
-              Entrada avulsa (base CAEPI)
-            </h2>
-            <p className="page-lead">
-              Digite o nome (ex.: protetor facial) ou o <strong>numero do CA</strong>{' '}
-              (ex.: 11442). Mostramos ate 50 CAs validos; se nao achar na lista,
-              busque pelo numero.
-            </p>
-            <form className="form-panel" onSubmit={onFreeEntrada}>
-              <div className="field">
-                <label htmlFor="portal-caepi-search">
-                  Nome / equipamento ou numero do CA
-                </label>
-                <input
-                  id="portal-caepi-search"
-                  value={
-                    picked
-                      ? `CA ${picked.caNumber} — ${picked.equipmentName ?? ''}`
-                      : query
-                  }
-                  onChange={(e) => {
-                    setPicked(null);
-                    setQuery(e.target.value);
-                  }}
-                  placeholder="Ex.: protetor facial ou 11442"
-                  autoComplete="off"
-                />
-                {searching ? <p className="field-hint">Buscando na CAEPI...</p> : null}
-                {searchMessage ? (
-                  <p className="field-hint">{searchMessage}</p>
-                ) : null}
-                {!picked && suggestions.length > 0 ? (
-                  <ul
-                    className="caepi-suggest-list caepi-suggest-list--slot"
-                    role="listbox"
-                  >
-                    {suggestions.map((item) => (
-                      <li key={item.caNumber}>
-                        <CaepiSuggestionButton
-                          item={item}
-                          onSelect={() => {
-                            setPicked(item);
-                            setQuery('');
-                            setSuggestions([]);
-                            setSearchMessage(null);
-                          }}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-
-              {picked ? (
-                <p className="field-hint">
-                  Selecionado: <strong>CA {picked.caNumber}</strong> ·{' '}
-                  {picked.equipmentName} · Val.{' '}
-                  {formatDate(picked.expiresAt)}
-                </p>
-              ) : null}
-
-              <div className="field">
-                <label htmlFor="portal-epi-qty">Quantidade</label>
-                <input
-                  id="portal-epi-qty"
-                  type="number"
-                  min={1}
-                  required
-                  value={freeQty}
-                  onChange={(e) =>
-                    setFreeQty(Math.max(1, Number(e.target.value) || 1))
-                  }
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="portal-epi-price">Valor unitario (R$)</label>
-                <input
-                  id="portal-epi-price"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="Ex.: 12,50"
-                  value={freeUnitPriceReais}
-                  onChange={(e) => setFreeUnitPriceReais(e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="portal-epi-invoice">
-                  Nota fiscal (foto/PDF, opcional)
-                </label>
-                <input
-                  id="portal-epi-invoice"
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={(e) =>
-                    setFreeInvoiceFile(e.target.files?.[0] ?? null)
-                  }
-                />
-              </div>
-              <button
-                className="btn btn-primary"
-                type="submit"
-                disabled={saving || !picked}
-              >
-                {saving ? 'Salvando...' : 'Incluir no estoque'}
-              </button>
-            </form>
           </section>
             </>
           )}

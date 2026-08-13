@@ -991,3 +991,340 @@ a.btn-ghost:hover {
     display: none !important;
   }
 }
+
+/* Menu compacto: item de lista, nao botao gordo que estica com a tela. */
+:root {
+  --sidebar-width: 14.5rem;
+}
+
+.ops-nav-link,
+.portal-sidebar__link,
+.portal-drawer__link {
+  justify-content: flex-start;
+  padding: 0.38rem 0.6rem;
+  font-size: 0.875rem;
+  font-weight: 400;
+  border-radius: 0.25rem;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ops-nav-link.is-active,
+.portal-sidebar__link.is-active,
+.portal-drawer__link.is-active {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  box-shadow: inset 3px 0 0 #0d6efd;
+}
+
+.ops-nav-link__icon,
+.portal-sidebar__icon {
+  width: 1.1rem;
+  opacity: 0.75;
+}
+
+.action-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.action-tile {
+  flex: 0 0 13.25rem;
+  width: 13.25rem;
+  max-width: 100%;
+  min-height: 0;
+  padding: 0.75rem 0.85rem;
+}
+
+.action-tile--primary {
+  background: #fff;
+  color: inherit;
+  border-color: #0d6efd;
+}
+
+.action-tile--primary .action-tile__kicker,
+.action-tile--primary .action-tile__desc {
+  color: var(--color-muted);
+}
+
+.journey-rail__steps {
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 11rem));
+}
+
+.dash-page-header__actions,
+.header-actions,
+.ux-page-header__actions,
+.btn-row {
+  width: auto;
+}
+
+.dash-page-header__actions .btn,
+.header-actions .btn,
+.ux-page-header__actions .btn,
+.btn-row .btn,
+.module-header .btn,
+.form-section-header .btn,
+.client-workspace-header .btn {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+@media (max-width: 480px) {
+  .action-tile {
+    flex-basis: 100%;
+    width: 100%;
+  }
+}
+
+/* ——— Formulario padrao (todos os campos, nao so .field) ——— */
+input[type='text'],
+input[type='search'],
+input[type='email'],
+input[type='password'],
+input[type='number'],
+input[type='tel'],
+input[type='url'],
+input[type='date'],
+input[type='datetime-local'],
+input[type='time'],
+input[type='month'],
+input:not([type]),
+select,
+textarea,
+.portal-qty-input,
+.client-search input {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 2.375rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.375rem;
+  background: #fff;
+  color: #212529;
+  font: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  box-shadow: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236c757d' d='M1.4.8 6 5.4 10.6.8 12 2.2 6 8.2 0 2.2z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  padding-right: 2rem;
+}
+
+input[type='text']:focus,
+input[type='search']:focus,
+input[type='email']:focus,
+input[type='password']:focus,
+input[type='number']:focus,
+input[type='tel']:focus,
+input[type='url']:focus,
+input[type='date']:focus,
+input[type='datetime-local']:focus,
+input[type='time']:focus,
+input[type='month']:focus,
+input:not([type]):focus,
+select:focus,
+textarea:focus,
+.portal-qty-input:focus,
+.client-search input:focus {
+  outline: 0;
+  border-color: #86b7fe;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.2);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled,
+.portal-qty-input:disabled {
+  background: #e9ecef;
+  color: #6c757d;
+  cursor: not-allowed;
+}
+
+input[type='file'] {
+  display: block;
+  width: 100%;
+  max-width: 28rem;
+  min-height: 2.375rem;
+  padding: 0.28rem 0.35rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.375rem;
+  background: #fff;
+  color: #495057;
+  font-size: 0.875rem;
+}
+
+input[type='file']::file-selector-button {
+  margin-right: 0.75rem;
+  padding: 0.32rem 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.25rem;
+  background: #f8f9fa;
+  color: #212529;
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+input[type='checkbox'],
+input[type='radio'] {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: #0d6efd;
+  flex-shrink: 0;
+}
+
+.field label,
+.field > label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.field-hint {
+  font-size: 0.78rem;
+  color: #6c757d;
+}
+
+.form-panel {
+  gap: 0.9rem;
+}
+
+.form-grid {
+  gap: 0.85rem;
+}
+
+.portal-qty-input {
+  width: 6.25rem;
+  min-width: 5.5rem;
+  display: inline-block;
+}
+
+input.portal-qty-input[inputmode='decimal'] {
+  width: 7.5rem;
+}
+
+.caepi-picker {
+  margin-top: 0.65rem;
+  padding: 0.75rem 0.8rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  background: #f8f9fa;
+}
+
+.caepi-suggest-list,
+.caepi-suggest-list--slot {
+  position: static;
+  margin: 0.45rem 0 0;
+  padding: 0.25rem;
+  max-height: 16rem;
+  border: 1px solid #dee2e6;
+  border-radius: 0.375rem;
+  background: #fff;
+  box-shadow: 0 0.35rem 0.85rem rgba(0, 0, 0, 0.06);
+}
+
+.caepi-suggest-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.12rem;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  background: transparent;
+  text-align: left;
+}
+
+.caepi-suggest-item:hover,
+.caepi-suggest-item:focus-visible {
+  background: #f1f5fb;
+  border-color: #dbe4f0;
+  outline: none;
+}
+
+.caepi-suggest-item__top {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.caepi-suggest-item__ca {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #212529;
+}
+
+.caepi-suggest-item__name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #212529;
+}
+
+.caepi-suggest-item__meta {
+  grid-column: auto;
+  font-size: 0.75rem;
+  color: #6c757d;
+}
+
+.caepi-status {
+  padding: 0.12rem 0.4rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 0.25rem;
+}
+
+.portal-section-tabs,
+.panel-tabs {
+  gap: 0;
+  margin-bottom: 0.85rem;
+  border-bottom: 1px solid #dee2e6;
+}
+
+.portal-section-tab,
+.panel-tab {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.85rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: #6c757d;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.portal-section-tab.is-active,
+.panel-tab.is-active {
+  background: transparent;
+  border-color: transparent;
+  border-bottom-color: #0d6efd;
+  color: #0d6efd;
+}
+
+.flow-sticky-bar {
+  align-items: flex-end;
+}
+
+.flow-sticky-bar .field {
+  min-width: 16rem;
+}
+
+.flow-sticky-bar .btn {
+  width: auto;
+}

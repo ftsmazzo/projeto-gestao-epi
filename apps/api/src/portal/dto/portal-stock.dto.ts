@@ -27,12 +27,14 @@ export class PortalStockEntradaItemDto {
   @MinLength(3)
   caNumber?: string;
 
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   quantity!: number;
 
   /** Custo unitario em centavos (BRL). Opcional na entrada. */
   @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(0)
   unitCostCents?: number;
