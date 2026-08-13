@@ -1278,6 +1278,15 @@ input.portal-qty-input[inputmode='decimal'] {
   background: #f8f9fa;
 }
 
+.caepi-associate-form {
+  margin-bottom: 1rem;
+  max-width: 100%;
+}
+
+.caepi-associate-form .caepi-suggest-list {
+  max-height: 22rem;
+}
+
 .caepi-suggest-list,
 .caepi-suggest-list--slot {
   position: static;

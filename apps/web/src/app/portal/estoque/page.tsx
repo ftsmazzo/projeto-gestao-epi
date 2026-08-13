@@ -316,6 +316,8 @@ function PortalEstoqueContent() {
         .length,
     [needRows],
   );
+  const pickingIndex = needRows.findIndex((row) => row.picking);
+  const pickingRow = pickingIndex >= 0 ? needRows[pickingIndex] : null;
 
   async function loadNeedSuggestions(index: number, q: string) {
     const query = q.trim();
@@ -359,6 +361,10 @@ function PortalEstoqueContent() {
         }
       }
       items = isCaNumber ? items : sortSuggestionsForNeed(needName, items);
+      const incomplete =
+        res.message && /incompleta|nao importada/i.test(res.message)
+          ? res.message
+          : null;
       setNeedRows((prev) =>
         prev.map((r, i) =>
           i === index
@@ -369,8 +375,11 @@ function PortalEstoqueContent() {
                 suggestMessage:
                   items.length === 0
                     ? res.message ??
-                      `Nenhum CA para "${searchTerm}". Tente outro nome ou o numero.`
-                    : null,
+                      `Nenhum CA para "${searchTerm}". Digite o numero do CA.`
+                    : incomplete ??
+                      (isCaNumber
+                        ? null
+                        : `Mostrando ${items.length} CA(s) correlacionados (limite ${CAEPI_PICKER_LIMIT}). Digite o numero do CA se o seu ficou de fora.`),
               }
             : r,
         ),
@@ -410,6 +419,37 @@ function PortalEstoqueContent() {
               suggestions: [],
             }
           : { ...r, picking: false },
+      ),
+    );
+    void loadNeedSuggestions(index, initialQ);
+    window.requestAnimationFrame(() => {
+      document.getElementById('need-caepi-associate')?.focus();
+      document
+        .getElementById('caepi-associate-form')
+        ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    });
+  }
+
+  function closeNeedPicker() {
+    setNeedRows((prev) =>
+      prev.map((r) => ({
+        ...r,
+        picking: false,
+        suggestions: [],
+        suggestLoading: false,
+      })),
+    );
+  }
+
+  function resetNeedPickerToCorrelated(index: number) {
+    const row = needRows[index];
+    if (!row) return;
+    const initialQ = preferredCaepiQuery(row.needName);
+    setNeedRows((prev) =>
+      prev.map((r, i) =>
+        i === index
+          ? { ...r, pickerQuery: initialQ, suggestLoading: true }
+          : r,
       ),
     );
     void loadNeedSuggestions(index, initialQ);
@@ -928,6 +968,88 @@ function PortalEstoqueContent() {
               </p>
             ) : (
               <>
+                {pickingRow ? (
+                  <form
+                    id="caepi-associate-form"
+                    className="form-panel caepi-associate-form"
+                    onSubmit={(e) => e.preventDefault()}
+                  >
+                    <h3 className="page-title page-title--sm">
+                      Associar CA a {pickingRow.needName}
+                    </h3>
+                    <p className="page-lead">
+                      Lista dos CAs correlacionados a esta indicacao. Se o seu
+                      ficou de fora do limite, pesquise pelo nome ou pelo
+                      numero do CA.
+                    </p>
+                    <div className="field">
+                      <label htmlFor="need-caepi-associate">
+                        Nome do EPI ou numero do CA
+                      </label>
+                      <input
+                        id="need-caepi-associate"
+                        value={pickingRow.pickerQuery}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          const index = pickingIndex;
+                          setNeedRows((prev) =>
+                            prev.map((r, i) =>
+                              i === index ? { ...r, pickerQuery: value } : r,
+                            ),
+                          );
+                          const prevTimer =
+                            needSearchTimers.current[pickingRow.needId];
+                          if (prevTimer) window.clearTimeout(prevTimer);
+                          needSearchTimers.current[pickingRow.needId] =
+                            window.setTimeout(() => {
+                              void loadNeedSuggestions(index, value);
+                            }, SEARCH_DEBOUNCE_MS);
+                        }}
+                        placeholder="Ex.: botina, luva raspa ou 11442"
+                        autoComplete="off"
+                      />
+                      {pickingRow.suggestLoading ? (
+                        <p className="field-hint">Buscando na CAEPI...</p>
+                      ) : null}
+                      {pickingRow.suggestMessage ? (
+                        <p className="field-hint">{pickingRow.suggestMessage}</p>
+                      ) : null}
+                    </div>
+                    {pickingRow.suggestions.length > 0 ? (
+                      <ul
+                        className="caepi-suggest-list caepi-suggest-list--slot"
+                        role="listbox"
+                      >
+                        {pickingRow.suggestions.map((item) => (
+                          <li key={item.caNumber}>
+                            <CaepiSuggestionButton
+                              item={item}
+                              onSelect={() => pickForNeed(pickingIndex, item)}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() =>
+                          resetNeedPickerToCorrelated(pickingIndex)
+                        }
+                      >
+                        Ver correlacionados
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={closeNeedPicker}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </form>
+                ) : null}
                 <div className="table-wrap">
                   <table className="data-table data-table--refined">
                     <thead>
@@ -995,67 +1117,11 @@ function PortalEstoqueContent() {
                                 className="btn btn-secondary btn-compact"
                                 onClick={() => void openNeedPicker(index)}
                               >
-                                Escolher EPI na base
+                                {row.picking
+                                  ? 'Selecionando...'
+                                  : 'Escolher EPI na base'}
                               </button>
                             )}
-
-                            {row.picking ? (
-                              <div className="field caepi-picker">
-                                <label htmlFor={`need-caepi-${row.needId}`}>
-                                  Nome do EPI ou numero do CA
-                                </label>
-                                <input
-                                  id={`need-caepi-${row.needId}`}
-                                  value={row.pickerQuery}
-                                  onChange={(e) => {
-                                    const value = e.target.value;
-                                    setNeedRows((prev) =>
-                                      prev.map((r, i) =>
-                                        i === index
-                                          ? { ...r, pickerQuery: value }
-                                          : r,
-                                      ),
-                                    );
-                                    const prevTimer =
-                                      needSearchTimers.current[row.needId];
-                                    if (prevTimer) {
-                                      window.clearTimeout(prevTimer);
-                                    }
-                                    needSearchTimers.current[row.needId] =
-                                      window.setTimeout(() => {
-                                        void loadNeedSuggestions(index, value);
-                                      }, SEARCH_DEBOUNCE_MS);
-                                  }}
-                                  placeholder="Ex.: protetor facial ou 11442"
-                                  autoComplete="off"
-                                />
-                                {row.suggestLoading ? (
-                                  <p className="field-hint">Buscando na CAEPI...</p>
-                                ) : null}
-                                {row.suggestMessage ? (
-                                  <p className="field-hint">
-                                    {row.suggestMessage}
-                                  </p>
-                                ) : null}
-                                {row.suggestions.length > 0 ? (
-                                  <ul
-                                    className="caepi-suggest-list caepi-suggest-list--slot"
-                                    role="listbox"
-                                  >
-                                    {row.suggestions.map((item) => (
-                                      <li key={item.caNumber}>
-                                        <CaepiSuggestionButton
-                                          item={item}
-                                          onSelect={() =>
-                                            pickForNeed(index, item)
-                                          }
-                                        />
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : null}
-                              </div>
-                            ) : null}
                           </td>
                           <td>
                             <input
