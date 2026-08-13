@@ -121,6 +121,21 @@ export class ConfirmPgroRiskDto {
   @IsString({ each: true })
   functionNames?: string[];
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  exposure?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  source?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  possibleDamage?: string | null;
+
   @IsBoolean()
   included!: boolean;
 }

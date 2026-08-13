@@ -1,6 +1,10 @@
 import { createHash, randomUUID } from 'crypto';
 import { OccupationalRiskCategory } from '@prisma/client';
 import { DEFAULT_EPI_NEED_SEEDS } from '../epi-needs/epi-need-suggest';
+import {
+  extractAprhoAgentDetails,
+  inferOsRiskContext,
+} from '../client-structure/risk-context';
 import { DEFAULT_OCCUPATIONAL_RISK_SEEDS } from '../client-structure/risk-seeds';
 
 export type ExtractionConfidence = 'high' | 'low';
@@ -1120,8 +1124,17 @@ function extractRisksFromBlocks(
     functionNames: string[],
     gheName: string | null,
     extractionSource: ExtractionSource,
+    pairs: SectorFunctionPair[] = [],
   ) => {
     const textKey = normalizeTextKey(scopeText);
+    const activity = pairs
+      .map((pair) => pair.activity)
+      .filter((value): value is string => Boolean(value?.trim()))
+      .join(' ');
+    const environment =
+      pairs.find((pair) => pair.environment?.trim())?.environment ?? null;
+    const jobName = functionNames[0] ?? null;
+    const sectorName = pairs.find((pair) => pair.sectorName)?.sectorName ?? null;
     for (const seed of DEFAULT_OCCUPATIONAL_RISK_SEEDS) {
       const aliases = [seed.name, ...seed.aliases].map(normalizeTextKey);
       const hit = aliases.some(
@@ -1131,13 +1144,25 @@ function extractRisksFromBlocks(
           !isNegatedAliasHit(textKey, alias),
       );
       if (!hit) continue;
+      const aprho = extractAprhoAgentDetails(scopeText, seed.name, seed.aliases);
+      const inferred = inferOsRiskContext({
+        agent: seed.name,
+        category: seed.category,
+        jobName,
+        sectorName,
+        activity,
+        environment,
+        extractedSource: aprho.source,
+        extractedExposure: aprho.exposure,
+        extractedQuantitative: aprho.quantitative,
+      });
       risks.push({
         tempId: randomUUID(),
         name: seed.name,
         category: seed.category,
-        exposure: null,
-        source: null,
-        possibleDamage: null,
+        exposure: inferred.exposure,
+        source: inferred.source,
+        possibleDamage: inferred.quantitative,
         riskLevel: null,
         functionNames: [...functionNames],
         rawText: seed.name,
@@ -1162,6 +1187,7 @@ function extractRisksFromBlocks(
         fnNames.length > 0 ? fnNames : allFunctionNames,
         block.gheName,
         'GHE',
+        block.pairs,
       );
     }
   } else {
@@ -1181,6 +1207,11 @@ function extractRisksFromBlocks(
     existing.functionNames = [
       ...new Set([...existing.functionNames, ...risk.functionNames]),
     ];
+    if (!existing.source && risk.source) existing.source = risk.source;
+    if (!existing.exposure && risk.exposure) existing.exposure = risk.exposure;
+    if (!existing.possibleDamage && risk.possibleDamage) {
+      existing.possibleDamage = risk.possibleDamage;
+    }
   }
 
   return [...byName.values()].filter(

@@ -372,6 +372,9 @@ export function PgroImportWizard({
           name: r.name,
           category: r.category,
           functionNames: r.functionNames,
+          exposure: r.exposure,
+          source: r.source,
+          possibleDamage: r.possibleDamage,
           included: r.included,
         })),
         epiNeeds: epiNeeds.map((e) => ({

@@ -23,12 +23,12 @@ import {
   DEFAULT_OS_OBSERVATIONS,
   DEFAULT_OS_RECOMMENDATIONS,
   DEFAULT_OS_RESPONSIBILITIES,
-  isGenericSource,
   maskCpf,
   uniqueRisks,
   uniqueStrings,
   type SstDocumentPayload,
 } from './sst-document-content';
+import { inferOsRiskContext } from '../client-structure/risk-context';
 import { tryResolveSstEvidenceAbsolutePath } from './sst-document-evidence.storage';
 import { SstDocumentPdfService } from './sst-document-pdf.service';
 
@@ -417,20 +417,23 @@ export class SstDocumentsService {
 
     const risks = uniqueRisks(
       (job?.risks ?? []).map((link) => {
-        const fonte = !isGenericSource(link.source)
-          ? link.source
-          : link.possibleDamage?.trim() ||
-            link.notes?.trim() ||
-            (link.risk.description &&
-            !isGenericSource(link.risk.description)
-              ? link.risk.description
-              : null);
+        const inferred = inferOsRiskContext({
+          agent: link.risk.name,
+          category: link.risk.category,
+          jobName: job?.name ?? worker.role,
+          sectorName: worker.clientSector?.name,
+          activity: job?.description,
+          environment: job?.environmentDescription,
+          extractedSource: link.source,
+          extractedExposure: link.exposure,
+          extractedQuantitative: link.possibleDamage,
+        });
         return {
           category: link.risk.category,
           agent: link.risk.name,
-          source: fonte,
-          evaluation: 'Qualitativa',
-          exposure: link.exposure?.trim() || 'Habitual e intermitente',
+          source: inferred.source,
+          evaluation: inferred.evaluation,
+          exposure: inferred.exposure,
         };
       }),
     );

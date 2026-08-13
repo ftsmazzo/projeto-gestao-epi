@@ -7,12 +7,12 @@ import {
   DEFAULT_OS_OBSERVATIONS,
   formatCnpj,
   formatDayBr,
-  isGenericSource,
   riskCategoryLabel,
   uniqueRisks,
   uniqueStrings,
   type SstDocumentPayload,
 } from './sst-document-content';
+import { groupOsRisksByCategory } from '../client-structure/risk-context';
 
 export type SstPdfBuildOptions = {
   signedAt?: string | null;
@@ -433,25 +433,22 @@ export class SstDocumentPdfService {
     if (risks.length === 0) {
       bodyText(doc, 'Nenhum risco vinculado a esta funcao no PGR.');
     } else {
-      for (const risk of risks) {
-        drawTableRow(doc, [
-          { text: riskCategoryLabel(risk.category), width: col.tipo },
-          { text: risk.agent, width: col.agente },
-          {
-            text: isGenericSource(risk.source)
-              ? 'Atividades da funcao'
-              : (risk.source as string),
-            width: col.fonte,
-          },
-          { text: risk.evaluation || 'Qualitativa', width: col.aval },
-          {
-            text:
-              isGenericSource(risk.exposure)
-                ? 'Habitual e intermitente'
-                : (risk.exposure as string),
-            width: col.expo,
-          },
-        ]);
+      for (const group of groupOsRisksByCategory(risks)) {
+        group.agents.forEach((risk, index) => {
+          drawTableRow(doc, [
+            {
+              text: index === 0 ? riskCategoryLabel(group.category) : '',
+              width: col.tipo,
+            },
+            { text: risk.agent, width: col.agente },
+            { text: risk.source || 'Atividades da funcao', width: col.fonte },
+            { text: risk.evaluation || 'Qualitativa', width: col.aval },
+            {
+              text: risk.exposure || 'Habitual e intermitente',
+              width: col.expo,
+            },
+          ]);
+        });
       }
     }
 

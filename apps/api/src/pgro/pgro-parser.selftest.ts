@@ -275,6 +275,40 @@ assert(
 
 assert(result.risks.length >= 5, `too few risks: ${result.risks.length}`);
 assert(result.epiNeeds.length >= 3, `too few epis: ${result.epiNeeds.length}`);
+const ruido = result.risks.find((r) => /ruido/i.test(r.name));
+assert(
+  Boolean(ruido?.source && ruido.source.length > 8),
+  `ruido sem fonte: ${ruido?.source}`,
+);
+assert(
+  /habitual/i.test(ruido?.exposure ?? ''),
+  `ruido sem exposicao: ${ruido?.exposure}`,
+);
+
+const aprhoTable = `
+Caracterizacao do GHE 01 – Almoxarife
+Setor Cargo/Funcao Descricao da Atividade Descricao do Ambiente
+ALMOXARIFADO
+ALMOXARIFE
+Responsavel por controlar o recebimento, conferencia, armazenamento e distribuicao de materiais.
+TRABALHAM EM AMBIENTE INTERNO E VENTILADO
+APRHO do GHE 01 – Almoxarife
+Ruido Fonte geradora: Circulacao em areas produtivas, movimentacao de materiais Qualitativa 68,16 dB(A) Habitual e Intermitente
+`;
+const aprhoParsed = parsePgroText(aprhoTable);
+const aprhoRuido = aprhoParsed.risks.find((r) => /ruido/i.test(r.name));
+assert(
+  /circulacao em areas produtivas/i.test(aprhoRuido?.source ?? ''),
+  `APRHO fonte: ${aprhoRuido?.source}`,
+);
+assert(
+  /68/.test(aprhoRuido?.possibleDamage ?? ''),
+  `APRHO quantitativo: ${aprhoRuido?.possibleDamage}`,
+);
+assert(
+  /habitual/i.test(aprhoRuido?.exposure ?? ''),
+  `APRHO exposicao: ${aprhoRuido?.exposure}`,
+);
 
 /** Layout de outra consultoria: contratada x elaboradora + tabela de cargos. */
 const SAMPLE_CONTRACTED = `

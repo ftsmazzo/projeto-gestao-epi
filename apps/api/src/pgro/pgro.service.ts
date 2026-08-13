@@ -17,6 +17,10 @@ import { AuditService } from '../audit/audit.service';
 import { validateCnpj } from '../common/cnpj';
 import { ensureMatrizOperationalUnit } from '../operational-units/matriz-unit';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  inferOsRiskContext,
+  isGenericRiskSource,
+} from '../client-structure/risk-context';
 import { ServedClientsService } from '../served-clients/served-clients.service';
 import type { ConfirmPgroImportDto } from './dto/pgro-import.dto';
 import {
@@ -551,6 +555,22 @@ export class PgroService {
         for (const jobName of targetJobs) {
           const jobId = jobIdByName.get(normalizeTextKey(jobName));
           if (!jobId) continue;
+          const jobFn = dto.functions.find(
+            (fn) =>
+              fn.included &&
+              normalizeTextKey(fn.name) === normalizeTextKey(jobName),
+          );
+          const inferred = inferOsRiskContext({
+            agent: name,
+            category: risk.category,
+            jobName,
+            sectorName: jobFn?.sectorName,
+            activity: jobFn?.activityDescription,
+            environment: jobFn?.environmentDescription,
+            extractedSource: risk.source,
+            extractedExposure: risk.exposure,
+            extractedQuantitative: risk.possibleDamage,
+          });
           const link = await tx.jobFunctionRisk.findFirst({
             where: { organizationId, jobFunctionId: jobId, riskId },
           });
@@ -560,10 +580,30 @@ export class PgroService {
                 organizationId,
                 jobFunctionId: jobId,
                 riskId,
-                source: 'PGRO',
+                source: inferred.source,
+                exposure: inferred.exposure,
+                possibleDamage: inferred.quantitative,
               },
             });
             summary.riskLinksCreated += 1;
+            continue;
+          }
+          if (
+            isGenericRiskSource(link.source) ||
+            !link.exposure?.trim() ||
+            !link.possibleDamage?.trim()
+          ) {
+            await tx.jobFunctionRisk.update({
+              where: { id: link.id },
+              data: {
+                source: isGenericRiskSource(link.source)
+                  ? inferred.source
+                  : link.source,
+                exposure: link.exposure?.trim() || inferred.exposure,
+                possibleDamage:
+                  link.possibleDamage?.trim() || inferred.quantitative,
+              },
+            });
           }
         }
       }
