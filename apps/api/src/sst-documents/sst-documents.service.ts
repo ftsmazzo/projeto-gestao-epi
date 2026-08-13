@@ -26,10 +26,11 @@ import {
   maskCpf,
   uniqueRisks,
   uniqueStrings,
+  type OsLiveJob,
   type SstDocumentPayload,
 } from './sst-document-content';
 import { inferOsRiskContext } from '../client-structure/risk-context';
-import { tryResolveSstEvidenceAbsolutePath } from './sst-document-evidence.storage';
+import { tryResolveSstPdfFacePath } from './sst-document-evidence.storage';
 import { SstDocumentPdfService } from './sst-document-pdf.service';
 
 const LINK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -268,10 +269,24 @@ export class SstDocumentsService {
     });
     if (!document) throw new NotFoundException('Documento nao encontrado.');
     const payload = document.payload as SstDocumentPayload;
+    const faceRef = await this.prisma.workerFacialReference.findFirst({
+      where: {
+        organizationId,
+        workerId: document.workerId,
+        status: WorkerFacialReferenceStatus.ACTIVE,
+      },
+      select: { filePath: true },
+    });
     const buffer = await this.pdf.build(payload, {
       signedAt: document.signedAt?.toISOString() ?? null,
-      evidenceAbsolutePath: tryResolveSstEvidenceAbsolutePath(
-        document.evidence?.filePath,
+      evidenceAbsolutePath: tryResolveSstPdfFacePath({
+        evidenceRelativePath: document.evidence?.filePath,
+        referenceRelativePath: faceRef?.filePath,
+      }),
+      liveJob: await this.resolveLiveJob(
+        organizationId,
+        servedClientId,
+        document.workerId,
       ),
     });
     const slug =
@@ -501,6 +516,34 @@ export class SstDocumentsService {
       createdAt: row.createdAt.toISOString(),
       linkExpiresAt: link?.expiresAt.toISOString() ?? null,
       linkConsumed: Boolean(link?.consumedAt),
+    };
+  }
+
+  async resolveLiveJob(
+    organizationId: string,
+    servedClientId: string,
+    workerId: string,
+  ): Promise<OsLiveJob | null> {
+    const worker = await this.prisma.worker.findFirst({
+      where: { id: workerId, organizationId, servedClientId },
+      select: {
+        role: true,
+        clientSector: { select: { name: true } },
+        clientJobFunction: {
+          select: {
+            name: true,
+            description: true,
+            environmentDescription: true,
+          },
+        },
+      },
+    });
+    if (!worker) return null;
+    return {
+      jobName: worker.clientJobFunction?.name ?? worker.role,
+      sectorName: worker.clientSector?.name ?? null,
+      description: worker.clientJobFunction?.description ?? null,
+      environment: worker.clientJobFunction?.environmentDescription ?? null,
     };
   }
 

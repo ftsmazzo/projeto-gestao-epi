@@ -25,7 +25,7 @@ import {
 } from './sst-document-content';
 import {
   saveSstEvidenceFile,
-  tryResolveSstEvidenceAbsolutePath,
+  tryResolveSstPdfFacePath,
 } from './sst-document-evidence.storage';
 import { SstDocumentPdfService } from './sst-document-pdf.service';
 
@@ -179,7 +179,25 @@ export class SstDocumentSignService {
       where: { tokenHash: hash },
       include: {
         document: { include: { evidence: true } },
-        worker: { select: { cpf: true } },
+        worker: {
+          select: {
+            cpf: true,
+            role: true,
+            clientSector: { select: { name: true } },
+            clientJobFunction: {
+              select: {
+                name: true,
+                description: true,
+                environmentDescription: true,
+              },
+            },
+            facialReferences: {
+              where: { status: WorkerFacialReferenceStatus.ACTIVE },
+              select: { filePath: true },
+              take: 1,
+            },
+          },
+        },
       },
     });
     if (!link) throw new NotFoundException('Link invalido.');
@@ -191,9 +209,18 @@ export class SstDocumentSignService {
       link.document.payload as SstDocumentPayload,
       {
         signedAt: link.document.signedAt?.toISOString() ?? null,
-        evidenceAbsolutePath: tryResolveSstEvidenceAbsolutePath(
-          link.document.evidence?.filePath,
-        ),
+        evidenceAbsolutePath: tryResolveSstPdfFacePath({
+          evidenceRelativePath: link.document.evidence?.filePath,
+          referenceRelativePath: link.worker.facialReferences[0]?.filePath,
+        }),
+        liveJob: {
+          jobName:
+            link.worker.clientJobFunction?.name ?? link.worker.role,
+          sectorName: link.worker.clientSector?.name ?? null,
+          description: link.worker.clientJobFunction?.description ?? null,
+          environment:
+            link.worker.clientJobFunction?.environmentDescription ?? null,
+        },
       },
     );
     return {

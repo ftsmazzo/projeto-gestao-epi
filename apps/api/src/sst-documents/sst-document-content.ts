@@ -1,3 +1,5 @@
+import { inferOsRiskContext } from '../client-structure/risk-context';
+
 export const DEFAULT_INTEGRATION_TOPICS = [
   'Introducao a Seguranca do Trabalho',
   'Prevencao de Acidentes e Doencas Ocupacionais',
@@ -103,7 +105,20 @@ export function uniqueRisks<T extends { category: string; agent: string }>(
 
 export function isGenericSource(value: string | null | undefined): boolean {
   const v = (value ?? '').trim().toLocaleLowerCase('pt-BR');
-  return !v || v === 'pgro' || v === 'pgr' || v === 'ghe' || v === 'import';
+  return (
+    !v ||
+    v === 'pgro' ||
+    v === 'pgr' ||
+    v === 'ghe' ||
+    v === 'import' ||
+    v === '—' ||
+    v === '-' ||
+    /^nao informad/.test(v)
+  );
+}
+
+export function isEmptyOsText(value: string | null | undefined): boolean {
+  return isGenericSource(value);
 }
 
 export function riskCategoryLabel(category: string): string {
@@ -202,4 +217,80 @@ export function buildOsTerm(companyName: string, jobName: string): string {
     `Declaro para os devidos fins que recebi da empresa ${companyName} os treinamentos sobre as normas de Seguranca e Medicina do Trabalho e o conteudo desta Ordem de Servico da funcao ${jobName}, bem como os Equipamentos de Protecao Individual necessarios ao exercicio da atividade.`,
     'Estou ciente do disposto nos arts. 157 e 158 da CLT e de que constitui falta grave o descumprimento, conforme a Portaria SEPRT n. 915, de 30/07/2019, item 1.4.1, letra c, podendo sofrer advertencia verbal, advertencia por escrito, suspensao ou demissao por justa causa.',
   ].join(' ');
+}
+
+export type OsLiveJob = {
+  jobName?: string | null;
+  sectorName?: string | null;
+  description?: string | null;
+  environment?: string | null;
+};
+
+/** Corrige payload antigo (fonte=PGRO, texto vazio) na hora de emitir o PDF. */
+export function enrichOsPayload(
+  payload: SstDocumentPayload,
+  live?: OsLiveJob | null,
+): SstDocumentPayload {
+  if (!payload.os) return payload;
+  const jobName =
+    live?.jobName?.trim() || payload.worker.jobFunctionName || null;
+  const sectorName =
+    live?.sectorName?.trim() || payload.worker.sectorName || null;
+  const activity = !isEmptyOsText(live?.description)
+    ? live?.description ?? null
+    : !isEmptyOsText(payload.os.functionDescription)
+      ? payload.os.functionDescription
+      : null;
+  const environment = !isEmptyOsText(live?.environment)
+    ? live?.environment ?? null
+    : !isEmptyOsText(payload.os.environment)
+      ? payload.os.environment
+      : null;
+
+  const functionDescription =
+    activity ||
+    (jobName
+      ? `Executa as atividades de ${jobName}${sectorName ? ` no setor ${sectorName}` : ''}.`
+      : 'Nao informada.');
+  const environmentText =
+    environment ||
+    (sectorName ? `Atividades no setor ${sectorName}.` : 'Nao informado.');
+
+  const risks = uniqueRisks(payload.os.risks).map((risk) => {
+    const inferred = inferOsRiskContext({
+      agent: risk.agent,
+      category: risk.category,
+      jobName,
+      sectorName,
+      activity,
+      environment,
+      extractedSource: isGenericSource(risk.source) ? null : risk.source,
+      extractedExposure: isGenericSource(risk.exposure) ? null : risk.exposure,
+      extractedQuantitative: /\d/.test(risk.evaluation ?? '')
+        ? risk.evaluation
+        : null,
+    });
+    return {
+      ...risk,
+      source: inferred.source,
+      evaluation: inferred.evaluation,
+      exposure: inferred.exposure,
+    };
+  });
+
+  return {
+    ...payload,
+    worker: {
+      ...payload.worker,
+      jobFunctionName: jobName ?? payload.worker.jobFunctionName,
+      sectorName: sectorName ?? payload.worker.sectorName,
+    },
+    os: {
+      ...payload.os,
+      functionDescription,
+      environment: environmentText,
+      epis: uniqueStrings(payload.os.epis),
+      risks,
+    },
+  };
 }

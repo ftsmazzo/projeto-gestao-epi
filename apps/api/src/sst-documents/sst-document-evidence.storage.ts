@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { resolveApiFilesRoot } from '../workers/api-files-root';
 import { resolveInsideRoot } from '../workers/biometric-storage-path';
+import { resolveWorkerFaceReferenceAbsolutePath } from '../workers/worker-face-reference.storage';
 
 export function getSstEvidenceRoot(): string {
   return resolveApiFilesRoot('sst-evidence', process.env.SST_EVIDENCE_DIR);
@@ -53,4 +54,27 @@ export function tryResolveSstEvidenceAbsolutePath(
   } catch {
     return null;
   }
+}
+
+export function tryResolveWorkerFaceAbsolutePath(
+  relativePath: string | null | undefined,
+): string | null {
+  if (!relativePath?.trim()) return null;
+  try {
+    const absolute = resolveWorkerFaceReferenceAbsolutePath(relativePath);
+    return existsSync(absolute) ? absolute : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Evidencia da ciencia; se o arquivo sumiu, usa a face cadastrada. */
+export function tryResolveSstPdfFacePath(input: {
+  evidenceRelativePath?: string | null;
+  referenceRelativePath?: string | null;
+}): string | null {
+  return (
+    tryResolveSstEvidenceAbsolutePath(input.evidenceRelativePath) ||
+    tryResolveWorkerFaceAbsolutePath(input.referenceRelativePath)
+  );
 }

@@ -5,11 +5,13 @@ import PDFDocument from 'pdfkit';
 import {
   DEFAULT_INTEGRATION_OBJECTIVE,
   DEFAULT_OS_OBSERVATIONS,
+  enrichOsPayload,
   formatCnpj,
   formatDayBr,
   riskCategoryLabel,
   uniqueRisks,
   uniqueStrings,
+  type OsLiveJob,
   type SstDocumentPayload,
 } from './sst-document-content';
 import { groupOsRisksByCategory } from '../client-structure/risk-context';
@@ -17,6 +19,7 @@ import { groupOsRisksByCategory } from '../client-structure/risk-context';
 export type SstPdfBuildOptions = {
   signedAt?: string | null;
   evidenceAbsolutePath?: string | null;
+  liveJob?: OsLiveJob | null;
 };
 
 type TableCell = {
@@ -24,6 +27,7 @@ type TableCell = {
   width: number;
   header?: boolean;
   align?: 'left' | 'center';
+  blank?: boolean;
 };
 
 function bufferFromPdf(
@@ -218,13 +222,18 @@ function twoColumnBullets(doc: PDFKit.PDFDocument, items: string[]) {
   }
 }
 
+function cellLabel(cell: TableCell) {
+  if (cell.blank) return '';
+  return cell.text.trim() ? cell.text : '—';
+}
+
 function drawTableRow(doc: PDFKit.PDFDocument, cells: TableCell[]) {
   const x0 = doc.page.margins.left;
   const heights = cells.map((cell) => {
     doc.font(cell.header ? 'Helvetica-Bold' : 'Helvetica').fontSize(6.5);
     return Math.max(
       cell.header ? 20 : 22,
-      doc.heightOfString(cell.text || '—', { width: cell.width - 6 }) + 6,
+      doc.heightOfString(cellLabel(cell) || ' ', { width: cell.width - 6 }) + 6,
     );
   });
   const h = Math.max(...heights);
@@ -245,7 +254,7 @@ function drawTableRow(doc: PDFKit.PDFDocument, cells: TableCell[]) {
       .font(cell.header ? 'Helvetica-Bold' : 'Helvetica')
       .fontSize(6.5)
       .fillColor(cell.header ? '#ffffff' : '#0f172a')
-      .text(cell.text || '—', x + 3, y + 3, {
+      .text(cellLabel(cell), x + 3, y + 3, {
         width: cell.width - 6,
         align: cell.align ?? 'left',
       });
@@ -353,10 +362,11 @@ export class SstDocumentPdfService {
     options: SstPdfBuildOptions = {},
   ): Promise<Buffer> {
     return bufferFromPdf(async (doc) => {
-      if (payload.type === 'ORDEM_SERVICO') {
-        await this.renderOs(doc, payload, options);
+      const data = enrichOsPayload(payload, options.liveJob);
+      if (data.type === 'ORDEM_SERVICO') {
+        await this.renderOs(doc, data, options);
       } else {
-        await this.renderIntegration(doc, payload, options);
+        await this.renderIntegration(doc, data, options);
       }
     });
   }
@@ -439,6 +449,7 @@ export class SstDocumentPdfService {
             {
               text: index === 0 ? riskCategoryLabel(group.category) : '',
               width: col.tipo,
+              blank: index > 0,
             },
             { text: risk.agent, width: col.agente },
             { text: risk.source || 'Atividades da funcao', width: col.fonte },
