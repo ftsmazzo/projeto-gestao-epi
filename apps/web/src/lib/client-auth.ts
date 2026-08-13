@@ -31,6 +31,10 @@ import type {
   PortalWorkerEpiSheetResponse,
   WorkerFacialEnrollmentLinkGenerated,
   WorkerFacialEnrollmentLinkStatusResponse,
+  SstClientProfile,
+  SstDocumentListResponse,
+  SstDocumentSendResult,
+  SstDocumentType,
   WorkerImportConfirmResponse,
   WorkerImportConfirmRowInput,
   WorkerImportPreviewResponse,
@@ -330,6 +334,43 @@ export async function fetchPortalDeliveries(status?: string) {
 
 export async function fetchPortalDelivery(id: string) {
   return clientApiFetch<PortalDeliveryDetail>(`/portal/entregas/${id}`);
+}
+
+export async function fetchPortalSstDocuments() {
+  return clientApiFetch<SstDocumentListResponse>('/portal/sst-documents');
+}
+
+export async function fetchPortalSstProfile() {
+  return clientApiFetch<SstClientProfile>('/portal/sst-documents/profile');
+}
+
+export async function savePortalSstProfile(input: Partial<SstClientProfile>) {
+  return clientApiFetch<SstClientProfile>('/portal/sst-documents/profile', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function createPortalSstDocument(input: {
+  workerId: string;
+  type: SstDocumentType;
+}) {
+  return clientApiFetch<SstDocumentSendResult>('/portal/sst-documents', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function resendPortalSstDocumentLink(id: string) {
+  return clientApiFetch<SstDocumentSendResult>(
+    `/portal/sst-documents/${id}/link`,
+    { method: 'POST' },
+  );
+}
+
+export async function downloadPortalSstDocumentPdf(id: string) {
+  const blob = await clientApiFetchBlob(`/portal/sst-documents/${id}/pdf`);
+  triggerBrowserDownload(blob, `sst-${id.slice(-6)}.pdf`);
 }
 
 export async function downloadPortalDeliveryPdf(id: string) {

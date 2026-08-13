@@ -5,7 +5,8 @@ export type ApiFilesSubdir =
   | 'worker-face-references'
   | 'delivery-evidence'
   | 'invoice-documents'
-  | 'org-logos';
+  | 'org-logos'
+  | 'sst-evidence';
 
 /**
  * Sobe diretorios a partir deste modulo ate achar o package @gestao-epi/api.

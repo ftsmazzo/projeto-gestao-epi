@@ -48,6 +48,8 @@ function portalIcon(href: string) {
       return <IconChart />;
     case '/portal/estrutura':
       return <IconBuilding />;
+    case '/portal/documentos-sst':
+      return <IconShield />;
     case '/portal/custos':
       return <IconWallet />;
     case '/portal/conta':

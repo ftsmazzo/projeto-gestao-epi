@@ -2713,4 +2713,97 @@ export interface PortalReportsActivityResponse {
   }>;
 }
 
+export type SstDocumentType = 'INTEGRACAO' | 'ORDEM_SERVICO';
+export type SstDocumentStatus = 'PENDING_SIGNATURE' | 'SIGNED' | 'CANCELLED';
+
+export interface SstClientProfile {
+  technicalResponsibleName: string;
+  technicalResponsibleRegistry: string;
+  city: string;
+  integrationDurationHours: number;
+  integrationTime: string;
+}
+
+export interface SstDocumentListItem {
+  id: string;
+  type: SstDocumentType;
+  typeLabel: string;
+  status: SstDocumentStatus;
+  statusLabel: string;
+  title: string;
+  workerId: string;
+  workerName: string;
+  workerRegistration: string | null;
+  signedAt: string | null;
+  createdAt: string;
+  linkExpiresAt: string | null;
+  linkConsumed: boolean;
+}
+
+export interface SstDocumentListResponse {
+  documents: SstDocumentListItem[];
+}
+
+export interface SstDocumentSendResult {
+  id: string;
+  type: SstDocumentType;
+  title: string;
+  status: SstDocumentStatus;
+  workerId: string;
+  workerName: string;
+  url: string;
+  expiresAt: string;
+  whatsapp: string;
+  whatsappError: string | null;
+  notice: string;
+}
+
+export interface PublicSstUnlockResponse {
+  workerFirstName: string;
+  documentTitle: string;
+  documentType: SstDocumentType;
+  expiresAt: string;
+  payload: {
+    type: SstDocumentType;
+    company: {
+      legalName: string;
+      tradeName: string | null;
+      cnpj: string;
+      city: string | null;
+    };
+    worker: {
+      name: string;
+      cpfMasked: string;
+      registration: string | null;
+      admissionDate: string | null;
+      sectorName: string | null;
+      jobFunctionName: string | null;
+    };
+    technicalResponsible: { name: string | null; registry: string | null };
+    integration: {
+      date: string | null;
+      time: string;
+      durationHours: number;
+      topics: string[];
+    } | null;
+    os: {
+      environment: string | null;
+      functionDescription: string | null;
+      risks: Array<{
+        category: string;
+        agent: string;
+        source: string | null;
+        evaluation: string;
+        exposure: string | null;
+      }>;
+      epis: string[];
+      epcs: string[];
+      recommendations: string[];
+      responsibilities: string[];
+    } | null;
+    termText: string;
+    generatedAt: string;
+  };
+}
+
 

@@ -65,6 +65,7 @@ export const PORTAL_NAV: PortalNavItem[] = [
   { href: '/portal/trabalhadores', label: 'Trabalhadores' },
   { href: '/portal/relatorios', label: 'Relatorios' },
   { href: '/portal/estrutura', label: 'Estrutura' },
+  { href: '/portal/documentos-sst', label: 'Documentos SST' },
   { href: '/portal/custos', label: 'Custos' },
   { href: '/portal/conta', label: 'Minha conta' },
 ];

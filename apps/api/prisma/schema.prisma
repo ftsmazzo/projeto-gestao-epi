@@ -129,6 +129,9 @@ model Organization {
   invoiceDocuments InvoiceDocument[]
   lifePricing      OrganizationLifePricing?
   clientSubscriptions ClientSubscription[]
+  sstClientProfiles SstClientProfile[]
+  sstDocuments      SstDocument[]
+  sstDocumentLinks  SstDocumentLink[]
 }
 
 /// Contato oficial da consultoria usado nas comunicacoes com clientes
@@ -275,6 +278,9 @@ model ServedClient {
   workerFacialEnrollmentLinks WorkerFacialEnrollmentLink[]
   invoiceDocuments InvoiceDocument[]
   subscription     ClientSubscription?
+  sstProfile       SstClientProfile?
+  sstDocuments     SstDocument[]
+  sstDocumentLinks SstDocumentLink[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -580,6 +586,8 @@ model Worker {
   facialReferences  WorkerFacialReference[]
   biometricConsents WorkerBiometricConsent[]
   facialEnrollmentLinks WorkerFacialEnrollmentLink[]
+  sstDocuments          SstDocument[]
+  sstDocumentLinks      SstDocumentLink[]
 
   @@unique([organizationId, cpf])
   @@unique([servedClientId, registration])
@@ -1340,4 +1348,103 @@ model AuditLog {
   @@index([userId])
   @@index([action])
   @@index([createdAt])
+}
+
+enum SstDocumentType {
+  INTEGRACAO
+  ORDEM_SERVICO
+}
+
+enum SstDocumentStatus {
+  PENDING_SIGNATURE
+  SIGNED
+  CANCELLED
+}
+
+/// Dados opcionais da empresa para emitir integracao e O.S. (nao altera cadastro existente).
+model SstClientProfile {
+  id                           String   @id @default(cuid())
+  organizationId               String
+  servedClientId               String   @unique
+  technicalResponsibleName     String?
+  technicalResponsibleRegistry String?
+  city                         String?
+  integrationDurationHours     Int      @default(2)
+  integrationTime              String   @default("08:00")
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+/// Integracao de SST ou Ordem de Servico gerada para um trabalhador.
+model SstDocument {
+  id              String            @id @default(cuid())
+  organizationId  String
+  servedClientId  String
+  workerId        String
+  type            SstDocumentType
+  status          SstDocumentStatus @default(PENDING_SIGNATURE)
+  title           String
+  payload         Json
+  signedAt        DateTime?
+  createdByUserId String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient         @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  worker       Worker               @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  links        SstDocumentLink[]
+  evidence     SstDocumentEvidence?
+
+  @@index([organizationId, servedClientId])
+  @@index([workerId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model SstDocumentLink {
+  id              String    @id @default(cuid())
+  organizationId  String
+  servedClientId  String
+  workerId        String
+  documentId      String
+  tokenHash       String    @unique
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  revokedAt       DateTime?
+  failedAttempts  Int       @default(0)
+  createdByUserId String?
+  createdAt       DateTime  @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  worker       Worker       @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  document     SstDocument  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([workerId])
+  @@index([expiresAt])
+}
+
+model SstDocumentEvidence {
+  id                 String   @id @default(cuid())
+  documentId         String   @unique
+  capturedAt         DateTime
+  filePath           String
+  fileHash           String
+  mimeType           String
+  byteSize           Int
+  matchDistance      Float?
+  matchThreshold     Float?
+  faceEngine         String?
+  livenessPassed     Boolean?
+  livenessChallenge  String?
+  createdAt          DateTime @default(now())
+
+  document SstDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 }

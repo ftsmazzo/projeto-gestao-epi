@@ -16,12 +16,17 @@ import {
   buildConsultoriaAccessInviteEmail,
   buildConsultoriaAccessInviteWhatsapp,
   buildFacialEnrollmentInviteWhatsapp,
+  buildSstDocumentInviteWhatsapp,
+  buildSstDocumentSignedWhatsapp,
   COMM_TEMPLATE_CLIENT_ACCESS_INVITE,
   COMM_TEMPLATE_CONSULTORIA_ACCESS_INVITE,
   COMM_TEMPLATE_FACIAL_ENROLLMENT_INVITE,
+  COMM_TEMPLATE_SST_DOCUMENT_INVITE,
+  COMM_TEMPLATE_SST_DOCUMENT_SIGNED,
   type ClientAccessInviteInput,
   type ConsultoriaAccessInviteInput,
   type FacialEnrollmentInviteInput,
+  type SstDocumentInviteInput,
 } from './communication.templates';
 import { EvolutionWhatsappSender } from './evolution-whatsapp.sender';
 
@@ -261,6 +266,85 @@ export class CommunicationsService {
         `Falha ao enfileirar WhatsApp facial (${input.workerId}): ${message}`,
       );
       return { status: 'FAILED', error: message.slice(0, 500) };
+    }
+  }
+
+  async enqueueSstDocumentWhatsapp(input: {
+    organizationId: string;
+    workerId: string;
+    linkId: string;
+    phone: string | null | undefined;
+    invite: SstDocumentInviteInput;
+  }): Promise<{
+    status: AccessInviteChannelStatus | 'NO_PHONE' | 'DISABLED';
+    error?: string | null;
+  }> {
+    if (!this.isEnabled()) return { status: 'DISABLED' };
+    const phone = input.phone?.trim();
+    if (!phone) return { status: 'NO_PHONE' };
+    try {
+      const text = buildSstDocumentInviteWhatsapp(input.invite);
+      const row = await this.prisma.communicationOutbox.create({
+        data: {
+          organizationId: input.organizationId,
+          channel: CommunicationChannel.WHATSAPP,
+          templateKey: COMM_TEMPLATE_SST_DOCUMENT_INVITE,
+          toAddress: phone,
+          subject: null,
+          bodyText: text,
+          payload: {
+            workerId: input.workerId,
+            linkId: input.linkId,
+            signUrl: input.invite.signUrl,
+          },
+          relatedType: 'SstDocumentLink',
+          relatedId: input.linkId,
+          status: CommunicationStatus.PENDING,
+        },
+      });
+      const result = await this.deliver(row.id);
+      return { status: result.status, error: result.error ?? null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Falha WhatsApp documento SST: ${message}`);
+      return { status: 'FAILED', error: message.slice(0, 500) };
+    }
+  }
+
+  async enqueueSstDocumentSignedWhatsapp(input: {
+    organizationId: string;
+    workerId: string;
+    phone: string | null | undefined;
+    documentTitle: string;
+  }): Promise<void> {
+    if (!this.isEnabled()) return;
+    const phone = input.phone?.trim();
+    if (!phone) return;
+    try {
+      const text = buildSstDocumentSignedWhatsapp({
+        documentTitle: input.documentTitle,
+      });
+      const row = await this.prisma.communicationOutbox.create({
+        data: {
+          organizationId: input.organizationId,
+          channel: CommunicationChannel.WHATSAPP,
+          templateKey: COMM_TEMPLATE_SST_DOCUMENT_SIGNED,
+          toAddress: phone,
+          subject: null,
+          bodyText: text,
+          payload: { workerId: input.workerId },
+          relatedType: 'SstDocument',
+          relatedId: input.workerId,
+          status: CommunicationStatus.PENDING,
+        },
+      });
+      await this.deliver(row.id);
+    } catch (err) {
+      this.logger.warn(
+        `Falha WhatsApp ciencia SST: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   }
 

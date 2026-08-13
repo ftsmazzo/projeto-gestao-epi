@@ -19,6 +19,7 @@ import { PortalModule } from './portal/portal.module';
 import { CommunicationsModule } from './communications/communications.module';
 import { PlatformModule } from './platform/platform.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { SstDocumentsModule } from './sst-documents/sst-documents.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     PortalModule,
     CommunicationsModule,
     SubscriptionsModule,
+    SstDocumentsModule,
     PlatformModule,
     HealthModule,
   ],
