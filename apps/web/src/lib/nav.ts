@@ -25,13 +25,6 @@ export const OPS_NAV: OpsNavItem[] = [
     description: 'Painel operacional por CNPJ, estrutura, PGR e usuarios.',
   },
   {
-    href: '/assinaturas',
-    label: 'Assinaturas',
-    status: 'ready',
-    description:
-      'Saldo de vidas, valor sugerido por cliente e inativar por falta de pagamento.',
-  },
-  {
     href: '/configuracoes',
     label: 'Configuracoes',
     status: 'ready',

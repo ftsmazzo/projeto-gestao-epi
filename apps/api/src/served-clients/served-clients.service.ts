@@ -60,10 +60,21 @@ export class ServedClientsService {
   ) {}
 
   async list(organizationId: string) {
-    return this.prisma.servedClient.findMany({
+    const rows = await this.prisma.servedClient.findMany({
       where: { organizationId },
       orderBy: [{ status: 'asc' }, { legalName: 'asc' }],
+      include: {
+        _count: {
+          select: {
+            workers: { where: { status: WorkerStatus.ACTIVE } },
+          },
+        },
+      },
     });
+    return rows.map(({ _count, ...client }) => ({
+      ...client,
+      usedLives: _count.workers,
+    }));
   }
 
   async getById(organizationId: string, id: string) {

@@ -3,7 +3,6 @@
 import type { QuotaSummary } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { ClientPortalLaunchLink } from '../../components/ClientPortalLaunchLink';
 import { RequireAuth } from '../../components/RequireAuth';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { OPS_NAV } from '../../lib/nav';
@@ -73,35 +72,7 @@ function DashboardContent({
         }
       />
 
-      <section className="action-strip ux-enter" aria-label="Proximos passos">
-        <Link href="/clientes?novo=1" className="action-tile action-tile--primary">
-          <p className="action-tile__kicker">Prioridade</p>
-          <h2 className="action-tile__title">
-            {hasClients ? 'Abrir clientes' : 'Novo cliente'}
-          </h2>
-          <p className="action-tile__desc">
-            {hasClients
-              ? 'Continue a implantacao ou cadastre outro CNPJ.'
-              : 'Inserir dados manuais ou importar PGR — escolha no proximo passo.'}
-          </p>
-        </Link>
-        <Link href="/clientes" className="action-tile">
-          <p className="action-tile__kicker">Lista</p>
-          <h2 className="action-tile__title">Clientes atendidos</h2>
-          <p className="action-tile__desc">
-            Veja cotas, abra o workspace e acompanhe a implantacao.
-          </p>
-        </Link>
-        <ClientPortalLaunchLink className="action-tile">
-          <p className="action-tile__kicker">Operacao</p>
-          <h2 className="action-tile__title">Portal do cliente</h2>
-          <p className="action-tile__desc">
-            Abre em janela nova, sem usuario conectado.
-          </p>
-        </ClientPortalLaunchLink>
-      </section>
-
-      <div className="quota-summary ux-enter-delay" aria-label="Franquia de vidas">
+      <div className="quota-summary ux-enter" aria-label="Franquia de vidas">
         <div className="quota-summary-item">
           <span className="quota-summary-label">Contratadas</span>
           <strong className="quota-summary-value">

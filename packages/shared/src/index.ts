@@ -184,6 +184,8 @@ export interface ServedClient {
   cnpj: string;
   status: ServedClientStatus;
   allocatedLifeQuota: number;
+  /** Trabalhadores ativos deste cliente. */
+  usedLives?: number;
   contactEmail: string | null;
   contactPhone: string | null;
   notes: string | null;

@@ -597,7 +597,8 @@ function ClientesContent() {
                           {formatCnpj(client.cnpj)}
                         </p>
                         <p className="stack-card__meta">
-                          Cota {client.allocatedLifeQuota}
+                          Alocadas {client.allocatedLifeQuota} · Utilizadas{' '}
+                          {client.usedLives ?? 0}
                           {client.status === 'INACTIVE'
                             ? ' · nao consome franquia'
                             : ''}
@@ -615,12 +616,6 @@ function ClientesContent() {
                           href={`/clientes/${client.id}`}
                         >
                           Abrir
-                        </Link>
-                        <Link
-                          className="btn btn-secondary"
-                          href={`/assinaturas?cliente=${client.id}`}
-                        >
-                          Assinatura
                         </Link>
                         <button
                           type="button"

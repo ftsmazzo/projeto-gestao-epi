@@ -14,7 +14,6 @@ import {
   IconPackage,
   IconSettings,
   IconShield,
-  IconWallet,
 } from './ui/NavIcons';
 
 type OpsShellProps = {
@@ -29,8 +28,6 @@ function navIcon(href: string) {
       return <IconHome />;
     case '/clientes':
       return <IconBuilding />;
-    case '/assinaturas':
-      return <IconWallet />;
     case '/configuracoes':
       return <IconSettings />;
     case '/epi-needs':
