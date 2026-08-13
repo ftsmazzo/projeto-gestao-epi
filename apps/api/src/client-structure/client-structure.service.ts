@@ -8,8 +8,13 @@ import {
   OccupationalRiskCategory,
   Prisma,
 } from '@prisma/client';
+import {
+  normalizeRiskNeedKey,
+  suggestedNeedNamesForRisk,
+} from '@gestao-epi/shared';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DEFAULT_EPI_NEED_SEEDS } from '../epi-needs/epi-need-suggest';
 import type {
   CreateClientJobFunctionDto,
   CreateClientSectorDto,
@@ -562,6 +567,135 @@ export class ClientStructureService {
       }
       throw err;
     }
+  }
+
+  async generateEpiRequirementsFromRisks(
+    organizationId: string,
+    userId: string,
+    jobFunctionId: string,
+  ) {
+    const job = await this.requireJob(organizationId, jobFunctionId);
+    const links = await this.prisma.jobFunctionRisk.findMany({
+      where: { organizationId, jobFunctionId },
+      include: { risk: true },
+    });
+    if (links.length === 0) {
+      throw new BadRequestException(
+        'Vincule ao menos um risco a esta funcao antes de gerar necessidades.',
+      );
+    }
+
+    const catalogCreatedCount = await this.ensureEpiNeedCatalog(
+      organizationId,
+      userId,
+    );
+    const needs = await this.prisma.epiNeed.findMany({
+      where: { organizationId, isActive: true },
+      select: { id: true, name: true },
+    });
+    const needByKey = new Map(
+      needs.map((need) => [normalizeRiskNeedKey(need.name), need]),
+    );
+
+    const existing = await this.prisma.jobFunctionEpiRequirement.findMany({
+      where: { organizationId, jobFunctionId, isActive: true },
+      select: { epiNeedId: true, riskId: true },
+    });
+    const existingKeys = new Set(
+      existing.map((row) => `${row.epiNeedId}:${row.riskId ?? ''}`),
+    );
+
+    let createdCount = 0;
+    let skippedCount = 0;
+    for (const link of links) {
+      const names = suggestedNeedNamesForRisk(link.risk.name);
+      if (names.length === 0) {
+        skippedCount += 1;
+        continue;
+      }
+      for (const name of names) {
+        const need = needByKey.get(normalizeRiskNeedKey(name));
+        if (!need) {
+          skippedCount += 1;
+          continue;
+        }
+        const key = `${need.id}:${link.riskId}`;
+        if (existingKeys.has(key) || existingKeys.has(`${need.id}:`)) {
+          skippedCount += 1;
+          continue;
+        }
+        await this.prisma.jobFunctionEpiRequirement.create({
+          data: {
+            organizationId,
+            jobFunctionId,
+            riskId: link.riskId,
+            epiNeedId: need.id,
+            isRequired: true,
+            quantity: 1,
+            source: 'MANUAL',
+          },
+        });
+        existingKeys.add(key);
+        createdCount += 1;
+      }
+    }
+
+    await this.audit.log({
+      action: 'job_function_epi_requirement.generated_from_risks',
+      organizationId,
+      userId,
+      entityType: 'ClientJobFunction',
+      entityId: jobFunctionId,
+      metadata: {
+        servedClientId: job.servedClientId,
+        catalogCreatedCount,
+        createdCount,
+        skippedCount,
+      },
+    });
+
+    return { catalogCreatedCount, createdCount, skippedCount };
+  }
+
+  private async ensureEpiNeedCatalog(
+    organizationId: string,
+    userId: string,
+  ) {
+    const existing = await this.prisma.epiNeed.findMany({
+      where: { organizationId },
+      select: { name: true },
+    });
+    const existingNames = new Set(
+      existing.map((row) => row.name.toLowerCase()),
+    );
+    let createdCount = 0;
+    for (const seed of DEFAULT_EPI_NEED_SEEDS) {
+      if (existingNames.has(seed.name.toLowerCase())) continue;
+      await this.prisma.epiNeed.create({
+        data: {
+          organizationId,
+          name: seed.name,
+          category: seed.category,
+          description: seed.description,
+          aliases: seed.aliases,
+          usefulLifeValue: seed.usefulLifeValue,
+          usefulLifeUnit: seed.usefulLifeUnit,
+          isActive: true,
+        },
+      });
+      createdCount += 1;
+    }
+    if (createdCount > 0) {
+      await this.audit.log({
+        action: 'epi_need.defaults_suggested',
+        organizationId,
+        userId,
+        entityType: 'EpiNeed',
+        entityId: organizationId,
+        metadata: { createdCount, source: 'from-risks' },
+      });
+    }
+    return createdCount;
   }
 
   async updateEpiRequirement(

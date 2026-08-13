@@ -39,6 +39,13 @@ export const OPS_NAV: OpsNavItem[] = [
       'Contatos, equipe, retencao biometrica e reset geral da consultoria.',
   },
   {
+    href: '/epi-needs',
+    label: 'Necessidades',
+    status: 'ready',
+    description:
+      'Catalogo tecnico de tipos de EPI (oculos, botina, plug) da consultoria.',
+  },
+  {
     href: '/epis',
     label: 'Catalogo de EPIs',
     status: 'ready',

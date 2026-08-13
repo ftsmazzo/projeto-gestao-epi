@@ -184,6 +184,18 @@ export class ClientStructureController {
     );
   }
 
+  @Post('client-job-functions/:id/epi-requirements/from-risks')
+  generateEpiRequirementsFromRisks(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.structure.generateEpiRequirementsFromRisks(
+      user.organizationId,
+      user.sub,
+      id,
+    );
+  }
+
   @Patch('client-job-functions/:id/epi-requirements/:requirementId')
   updateEpiRequirement(
     @CurrentUser() user: JwtPayload,

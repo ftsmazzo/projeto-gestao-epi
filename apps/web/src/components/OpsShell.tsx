@@ -13,6 +13,7 @@ import {
   IconMenu,
   IconPackage,
   IconSettings,
+  IconShield,
   IconWallet,
 } from './ui/NavIcons';
 
@@ -32,6 +33,8 @@ function navIcon(href: string) {
       return <IconWallet />;
     case '/configuracoes':
       return <IconSettings />;
+    case '/epi-needs':
+      return <IconShield />;
     case '/epis':
       return <IconPackage />;
     default:

@@ -8,6 +8,7 @@ export const API_DEFAULT_PORT = 3001;
 export * from './face-biometrics';
 export * from './life-pricing';
 export * from './caepi-need-query';
+export * from './risk-need-map';
 import type { LivenessChallengeType } from './face-biometrics';
 
 export type HealthStatus = 'ok' | 'degraded' | 'down';
@@ -1162,6 +1163,12 @@ export interface OccupationalRiskDefaultsResult {
   createdCount: number;
   skippedCount: number;
   created: OccupationalRisk[];
+}
+
+export interface EpiRequirementsFromRisksResult {
+  catalogCreatedCount: number;
+  createdCount: number;
+  skippedCount: number;
 }
 
 export type PgroImportStatus = 'PENDING' | 'PARSED' | 'CONFIRMED' | 'FAILED';

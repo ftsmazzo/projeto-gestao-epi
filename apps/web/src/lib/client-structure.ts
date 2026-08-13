@@ -2,6 +2,7 @@ import type {
   ClientJobFunction,
   ClientSector,
   EpiRequirementSource,
+  EpiRequirementsFromRisksResult,
   JobFunctionEpiRequirement,
   JobFunctionRiskLink,
   OccupationalRisk,
@@ -10,6 +11,12 @@ import type {
   RiskLevel,
 } from '@gestao-epi/shared';
 import { apiFetch } from './auth';
+
+export {
+  RISK_EPI_NEED_SUGGESTIONS,
+  normalizeRiskNeedKey as normalizeRiskKey,
+  suggestedNeedNamesForRisk,
+} from '@gestao-epi/shared';
 
 export function listClientSectors(
   servedClientId: string,
@@ -241,37 +248,9 @@ export function updateOccupationalRiskStatus(id: string, isActive: boolean) {
   });
 }
 
-/** Sugestoes de necessidades de EPI por nome de risco (nao aplicadas automaticamente). */
-export const RISK_EPI_NEED_SUGGESTIONS: Record<string, string[]> = {
-  ruido: ['Protetor Auricular Plug', 'Protetor Auricular Concha'],
-  calor: ['Avental de Raspa', 'Luva de Raspa', 'Luva de Vaqueta'],
-  poeira: ['Respirador PFF1', 'Respirador PFF2'],
-  'corte/perfuracao': ['Luva Anticorte', 'Luva de Vaqueta', 'Luva Nitrilica'],
-  'queda de altura': ['Cinto de Seguranca', 'Talabarte'],
-  'impacto nos olhos': ['Oculos de Seguranca', 'Viseira Facial'],
-};
-
-export function normalizeRiskKey(name: string) {
-  return name
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
-
-export function suggestedNeedNamesForRisk(riskName: string): string[] {
-  const key = normalizeRiskKey(riskName);
-  if (RISK_EPI_NEED_SUGGESTIONS[key]) {
-    return RISK_EPI_NEED_SUGGESTIONS[key];
-  }
-  for (const [pattern, names] of Object.entries(RISK_EPI_NEED_SUGGESTIONS)) {
-    if (
-      key.includes(pattern) ||
-      pattern.includes(key) ||
-      key.includes(normalizeRiskKey(pattern))
-    ) {
-      return names;
-    }
-  }
-  return [];
+export function generateEpiRequirementsFromRisks(jobFunctionId: string) {
+  return apiFetch<EpiRequirementsFromRisksResult>(
+    `/client-job-functions/${jobFunctionId}/epi-requirements/from-risks`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
 }

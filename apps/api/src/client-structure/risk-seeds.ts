@@ -85,7 +85,7 @@ export const DEFAULT_OCCUPATIONAL_RISK_SEEDS: DefaultRiskSeed[] = [
     name: 'Queda de altura',
     category: OccupationalRiskCategory.ACIDENTE,
     description: 'Risco de queda em altura.',
-    aliases: ['queda', 'trabalho em altura'],
+    aliases: ['queda de altura', 'queda em altura', 'trabalho em altura'],
   },
   {
     name: 'Colisao/atropelamento',
@@ -98,5 +98,82 @@ export const DEFAULT_OCCUPATIONAL_RISK_SEEDS: DefaultRiskSeed[] = [
     category: OccupationalRiskCategory.PSICOSSOCIAL,
     description: 'Fatores psicossociais no trabalho.',
     aliases: ['psicossocial', 'estresse'],
+  },
+  {
+    name: 'Frio',
+    category: OccupationalRiskCategory.FISICO,
+    description: 'Exposicao a frio / baixa temperatura.',
+    aliases: ['frio', 'baixa temperatura', 'camara fria'],
+  },
+  {
+    name: 'Umidade',
+    category: OccupationalRiskCategory.FISICO,
+    description: 'Exposicao a umidade, agua ou areas molhadas.',
+    aliases: ['umidade', 'area molhada', 'agua'],
+  },
+  {
+    name: 'Vibracao',
+    category: OccupationalRiskCategory.FISICO,
+    description: 'Vibracao de corpo inteiro ou localizada (maos/bracos).',
+    aliases: ['vibracao', 'vibracao de corpo inteiro', 'vibracao localizada'],
+  },
+  {
+    name: 'Impacto nos olhos',
+    category: OccupationalRiskCategory.ACIDENTE,
+    description: 'Projecao de particulas ou impacto nos olhos.',
+    aliases: [
+      'impacto nos olhos',
+      'projecao de particulas',
+      'particula nos olhos',
+    ],
+  },
+  {
+    name: 'Queda de objetos',
+    category: OccupationalRiskCategory.ACIDENTE,
+    description: 'Queda de materiais ou ferramentas sobre a cabeca/corpo.',
+    aliases: [
+      'queda de objetos',
+      'queda de materiais',
+      'impacto na cabeca',
+    ],
+  },
+  {
+    name: 'Queda no mesmo nivel',
+    category: OccupationalRiskCategory.ACIDENTE,
+    description: 'Escorregao, tropeco ou queda no mesmo nivel.',
+    aliases: [
+      'queda no mesmo nivel',
+      'escorregao',
+      'tropeco',
+      'superficie escorregadia',
+    ],
+  },
+  {
+    name: 'Eletricidade',
+    category: OccupationalRiskCategory.ACIDENTE,
+    description: 'Choque eletrico / contato com energia eletrica.',
+    aliases: [
+      'eletricidade',
+      'choque eletrico',
+      'risco eletrico',
+      'energia eletrica',
+    ],
+  },
+  {
+    name: 'Maquinas e equipamentos',
+    category: OccupationalRiskCategory.MECANICO,
+    description: 'Contato com partes moveis de maquinas e equipamentos.',
+    aliases: [
+      'maquinas e equipamentos',
+      'maquina',
+      'equipamento mecanico',
+      'parte movel',
+    ],
+  },
+  {
+    name: 'Incendio/explosao',
+    category: OccupationalRiskCategory.ACIDENTE,
+    description: 'Risco de incendio ou explosao.',
+    aliases: ['incendio', 'explosao', 'atmosfera explosiva'],
   },
 ];

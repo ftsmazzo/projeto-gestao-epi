@@ -16,6 +16,7 @@ import {
   createClientJobFunction,
   createClientSector,
   createJobFunctionEpiRequirement,
+  generateEpiRequirementsFromRisks,
   linkJobFunctionRisk,
   listClientJobFunctions,
   listClientSectors,
@@ -29,7 +30,7 @@ import {
   updateClientSector,
   updateClientSectorStatus,
 } from '../../../../lib/client-structure';
-import { listEpiNeeds } from '../../../../lib/epi-needs';
+import { listEpiNeeds, suggestEpiNeedDefaults } from '../../../../lib/epi-needs';
 import { listOperationalUnits } from '../../../../lib/operational-units';
 import { getServedClient } from '../../../../lib/served-clients';
 
@@ -368,6 +369,48 @@ function EstruturaContent({ clientId }: { clientId: string }) {
     }
   }
 
+  async function onSuggestNeeds() {
+    setError(null);
+    try {
+      const result = await suggestEpiNeedDefaults();
+      await load();
+      window.alert(
+        result.createdCount > 0
+          ? `${result.createdCount} necessidade(s) adicionadas ao catalogo.`
+          : 'O catalogo de necessidades ja estava preenchido.',
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel gerar necessidades comuns.',
+      );
+    }
+  }
+
+  async function onGenerateNeedsFromRisks() {
+    if (!selectedJobId) return;
+    setReqError(null);
+    setReqSaving(true);
+    try {
+      const result = await generateEpiRequirementsFromRisks(selectedJobId);
+      await load();
+      window.alert(
+        result.createdCount > 0
+          ? `${result.createdCount} necessidade(s) vinculadas a partir dos riscos.`
+          : 'Nada novo: as necessidades desses riscos ja estavam na funcao, ou o risco nao tem EPI tipico.',
+      );
+    } catch (err) {
+      setReqError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel gerar necessidades a partir dos riscos.',
+      );
+    } finally {
+      setReqSaving(false);
+    }
+  }
+
   async function onLinkRisk(event: FormEvent) {
     event.preventDefault();
     if (!selectedJobId || !linkRiskId) return;
@@ -492,6 +535,13 @@ function EstruturaContent({ clientId }: { clientId: string }) {
             onClick={() => void onSuggestRisks()}
           >
             Gerar riscos comuns
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => void onSuggestNeeds()}
+          >
+            Gerar necessidades comuns
           </button>
         </div>
       </header>
@@ -1251,18 +1301,42 @@ function EstruturaContent({ clientId }: { clientId: string }) {
                     className="btn btn-primary"
                     disabled={reqSaving || epiNeeds.length === 0}
                   >
-                    {reqSaving ? 'Salvando...' : 'Adicionar EPI necessario'}
+                    {reqSaving ? 'Salvando...' : 'Adicionar necessidade'}
                   </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={reqSaving}
+                    onClick={() => void onGenerateNeedsFromRisks()}
+                  >
+                    Gerar a partir dos riscos
+                  </button>
+                  {epiNeeds.length === 0 ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={reqSaving}
+                      onClick={() => void onSuggestNeeds()}
+                    >
+                      Gerar necessidades comuns
+                    </button>
+                  ) : null}
                 </div>
               </form>
 
               {epiNeeds.length === 0 ? (
                 <p className="field-hint" style={{ marginTop: '0.75rem' }}>
-                  Nenhuma necessidade de EPI ativa no catalogo da Consultoria.
-                  Cadastre necessidades no catalogo tecnico antes de vincular
-                  aqui.
+                  O catalogo de necessidades ainda esta vazio. Use{' '}
+                  <strong>Gerar necessidades comuns</strong> ou{' '}
+                  <strong>Gerar a partir dos riscos</strong> — nao precisa de
+                  CA/EPI real nesta etapa.
                 </p>
-              ) : null}
+              ) : (
+                <p className="field-hint" style={{ marginTop: '0.75rem' }}>
+                  A necessidade e o tipo de EPI (oculos, botina, plug). O CA
+                  real entra depois, no estoque do cliente.
+                </p>
+              )}
 
               <div className="table-wrap" style={{ marginTop: '1rem' }}>
                 <table className="data-table">
