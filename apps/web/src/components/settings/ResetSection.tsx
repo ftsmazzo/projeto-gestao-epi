@@ -53,7 +53,7 @@ export function ResetSection({ role }: { role: MembershipRole }) {
         <h2 className="settings-section__title">Reset geral</h2>
         <p className="page-lead">
           Apaga clientes, estrutura, trabalhadores, entregas, biometria, EPIs,
-          estoque, PGRO e usuarios do cliente deste tenant. Mantem seu login, a
+          estoque, PGR e usuarios do cliente deste tenant. Mantem seu login, a
           organizacao e a base CAEPI.
         </p>
       </header>

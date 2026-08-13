@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ClientPortalLaunchLink } from '../../components/ClientPortalLaunchLink';
 import { RequireAuth } from '../../components/RequireAuth';
 
 /**
@@ -24,12 +25,12 @@ function EntregasRetiredContent() {
         </h1>
         <p className="page-lead">
           Use o portal da empresa para entregar EPI. Aqui na Consultoria ficam
-          implantacao, PGRO e biometria de referencia.
+          implantacao, PGR e biometria de referencia.
         </p>
         <div className="btn-row">
-          <Link className="btn btn-primary" href="/portal/login">
+          <ClientPortalLaunchLink className="btn btn-primary">
             Ir ao portal do cliente
-          </Link>
+          </ClientPortalLaunchLink>
           <Link className="btn btn-secondary" href="/clientes">
             Clientes atendidos
           </Link>

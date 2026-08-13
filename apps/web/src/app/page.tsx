@@ -52,7 +52,7 @@ export default function HomePage() {
         <aside className="hero-aside" aria-label={`Por que ${APP_NAME}`}>
           <h2>Conformidade no ritmo da operacao</h2>
           <ul>
-            <li>Implantacao clara: CNPJ, PGRO e portal</li>
+            <li>Implantacao clara: CNPJ, PGR e portal</li>
             <li>Entrega com biometria e comprovante</li>
             <li>Mobile no chao de fabrica</li>
             <li>Rastreio NR-06 sem planilha</li>

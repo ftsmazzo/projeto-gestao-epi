@@ -964,7 +964,7 @@ function PortalEstoqueContent() {
 
             {needRows.length === 0 ? (
               <p className="page-lead">
-                Nenhuma necessidade ativa nesta empresa (PGRO/estrutura).
+                Nenhuma necessidade ativa nesta empresa (PGR/estrutura).
               </p>
             ) : (
               <>

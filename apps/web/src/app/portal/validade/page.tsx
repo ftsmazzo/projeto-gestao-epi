@@ -160,7 +160,7 @@ function PortalValidadeContent() {
                   Nenhuma validade para acompanhar
                 </p>
                 <p className="page-lead">
-                  A Consultoria precisa vincular EPIs na estrutura/PGRO. Depois
+                  A Consultoria precisa vincular EPIs na estrutura/PGR. Depois
                   registre entradas no estoque.
                 </p>
                 <Link className="btn btn-primary" href="/portal/estoque">

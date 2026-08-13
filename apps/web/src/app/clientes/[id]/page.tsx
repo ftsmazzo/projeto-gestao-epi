@@ -150,7 +150,7 @@ export default function ClienteVisaoGeralPage() {
         ? 'Criar acesso ao portal'
         : 'Revisar usuarios do portal';
   const nextDesc = !hasStructure
-    ? 'Comece pelo PGRO ou cadastre setores e necessidades.'
+    ? 'Comece pelo PGR ou cadastre setores e necessidades.'
     : !hasWorkers
       ? 'Cadastre as vidas que consomem a cota deste cliente.'
       : !hasManagers
@@ -178,9 +178,9 @@ export default function ClienteVisaoGeralPage() {
           href={`/clientes/${clientId}/atualizar-pgro`}
           className="action-tile"
         >
-          <p className="action-tile__kicker">PGRO</p>
+          <p className="action-tile__kicker">PGR</p>
           <h2 className="action-tile__title">
-            {lastPgroImport ? 'Atualizar PGRO' : 'Importar PGRO'}
+            {lastPgroImport ? 'Atualizar PGR' : 'Importar PGR'}
           </h2>
           <p className="action-tile__desc">
             {lastPgroImport
@@ -331,7 +331,7 @@ export default function ClienteVisaoGeralPage() {
 
         {lastPgroImport ? (
           <p className="overview-pgro">
-            Ultimo PGRO: Arquivo {lastPgroImport.fileName} ·{' '}
+            Ultimo PGR: Arquivo {lastPgroImport.fileName} ·{' '}
             {lastPgroImport.status} ·{' '}
             {new Date(lastPgroImport.createdAt).toLocaleString('pt-BR')}
             {lastPgroImport.createdByEmail
@@ -340,7 +340,7 @@ export default function ClienteVisaoGeralPage() {
           </p>
         ) : (
           <p className="overview-pgro">
-            Nenhuma importacao PGRO neste cliente.{' '}
+            Nenhuma importacao PGR neste cliente.{' '}
             <Link href={`/clientes/${clientId}/estrutura`}>
               Abrir estrutura
             </Link>

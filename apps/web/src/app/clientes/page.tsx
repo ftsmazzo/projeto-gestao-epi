@@ -298,7 +298,7 @@ function ClientesContent() {
       <PageHeader
         kicker="Cadastros"
         title="Clientes atendidos"
-        lead="Implante um CNPJ: cadastre os dados ou importe o PGRO. Depois abra o workspace para estrutura, vidas e acesso ao portal."
+        lead="Implante um CNPJ: cadastre os dados ou importe o PGR. Depois abra o workspace para estrutura, vidas e acesso ao portal."
         actions={
           listTab === 'clients' ? (
             <button
@@ -386,7 +386,7 @@ function ClientesContent() {
                 <p className="action-tile__kicker">Opcao 1</p>
                 <h3 className="action-tile__title">Inserir dados</h3>
                 <p className="action-tile__desc">
-                  Informe CNPJ, razao social e cotas. Depois importe o PGRO no
+                  Informe CNPJ, razao social e cotas. Depois importe o PGR no
                   workspace, se quiser.
                 </p>
               </button>
@@ -395,9 +395,9 @@ function ClientesContent() {
                 className="action-tile"
               >
                 <p className="action-tile__kicker">Opcao 2</p>
-                <h3 className="action-tile__title">Importar PGRO</h3>
+                <h3 className="action-tile__title">Importar PGR</h3>
                 <p className="action-tile__desc">
-                  Use o PDF do PGRO/PGR para criar o cliente e a estrutura de
+                  Use o PDF do PGR para criar o cliente e a estrutura de
                   uma vez.
                 </p>
               </Link>
@@ -419,7 +419,7 @@ function ClientesContent() {
                 </h2>
                 <p className="page-lead">
                   Preencha o essencial. Apos salvar, abrimos o workspace para
-                  estrutura/PGRO, trabalhadores e usuarios do portal.
+                  estrutura/PGR, trabalhadores e usuarios do portal.
                 </p>
               </div>
               <button
@@ -558,7 +558,7 @@ function ClientesContent() {
                 </p>
                 <p className="page-lead">
                   Comece pelo cadastro: inserir dados manuais ou importar o
-                  PGRO.
+                  PGR.
                 </p>
                 <button
                   type="button"

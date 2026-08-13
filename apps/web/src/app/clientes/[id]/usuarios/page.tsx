@@ -11,9 +11,9 @@ import {
   STOCK_OPERATOR_LIMIT,
 } from '@gestao-epi/shared';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ClientAccessCredentials } from '../../../../components/ClientAccessCredentials';
+import { ClientPortalLaunchLink } from '../../../../components/ClientPortalLaunchLink';
 import { consumeClientAccessOnce } from '../../../../lib/client-access-session';
 import {
   clientUserAccessLabel,
@@ -187,13 +187,13 @@ export default function ClienteUsuariosPage() {
             vez — o gestor entra em /portal/login.
           </p>
         </div>
-        <Link href="/portal/login" className="action-tile" target="_blank" rel="noreferrer">
+        <ClientPortalLaunchLink className="action-tile">
           <p className="action-tile__kicker">Teste</p>
           <h2 className="action-tile__title">Abrir portal</h2>
           <p className="action-tile__desc">
             Confira a tela que o cliente vera apos receber o acesso.
           </p>
-        </Link>
+        </ClientPortalLaunchLink>
       </section>
 
       <section className="surface" aria-labelledby="users-title">

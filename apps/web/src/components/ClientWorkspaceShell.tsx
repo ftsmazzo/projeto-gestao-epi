@@ -4,6 +4,7 @@ import type { ServedClient, ServedClientOverview } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { ClientPortalLaunchLink } from './ClientPortalLaunchLink';
 import { formatCnpj } from '../lib/cnpj';
 import { getServedClient, getServedClientOverview } from '../lib/served-clients';
 
@@ -68,7 +69,7 @@ export function ClientWorkspaceShell({ children }: Props) {
       {
         href: `${base}/estrutura`,
         label: '1. Estrutura',
-        hint: hasStructure ? 'PGRO / setores ok' : 'Importar PGRO ou montar',
+        hint: hasStructure ? 'PGR / setores ok' : 'Importar PGR ou montar',
         done: hasStructure,
       },
       {
@@ -88,10 +89,10 @@ export function ClientWorkspaceShell({ children }: Props) {
         done: overview.operational,
       },
       {
-        href: '/portal-cliente',
+        href: '/portal/login?sair=1',
         label: '4. Operar',
         hint: overview.operational
-          ? 'Cliente pronto para o painel'
+          ? 'Abre o portal em janela nova'
           : 'Conclua a implantacao',
         done: overview.operational,
       },
@@ -123,8 +124,8 @@ export function ClientWorkspaceShell({ children }: Props) {
     {
       href: `${base}/atualizar-pgro`,
       label: overview?.counts.sectors.active
-        ? 'Atualizar PGRO'
-        : 'Importar PGRO',
+        ? 'Atualizar PGR'
+        : 'Importar PGR',
     },
     { href: `${base}/usuarios`, label: 'Usuarios' },
     { href: `${base}/unidades`, label: 'Unidades' },
@@ -169,12 +170,26 @@ export function ClientWorkspaceShell({ children }: Props) {
                 : isCurrent
                   ? 'journey-step--current'
                   : 'journey-step--todo';
+              const isPortalLaunch = step.href.startsWith('/portal/login');
+              const stepInner = (
+                <>
+                  <span className="journey-step__label">{step.label}</span>
+                  <span className="journey-step__hint">{step.hint}</span>
+                </>
+              );
               return (
                 <li key={step.href}>
-                  <Link href={step.href} className={`journey-step ${stateClass}`}>
-                    <span className="journey-step__label">{step.label}</span>
-                    <span className="journey-step__hint">{step.hint}</span>
-                  </Link>
+                  {isPortalLaunch ? (
+                    <ClientPortalLaunchLink
+                      className={`journey-step ${stateClass}`}
+                    >
+                      {stepInner}
+                    </ClientPortalLaunchLink>
+                  ) : (
+                    <Link href={step.href} className={`journey-step ${stateClass}`}>
+                      {stepInner}
+                    </Link>
+                  )}
                 </li>
               );
             })}

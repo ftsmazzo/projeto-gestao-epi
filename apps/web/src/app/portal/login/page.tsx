@@ -2,18 +2,28 @@
 
 import { APP_NAME } from '@gestao-epi/shared';
 import Link from 'next/link';
-import { FormEvent, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { FormEvent, Suspense, useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { AuthLayout } from '../../../components/AuthLayout';
 import { InstallAppBanner } from '../../../components/InstallAppBanner';
-import { clientLoginAccount } from '../../../lib/client-auth';
+import {
+  clearClientAccessToken,
+  clientLoginAccount,
+} from '../../../lib/client-auth';
 
-export default function PortalLoginPage() {
+function PortalLoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get('sair') !== '1') return;
+    clearClientAccessToken();
+    router.replace('/portal/login');
+  }, [searchParams, router]);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -98,5 +108,13 @@ export default function PortalLoginPage() {
         </button>
       </form>
     </AuthLayout>
+  );
+}
+
+export default function PortalLoginPage() {
+  return (
+    <Suspense fallback={<p className="page-lead">Carregando...</p>}>
+      <PortalLoginForm />
+    </Suspense>
   );
 }

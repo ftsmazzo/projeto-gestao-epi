@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ClientPortalLaunchLink } from '../../components/ClientPortalLaunchLink';
 import { RequireAuth } from '../../components/RequireAuth';
 
 /**
@@ -30,9 +31,9 @@ function TrabalhadoresRetiredContent() {
           <Link className="btn btn-primary" href="/clientes">
             Clientes atendidos
           </Link>
-          <Link className="btn btn-secondary" href="/portal/login">
+          <ClientPortalLaunchLink className="btn btn-secondary">
             Portal do cliente
-          </Link>
+          </ClientPortalLaunchLink>
           <Link className="btn btn-ghost" href="/dashboard">
             Dashboard
           </Link>

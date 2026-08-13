@@ -54,7 +54,7 @@ const QUOTES = [
   },
   {
     quote:
-      'A consultoria configura o PGRO. A gente vive o dia a dia no Painel. Cada um no seu login — acabou a confusao.',
+      'A consultoria configura o PGR. A gente vive o dia a dia no Painel. Cada um no seu login — acabou a confusao.',
     name: 'Patricia L.',
     role: 'Gerente de operacoes · multiplas unidades',
   },

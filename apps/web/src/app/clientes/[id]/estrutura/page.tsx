@@ -518,7 +518,7 @@ function EstruturaContent({ clientId }: { clientId: string }) {
             {client.tradeName || client.legalName}
           </h1>
           <p className="page-lead">
-            Setores, funcoes, riscos e necessidades. Prefira importar o PGRO e
+            Setores, funcoes, riscos e necessidades. Prefira importar o PGR e
             revisar aqui o que foi extraido.
           </p>
         </div>
@@ -527,7 +527,7 @@ function EstruturaContent({ clientId }: { clientId: string }) {
             className="btn btn-primary"
             href={`/clientes/${clientId}/atualizar-pgro`}
           >
-            Importar / atualizar PGRO
+            Importar / atualizar PGR
           </Link>
           <button
             type="button"
@@ -553,7 +553,7 @@ function EstruturaContent({ clientId }: { clientId: string }) {
             className="action-tile action-tile--primary"
           >
             <p className="action-tile__kicker">Recomendado</p>
-            <h2 className="action-tile__title">Importar PGRO em PDF</h2>
+            <h2 className="action-tile__title">Importar PGR em PDF</h2>
             <p className="action-tile__desc">
               Extrai setores, funcoes, riscos e EPIs automaticamente para
               revisar.

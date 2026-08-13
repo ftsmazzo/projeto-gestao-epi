@@ -861,7 +861,7 @@ export default function ClienteTrabalhadoresPage() {
                     className="btn btn-secondary btn-compact"
                     href={`/clientes/${clientId}/atualizar-pgro`}
                   >
-                    Importar PGRO
+                    Importar PGR
                   </Link>
                 </div>
               </div>

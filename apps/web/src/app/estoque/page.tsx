@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ClientPortalLaunchLink } from '../../components/ClientPortalLaunchLink';
 import { RequireAuth } from '../../components/RequireAuth';
 
 /**
@@ -39,9 +40,9 @@ function EstoqueRetiredContent() {
           <Link className="btn btn-primary" href="/epis">
             Catalogo de EPIs
           </Link>
-          <Link className="btn btn-ghost" href="/portal/login">
+          <ClientPortalLaunchLink className="btn btn-ghost">
             Ir ao portal do cliente
-          </Link>
+          </ClientPortalLaunchLink>
         </div>
       </section>
     </div>

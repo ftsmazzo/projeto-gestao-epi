@@ -101,7 +101,7 @@ function emptyCompany(): PgroCompanyData {
 }
 
 type PgroImportWizardProps = {
-  /** Quando informado, opera no workspace do cliente (Atualizar PGRO). */
+  /** Quando informado, opera no workspace do cliente (Atualizar PGR). */
   lockedClientId?: string;
   /** Esconde o cabecalho interno (a pagina ja explica o contexto). */
   hideHeader?: boolean;
@@ -429,7 +429,7 @@ export function PgroImportWizard({
             {isUpdateMode ? 'Atualizacao no cliente' : 'Importacao assistida'}
           </p>
           <h1 className="page-title page-title--sm">
-            {isUpdateMode ? 'Atualizar PGRO / PGR' : 'Importar PGRO / PGR'}
+            {isUpdateMode ? 'Atualizar PGR' : 'Importar PGR'}
           </h1>
           <p className="page-lead">
             {isUpdateMode
@@ -455,7 +455,7 @@ export function PgroImportWizard({
       ) : null}
 
       <WizardSteps
-        label="Etapas do PGRO"
+        label="Etapas do PGR"
         steps={STEPS}
         currentId={step}
         unlockedIds={
@@ -1031,7 +1031,7 @@ export function PgroImportWizard({
             EPIs necessarios encontrados
           </h2>
           <p className="page-lead">
-            O PGRO sugere necessidades de EPI (nao cria estoque nem EPI com
+            O PGR sugere necessidades de EPI (nao cria estoque nem EPI com
             CA).
           </p>
           {epiNeeds.length === 0 ? (

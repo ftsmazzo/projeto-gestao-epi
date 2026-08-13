@@ -22,7 +22,7 @@ export const OPS_NAV: OpsNavItem[] = [
     href: '/clientes',
     label: 'Clientes atendidos',
     status: 'ready',
-    description: 'Painel operacional por CNPJ, estrutura, PGRO e usuarios.',
+    description: 'Painel operacional por CNPJ, estrutura, PGR e usuarios.',
   },
   {
     href: '/assinaturas',

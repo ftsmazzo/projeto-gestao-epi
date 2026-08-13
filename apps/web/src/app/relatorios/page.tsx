@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ClientPortalLaunchLink } from '../../components/ClientPortalLaunchLink';
 import { RequireAuth } from '../../components/RequireAuth';
 
 /**
@@ -26,9 +27,9 @@ function RelatoriosRetiredContent() {
           implantacao e pelos clientes atendidos.
         </p>
         <div className="btn-row">
-          <Link className="btn btn-primary" href="/portal/login">
+          <ClientPortalLaunchLink className="btn btn-primary">
             Ir ao portal do cliente
-          </Link>
+          </ClientPortalLaunchLink>
           <Link className="btn btn-secondary" href="/clientes">
             Clientes atendidos
           </Link>

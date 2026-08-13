@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { ClientPortalLaunchLink } from './ClientPortalLaunchLink';
 
 type Props = {
   moduleLabel: string;
@@ -16,7 +16,7 @@ export function ClientScopeNotice({ moduleLabel }: Props) {
       <p>
         <strong>{moduleLabel}</strong> nesta tela e o catalogo da Consultoria
         (tenant). O estoque operacional (entrada, saldo e baixa) fica no{' '}
-        <Link href="/portal/login">Painel do Cliente</Link>.
+        <ClientPortalLaunchLink>Painel do Cliente</ClientPortalLaunchLink>.
       </p>
     </div>
   );

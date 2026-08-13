@@ -19,7 +19,7 @@ function ImportarPgroContent() {
   }, [clientId, router]);
 
   if (clientId) {
-    return <p className="page-lead">Abrindo Atualizar PGRO no workspace...</p>;
+    return <p className="page-lead">Abrindo Atualizar PGR no workspace...</p>;
   }
 
   return (
@@ -27,15 +27,15 @@ function ImportarPgroContent() {
       <header className="module-header">
         <div>
           <p className="page-kicker">
-            {fromNovo ? 'Novo cliente · via PGRO' : 'PGRO'}
+            {fromNovo ? 'Novo cliente · via PGR' : 'PGR'}
           </p>
           <h1 className="page-title">
-            {fromNovo ? 'Importar PGRO e criar cliente' : 'Importar PGRO'}
+            {fromNovo ? 'Importar PGR e criar cliente' : 'Importar PGR'}
           </h1>
           <p className="page-lead">
             {fromNovo
               ? 'O assistente cria o cliente a partir do PDF e monta a estrutura. Se preferir so os dados cadastrais, volte e escolha Inserir dados.'
-              : 'Para atualizar um cliente ja existente, abra o workspace e use Atualizar PGRO. Abaixo, o assistente cria/implanta quando ainda nao ha cliente selecionado.'}
+              : 'Para atualizar um cliente ja existente, abra o workspace e use Atualizar PGR. Abaixo, o assistente cria/implanta quando ainda nao ha cliente selecionado.'}
           </p>
         </div>
         <Link
@@ -48,7 +48,7 @@ function ImportarPgroContent() {
 
       {fromNovo ? (
         <p className="notice notice--info" role="status">
-          Voce esta no fluxo de <strong>Novo cliente</strong>. O PGRO e uma das
+          Voce esta no fluxo de <strong>Novo cliente</strong>. O PGR e uma das
           duas formas de comecar — a outra e inserir os dados manualmente.
         </p>
       ) : null}
