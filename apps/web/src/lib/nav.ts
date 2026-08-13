@@ -29,7 +29,7 @@ export const OPS_NAV: OpsNavItem[] = [
     label: 'Assinaturas',
     status: 'ready',
     description:
-      'Custo da vida, redutores, trial, mensalidade e bloqueio por falta de pagamento.',
+      'Saldo de vidas, valor sugerido por cliente e inativar por falta de pagamento.',
   },
   {
     href: '/configuracoes',

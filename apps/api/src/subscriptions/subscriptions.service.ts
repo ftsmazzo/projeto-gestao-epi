@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import {
   buildLifePriceQuote,
-  DEFAULT_LIFE_REDUCERS,
   type ClientSubscriptionRow,
   type LifePriceQuote,
   type SubscriptionsOverview,
@@ -513,10 +512,12 @@ export class SubscriptionsService {
   ) {
     this.assertCanManage(membershipRole);
     const client = await this.servedClients.getById(organizationId, clientId);
-    const existing = await this.requireSubscription(clientId, organizationId);
+    const existing = await this.prisma.clientSubscription.findFirst({
+      where: { servedClientId: clientId, organizationId },
+    });
     const lives =
       dto.lives ??
-      existing.livesSnapshot ??
+      existing?.livesSnapshot ??
       client.allocatedLifeQuota;
 
     await this.servedClients.update(organizationId, userId, clientId, {
@@ -524,17 +525,19 @@ export class SubscriptionsService {
       status: ServedClientStatus.ACTIVE,
     });
 
-    await this.prisma.clientSubscription.update({
-      where: { id: existing.id },
-      data: {
-        status: ClientSubscriptionStatus.ACTIVE,
-        trialLives: null,
-        trialEndsAt: null,
-        livesSnapshot: null,
-        suspendReason: null,
-        suspendedAt: null,
-      },
-    });
+    if (existing) {
+      await this.prisma.clientSubscription.update({
+        where: { id: existing.id },
+        data: {
+          status: ClientSubscriptionStatus.ACTIVE,
+          trialLives: null,
+          trialEndsAt: null,
+          livesSnapshot: null,
+          suspendReason: null,
+          suspendedAt: null,
+        },
+      });
+    }
 
     await this.audit.log({
       action: 'subscription.reactivated',
@@ -581,13 +584,6 @@ export class SubscriptionsService {
       data: {
         organizationId,
         unitPriceCents: 120,
-        reducers: {
-          create: DEFAULT_LIFE_REDUCERS.map((item) => ({
-            minLives: item.minLives,
-            percentOff: item.percentOff,
-            label: item.label,
-          })),
-        },
       },
       include: { reducers: { orderBy: { minLives: 'asc' } } },
     });
