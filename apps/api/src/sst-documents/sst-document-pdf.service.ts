@@ -28,7 +28,26 @@ type TableCell = {
   header?: boolean;
   align?: 'left' | 'center';
   blank?: boolean;
+  fill?: string;
+  textColor?: string;
 };
+
+const RISK_TYPE_FILL: Record<string, string> = {
+  FISICO: '#86efac',
+  QUIMICO: '#fdba74',
+  BIOLOGICO: '#c4b5fd',
+  ERGONOMICO: '#fde047',
+  MECANICO: '#d4d4d8',
+  ACIDENTE: '#93c5fd',
+  PSICOSSOCIAL: '#f9a8d4',
+  OUTROS: '#e2e8f0',
+};
+
+function joinUnique(values: Array<string | null | undefined>): string {
+  return uniqueStrings(
+    values.filter((value): value is string => Boolean(value?.trim())),
+  ).join(', ');
+}
 
 function bufferFromPdf(
   build: (doc: PDFKit.PDFDocument) => void | Promise<void>,
@@ -242,18 +261,20 @@ function drawTableRow(doc: PDFKit.PDFDocument, cells: TableCell[]) {
   const y = doc.y;
   for (const cell of cells) {
     if (cell.header) {
-      doc.rect(x, y, cell.width, h).fill('#0f766e');
+      doc.rect(x, y, cell.width, h).fillAndStroke('#0f766e', '#0f766e');
+    } else if (cell.fill) {
+      doc.rect(x, y, cell.width, h).fillAndStroke(cell.fill, '#334155');
     } else {
       doc
         .rect(x, y, cell.width, h)
-        .strokeColor('#94a3b8')
-        .lineWidth(0.4)
+        .strokeColor('#334155')
+        .lineWidth(0.5)
         .stroke();
     }
     doc
-      .font(cell.header ? 'Helvetica-Bold' : 'Helvetica')
+      .font(cell.header || cell.fill ? 'Helvetica-Bold' : 'Helvetica')
       .fontSize(6.5)
-      .fillColor(cell.header ? '#ffffff' : '#0f172a')
+      .fillColor(cell.textColor ?? (cell.header ? '#ffffff' : '#0f172a'))
       .text(cellLabel(cell), x + 3, y + 3, {
         width: cell.width - 6,
         align: cell.align ?? 'left',
@@ -426,17 +447,19 @@ export class SstDocumentPdfService {
 
     section(doc, '2. AGENTES ASSOCIADOS AS ATIVIDADES');
     const col = {
-      tipo: w * 0.14,
-      agente: w * 0.22,
+      tipo: w * 0.13,
+      agente: w * 0.25,
       fonte: w * 0.28,
-      aval: w * 0.16,
-      expo: w * 0.2,
+      qual: w * 0.1,
+      quant: w * 0.1,
+      expo: w * 0.14,
     };
     drawTableRow(doc, [
       { text: 'TIPO DE RISCO', width: col.tipo, header: true, align: 'center' },
       { text: 'AGENTE AGRESSOR', width: col.agente, header: true, align: 'center' },
       { text: 'FONTE GERADORA', width: col.fonte, header: true, align: 'center' },
-      { text: 'AVALIACAO', width: col.aval, header: true, align: 'center' },
+      { text: 'QUALITATIVA', width: col.qual, header: true, align: 'center' },
+      { text: 'QUANTITATIVA', width: col.quant, header: true, align: 'center' },
       { text: 'TIPO DE EXPOSICAO', width: col.expo, header: true, align: 'center' },
     ]);
     const risks = uniqueRisks(payload.os?.risks ?? []);
@@ -444,22 +467,38 @@ export class SstDocumentPdfService {
       bodyText(doc, 'Nenhum risco vinculado a esta funcao no PGR.');
     } else {
       for (const group of groupOsRisksByCategory(risks)) {
-        group.agents.forEach((risk, index) => {
-          drawTableRow(doc, [
-            {
-              text: index === 0 ? riskCategoryLabel(group.category) : '',
-              width: col.tipo,
-              blank: index > 0,
-            },
-            { text: risk.agent, width: col.agente },
-            { text: risk.source || 'Atividades da funcao', width: col.fonte },
-            { text: risk.evaluation || 'Qualitativa', width: col.aval },
-            {
-              text: risk.exposure || 'Habitual e intermitente',
-              width: col.expo,
-            },
-          ]);
-        });
+        const agents = joinUnique(group.agents.map((risk) => risk.agent));
+        const fontes = joinUnique(
+          group.agents.map((risk) => risk.source || null),
+        );
+        const quantitatives = joinUnique(
+          group.agents.map((risk) => {
+            const match = risk.evaluation?.match(
+              /(\d{1,3}(?:[.,]\d{1,2})?\s*dB\s*\(?A\)?)/i,
+            );
+            return match?.[1] ?? null;
+          }),
+        );
+        const exposure =
+          joinUnique(group.agents.map((risk) => risk.exposure)) ||
+          'Habitual e intermitente';
+        drawTableRow(doc, [
+          {
+            text: riskCategoryLabel(group.category).toUpperCase(),
+            width: col.tipo,
+            align: 'center',
+            fill: RISK_TYPE_FILL[group.category] ?? RISK_TYPE_FILL.OUTROS,
+          },
+          { text: agents, width: col.agente },
+          { text: fontes, width: col.fonte },
+          { text: 'X', width: col.qual, align: 'center' },
+          {
+            text: quantitatives || 'NA',
+            width: col.quant,
+            align: 'center',
+          },
+          { text: exposure, width: col.expo, align: 'center' },
+        ]);
       }
     }
 
