@@ -92,9 +92,15 @@ function expandEquipmentSearchTerms(term: string): string[] {
   const extras: string[] = [];
   if (folded.includes('viseira')) extras.push('protetor facial');
   if (folded.includes('protetor facial')) extras.push('viseira');
-  if (folded.includes('oculos')) {
-    extras.push('protetor ocular');
+  if (folded.includes('oculos')) extras.push('protetor ocular');
+  if (folded.includes('botina') || folded.includes('calcado')) {
+    extras.push('botina', 'calcado');
   }
+  if (folded.includes('plug')) extras.push('insercao', 'auricular');
+  if (folded.includes('concha') || folded.includes('abafador')) {
+    extras.push('concha', 'abafador');
+  }
+  if (folded.includes('pff')) extras.push('pff2', 'pff1');
   return [...new Set([term, ...extras].map((t) => t.trim()).filter(Boolean))];
 }
 
