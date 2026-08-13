@@ -3,6 +3,7 @@
 import type {
   ConfirmPgroImportPayload,
   EpiNeed,
+  OccupationalRisk,
   OccupationalRiskCategory,
   PgroCompanyData,
   PgroExtractedEpiNeed,
@@ -14,13 +15,20 @@ import type {
 } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { listOccupationalRisks } from '../lib/client-structure';
 import { storeClientAccessOnce } from '../lib/client-access-session';
 import { formatCnpj, formatCnpjInput } from '../lib/cnpj';
 import { listEpiNeeds } from '../lib/epi-needs';
 import { confirmPgroImport, previewPgroImport } from '../lib/pgro';
 import { getServedClient } from '../lib/served-clients';
 import { WizardSteps } from './ui/WizardSteps';
+
+function newManualId() {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? crypto.randomUUID()
+    : `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 type Step =
   | 'upload'
@@ -133,6 +141,7 @@ export function PgroImportWizard({
   const [risks, setRisks] = useState<PgroExtractedRisk[]>([]);
   const [epiNeeds, setEpiNeeds] = useState<PgroExtractedEpiNeed[]>([]);
   const [catalogNeeds, setCatalogNeeds] = useState<EpiNeed[]>([]);
+  const [catalogRisks, setCatalogRisks] = useState<OccupationalRisk[]>([]);
   const [summary, setSummary] = useState<PgroImportConfirmSummary | null>(null);
 
   useEffect(() => {
@@ -155,6 +164,9 @@ export function PgroImportWizard({
     void listEpiNeeds({ status: 'active' })
       .then(setCatalogNeeds)
       .catch(() => setCatalogNeeds([]));
+    void listOccupationalRisks({ status: 'active' })
+      .then(setCatalogRisks)
+      .catch(() => setCatalogRisks([]));
   }, []);
 
   const extractionWarnings = useMemo(
@@ -192,6 +204,57 @@ export function PgroImportWizard({
     }),
     [sectors, functions, risks, epiNeeds],
   );
+  const includedSectorNames = useMemo(
+    () =>
+      [
+        ...new Set(
+          [
+            ...sectors.filter((s) => s.included).map((s) => s.name.trim()),
+            ...functions
+              .filter((f) => f.included && f.sectorName)
+              .map((f) => f.sectorName!.trim()),
+          ].filter(Boolean),
+        ),
+      ].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [sectors, functions],
+  );
+  const includedFunctionNames = useMemo(
+    () =>
+      functions
+        .filter((f) => f.included)
+        .map((f) => f.name.trim())
+        .filter(Boolean),
+    [functions],
+  );
+  const includedRiskNames = useMemo(
+    () =>
+      risks
+        .filter((r) => r.included)
+        .map((r) => r.name.trim())
+        .filter(Boolean),
+    [risks],
+  );
+
+  function ensureSectorNamed(name: string) {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const exists = sectors.some(
+      (s) => s.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (exists) return;
+    setSectors((prev) => [
+      ...prev,
+      {
+        tempId: newManualId(),
+        name: trimmed,
+        rawText: 'Incluido na revisao',
+        included: true,
+        confidence: 'high',
+        source: 'KEYWORD',
+        gheName: null,
+      },
+    ]);
+  }
 
   function applyRun(run: PgroImportRun) {
     setRunId(run.id);
@@ -699,7 +762,7 @@ export function PgroImportWizard({
       {step === 'setores' ? (
         <ReviewList
           title="Setores encontrados"
-          empty="Nenhum setor extraido. Voce pode seguir e criar depois na estrutura."
+          empty="Nenhum setor extraido. Inclua abaixo o que o scan nao pegou."
           items={highSectors}
           lowItems={lowSectors}
           onToggle={(tempId) =>
@@ -718,6 +781,25 @@ export function PgroImportWizard({
               ),
             )
           }
+          footer={
+            <AddSectorForm
+              existingNames={sectors.map((s) => s.name)}
+              onAdd={(name) =>
+                setSectors((prev) => [
+                  ...prev,
+                  {
+                    tempId: newManualId(),
+                    name,
+                    rawText: 'Incluido na revisao',
+                    included: true,
+                    confidence: 'high',
+                    source: 'KEYWORD',
+                    gheName: null,
+                  },
+                ])
+              }
+            />
+          }
           onPrev={goPrev}
           onNext={goNext}
         />
@@ -727,7 +809,9 @@ export function PgroImportWizard({
         <section className="surface">
           <h2 className="page-title page-title--sm">Funcoes encontradas</h2>
           {functions.length === 0 ? (
-            <p className="page-lead">Nenhuma funcao extraida com confianca.</p>
+            <p className="page-lead">
+              Nenhuma funcao extraida. Inclua abaixo a que o scan nao pegou.
+            </p>
           ) : (
             <>
               <FunctionTable
@@ -793,6 +877,28 @@ export function PgroImportWizard({
               ) : null}
             </>
           )}
+          <AddFunctionForm
+            sectorOptions={includedSectorNames}
+            existingNames={functions.map((f) => f.name)}
+            onAdd={(name, sectorName) => {
+              if (sectorName) ensureSectorNamed(sectorName);
+              setFunctions((prev) => [
+                ...prev,
+                {
+                  tempId: newManualId(),
+                  name,
+                  sectorName: sectorName || null,
+                  activityDescription: null,
+                  environmentDescription: null,
+                  gheName: null,
+                  rawText: 'Incluido na revisao',
+                  included: true,
+                  confidence: 'high',
+                  source: 'KEYWORD',
+                },
+              ]);
+            }}
+          />
           <div className="btn-row">
             <button type="button" className="btn btn-secondary" onClick={goPrev}>
               Voltar
@@ -808,7 +914,9 @@ export function PgroImportWizard({
         <section className="surface">
           <h2 className="page-title page-title--sm">Riscos encontrados</h2>
           {risks.length === 0 ? (
-            <p className="page-lead">Nenhum risco extraido.</p>
+            <p className="page-lead">
+              Nenhum risco extraido. Inclua abaixo o que o scan nao pegou.
+            </p>
           ) : (
             <div className="table-wrap">
               <table className="data-table">
@@ -881,6 +989,31 @@ export function PgroImportWizard({
               </table>
             </div>
           )}
+          <AddRiskForm
+            catalogRisks={catalogRisks}
+            functionOptions={includedFunctionNames}
+            existingNames={risks.map((r) => r.name)}
+            onAdd={(item) =>
+              setRisks((prev) => [
+                ...prev,
+                {
+                  tempId: newManualId(),
+                  name: item.name,
+                  category: item.category,
+                  exposure: null,
+                  source: 'Incluido na revisao',
+                  possibleDamage: null,
+                  riskLevel: null,
+                  functionNames: item.functionNames,
+                  rawText: 'Incluido na revisao',
+                  included: true,
+                  confidence: 'high',
+                  extractionSource: 'KEYWORD',
+                  gheName: null,
+                },
+              ])
+            }
+          />
           <div className="btn-row">
             <button type="button" className="btn btn-secondary" onClick={goPrev}>
               Voltar
@@ -903,8 +1036,8 @@ export function PgroImportWizard({
           </p>
           {epiNeeds.length === 0 ? (
             <p className="page-lead">
-              Nenhum EPI identificado. Voce ainda pode importar setores,
-              funcoes e riscos.
+              Nenhum EPI identificado. Inclua abaixo a necessidade que o scan
+              nao pegou.
             </p>
           ) : (
             <div className="table-wrap">
@@ -991,6 +1124,31 @@ export function PgroImportWizard({
               </table>
             </div>
           )}
+          <AddNeedForm
+            catalogNeeds={catalogNeeds}
+            functionOptions={includedFunctionNames}
+            riskOptions={includedRiskNames}
+            existingNames={epiNeeds.map((e) => e.suggestedName)}
+            onAdd={(item) =>
+              setEpiNeeds((prev) => [
+                ...prev,
+                {
+                  tempId: newManualId(),
+                  extractedText: item.suggestedName,
+                  suggestedName: item.suggestedName,
+                  matchedEpiNeedId: item.matchedEpiNeedId,
+                  matchedEpiNeedName: item.matchedEpiNeedName,
+                  createNew: item.createNew,
+                  functionNames: item.functionNames,
+                  riskNames: item.riskNames,
+                  included: true,
+                  confidence: 'high',
+                  extractionSource: 'KEYWORD',
+                  gheName: null,
+                },
+              ])
+            }
+          />
           <div className="btn-row">
             <button type="button" className="btn btn-secondary" onClick={goPrev}>
               Voltar
@@ -1096,6 +1254,7 @@ function ReviewList({
   empty,
   items,
   lowItems = [],
+  footer,
   onToggle,
   onRename,
   onPrev,
@@ -1105,6 +1264,7 @@ function ReviewList({
   empty: string;
   items: PgroExtractedSector[];
   lowItems?: PgroExtractedSector[];
+  footer?: ReactNode;
   onToggle: (tempId: string) => void;
   onRename: (tempId: string, name: string) => void;
   onPrev: () => void;
@@ -1172,6 +1332,7 @@ function ReviewList({
           ) : null}
         </>
       )}
+      {footer}
       <div className="btn-row">
         <button type="button" className="btn btn-secondary" onClick={onPrev}>
           Voltar
@@ -1244,5 +1405,476 @@ function FunctionTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function ManualAddPanel({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="form-panel" style={{ marginTop: '1.25rem' }}>
+      <p className="page-kicker">{title}</p>
+      {hint ? <p className="field-hint">{hint}</p> : null}
+      {children}
+    </div>
+  );
+}
+
+function hasSameName(existing: string[], name: string) {
+  const key = name.trim().toLowerCase();
+  return existing.some((item) => item.trim().toLowerCase() === key);
+}
+
+function AddSectorForm({
+  existingNames,
+  onAdd,
+}: {
+  existingNames: string[];
+  onAdd: (name: string) => void;
+}) {
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+
+  return (
+    <ManualAddPanel
+      title="Incluir setor que o scan nao pegou"
+      hint="Use quando o PGR menciona um setor e a leitura pulou."
+    >
+      <form
+        className="form-grid"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const trimmed = name.trim();
+          if (trimmed.length < 2) {
+            setError('Informe o nome do setor.');
+            return;
+          }
+          if (hasSameName(existingNames, trimmed)) {
+            setError('Esse setor ja esta na lista.');
+            return;
+          }
+          onAdd(trimmed);
+          setName('');
+          setError('');
+        }}
+      >
+        <div className="field">
+          <label htmlFor="manual-sector">Nome do setor</label>
+          <input
+            id="manual-sector"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            minLength={2}
+            required
+            placeholder="Ex.: Almoxarifado"
+          />
+        </div>
+        <div className="field" style={{ alignSelf: 'end' }}>
+          <button type="submit" className="btn btn-secondary">
+            Incluir setor
+          </button>
+        </div>
+      </form>
+      {error ? <p className="field-hint">{error}</p> : null}
+    </ManualAddPanel>
+  );
+}
+
+function AddFunctionForm({
+  sectorOptions,
+  existingNames,
+  onAdd,
+}: {
+  sectorOptions: string[];
+  existingNames: string[];
+  onAdd: (name: string, sectorName: string | null) => void;
+}) {
+  const [name, setName] = useState('');
+  const [sectorChoice, setSectorChoice] = useState(sectorOptions[0] ?? '');
+  const [newSector, setNewSector] = useState('');
+  const [error, setError] = useState('');
+
+  return (
+    <ManualAddPanel
+      title="Incluir funcao que o scan nao pegou"
+      hint="Associe a um setor ja revisado ou crie o setor junto."
+    >
+      <form
+        className="form-grid"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const trimmed = name.trim();
+          if (trimmed.length < 2) {
+            setError('Informe o nome da funcao.');
+            return;
+          }
+          if (hasSameName(existingNames, trimmed)) {
+            setError('Essa funcao ja esta na lista.');
+            return;
+          }
+          const sectorName =
+            sectorChoice === '__new'
+              ? newSector.trim() || null
+              : sectorChoice.trim() || null;
+          if (sectorChoice === '__new' && !sectorName) {
+            setError('Informe o novo setor.');
+            return;
+          }
+          onAdd(trimmed, sectorName);
+          setName('');
+          setNewSector('');
+          setError('');
+        }}
+      >
+        <div className="field">
+          <label htmlFor="manual-function">Nome da funcao</label>
+          <input
+            id="manual-function"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            minLength={2}
+            required
+            placeholder="Ex.: Operador de empilhadeira"
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="manual-function-sector">Setor</label>
+          <select
+            id="manual-function-sector"
+            value={sectorChoice}
+            onChange={(e) => setSectorChoice(e.target.value)}
+          >
+            <option value="">Geral</option>
+            {sectorOptions.map((sector) => (
+              <option key={sector} value={sector}>
+                {sector}
+              </option>
+            ))}
+            <option value="__new">Outro setor...</option>
+          </select>
+        </div>
+        {sectorChoice === '__new' ? (
+          <div className="field">
+            <label htmlFor="manual-function-new-sector">Novo setor</label>
+            <input
+              id="manual-function-new-sector"
+              value={newSector}
+              onChange={(e) => setNewSector(e.target.value)}
+              minLength={2}
+              required
+              placeholder="Ex.: Expedicao"
+            />
+          </div>
+        ) : null}
+        <div className="field" style={{ alignSelf: 'end' }}>
+          <button type="submit" className="btn btn-secondary">
+            Incluir funcao
+          </button>
+        </div>
+      </form>
+      {error ? <p className="field-hint">{error}</p> : null}
+    </ManualAddPanel>
+  );
+}
+
+function NameChecklist({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  if (options.length === 0) return null;
+  return (
+    <fieldset className="field" style={{ gridColumn: '1 / -1' }}>
+      <legend>{label}</legend>
+      <p className="field-hint">
+        Sem marcacao, o item entra para todas as funcoes incluidas.
+      </p>
+      <div
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '0.5rem 1rem',
+          marginTop: '0.35rem',
+        }}
+      >
+        {options.map((option) => {
+          const checked = selected.includes(option);
+          return (
+            <label
+              key={option}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() =>
+                  onChange(
+                    checked
+                      ? selected.filter((item) => item !== option)
+                      : [...selected, option],
+                  )
+                }
+              />
+              {option}
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+function AddRiskForm({
+  catalogRisks,
+  functionOptions,
+  existingNames,
+  onAdd,
+}: {
+  catalogRisks: OccupationalRisk[];
+  functionOptions: string[];
+  existingNames: string[];
+  onAdd: (item: {
+    name: string;
+    category: OccupationalRiskCategory;
+    functionNames: string[];
+  }) => void;
+}) {
+  const [catalogId, setCatalogId] = useState('');
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState<OccupationalRiskCategory>('FISICO');
+  const [functionNames, setFunctionNames] = useState<string[]>([]);
+  const [error, setError] = useState('');
+
+  return (
+    <ManualAddPanel
+      title="Incluir risco que o scan nao pegou"
+      hint="Escolha um risco comum do catalogo ou escreva o nome."
+    >
+      <form
+        className="form-grid"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const catalog = catalogRisks.find((risk) => risk.id === catalogId);
+          const trimmed = (catalog?.name ?? name).trim();
+          const nextCategory = catalog?.category ?? category;
+          if (trimmed.length < 2) {
+            setError('Informe o risco ou escolha no catalogo.');
+            return;
+          }
+          if (hasSameName(existingNames, trimmed)) {
+            setError('Esse risco ja esta na lista.');
+            return;
+          }
+          onAdd({
+            name: trimmed,
+            category: nextCategory,
+            functionNames,
+          });
+          setCatalogId('');
+          setName('');
+          setFunctionNames([]);
+          setError('');
+        }}
+      >
+        <div className="field">
+          <label htmlFor="manual-risk-catalog">Catalogo de riscos</label>
+          <select
+            id="manual-risk-catalog"
+            value={catalogId}
+            onChange={(e) => {
+              const id = e.target.value;
+              setCatalogId(id);
+              const match = catalogRisks.find((risk) => risk.id === id);
+              if (match) {
+                setName(match.name);
+                setCategory(match.category);
+              }
+            }}
+          >
+            <option value="">Digitar um risco novo</option>
+            {catalogRisks.map((risk) => (
+              <option key={risk.id} value={risk.id}>
+                {risk.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="manual-risk-name">Nome do risco</label>
+          <input
+            id="manual-risk-name"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setCatalogId('');
+            }}
+            minLength={2}
+            required={!catalogId}
+            placeholder="Ex.: Ruido"
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="manual-risk-category">Categoria</label>
+          <select
+            id="manual-risk-category"
+            value={category}
+            onChange={(e) =>
+              setCategory(e.target.value as OccupationalRiskCategory)
+            }
+          >
+            {RISK_CATEGORIES.map((cat) => (
+              <option key={cat.value} value={cat.value}>
+                {cat.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field" style={{ alignSelf: 'end' }}>
+          <button type="submit" className="btn btn-secondary">
+            Incluir risco
+          </button>
+        </div>
+        <NameChecklist
+          label="Vincular a funcoes"
+          options={functionOptions}
+          selected={functionNames}
+          onChange={setFunctionNames}
+        />
+      </form>
+      {error ? <p className="field-hint">{error}</p> : null}
+    </ManualAddPanel>
+  );
+}
+
+function AddNeedForm({
+  catalogNeeds,
+  functionOptions,
+  riskOptions,
+  existingNames,
+  onAdd,
+}: {
+  catalogNeeds: EpiNeed[];
+  functionOptions: string[];
+  riskOptions: string[];
+  existingNames: string[];
+  onAdd: (item: {
+    suggestedName: string;
+    matchedEpiNeedId: string | null;
+    matchedEpiNeedName: string | null;
+    createNew: boolean;
+    functionNames: string[];
+    riskNames: string[];
+  }) => void;
+}) {
+  const [catalogId, setCatalogId] = useState('');
+  const [name, setName] = useState('');
+  const [functionNames, setFunctionNames] = useState<string[]>([]);
+  const [riskNames, setRiskNames] = useState<string[]>([]);
+  const [error, setError] = useState('');
+
+  return (
+    <ManualAddPanel
+      title="Incluir necessidade que o scan nao pegou"
+      hint="Escolha um tipo do catalogo ou crie o nome operacional."
+    >
+      <form
+        className="form-grid"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const catalog = catalogNeeds.find((need) => need.id === catalogId);
+          const trimmed = (catalog?.name ?? name).trim();
+          if (trimmed.length < 2) {
+            setError('Informe a necessidade ou escolha no catalogo.');
+            return;
+          }
+          if (hasSameName(existingNames, trimmed)) {
+            setError('Essa necessidade ja esta na lista.');
+            return;
+          }
+          onAdd({
+            suggestedName: trimmed,
+            matchedEpiNeedId: catalog?.id ?? null,
+            matchedEpiNeedName: catalog?.name ?? null,
+            createNew: !catalog,
+            functionNames,
+            riskNames,
+          });
+          setCatalogId('');
+          setName('');
+          setFunctionNames([]);
+          setRiskNames([]);
+          setError('');
+        }}
+      >
+        <div className="field">
+          <label htmlFor="manual-need-catalog">Catalogo de necessidades</label>
+          <select
+            id="manual-need-catalog"
+            value={catalogId}
+            onChange={(e) => {
+              const id = e.target.value;
+              setCatalogId(id);
+              const match = catalogNeeds.find((need) => need.id === id);
+              setName(match?.name ?? '');
+            }}
+          >
+            <option value="">Digitar uma necessidade nova</option>
+            {catalogNeeds.map((need) => (
+              <option key={need.id} value={need.id}>
+                {need.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="manual-need-name">Nome da necessidade</label>
+          <input
+            id="manual-need-name"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+              setCatalogId('');
+            }}
+            minLength={2}
+            required={!catalogId}
+            placeholder="Ex.: Luva de raspa"
+          />
+        </div>
+        <div className="field" style={{ alignSelf: 'end' }}>
+          <button type="submit" className="btn btn-secondary">
+            Incluir necessidade
+          </button>
+        </div>
+        <NameChecklist
+          label="Vincular a funcoes"
+          options={functionOptions}
+          selected={functionNames}
+          onChange={setFunctionNames}
+        />
+        <NameChecklist
+          label="Vincular a riscos"
+          options={riskOptions}
+          selected={riskNames}
+          onChange={setRiskNames}
+        />
+      </form>
+      {error ? <p className="field-hint">{error}</p> : null}
+    </ManualAddPanel>
   );
 }
