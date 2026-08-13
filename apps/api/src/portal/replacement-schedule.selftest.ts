@@ -45,6 +45,14 @@ function run() {
   assert.strictEqual(leaked?.value, 6);
   assert.strictEqual(leaked?.unit, EpiUsefulLifeUnit.MESES);
 
+  const caName = resolveUsefulLife({
+    name: 'CALCADO DE SEGURANCA BIQUEIRA DE ACO',
+    value: 1,
+    unit: 'DIAS',
+  });
+  assert.strictEqual(caName?.value, 6);
+  assert.strictEqual(caName?.unit, EpiUsefulLifeUnit.MESES);
+
   const helmet = resolveUsefulLife({ name: 'Capacete de Seguranca' });
   assert.strictEqual(helmet?.value, 5);
   assert.strictEqual(helmet?.unit, EpiUsefulLifeUnit.ANOS);

@@ -2870,10 +2870,17 @@ export class PortalService {
         linkedEpis: linkedEpis.map((item) => {
           const itemLife =
             resolveUsefulLife({
+              name: epiNeed.name,
+              category: epiNeed.category,
+              value: item.usefulLifeValue,
+              unit: item.usefulLifeUnit,
+            }) ??
+            resolveUsefulLife({
               name: item.name,
               value: item.usefulLifeValue,
               unit: item.usefulLifeUnit,
-            }) ?? needLife;
+            }) ??
+            needLife;
           return {
             epiItemId: item.epiItemId,
             name: item.name,
@@ -3838,14 +3845,20 @@ export class PortalService {
             value: req.epiNeed.usefulLifeValue,
             unit: req.epiNeed.usefulLifeUnit,
           });
-          const lifeValue =
-            item.usefulLifeValue != null && item.usefulLifeValue > 0
-              ? item.usefulLifeValue
-              : epi.usefulLifeValue ?? needLife?.value ?? null;
-          const lifeUnit =
-            item.usefulLifeValue != null && item.usefulLifeValue > 0
-              ? (item.usefulLifeUnit ?? EpiUsefulLifeUnit.DIAS)
-              : (epi.usefulLifeUnit ?? needLife?.unit ?? null);
+          const resolvedLife = resolveUsefulLife({
+            name: req.epiNeed.name,
+            category: req.epiNeed.category,
+            value:
+              item.usefulLifeValue != null && item.usefulLifeValue > 0
+                ? item.usefulLifeValue
+                : epi.usefulLifeValue,
+            unit:
+              item.usefulLifeValue != null && item.usefulLifeValue > 0
+                ? (item.usefulLifeUnit ?? EpiUsefulLifeUnit.DIAS)
+                : (epi.usefulLifeUnit ?? needLife?.unit ?? null),
+          }) ?? needLife;
+          const lifeValue = resolvedLife?.value ?? null;
+          const lifeUnit = resolvedLife?.unit ?? null;
           const intervalDays = resolveRestrictiveReplacementDays(
             intervalsByNeed.get(item.epiNeedId) ?? [],
           );

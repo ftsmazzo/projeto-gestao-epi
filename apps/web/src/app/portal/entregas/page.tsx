@@ -94,11 +94,14 @@ function lifeDefaultsFromRow(
     row.suggestedUsefulLifeUnit,
   );
   const days =
-    fromEpi ??
-    fromNeed ??
-    (row.replacementIntervalDays != null && row.replacementIntervalDays > 1
-      ? row.replacementIntervalDays
-      : null);
+    fromEpi != null && fromEpi === 1 && fromNeed != null && fromNeed > 1
+      ? fromNeed
+      : (fromEpi ??
+        fromNeed ??
+        (row.replacementIntervalDays != null &&
+        row.replacementIntervalDays > 1
+          ? row.replacementIntervalDays
+          : null));
   return {
     usefulLifeValue: days != null ? String(days) : '',
     usefulLifeUnit: 'DIAS',

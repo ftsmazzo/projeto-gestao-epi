@@ -59,13 +59,13 @@ export function standardUsefulLifeForNeed(
   if (key.length >= 8) {
     let best: { spec: UsefulLifeSpec; len: number } | null = null;
     for (const seed of DEFAULT_EPI_NEED_SEEDS) {
-      const nameKey = normalizeNeedKey(seed.name);
-      if (nameKey.length < 8) continue;
-      if (key.includes(nameKey) || nameKey.includes(key)) {
-        if (!best || nameKey.length > best.len) {
+      const candidates = [seed.name, ...seed.aliases].map(normalizeNeedKey);
+      for (const candidate of candidates) {
+        if (candidate.length < 10) continue;
+        if (key.includes(candidate) && (!best || candidate.length > best.len)) {
           best = {
             spec: specOf(seed.usefulLifeValue, seed.usefulLifeUnit),
-            len: nameKey.length,
+            len: candidate.length,
           };
         }
       }

@@ -839,11 +839,6 @@ a.btn-danger:hover {
   color: var(--color-accent-hover);
 }
 
-.ops-nav-link.is-active {
-  background: var(--color-accent-muted);
-  color: var(--color-accent-active);
-}
-
 .ops-nav-badge {
   flex-shrink: 0;
   font-size: 0.68rem;
