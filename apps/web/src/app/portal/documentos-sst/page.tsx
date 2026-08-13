@@ -24,7 +24,9 @@ import {
 function formatDate(iso: string | null) {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString('pt-BR');
+    return new Date(iso).toLocaleString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+    });
   } catch {
     return iso;
   }

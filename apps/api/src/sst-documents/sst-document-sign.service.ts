@@ -276,9 +276,10 @@ export class SstDocumentSignService {
       }),
     ]);
     return {
-      consultoriaLogoPath: org?.logoPath
-        ? resolveOrgLogoAbsolutePath(org.logoPath)
-        : null,
+      consultoriaLogoPath: resolveOrgLogoAbsolutePath(
+        org?.logoPath,
+        organizationId,
+      ),
       companyLogoPath: profile?.logoPath
         ? resolveClientLogoAbsolutePath(profile.logoPath)
         : null,

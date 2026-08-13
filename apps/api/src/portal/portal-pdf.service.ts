@@ -11,7 +11,9 @@ import PDFDocument from 'pdfkit';
 
 function formatDateTime(iso: string) {
   try {
-    return new Date(iso).toLocaleString('pt-BR');
+    return new Date(iso).toLocaleString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+    });
   } catch {
     return iso;
   }
@@ -19,7 +21,9 @@ function formatDateTime(iso: string) {
 
 function formatDate(iso: string) {
   try {
-    return new Date(iso).toLocaleDateString('pt-BR');
+    return new Date(iso).toLocaleDateString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+    });
   } catch {
     return iso;
   }

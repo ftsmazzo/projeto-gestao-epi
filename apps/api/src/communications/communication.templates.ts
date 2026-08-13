@@ -172,6 +172,7 @@ export function buildFacialEnrollmentInviteWhatsapp(
   const firstName =
     input.workerName.trim().split(/\s+/)[0] || input.workerName;
   const expiresLabel = new Date(input.expiresAtIso).toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     dateStyle: 'short',
     timeStyle: 'short',
   });
@@ -198,6 +199,7 @@ export function buildSstDocumentInviteWhatsapp(input: SstDocumentInviteInput) {
   const firstName =
     input.workerName.trim().split(/\s+/)[0] || input.workerName;
   const expiresLabel = new Date(input.expiresAtIso).toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
     dateStyle: 'short',
     timeStyle: 'short',
   });

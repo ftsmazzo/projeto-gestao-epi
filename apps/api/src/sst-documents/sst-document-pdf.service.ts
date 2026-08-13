@@ -51,13 +51,23 @@ function joinUnique(values: Array<string | null | undefined>): string {
   ).join(', ');
 }
 
+const BR_TZ = 'America/Sao_Paulo';
+
+function formatDateTimeBr(value: string | Date) {
+  try {
+    return new Date(value).toLocaleString('pt-BR', { timeZone: BR_TZ });
+  } catch {
+    return String(value);
+  }
+}
+
 function bufferFromPdf(
   build: (doc: PDFKit.PDFDocument) => void | Promise<void>,
 ): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
-      margin: 36,
+      margins: { top: 36, bottom: 44, left: 36, right: 36 },
       bufferPages: true,
       info: { Title: 'ProntEPI — Documento SST', Author: 'ProntEPI' },
     });
@@ -65,24 +75,22 @@ function bufferFromPdf(
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
-    const paintFrame = () => {
-      const m = 18;
-      doc.save();
-      doc
-        .rect(m, m, doc.page.width - 2 * m, doc.page.height - 2 * m)
-        .lineWidth(1.5)
-        .strokeColor('#0f766e')
-        .stroke();
-      doc.restore();
-    };
-    paintFrame();
-    doc.on('pageAdded', paintFrame);
 
     Promise.resolve(build(doc))
       .then(() => {
         const range = doc.bufferedPageRange();
         for (let i = 0; i < range.count; i += 1) {
           doc.switchToPage(range.start + i);
+          const previousBottom = doc.page.margins.bottom;
+          doc.page.margins.bottom = 0;
+          const m = 18;
+          doc.save();
+          doc
+            .rect(m, m, doc.page.width - 2 * m, doc.page.height - 2 * m)
+            .lineWidth(1.5)
+            .strokeColor('#0f766e')
+            .stroke();
+          doc.restore();
           doc
             .font('Helvetica')
             .fontSize(7)
@@ -90,9 +98,15 @@ function bufferFromPdf(
             .text(
               `ProntEPI  ·  pagina ${i + 1} de ${range.count}`,
               36,
-              doc.page.height - 28,
-              { width: doc.page.width - 72, align: 'center' },
+              doc.page.height - 30,
+              {
+                width: doc.page.width - 72,
+                align: 'center',
+                lineBreak: false,
+                height: 10,
+              },
             );
+          doc.page.margins.bottom = previousBottom;
         }
         doc.end();
       })
@@ -119,8 +133,20 @@ async function drawLogo(
   h: number,
 ) {
   if (!filePath || !existsSync(filePath)) return;
-  if (/\.svg$/i.test(filePath)) return;
   try {
+    if (/\.svg$/i.test(filePath)) {
+      const imported = await import('svg-to-pdfkit');
+      const svgToPdf =
+        (imported as { default?: typeof imported.default }).default ??
+        (imported as unknown as typeof imported.default);
+      const svg = await readFile(filePath, 'utf8');
+      svgToPdf(doc, svg, x, y, {
+        width: w,
+        height: h,
+        preserveAspectRatio: 'xMidYMid meet',
+      });
+      return;
+    }
     const img = await readFile(filePath);
     doc.image(img, x, y, { fit: [w, h], align: 'center', valign: 'center' });
   } catch {
@@ -373,26 +399,34 @@ async function drawFaceEvidence(
   payload: SstDocumentPayload,
   options: SstPdfBuildOptions,
 ) {
-  section(doc, 'CIENCIA / ASSINATURA DO TRABALHADOR');
-  const boxH = 132;
-  ensureSpace(doc, boxH + 8);
+  const boxH = 86;
   const x = doc.page.margins.left;
   const w = pageInnerWidth(doc);
-  const y = doc.y;
+  ensureSpace(doc, 22 + boxH + 24);
+  const titleY = doc.y;
+  doc.rect(x, titleY, w, 16).fill('#ecfdf5');
+  doc
+    .fillColor('#0f766e')
+    .font('Helvetica-Bold')
+    .fontSize(8)
+    .text('CIENCIA / ASSINATURA DO TRABALHADOR', x + 6, titleY + 4, {
+      width: w - 12,
+    });
+  const y = titleY + 16;
   doc.rect(x, y, w, boxH).strokeColor('#94a3b8').lineWidth(0.6).stroke();
-  doc.rect(x, y, 110, boxH).strokeColor('#94a3b8').lineWidth(0.6).stroke();
+  doc.rect(x, y, 86, boxH).strokeColor('#94a3b8').lineWidth(0.6).stroke();
 
   const photoPath = options.evidenceAbsolutePath;
   if (photoPath && existsSync(photoPath)) {
     try {
       const img = await readFile(photoPath);
-      doc.image(img, x + 6, y + 6, { fit: [98, 120] });
+      doc.image(img, x + 6, y + 6, { fit: [74, 74] });
     } catch {
       doc
         .font('Helvetica')
         .fontSize(7)
         .fillColor('#64748b')
-        .text('Foto indisponivel', x + 10, y + 58, { width: 90, align: 'center' });
+        .text('Foto indisponivel', x + 8, y + 36, { width: 70, align: 'center' });
     }
   } else {
     doc
@@ -404,25 +438,25 @@ async function drawFaceEvidence(
           ? 'Foto nao encontrada'
           : 'Aguardando ciencia facial',
         x + 8,
-        y + 58,
-        { width: 94, align: 'center' },
+        y + 36,
+        { width: 70, align: 'center' },
       );
   }
 
-  const textX = x + 118;
-  const textW = w - 126;
+  const textX = x + 94;
+  const textW = w - 102;
   doc
     .font('Helvetica-Bold')
     .fontSize(9)
     .fillColor('#0f172a')
-    .text(payload.worker.name, textX, y + 12, { width: textW });
+    .text(payload.worker.name, textX, y + 8, { width: textW });
   doc
     .font('Helvetica')
     .fontSize(8)
     .fillColor('#334155')
-    .text(`CPF: ${payload.worker.cpfMasked}`, textX, y + 28, { width: textW });
+    .text(`CPF: ${payload.worker.cpfMasked}`, textX, y + 22, { width: textW });
   if (payload.worker.jobFunctionName) {
-    doc.text(`Funcao: ${payload.worker.jobFunctionName}`, textX, y + 42, {
+    doc.text(`Funcao: ${payload.worker.jobFunctionName}`, textX, y + 34, {
       width: textW,
     });
   }
@@ -432,19 +466,9 @@ async function drawFaceEvidence(
       .fontSize(8)
       .fillColor('#047857')
       .text(
-        `Ciencia confirmada por biometria facial em ${new Date(options.signedAt).toLocaleString('pt-BR')}.`,
+        `Ciencia confirmada por biometria facial em ${formatDateTimeBr(options.signedAt)}.`,
         textX,
-        y + 64,
-        { width: textW },
-      );
-    doc
-      .font('Helvetica')
-      .fontSize(7)
-      .fillColor('#64748b')
-      .text(
-        'A foto ao lado e a evidencia da confirmacao, no mesmo padrao do comprovante de entrega de EPI.',
-        textX,
-        y + 90,
+        y + 50,
         { width: textW },
       );
   } else {
@@ -452,11 +476,24 @@ async function drawFaceEvidence(
       .font('Helvetica-Oblique')
       .fontSize(8)
       .fillColor('#b45309')
-      .text('Aguardando ciencia facial do trabalhador.', textX, y + 64, {
+      .text('Aguardando ciencia facial do trabalhador.', textX, y + 50, {
         width: textW,
       });
   }
-  doc.y = y + boxH + 8;
+  doc.y = y + boxH + 6;
+}
+
+function writeGeneratedNote(doc: PDFKit.PDFDocument, generatedAt: string) {
+  const note = `Documento gerado pelo ProntEPI em ${formatDateTimeBr(generatedAt)}.`;
+  if (doc.y + 12 > doc.page.height - doc.page.margins.bottom) return;
+  doc
+    .font('Helvetica')
+    .fontSize(7)
+    .fillColor('#64748b')
+    .text(note, {
+      lineBreak: false,
+      height: 10,
+    });
 }
 
 @Injectable()
@@ -644,13 +681,7 @@ export class SstDocumentPdfService {
     }
 
     await drawFaceEvidence(doc, payload, options);
-    doc
-      .font('Helvetica')
-      .fontSize(7)
-      .fillColor('#64748b')
-      .text(
-        `Documento gerado pelo ProntEPI em ${new Date(payload.generatedAt).toLocaleString('pt-BR')}.`,
-      );
+    writeGeneratedNote(doc, payload.generatedAt);
   }
 
   private async renderIntegration(
@@ -729,7 +760,7 @@ export class SstDocumentPdfService {
       { text: payload.worker.cpfMasked, width: w * 0.22, align: 'center' },
       {
         text: options.signedAt
-          ? `Ciencia facial em ${new Date(options.signedAt).toLocaleString('pt-BR')}`
+          ? `Ciencia facial em ${formatDateTimeBr(options.signedAt)}`
           : 'Aguardando ciencia facial',
         width: w * 0.36,
         align: 'center',
@@ -761,12 +792,6 @@ export class SstDocumentPdfService {
     bodyText(doc, payload.termText);
 
     await drawFaceEvidence(doc, payload, options);
-    doc
-      .font('Helvetica')
-      .fontSize(7)
-      .fillColor('#64748b')
-      .text(
-        `Documento gerado pelo ProntEPI em ${new Date(payload.generatedAt).toLocaleString('pt-BR')}.`,
-      );
+    writeGeneratedNote(doc, payload.generatedAt);
   }
 }

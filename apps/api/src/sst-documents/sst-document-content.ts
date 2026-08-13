@@ -137,10 +137,12 @@ export function riskCategoryLabel(category: string): string {
 
 export function formatDayBr(value: string | null | undefined): string {
   if (!value) return '—';
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
-  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
   try {
-    return new Date(value).toLocaleDateString('pt-BR');
+    return new Date(value).toLocaleDateString('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+    });
   } catch {
     return value;
   }

@@ -741,7 +741,10 @@ export class OrganizationService {
     if (!organization?.logoPath) {
       throw new NotFoundException('Esta consultoria ainda nao enviou logo.');
     }
-    const absolute = resolveOrgLogoAbsolutePath(organization.logoPath);
+    const absolute = resolveOrgLogoAbsolutePath(
+      organization.logoPath,
+      organizationId,
+    );
     if (!absolute || !existsSync(absolute)) {
       throw new NotFoundException('Arquivo de logo nao encontrado.');
     }
