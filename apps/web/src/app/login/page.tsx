@@ -19,8 +19,12 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      await loginAccount({ email, password });
-      router.push('/dashboard');
+      const data = await loginAccount({ email, password });
+      if (data.user.mustChangePassword) {
+        router.push('/conta?obrigatorio=1');
+      } else {
+        router.push('/dashboard');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha no login');
     } finally {

@@ -209,7 +209,7 @@ function PortalTrabalhadoresContent() {
   }, [data, onlyDue, query]);
 
   const criticalDays = data?.replacementHorizon.criticalDays ?? 3;
-  const warnDays = data?.replacementHorizon.warnDays ?? 5;
+  const warnDays = data?.replacementHorizon.warnDays ?? 15;
 
   function openCreate() {
     setPanel('list');

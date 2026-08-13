@@ -16,9 +16,11 @@ import {
   COMM_TEMPLATE_DAILY_ALERTS,
 } from './communication.templates';
 import { CommunicationsService } from './communications.service';
+import {
+  REPLACEMENT_WARN_DAYS,
+  REPLACEMENT_CRITICAL_DAYS,
+} from '../portal/replacement-schedule.utils';
 
-const REPLACEMENT_WARN_DAYS = 5;
-const REPLACEMENT_CRITICAL_DAYS = 3;
 const VALIDITY_SOON_DAYS = 90;
 
 type Recipient = {

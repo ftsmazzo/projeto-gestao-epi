@@ -368,6 +368,10 @@ export function FacialValidationPanel({
           if (statusRef.current !== 'capturing' || capturingLockRef.current) {
             return;
           }
+          if (scan.kind === 'busy') {
+            loopTimerRef.current = setTimeout(() => void tick(), SCAN_INTERVAL_MS);
+            return;
+          }
           const { hint, message } = evaluateFaceFraming(scan);
           setGuideMessage(message);
           setGuideTone(toneForHint(hint));
@@ -392,6 +396,13 @@ export function FacialValidationPanel({
         } else if (phase === 'liveness') {
           const scan = await scanFacesWithLandmarks(video);
           if (statusRef.current !== 'liveness' || capturingLockRef.current) {
+            return;
+          }
+          if (scan.kind === 'busy') {
+            loopTimerRef.current = setTimeout(
+              () => void tick(),
+              LIVENESS_INTERVAL_MS,
+            );
             return;
           }
           let tracker = livenessRef.current;

@@ -37,6 +37,15 @@ export class AuthController {
     return this.authService.me(user);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  changePassword(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(user, dto);
+  }
+
   @Post('client/login')
   clientLogin(@Body() dto: LoginDto) {
     return this.authService.clientLogin(dto);

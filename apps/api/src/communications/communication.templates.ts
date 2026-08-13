@@ -88,6 +88,8 @@ export function buildConsultoriaAccessInviteEmail(
     `E-mail: ${input.recipientEmail ?? '—'}`,
     `Senha temporaria: ${input.temporaryPassword}`,
     '',
+    'No primeiro acesso, o sistema pede para trocar a senha.',
+    'Depois, use Minha conta no canto superior do painel.',
     'Este e o login da consultoria — nao o portal do cliente.',
     'Dúvidas: fale com a ProntEPI. Este canal atende consultorias e empresas clientes.',
   ].join('\n');
@@ -106,6 +108,7 @@ export function buildConsultoriaAccessInviteWhatsapp(
     `Link: ${input.accessUrl}`,
     `E-mail: ${input.recipientEmail ?? '—'}`,
     `Senha temporaria: ${input.temporaryPassword}`,
+    'No primeiro acesso, troque a senha. Depois: Minha conta no painel.',
     'Login da consultoria (nao o portal do cliente). Suporte: ProntEPI.',
   ].join('\n');
 }

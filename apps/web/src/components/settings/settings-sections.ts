@@ -1,4 +1,5 @@
 export const SETTINGS_SECTION_IDS = [
+  'senha',
   'marca',
   'contatos',
   'equipe',
@@ -26,6 +27,11 @@ export const SETTINGS_NAV: SettingsNavGroup[] = [
     id: 'conta',
     label: 'Conta',
     items: [
+      {
+        id: 'senha',
+        label: 'Minha senha',
+        hint: 'Trocar a senha provisoria ou atual',
+      },
       {
         id: 'marca',
         label: 'Marca',

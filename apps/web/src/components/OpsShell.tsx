@@ -48,6 +48,9 @@ function currentNavLabel(pathname: string) {
       pathname === item.href ||
       (item.href !== '/dashboard' && pathname.startsWith(item.href)),
   );
+  if (pathname === '/conta' || pathname.startsWith('/conta')) {
+    return 'Minha conta';
+  }
   return match?.label ?? 'Consultoria';
 }
 
@@ -137,9 +140,19 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
           <div className="ops-topbar-right">
             {user ? (
               <div className="ops-user">
-                <span className="ops-user-name">{user.name}</span>
+                <Link href="/conta" className="ops-user-name">
+                  {user.name}
+                </Link>
                 <span className="ops-user-org">{user.organization.name}</span>
               </div>
+            ) : null}
+            {user ? (
+              <Link
+                href={user.mustChangePassword ? '/conta?obrigatorio=1' : '/conta'}
+                className="btn btn-ghost"
+              >
+                {user.mustChangePassword ? 'Trocar senha' : 'Minha conta'}
+              </Link>
             ) : null}
             {onLogout ? (
               <button type="button" className="btn btn-ghost" onClick={onLogout}>

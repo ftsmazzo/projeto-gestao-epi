@@ -75,7 +75,9 @@ export default function FacialEnrollmentPage() {
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [guideTone, setGuideTone] = useState<GuideTone>('neutral');
-  const [guideMessage, setGuideMessage] = useState('Posicione o rosto no oval');
+  const [guideMessage, setGuideMessage] = useState(
+    'Posicione o rosto no enquadramento',
+  );
   const [modelsReady, setModelsReady] = useState(false);
   const [activeChallenge, setActiveChallenge] =
     useState<LivenessChallengeType | null>(null);
@@ -187,6 +189,10 @@ export default function FacialEnrollmentPage() {
         const current = phaseRef.current;
         if (current === 'scanning') {
           const scan = await scanFacesInVideo(video);
+          if (scan.kind === 'busy') {
+            await new Promise((r) => setTimeout(r, 80));
+            continue;
+          }
           const { hint, message } = evaluateFaceFraming(scan);
           setGuideTone(toneForHint(hint));
           setGuideMessage(message);
@@ -212,6 +218,10 @@ export default function FacialEnrollmentPage() {
           }
         } else if (current === 'liveness') {
           const scan = await scanFacesWithLandmarks(video);
+          if (scan.kind === 'busy') {
+            await new Promise((r) => setTimeout(r, 80));
+            continue;
+          }
           let tracker = livenessRef.current;
           if (!tracker) {
             tracker = createLivenessTracker();
@@ -498,7 +508,7 @@ export default function FacialEnrollmentPage() {
                     stopCamera();
                     setPhase('ready');
                     setGuideTone('neutral');
-                    setGuideMessage('Posicione o rosto no oval');
+                    setGuideMessage('Posicione o rosto no enquadramento');
                   }}
                 >
                   Cancelar

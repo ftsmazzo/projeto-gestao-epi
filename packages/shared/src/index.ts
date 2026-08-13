@@ -37,6 +37,7 @@ export interface AuthUser {
   email: string;
   name: string;
   membershipRole: MembershipRole;
+  mustChangePassword: boolean;
   organization: AuthOrganization;
 }
 
@@ -1916,7 +1917,8 @@ export type PortalDeliveryItemStatus =
   | 'DELIVERED'
   | 'CANCELLED'
   | 'RETURNED'
-  | 'PARTIALLY_RETURNED';
+  | 'PARTIALLY_RETURNED'
+  | 'REPLACED';
 
 export type PortalDeliveryReturnCondition =
   | 'REUSABLE'

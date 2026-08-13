@@ -8,7 +8,11 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { groupCoverageRequirementsByNeed } from './portal-epi-coverage.utils';
-import { formatUsefulLifeSnapshot } from './replacement-schedule.utils';
+import {
+  formatUsefulLifeSnapshot,
+  REPLACEMENT_WARN_DAYS,
+  REPLACEMENT_CRITICAL_DAYS,
+} from './replacement-schedule.utils';
 
 export type PortalReportFilters = {
   from?: string;
@@ -24,8 +28,6 @@ export type PortalReportFilters = {
   stockStatus?: string;
 };
 
-const REPLACEMENT_WARN_DAYS = 5;
-const REPLACEMENT_CRITICAL_DAYS = 3;
 
 function parseDayStart(value?: string): Date | null {
   if (!value?.trim()) return null;
@@ -787,6 +789,7 @@ export class PortalReportsService {
           usefulLifeLabel: formatUsefulLifeSnapshot(
             item.usefulLifeValue,
             item.usefulLifeUnit,
+            item.quantity - item.returnedQuantity - item.cancelledQuantity,
           ),
           daysRemaining,
           tone,

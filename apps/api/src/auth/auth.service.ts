@@ -178,6 +178,54 @@ export class AuthService {
     };
   }
 
+  async changePassword(payload: JwtPayload, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: {
+        memberships: {
+          where: { organizationId: payload.organizationId },
+          include: { organization: true },
+          take: 1,
+        },
+      },
+    });
+    if (!user || user.memberships.length === 0) {
+      throw new UnauthorizedException('Sessao invalida');
+    }
+
+    const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash);
+    if (!valid) {
+      throw new BadRequestException('Senha atual incorreta.');
+    }
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException(
+        'A nova senha deve ser diferente da senha atual.',
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, mustChangePassword: false },
+    });
+
+    await this.audit.log({
+      action: 'auth.password_changed',
+      organizationId: payload.organizationId,
+      userId: user.id,
+      entityType: 'User',
+      entityId: user.id,
+    });
+
+    const membership = user.memberships[0];
+    this.assertOrganizationActive(membership.organization.status);
+    return this.toPublicUser(
+      updated,
+      membership.organization,
+      membership.role,
+    );
+  }
+
   async me(payload: JwtPayload) {
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
@@ -626,7 +674,7 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(temporaryPassword, 12);
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash },
+      data: { passwordHash, mustChangePassword: true },
     });
 
     const accessUrl = this.resolveConsultoriaAccessUrl();
@@ -703,7 +751,12 @@ export class AuthService {
   }
 
   private toPublicUser(
-    user: { id: string; email: string; name: string },
+    user: {
+      id: string;
+      email: string;
+      name: string;
+      mustChangePassword?: boolean;
+    },
     organization: {
       id: string;
       name: string;
@@ -719,6 +772,7 @@ export class AuthService {
       email: user.email,
       name: user.name,
       membershipRole,
+      mustChangePassword: Boolean(user.mustChangePassword),
       organization: {
         id: organization.id,
         name: organization.name,

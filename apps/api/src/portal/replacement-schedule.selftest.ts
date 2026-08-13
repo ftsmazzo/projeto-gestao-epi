@@ -69,6 +69,33 @@ function run() {
   const pff = resolveUsefulLife({ name: 'Respirador PFF2' });
   assert.strictEqual(usefulLifeToBaseDays(pff?.value, pff?.unit), 3);
 
+  const pack = computeNextReplacementAt({
+    deliveredAt: delivered,
+    usefulLifeValue: 3,
+    usefulLifeUnit: EpiUsefulLifeUnit.DIAS,
+    quantity: 10,
+  });
+  assert.ok(pack);
+  assert.strictEqual(pack.toISOString().slice(0, 10), '2026-01-31');
+
+  const singleShort = computeNextReplacementAt({
+    deliveredAt: delivered,
+    usefulLifeValue: 3,
+    usefulLifeUnit: EpiUsefulLifeUnit.DIAS,
+    quantity: 1,
+  });
+  assert.ok(singleShort);
+  assert.strictEqual(singleShort.toISOString().slice(0, 10), '2026-01-04');
+
+  const bootPack = computeNextReplacementAt({
+    deliveredAt: delivered,
+    usefulLifeValue: 6,
+    usefulLifeUnit: EpiUsefulLifeUnit.MESES,
+    quantity: 2,
+  });
+  assert.ok(bootPack);
+  assert.strictEqual(bootPack.toISOString().slice(0, 10), '2026-06-30');
+
   console.log('replacement-schedule.selftest ok');
 }
 

@@ -221,6 +221,7 @@ export class PlatformService {
               email: ownerEmail,
               name: ownerName,
               passwordHash: passwordHash as string,
+              mustChangePassword: true,
             },
           });
 
@@ -257,7 +258,10 @@ export class PlatformService {
     if (reuseUser && !keepCurrentPassword) {
       await this.prisma.user.update({
         where: { id: created.user.id },
-        data: { passwordHash: await bcrypt.hash(invitePassword, 12) },
+        data: {
+          passwordHash: await bcrypt.hash(invitePassword, 12),
+          mustChangePassword: true,
+        },
       });
     }
     const delivery = await this.communications.enqueueConsultoriaAccessInvite({
@@ -453,7 +457,10 @@ export class PlatformService {
     if (!keepCurrentPassword) {
       await this.prisma.user.update({
         where: { id: owner.id },
-        data: { passwordHash: await bcrypt.hash(temporaryPassword, 12) },
+        data: {
+          passwordHash: await bcrypt.hash(temporaryPassword, 12),
+          mustChangePassword: true,
+        },
       });
     }
 

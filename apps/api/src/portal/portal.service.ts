@@ -79,6 +79,8 @@ import {
   formatUsageFrequencyLabel,
   formatUsefulLifeSnapshot,
   usefulLifeToBaseDays,
+  REPLACEMENT_WARN_DAYS,
+  REPLACEMENT_CRITICAL_DAYS,
 } from './replacement-schedule.utils';
 import {
   groupCoverageRequirementsByNeed,
@@ -86,10 +88,6 @@ import {
 } from './portal-epi-coverage.utils';
 
 const VALIDITY_SOON_DAYS = 90;
-/** Amarelo: troca nos proximos N dias. */
-const REPLACEMENT_WARN_DAYS = 5;
-/** Critico: troca nos proximos N dias (ou ja vencida). */
-const REPLACEMENT_CRITICAL_DAYS = 3;
 const DEFAULT_LOCATION_NAME = 'Estoque principal';
 
 type ValidityBucket = 'expired' | 'soon' | 'ok' | 'missing';
@@ -810,6 +808,7 @@ export class PortalService {
         usefulLifeLabel: formatUsefulLifeSnapshot(
           item.usefulLifeValue,
           item.usefulLifeUnit,
+          item.quantity - item.returnedQuantity - item.cancelledQuantity,
         ),
         daysRemaining,
         tone,
@@ -3101,12 +3100,23 @@ export class PortalService {
         statusLabel: this.deliveryStatusLabel(row.status),
         deliveredAt: row.deliveredAt.toISOString(),
         items: row.items.map((item) => {
-          const nextAt =
-            computeNextReplacementAt({
-              deliveredAt: row.deliveredAt,
-              usefulLifeValue: item.usefulLifeValue,
-              usefulLifeUnit: item.usefulLifeUnit,
-            }) ?? item.nextReplacementAt;
+          const remainingQty = Math.max(
+            0,
+            item.quantity - item.returnedQuantity - item.cancelledQuantity,
+          );
+          const closed =
+            item.status === EpiDeliveryItemStatus.REPLACED ||
+            item.status === EpiDeliveryItemStatus.RETURNED ||
+            item.status === EpiDeliveryItemStatus.CANCELLED;
+          const nextAt = closed
+            ? null
+            : (item.nextReplacementAt ??
+              computeNextReplacementAt({
+                deliveredAt: row.deliveredAt,
+                usefulLifeValue: item.usefulLifeValue,
+                usefulLifeUnit: item.usefulLifeUnit,
+                quantity: remainingQty > 0 ? remainingQty : item.quantity,
+              }));
           const remaining =
             nextAt != null ? calendarDaysRemaining(nextAt, generatedAt) : null;
           return {
@@ -3123,6 +3133,7 @@ export class PortalService {
             usefulLifeLabel: formatUsefulLifeSnapshot(
               item.usefulLifeValue,
               item.usefulLifeUnit,
+              remainingQty > 0 ? remainingQty : item.quantity,
             ),
             remainingDays: remaining,
             remainingLabel: formatRemainingDays(remaining),
@@ -3364,10 +3375,16 @@ export class PortalService {
           }
         : null,
       items: row.items.map((item) => {
-        const availableQuantity = Math.max(
-          0,
-          item.quantity - item.returnedQuantity - item.cancelledQuantity,
-        );
+        const closed =
+          item.status === EpiDeliveryItemStatus.REPLACED ||
+          item.status === EpiDeliveryItemStatus.RETURNED ||
+          item.status === EpiDeliveryItemStatus.CANCELLED;
+        const availableQuantity = closed
+          ? 0
+          : Math.max(
+              0,
+              item.quantity - item.returnedQuantity - item.cancelledQuantity,
+            );
         return {
           id: item.id,
           epiNeedId: item.epiNeedId,
@@ -3396,6 +3413,7 @@ export class PortalService {
           usefulLifeLabel: formatUsefulLifeSnapshot(
             item.usefulLifeValue,
             item.usefulLifeUnit,
+            availableQuantity > 0 ? availableQuantity : item.quantity,
           ),
           usageDaysPerWeek: item.usageDaysPerWeek ?? null,
           usageFrequencyLabel: formatUsageFrequencyLabel(
@@ -3441,11 +3459,27 @@ export class PortalService {
       })),
       actions: {
         canCancel:
-          row.status === EpiDeliveryStatus.COMPLETED ||
-          row.status === EpiDeliveryStatus.PARTIALLY_RETURNED,
+          (row.status === EpiDeliveryStatus.COMPLETED ||
+            row.status === EpiDeliveryStatus.PARTIALLY_RETURNED) &&
+          row.items.some(
+            (item) =>
+              item.status !== EpiDeliveryItemStatus.REPLACED &&
+              item.status !== EpiDeliveryItemStatus.RETURNED &&
+              item.status !== EpiDeliveryItemStatus.CANCELLED &&
+              item.quantity - item.returnedQuantity - item.cancelledQuantity >
+                0,
+          ),
         canReturn:
-          row.status === EpiDeliveryStatus.COMPLETED ||
-          row.status === EpiDeliveryStatus.PARTIALLY_RETURNED,
+          (row.status === EpiDeliveryStatus.COMPLETED ||
+            row.status === EpiDeliveryStatus.PARTIALLY_RETURNED) &&
+          row.items.some(
+            (item) =>
+              item.status !== EpiDeliveryItemStatus.REPLACED &&
+              item.status !== EpiDeliveryItemStatus.RETURNED &&
+              item.status !== EpiDeliveryItemStatus.CANCELLED &&
+              item.quantity - item.returnedQuantity - item.cancelledQuantity >
+                0,
+          ),
       },
       evidence: facial
         ? {
@@ -3878,6 +3912,7 @@ export class PortalService {
               lifeValue != null && lifeValue > 0 ? null : intervalDays,
             usefulLifeValue: lifeValue,
             usefulLifeUnit: lifeUnit,
+            quantity: item.quantity,
           });
 
           const snapshotLifeValue =
@@ -3922,6 +3957,34 @@ export class PortalService {
             nextReplacementAt: deliveryItem.nextReplacementAt,
           });
         }
+
+        await tx.epiDeliveryItem.updateMany({
+          where: {
+            id: { notIn: createdItems.map((row) => row.id) },
+            epiNeedId: { in: needIds },
+            status: {
+              in: [
+                EpiDeliveryItemStatus.DELIVERED,
+                EpiDeliveryItemStatus.PARTIALLY_RETURNED,
+              ],
+            },
+            delivery: {
+              organizationId,
+              servedClientId,
+              workerId: worker.id,
+              status: {
+                in: [
+                  EpiDeliveryStatus.COMPLETED,
+                  EpiDeliveryStatus.PARTIALLY_RETURNED,
+                ],
+              },
+            },
+          },
+          data: {
+            status: EpiDeliveryItemStatus.REPLACED,
+            nextReplacementAt: null,
+          },
+        });
 
         await tx.deliveryEvidence.create({
           data: {
@@ -4046,6 +4109,7 @@ export class PortalService {
         const remaining =
           item.quantity - item.returnedQuantity - item.cancelledQuantity;
         if (remaining <= 0) continue;
+        if (item.status === EpiDeliveryItemStatus.REPLACED) continue;
 
         await this.stock.applyMovementInTx(tx, organizationId, userId, {
           type: EpiStockMovementType.CANCELAMENTO_ENTREGA,
@@ -4067,6 +4131,7 @@ export class PortalService {
               item.returnedQuantity,
               cancelledQuantity,
             ),
+            nextReplacementAt: null,
           },
         });
       }
@@ -4151,6 +4216,15 @@ export class PortalService {
       }
       const available =
         item.quantity - item.returnedQuantity - item.cancelledQuantity;
+      if (
+        item.status === EpiDeliveryItemStatus.REPLACED ||
+        item.status === EpiDeliveryItemStatus.RETURNED ||
+        item.status === EpiDeliveryItemStatus.CANCELLED
+      ) {
+        throw new BadRequestException(
+          'Este item ja foi encerrado e nao pode ser devolvido.',
+        );
+      }
       if (row.quantity > available) {
         throw new BadRequestException(
           `Quantidade devolvida excede o disponivel (${available}) para um dos itens.`,
@@ -4209,16 +4283,32 @@ export class PortalService {
         // Keep local map in sync for multi-line same delivery item not allowed,
         // but update for status derivation of delivery after loop.
         item.returnedQuantity = returnedQuantity;
+        const remainingQty =
+          item.quantity - returnedQuantity - item.cancelledQuantity;
+        const nextStatus = this.deriveItemStatus(
+          item.quantity,
+          returnedQuantity,
+          item.cancelledQuantity,
+        );
+        const recomputedNext =
+          remainingQty <= 0
+            ? null
+            : computeNextReplacementAt({
+                deliveredAt: delivery.deliveredAt,
+                usefulLifeValue: item.usefulLifeValue,
+                usefulLifeUnit: item.usefulLifeUnit,
+                quantity: remainingQty,
+              });
 
         await tx.epiDeliveryItem.update({
           where: { id: item.id },
           data: {
             returnedQuantity,
-            status: this.deriveItemStatus(
-              item.quantity,
-              returnedQuantity,
-              item.cancelledQuantity,
-            ),
+            status: nextStatus,
+            nextReplacementAt:
+              remainingQty <= 0
+                ? null
+                : (recomputedNext ?? item.nextReplacementAt),
           },
         });
       }
@@ -4449,6 +4539,8 @@ export class PortalService {
         return 'Devolvido';
       case EpiDeliveryItemStatus.PARTIALLY_RETURNED:
         return 'Parcialmente devolvido';
+      case EpiDeliveryItemStatus.REPLACED:
+        return 'Substituido na troca';
       default:
         return 'Entregue';
     }

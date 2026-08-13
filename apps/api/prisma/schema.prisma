@@ -205,6 +205,8 @@ model User {
   passwordHash    String
   /// Admin da plataforma ProntEPI (Painel SaaS). Distinto do Membership da consultoria.
   isPlatformAdmin Boolean  @default(false)
+  /// Senha temporaria (convite/reset) — o gestor troca no primeiro login.
+  mustChangePassword Boolean @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -988,6 +990,8 @@ enum EpiDeliveryItemStatus {
   CANCELLED
   RETURNED
   PARTIALLY_RETURNED
+  /// Encerrado porque uma nova entrega da mesma necessidade substituiu o lote.
+  REPLACED
 }
 
 enum DeliveryEvidenceType {

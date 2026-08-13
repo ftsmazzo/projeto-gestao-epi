@@ -88,6 +88,16 @@ export async function fetchMe() {
   return apiFetch<AuthUser>('/auth/me');
 }
 
+export async function changeConsultoriaPassword(input: {
+  currentPassword: string;
+  newPassword: string;
+}) {
+  return apiFetch<AuthUser>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export type ForgotPasswordResponse = {
   ok: true;
   message: string;

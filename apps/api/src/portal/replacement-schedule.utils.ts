@@ -1,5 +1,15 @@
 import { EpiUsefulLifeUnit } from '@prisma/client';
 
+/** Aviso de troca: entra na fila 15 dias antes do vencimento. */
+export const REPLACEMENT_WARN_DAYS = 15;
+/** Urgente: 3 dias ou ja vencido. */
+export const REPLACEMENT_CRITICAL_DAYS = 3;
+/**
+ * Consumiveis curtos (PFF, etc.): a empresa entrega varias unidades.
+ * O prazo da entrega e vida util × quantidade.
+ */
+export const SHORT_LIFE_PACK_MAX_DAYS = 5;
+
 /** Converte vida util catalogada para dias-base de uso. */
 export function usefulLifeToBaseDays(
   value: number | null | undefined,
@@ -23,6 +33,29 @@ export function applyUsageFrequencyToCalendarDays(
   return Math.max(1, Math.floor(baseDays));
 }
 
+export function effectiveUsefulLifeDays(input: {
+  usefulLifeValue?: number | null;
+  usefulLifeUnit?: EpiUsefulLifeUnit | string | null;
+  replacementIntervalDays?: number | null;
+  quantity?: number | null;
+}): number | null {
+  const fromLife = usefulLifeToBaseDays(
+    input.usefulLifeValue,
+    input.usefulLifeUnit,
+  );
+  const unitDays =
+    fromLife ??
+    (input.replacementIntervalDays != null && input.replacementIntervalDays > 0
+      ? input.replacementIntervalDays
+      : null);
+  if (unitDays == null || unitDays <= 0) return null;
+  const qty = Math.max(1, Math.floor(input.quantity ?? 1));
+  if (unitDays <= SHORT_LIFE_PACK_MAX_DAYS && qty > 1) {
+    return unitDays * qty;
+  }
+  return unitDays;
+}
+
 export function computeNextReplacementAt(input: {
   deliveredAt: Date;
   /** Periodicidade da funcao (dias corridos), se nao houver vida util do EPI. */
@@ -30,19 +63,11 @@ export function computeNextReplacementAt(input: {
   usefulLifeValue?: number | null;
   usefulLifeUnit?: EpiUsefulLifeUnit | string | null;
   usageDaysPerWeek?: number | null;
+  quantity?: number | null;
 }): Date | null {
-  const { deliveredAt } = input;
-  const fromLife = usefulLifeToBaseDays(
-    input.usefulLifeValue,
-    input.usefulLifeUnit,
-  );
-  const days =
-    fromLife ??
-    (input.replacementIntervalDays != null && input.replacementIntervalDays > 0
-      ? input.replacementIntervalDays
-      : null);
+  const days = effectiveUsefulLifeDays(input);
   if (days == null) return null;
-  const next = new Date(deliveredAt);
+  const next = new Date(input.deliveredAt);
   next.setUTCDate(next.getUTCDate() + days);
   return next;
 }
@@ -62,11 +87,18 @@ export function formatRemainingDays(days: number | null | undefined): string | n
 export function formatUsefulLifeSnapshot(
   value: number | null | undefined,
   unit: string | null | undefined,
+  quantity?: number | null,
 ): string | null {
   if (value == null || !unit) return null;
   const label =
     unit === 'DIAS' ? 'dia(s)' : unit === 'MESES' ? 'mes(es)' : 'ano(s)';
-  return `${value} ${label}`;
+  const base = `${value} ${label}`;
+  const unitDays = usefulLifeToBaseDays(value, unit);
+  const qty = Math.max(1, Math.floor(quantity ?? 1));
+  if (unitDays != null && unitDays <= SHORT_LIFE_PACK_MAX_DAYS && qty > 1) {
+    return `${base} × ${qty} un. (${unitDays * qty} d)`;
+  }
+  return base;
 }
 
 export function formatUsageFrequencyLabel(

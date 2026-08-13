@@ -81,6 +81,10 @@ a {
   text-underline-offset: 0.18em;
 }
 
+a:visited {
+  color: var(--color-accent);
+}
+
 a:hover {
   color: var(--color-accent-hover);
 }
@@ -766,12 +770,32 @@ a.btn-danger:hover {
   font-size: 0.88rem;
   font-weight: 600;
   color: var(--color-ink);
+  text-decoration: none;
+}
+
+.ops-user-name:hover,
+.ops-user-name:focus-visible {
+  text-decoration: underline;
 }
 
 .ops-user-org {
   display: block;
   font-size: 0.75rem;
   color: var(--color-muted);
+}
+
+.ops-user-action {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-primary, #1f6feb);
+  text-decoration: none;
+}
+
+.ops-user-action:hover,
+.ops-user-action:focus-visible {
+  text-decoration: underline;
 }
 
 .ops-body {
@@ -1750,12 +1774,17 @@ a.btn-danger:hover {
   transition: background 0.15s ease, color 0.15s ease;
 }
 
+.client-workspace-nav-link:visited {
+  color: var(--color-ink-secondary);
+}
+
 .client-workspace-nav-link:hover {
   background: var(--color-accent-muted);
   color: var(--color-ink);
 }
 
-.client-workspace-nav-link.is-active {
+.client-workspace-nav-link.is-active,
+.client-workspace-nav-link.is-active:visited {
   background: var(--color-accent);
   color: var(--color-accent-ink);
 }
@@ -1946,7 +1975,12 @@ a.btn-danger:hover {
   white-space: nowrap;
 }
 
+.portal-nav-link:visited {
+  color: var(--color-ink-secondary);
+}
+
 .portal-nav-link.is-active,
+.portal-nav-link.is-active:visited,
 .portal-nav-link:hover {
   background: var(--color-accent-muted);
   color: var(--color-ink);
@@ -2812,16 +2846,17 @@ a.btn-danger:hover {
 
 .face-ux__stage {
   position: relative;
-  width: min(300px, 100%);
+  width: min(100%, 28rem);
+  max-height: min(72dvh, 40rem);
   aspect-ratio: 3 / 4;
-  border-radius: 1.25rem;
+  border-radius: 0.75rem;
   overflow: hidden;
   background: #0b1220;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 
 .face-ux__stage--enroll {
-  width: min(260px, 100%);
+  width: min(100%, 26rem);
 }
 
 .face-ux__media {
@@ -2857,63 +2892,63 @@ a.btn-danger:hover {
 }
 
 .face-ux__placeholder-icon {
-  width: 3rem;
-  height: 3.6rem;
+  width: 3.4rem;
+  height: 4.2rem;
   margin: 0 auto;
   border: 2px solid rgba(226, 232, 240, 0.35);
-  border-radius: 50% / 42%;
+  border-radius: 0.65rem;
 }
 
 .face-ux__oval {
   pointer-events: none;
   position: absolute;
-  inset: 10% 14%;
-  border: 2px solid rgba(255, 255, 255, 0.72);
-  border-radius: 50% / 42%;
+  inset: 7% 8%;
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  border-radius: 0.85rem;
   box-shadow:
-    0 0 0 999px rgba(2, 6, 23, 0.42),
-    inset 0 0 0 1px rgba(15, 23, 42, 0.2);
+    0 0 0 999px rgba(2, 6, 23, 0.22),
+    inset 0 0 0 1px rgba(15, 23, 42, 0.15);
   transition:
     border-color 0.2s ease,
     box-shadow 0.2s ease;
 }
 
 .face-ux__oval--neutral {
-  border-color: rgba(255, 255, 255, 0.72);
+  border-color: rgba(255, 255, 255, 0.78);
 }
 
 .face-ux__oval--adjusting {
   border-color: #fbbf24;
   box-shadow:
-    0 0 0 999px rgba(2, 6, 23, 0.42),
+    0 0 0 999px rgba(2, 6, 23, 0.2),
     0 0 0 3px rgba(251, 191, 36, 0.35);
 }
 
 .face-ux__oval--ready {
   border-color: #38bdf8;
   box-shadow:
-    0 0 0 999px rgba(2, 6, 23, 0.38),
+    0 0 0 999px rgba(2, 6, 23, 0.16),
     0 0 0 3px rgba(56, 189, 248, 0.4);
 }
 
 .face-ux__oval--processing {
   border-color: #60a5fa;
   box-shadow:
-    0 0 0 999px rgba(2, 6, 23, 0.5),
+    0 0 0 999px rgba(2, 6, 23, 0.28),
     0 0 0 3px rgba(96, 165, 250, 0.45);
 }
 
 .face-ux__oval--matched {
   border-color: #22c55e;
   box-shadow:
-    0 0 0 999px rgba(2, 6, 23, 0.35),
+    0 0 0 999px rgba(2, 6, 23, 0.16),
     0 0 0 3px rgba(34, 197, 94, 0.45);
 }
 
 .face-ux__oval--rejected {
   border-color: #f87171;
   box-shadow:
-    0 0 0 999px rgba(2, 6, 23, 0.42),
+    0 0 0 999px rgba(2, 6, 23, 0.22),
     0 0 0 3px rgba(248, 113, 113, 0.4);
 }
 
@@ -4094,7 +4129,12 @@ a.btn-danger:hover {
     cursor: pointer;
   }
 
-  .portal-bottom-nav__item.is-active {
+  .portal-bottom-nav__item:visited {
+    color: var(--color-ink-secondary);
+  }
+
+  .portal-bottom-nav__item.is-active,
+  .portal-bottom-nav__item.is-active:visited {
     color: var(--color-ink);
     background: var(--color-accent-muted);
   }
@@ -4161,7 +4201,12 @@ a.btn-danger:hover {
     font-weight: 600;
   }
 
-  .portal-drawer__link.is-active {
+  .portal-drawer__link:visited {
+    color: var(--color-ink);
+  }
+
+  .portal-drawer__link.is-active,
+  .portal-drawer__link.is-active:visited {
     background: var(--color-accent-muted);
   }
 
@@ -4302,7 +4347,7 @@ a.btn-danger:hover {
 
   .face-ux__stage,
   .face-ux__stage--enroll {
-    width: min(100%, 320px);
+    width: min(100%, 26rem);
   }
 
   .face-enroll--panel {
@@ -4731,12 +4776,12 @@ body.delivery-face-open .pwa-install-banner {
 }
 
 .delivery-face-flow__body .face-ux__stage {
-  width: min(100%, 320px);
-  /* Altura explicita: evita stage colapsado / preview invisivel no mobile */
-  height: min(56dvh, 420px);
-  min-height: 240px;
-  max-height: min(56dvh, 420px);
+  width: min(100%, 28rem);
+  height: min(70dvh, 36rem);
+  min-height: 280px;
+  max-height: min(70dvh, 36rem);
   aspect-ratio: auto;
+  border-radius: 0.75rem;
 }
 
 .delivery-face-flow__body .face-ux__media {
@@ -4875,11 +4920,12 @@ body.delivery-face-open .pwa-install-banner {
 
   .enroll-page__capture--live .enroll-page__stage {
     flex: 1 1 auto;
-    width: min(100%, 340px);
-    max-height: min(58dvh, 420px);
+    width: min(100%, 28rem);
+    max-height: min(72dvh, 36rem);
     aspect-ratio: auto;
     height: auto;
-    min-height: 220px;
+    min-height: 280px;
+    border-radius: 0.75rem;
   }
 
   .enroll-page__capture--live .enroll-page__stage .face-ux__media,
@@ -4934,8 +4980,8 @@ body.delivery-face-open .pwa-install-banner {
   }
 
   .face-ux--panel .face-ux__stage {
-    width: min(100%, 280px);
-    max-height: 42dvh;
+    width: min(100%, 26rem);
+    max-height: min(70dvh, 36rem);
   }
 }
 
@@ -4948,8 +4994,8 @@ body.delivery-face-open .pwa-install-banner {
   }
 
   .enroll-page__capture--live .enroll-page__stage {
-    max-height: min(48dvh, 320px);
-    min-height: 180px;
+    max-height: min(68dvh, 34rem);
+    min-height: 240px;
   }
 
   .enroll-page__consent {
@@ -5587,7 +5633,8 @@ body.delivery-face-open .pwa-install-banner {
   line-height: 1;
 }
 
-.portal-nav-link.is-active {
+.portal-nav-link.is-active,
+.portal-nav-link.is-active:visited {
   background: var(--color-accent-muted);
   color: var(--color-accent-active);
 }

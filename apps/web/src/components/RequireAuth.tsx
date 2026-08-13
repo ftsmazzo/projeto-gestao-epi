@@ -1,7 +1,7 @@
 'use client';
 
 import type { AuthUser } from '@gestao-epi/shared';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import { clearAccessToken, fetchMe, getAccessToken } from '../lib/auth';
 import { OpsShell } from './OpsShell';
@@ -12,6 +12,7 @@ type RequireAuthProps = {
 
 export function RequireAuth({ children }: RequireAuthProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,6 +26,10 @@ export function RequireAuth({ children }: RequireAuthProps) {
 
     void fetchMe()
       .then((me) => {
+        if (me.mustChangePassword && pathname !== '/conta') {
+          router.replace('/conta?obrigatorio=1');
+          return;
+        }
         setUser(me);
         setLoading(false);
       })
@@ -34,7 +39,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
         setLoading(false);
         router.replace('/login');
       });
-  }, [router]);
+  }, [router, pathname]);
 
   function logout() {
     clearAccessToken();

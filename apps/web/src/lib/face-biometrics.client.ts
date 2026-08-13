@@ -35,6 +35,7 @@ export type FacePoint = { x: number; y: number };
 
 export type LiveFaceScan =
   | { kind: 'none' }
+  | { kind: 'busy' }
   | { kind: 'multiple'; count: number }
   | {
       kind: 'one';
@@ -123,13 +124,15 @@ declare global {
 let modelsReady: Promise<void> | null = null;
 
 /** Tempo minimo de enquadramento estavel antes da captura automatica. */
-export const AUTO_CAPTURE_STABLE_MS = 900;
+export const AUTO_CAPTURE_STABLE_MS = 700;
 /** Timeout do desafio de liveness (MVP). */
 export const LIVENESS_TIMEOUT_MS = 20_000;
 /** Intervalo do loop durante enquadramento. */
-export const SCAN_INTERVAL_MS = 260;
+export const SCAN_INTERVAL_MS = 180;
 /** Intervalo mais rapido no desafio de presenca. */
-export const LIVENESS_INTERVAL_MS = 100;
+export const LIVENESS_INTERVAL_MS = 90;
+/** Largura do frame enviado ao detector (o preview continua em HD). */
+const DETECT_FRAME_WIDTH = 320;
 /** Frames com yaw no alvo para considerar virada. */
 const LIVENESS_TURN_HOLD_FRAMES = 3;
 /** Frames de frente apos a virada (anti-spoof simples). */
@@ -210,65 +213,114 @@ function toNumberArray(descriptor: Float32Array | number[]): number[] {
   return Array.from(descriptor).map((n) => Number(n));
 }
 
+let detectCanvas: HTMLCanvasElement | null = null;
+let detectBusy = false;
+
+function getDetectCanvas() {
+  if (!detectCanvas) {
+    detectCanvas = document.createElement('canvas');
+  }
+  return detectCanvas;
+}
+
+/** Copia o video para um canvas pequeno — o detector nao precisa do HD. */
+function drawVideoForDetect(video: HTMLVideoElement): HTMLCanvasElement | null {
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  if (!vw || !vh || video.readyState < 2) return null;
+  const scale = DETECT_FRAME_WIDTH / vw;
+  const width = DETECT_FRAME_WIDTH;
+  const height = Math.max(1, Math.round(vh * scale));
+  const canvas = getDetectCanvas();
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx) return null;
+  ctx.drawImage(video, 0, 0, width, height);
+  return canvas;
+}
+
+async function withDetectLock<T>(fn: () => Promise<T>): Promise<T | null> {
+  if (detectBusy) return null;
+  detectBusy = true;
+  try {
+    return await fn();
+  } finally {
+    detectBusy = false;
+  }
+}
+
 /** Deteccao leve (sem descritor) para loop de enquadramento. */
 export async function scanFacesInVideo(
   video: HTMLVideoElement,
 ): Promise<LiveFaceScan> {
-  await loadFaceModels();
-  const faceapi = getFaceApi();
-  const options = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 320,
-    scoreThreshold: 0.45,
+  const result = await withDetectLock(async () => {
+    await loadFaceModels();
+    const frame = drawVideoForDetect(video);
+    if (!frame) return { kind: 'none' } as LiveFaceScan;
+    const faceapi = getFaceApi();
+    const options = new faceapi.TinyFaceDetectorOptions({
+      inputSize: 224,
+      scoreThreshold: 0.4,
+    });
+    const detections = await faceapi.detectAllFaces(frame, options);
+    const vw = frame.width || 1;
+    const vh = frame.height || 1;
+
+    if (!detections.length) return { kind: 'none' } as LiveFaceScan;
+    if (detections.length > 1) {
+      return { kind: 'multiple', count: detections.length } as LiveFaceScan;
+    }
+
+    const first = detections[0]!;
+    return {
+      kind: 'one',
+      box: first.box,
+      score: first.score,
+      videoWidth: vw,
+      videoHeight: vh,
+    } as LiveFaceScan;
   });
-  const detections = await faceapi.detectAllFaces(video, options);
-  const vw = video.videoWidth || 1;
-  const vh = video.videoHeight || 1;
-
-  if (!detections.length) return { kind: 'none' };
-  if (detections.length > 1) {
-    return { kind: 'multiple', count: detections.length };
-  }
-
-  const first = detections[0]!;
-  return {
-    kind: 'one',
-    box: first.box,
-    score: first.score,
-    videoWidth: vw,
-    videoHeight: vh,
-  };
+  return result ?? { kind: 'busy' };
 }
 
-/** Deteccao com landmarks 68 para desafio de liveness. */
+/** Deteccao com landmarks 68 para desafio de presenca. */
 export async function scanFacesWithLandmarks(
   video: HTMLVideoElement,
 ): Promise<LiveFaceScan> {
-  await loadFaceModels();
-  const faceapi = getFaceApi();
-  const options = new faceapi.TinyFaceDetectorOptions({
-    inputSize: 416,
-    scoreThreshold: 0.4,
+  const result = await withDetectLock(async () => {
+    await loadFaceModels();
+    const frame = drawVideoForDetect(video);
+    if (!frame) return { kind: 'none' } as LiveFaceScan;
+    const faceapi = getFaceApi();
+    const options = new faceapi.TinyFaceDetectorOptions({
+      inputSize: 320,
+      scoreThreshold: 0.38,
+    });
+    const detections = await faceapi
+      .detectAllFaces(frame, options)
+      .withFaceLandmarks();
+    const vw = frame.width || 1;
+    const vh = frame.height || 1;
+
+    if (!detections.length) return { kind: 'none' } as LiveFaceScan;
+    if (detections.length > 1) {
+      return { kind: 'multiple', count: detections.length } as LiveFaceScan;
+    }
+
+    const first = detections[0]!;
+    return {
+      kind: 'one',
+      box: first.detection.box,
+      score: first.detection.score,
+      videoWidth: vw,
+      videoHeight: vh,
+      landmarks: first.landmarks.positions.map((p) => ({ x: p.x, y: p.y })),
+    } as LiveFaceScan;
   });
-  const detections = await faceapi
-    .detectAllFaces(video, options)
-    .withFaceLandmarks();
-  const vw = video.videoWidth || 1;
-  const vh = video.videoHeight || 1;
-
-  if (!detections.length) return { kind: 'none' };
-  if (detections.length > 1) {
-    return { kind: 'multiple', count: detections.length };
-  }
-
-  const first = detections[0]!;
-  return {
-    kind: 'one',
-    box: first.detection.box,
-    score: first.detection.score,
-    videoWidth: vw,
-    videoHeight: vh,
-    landmarks: first.landmarks.positions.map((p) => ({ x: p.x, y: p.y })),
-  };
+  return result ?? { kind: 'busy' };
 }
 
 function eyeAspectRatio(eye: FacePoint[]): number {
@@ -381,6 +433,16 @@ export function evaluateLiveness(
   }
 
   const label = livenessChallengeLabel(state.challenge);
+  if (scan.kind === 'busy') {
+    return {
+      state,
+      progress: {
+        passed: false,
+        timedOut: false,
+        message: label,
+      },
+    };
+  }
   if (scan.kind !== 'one' || !scan.landmarks?.length) {
     return {
       state: {
@@ -391,7 +453,7 @@ export function evaluateLiveness(
       progress: {
         passed: false,
         timedOut: false,
-        message: `${label} — mantenha o rosto no oval`,
+        message: `${label} — mantenha o rosto no enquadramento`,
       },
     };
   }
@@ -564,6 +626,9 @@ export function evaluateFaceFraming(scan: LiveFaceScan): {
   hint: FaceFramingHint;
   message: string;
 } {
+  if (scan.kind === 'busy') {
+    return { hint: 'hold_still', message: 'Mantenha o rosto no enquadramento' };
+  }
   if (scan.kind === 'none') {
     return {
       hint: 'none',

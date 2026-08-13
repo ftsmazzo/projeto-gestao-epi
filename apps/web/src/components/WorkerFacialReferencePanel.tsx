@@ -16,6 +16,7 @@ import {
   FACE_ENGINE_META,
   loadFaceModels,
   openSelfieCamera,
+  SCAN_INTERVAL_MS,
   scanFacesInVideo,
   type FaceFramingHint,
 } from '../lib/face-biometrics.client';
@@ -320,13 +321,17 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       if (phaseRef.current !== 'scanning' || capturingLockRef.current) return;
       const video = videoRef.current;
       if (!video || video.readyState < 2) {
-        loopTimerRef.current = setTimeout(() => void tick(), 280);
+        loopTimerRef.current = setTimeout(() => void tick(), SCAN_INTERVAL_MS);
         return;
       }
 
       try {
         const scan = await scanFacesInVideo(video);
         if (phaseRef.current !== 'scanning' || capturingLockRef.current) return;
+        if (scan.kind === 'busy') {
+          loopTimerRef.current = setTimeout(() => void tick(), 80);
+          return;
+        }
         const { hint, message } = evaluateFaceFraming(scan);
         setGuideMessage(message);
         setGuideTone(toneForHint(hint));
@@ -347,7 +352,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       }
 
       if (phaseRef.current === 'scanning' && !capturingLockRef.current) {
-        loopTimerRef.current = setTimeout(() => void tick(), 280);
+        loopTimerRef.current = setTimeout(() => void tick(), SCAN_INTERVAL_MS);
       }
     };
 

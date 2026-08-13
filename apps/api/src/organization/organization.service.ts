@@ -278,6 +278,7 @@ export class OrganizationService {
           data: {
             name: name || user.name,
             passwordHash,
+            mustChangePassword: true,
           },
         });
       } else {
@@ -286,6 +287,7 @@ export class OrganizationService {
             email,
             name,
             passwordHash,
+            mustChangePassword: true,
           },
         });
         createdUser = true;
@@ -550,7 +552,7 @@ export class OrganizationService {
     const passwordHash = await bcrypt.hash(temporaryPassword, 12);
     await this.prisma.user.update({
       where: { id: membership.userId },
-      data: { passwordHash },
+      data: { passwordHash, mustChangePassword: true },
     });
 
     await this.audit.log({

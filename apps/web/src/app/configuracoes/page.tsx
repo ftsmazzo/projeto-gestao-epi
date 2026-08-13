@@ -10,6 +10,7 @@ import { ContatosSection } from '../../components/settings/ContatosSection';
 import { MarcaSection } from '../../components/settings/MarcaSection';
 import { EquipeSection } from '../../components/settings/EquipeSection';
 import { ResetSection } from '../../components/settings/ResetSection';
+import { SenhaSection } from '../../components/settings/SenhaSection';
 import {
   parseSettingsSection,
   SETTINGS_NAV,
@@ -93,6 +94,8 @@ function SettingsSectionBody({
   user: AuthUser;
 }) {
   switch (section) {
+    case 'senha':
+      return <SenhaSection user={user} />;
     case 'equipe':
       return (
         <EquipeSection
