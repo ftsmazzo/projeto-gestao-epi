@@ -373,6 +373,52 @@ export async function downloadPortalSstDocumentPdf(id: string) {
   triggerBrowserDownload(blob, `sst-${id.slice(-6)}.pdf`);
 }
 
+export async function uploadPortalSstCompanyLogo(file: File) {
+  const token = getClientAccessToken();
+  const body = new FormData();
+  body.append('file', file);
+  const response = await fetch(
+    `${getApiUrl()}/portal/sst-documents/profile/logo`,
+    {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body,
+    },
+  );
+  if (!response.ok) {
+    let message = `Erro HTTP ${response.status}`;
+    try {
+      const payload = (await response.json()) as { message?: string | string[] };
+      if (Array.isArray(payload.message)) message = payload.message.join(', ');
+      else if (payload.message) message = payload.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as { hasLogo: boolean };
+}
+
+export async function deletePortalSstCompanyLogo() {
+  return clientApiFetch<{ hasLogo: boolean }>(
+    '/portal/sst-documents/profile/logo',
+    { method: 'DELETE' },
+  );
+}
+
+export async function fetchPortalSstCompanyLogoObjectUrl() {
+  const token = getClientAccessToken();
+  const response = await fetch(
+    `${getApiUrl()}/portal/sst-documents/profile/logo`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
+  );
+  if (!response.ok) return null;
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
 export async function downloadPortalDeliveryPdf(id: string) {
   const blob = await clientApiFetchBlob(`/portal/entregas/${id}/pdf`);
   triggerBrowserDownload(blob, `comprovante-${id}.pdf`);

@@ -3,6 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import type { Response } from 'express';
+import { createReadStream, existsSync } from 'fs';
 import {
   SstDocumentStatus,
   SstDocumentType,
@@ -30,6 +32,12 @@ import {
   type SstDocumentPayload,
 } from './sst-document-content';
 import { inferOsRiskContext } from '../client-structure/risk-context';
+import { resolveOrgLogoAbsolutePath } from '../organization/org-logo.storage';
+import {
+  deleteClientLogoFile,
+  resolveClientLogoAbsolutePath,
+  saveClientLogoFile,
+} from './sst-client-logo.storage';
 import { tryResolveSstPdfFacePath } from './sst-document-evidence.storage';
 import { SstDocumentPdfService } from './sst-document-pdf.service';
 
@@ -76,6 +84,7 @@ export class SstDocumentsService {
       city: row?.city ?? '',
       integrationDurationHours: row?.integrationDurationHours ?? 2,
       integrationTime: row?.integrationTime ?? '08:00',
+      hasLogo: Boolean(row?.logoPath),
     };
   }
 
@@ -131,6 +140,122 @@ export class SstDocumentsService {
       metadata: { servedClientId },
     });
     return this.getProfile(organizationId, servedClientId);
+  }
+
+  async uploadCompanyLogo(
+    organizationId: string,
+    servedClientId: string,
+    userId: string,
+    file: { buffer: Buffer; mimetype?: string; originalname?: string } | undefined,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('Envie um arquivo de logo.');
+    }
+    const saved = await saveClientLogoFile({
+      organizationId,
+      servedClientId,
+      buffer: file.buffer,
+      mimeType: file.mimetype,
+      originalName: file.originalname,
+    });
+    const current = await this.prisma.sstClientProfile.findUnique({
+      where: { servedClientId },
+      select: { id: true, logoPath: true },
+    });
+    if (current?.logoPath && current.logoPath !== saved.relativePath) {
+      await deleteClientLogoFile(current.logoPath);
+    }
+    await this.prisma.sstClientProfile.upsert({
+      where: { servedClientId },
+      create: {
+        organizationId,
+        servedClientId,
+        logoPath: saved.relativePath,
+        logoMimeType: saved.mimeType,
+      },
+      update: {
+        logoPath: saved.relativePath,
+        logoMimeType: saved.mimeType,
+      },
+    });
+    await this.audit.log({
+      action: 'sst.profile.logo_uploaded',
+      organizationId,
+      userId,
+      entityType: 'SstClientProfile',
+      entityId: servedClientId,
+    });
+    return { hasLogo: true };
+  }
+
+  async deleteCompanyLogo(
+    organizationId: string,
+    servedClientId: string,
+    userId: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    const row = await this.prisma.sstClientProfile.findUnique({
+      where: { servedClientId },
+      select: { logoPath: true },
+    });
+    await deleteClientLogoFile(row?.logoPath);
+    if (row) {
+      await this.prisma.sstClientProfile.update({
+        where: { servedClientId },
+        data: { logoPath: null, logoMimeType: null },
+      });
+    }
+    await this.audit.log({
+      action: 'sst.profile.logo_removed',
+      organizationId,
+      userId,
+      entityType: 'SstClientProfile',
+      entityId: servedClientId,
+    });
+    return { hasLogo: false };
+  }
+
+  async streamCompanyLogo(
+    organizationId: string,
+    servedClientId: string,
+    res: Response,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    const row = await this.prisma.sstClientProfile.findUnique({
+      where: { servedClientId },
+      select: { logoPath: true, logoMimeType: true },
+    });
+    if (!row?.logoPath) {
+      throw new NotFoundException('Esta empresa ainda nao enviou logo.');
+    }
+    const absolute = resolveClientLogoAbsolutePath(row.logoPath);
+    if (!absolute || !existsSync(absolute)) {
+      throw new NotFoundException('Arquivo de logo nao encontrado.');
+    }
+    res.setHeader('Content-Type', row.logoMimeType || 'image/png');
+    createReadStream(absolute).pipe(res);
+  }
+
+  async resolvePdfLogos(organizationId: string, servedClientId: string) {
+    const [org, profile] = await Promise.all([
+      this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { logoPath: true },
+      }),
+      this.prisma.sstClientProfile.findUnique({
+        where: { servedClientId },
+        select: { logoPath: true },
+      }),
+    ]);
+    return {
+      consultoriaLogoPath: org?.logoPath
+        ? resolveOrgLogoAbsolutePath(org.logoPath)
+        : null,
+      companyLogoPath: profile?.logoPath
+        ? resolveClientLogoAbsolutePath(profile.logoPath)
+        : null,
+    };
   }
 
   async list(organizationId: string, servedClientId: string) {
@@ -288,6 +413,7 @@ export class SstDocumentsService {
         servedClientId,
         document.workerId,
       ),
+      ...(await this.resolvePdfLogos(organizationId, servedClientId)),
     });
     const slug =
       document.type === SstDocumentType.ORDEM_SERVICO ? 'os' : 'integracao';

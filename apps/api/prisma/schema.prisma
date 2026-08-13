@@ -1371,6 +1371,8 @@ model SstClientProfile {
   city                         String?
   integrationDurationHours     Int      @default(2)
   integrationTime              String   @default("08:00")
+  logoPath                     String?
+  logoMimeType                 String?
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 

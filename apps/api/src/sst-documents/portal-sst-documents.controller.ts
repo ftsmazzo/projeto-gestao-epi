@@ -1,14 +1,19 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
   Post,
   Put,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { SstDocumentType } from '@prisma/client';
 import type { Response } from 'express';
 import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
@@ -64,6 +69,46 @@ export class PortalSstDocumentsController {
   profile(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);
     return this.sst.getProfile(user.organizationId, user.servedClientId);
+  }
+
+  @Get('profile/logo')
+  logo(@CurrentUser() user: ClientJwtPayload, @Res() res: Response) {
+    this.assertClient(user);
+    return this.sst.streamCompanyLogo(
+      user.organizationId,
+      user.servedClientId,
+      res,
+    );
+  }
+
+  @Post('profile/logo')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  uploadLogo(
+    @CurrentUser() user: ClientJwtPayload,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    this.assertClient(user);
+    return this.sst.uploadCompanyLogo(
+      user.organizationId,
+      user.servedClientId,
+      user.sub,
+      file,
+    );
+  }
+
+  @Delete('profile/logo')
+  deleteLogo(@CurrentUser() user: ClientJwtPayload) {
+    this.assertClient(user);
+    return this.sst.deleteCompanyLogo(
+      user.organizationId,
+      user.servedClientId,
+      user.sub,
+    );
   }
 
   @Put('profile')

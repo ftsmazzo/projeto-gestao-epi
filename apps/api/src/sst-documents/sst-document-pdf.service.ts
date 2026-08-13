@@ -20,6 +20,8 @@ export type SstPdfBuildOptions = {
   signedAt?: string | null;
   evidenceAbsolutePath?: string | null;
   liveJob?: OsLiveJob | null;
+  consultoriaLogoPath?: string | null;
+  companyLogoPath?: string | null;
 };
 
 type TableCell = {
@@ -63,6 +65,19 @@ function bufferFromPdf(
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
+    const paintFrame = () => {
+      const m = 18;
+      doc.save();
+      doc
+        .rect(m, m, doc.page.width - 2 * m, doc.page.height - 2 * m)
+        .lineWidth(1.5)
+        .strokeColor('#0f766e')
+        .stroke();
+      doc.restore();
+    };
+    paintFrame();
+    doc.on('pageAdded', paintFrame);
+
     Promise.resolve(build(doc))
       .then(() => {
         const range = doc.bufferedPageRange();
@@ -95,22 +110,60 @@ function ensureSpace(doc: PDFKit.PDFDocument, needed = 56) {
   }
 }
 
-function titleBlock(doc: PDFKit.PDFDocument, title: string, subtitle: string) {
+async function drawLogo(
+  doc: PDFKit.PDFDocument,
+  filePath: string | null | undefined,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  if (!filePath || !existsSync(filePath)) return;
+  if (/\.svg$/i.test(filePath)) return;
+  try {
+    const img = await readFile(filePath);
+    doc.image(img, x, y, { fit: [w, h], align: 'center', valign: 'center' });
+  } catch {
+    // logo opcional
+  }
+}
+
+async function titleBlock(
+  doc: PDFKit.PDFDocument,
+  title: string,
+  subtitle: string,
+  options: SstPdfBuildOptions,
+) {
   const x = doc.page.margins.left;
   const w = pageInnerWidth(doc);
   const y = doc.y;
-  doc.rect(x, y, w, 44).fill('#0f766e');
+  const h = 58;
+  const logoW = 74;
+  const logoH = 46;
+  doc.rect(x, y, w, h).strokeColor('#0f766e').lineWidth(1.1).stroke();
+  await drawLogo(doc, options.consultoriaLogoPath, x + 8, y + 6, logoW, logoH);
+  await drawLogo(
+    doc,
+    options.companyLogoPath,
+    x + w - logoW - 8,
+    y + 6,
+    logoW,
+    logoH,
+  );
+  const titleX = x + logoW + 16;
+  const titleW = w - (logoW + 16) * 2;
   doc
-    .fillColor('#ffffff')
     .font('Helvetica-Bold')
-    .fontSize(13)
-    .text(title, x + 8, y + 8, { width: w - 16, align: 'center' });
+    .fontSize(11)
+    .fillColor('#0f172a')
+    .text(title, titleX, y + 12, { width: titleW, align: 'center' });
   doc
     .font('Helvetica')
     .fontSize(8)
-    .text(subtitle, x + 8, y + 26, { width: w - 16, align: 'center' });
+    .fillColor('#334155')
+    .text(subtitle, titleX, y + 32, { width: titleW, align: 'center' });
   doc.fillColor('#0f172a');
-  doc.y = y + 52;
+  doc.y = y + h + 8;
 }
 
 function section(doc: PDFKit.PDFDocument, title: string) {
@@ -218,27 +271,49 @@ function twoColumnChecks(doc: PDFKit.PDFDocument, items: string[]) {
   }
 }
 
-function twoColumnBullets(doc: PDFKit.PDFDocument, items: string[]) {
-  const gap = 8;
-  const colW = (pageInnerWidth(doc) - gap) / 2;
-  const x0 = doc.page.margins.left;
+function itemCard(doc: PDFKit.PDFDocument, title: string, items: string[]) {
+  const x = doc.page.margins.left;
+  const w = pageInnerWidth(doc);
+  const gap = 10;
+  const colW = (w - 16 - gap) / 2;
+  const rows: Array<[string, string | null]> = [];
   for (let i = 0; i < items.length; i += 2) {
-    const left = items[i];
-    const right = items[i + 1];
-    doc.font('Helvetica').fontSize(8);
+    rows.push([items[i], items[i + 1] ?? null]);
+  }
+  doc.font('Helvetica').fontSize(8);
+  const bodyH = rows.reduce((sum, [left, right]) => {
     const h = Math.max(
       14,
-      doc.heightOfString(`•  ${left}`, { width: colW }) + 2,
-      right ? doc.heightOfString(`•  ${right}`, { width: colW }) + 2 : 0,
+      doc.heightOfString(`>  ${left}`, { width: colW }) + 4,
+      right ? doc.heightOfString(`>  ${right}`, { width: colW }) + 4 : 0,
     );
-    ensureSpace(doc, h + 2);
-    const y = doc.y;
-    doc.fillColor('#1e293b').text(`•  ${left}`, x0, y, { width: colW });
+    return sum + h;
+  }, 8);
+  const totalH = 20 + Math.max(bodyH, 22);
+  ensureSpace(doc, totalH + 8);
+  const y = doc.y;
+  doc.rect(x, y, w, totalH).strokeColor('#0f766e').lineWidth(1).stroke();
+  doc.rect(x, y, w, 18).fill('#0f766e');
+  doc
+    .fillColor('#ffffff')
+    .font('Helvetica-Bold')
+    .fontSize(8)
+    .text(title, x + 8, y + 5, { width: w - 16 });
+  let rowY = y + 22;
+  for (const [left, right] of rows) {
+    doc.font('Helvetica').fontSize(8).fillColor('#0f172a');
+    const h = Math.max(
+      14,
+      doc.heightOfString(`>  ${left}`, { width: colW }) + 2,
+      right ? doc.heightOfString(`>  ${right}`, { width: colW }) + 2 : 0,
+    );
+    doc.text(`>  ${left}`, x + 8, rowY, { width: colW });
     if (right) {
-      doc.text(`•  ${right}`, x0 + colW + gap, y, { width: colW });
+      doc.text(`>  ${right}`, x + 8 + colW + gap, rowY, { width: colW });
     }
-    doc.y = y + h;
+    rowY += h;
   }
+  doc.y = y + totalH + 8;
 }
 
 function cellLabel(cell: TableCell) {
@@ -271,13 +346,21 @@ function drawTableRow(doc: PDFKit.PDFDocument, cells: TableCell[]) {
         .lineWidth(0.5)
         .stroke();
     }
+    const align = cell.align ?? 'center';
     doc
       .font(cell.header || cell.fill ? 'Helvetica-Bold' : 'Helvetica')
-      .fontSize(6.5)
+      .fontSize(6.5);
+    const label = cellLabel(cell);
+    const textH = doc.heightOfString(label || ' ', {
+      width: cell.width - 6,
+      align,
+    });
+    const textY = y + Math.max(2, (h - textH) / 2);
+    doc
       .fillColor(cell.textColor ?? (cell.header ? '#ffffff' : '#0f172a'))
-      .text(cellLabel(cell), x + 3, y + 3, {
+      .text(label, x + 3, textY, {
         width: cell.width - 6,
-        align: cell.align ?? 'left',
+        align,
       });
     x += cell.width;
   }
@@ -398,10 +481,11 @@ export class SstDocumentPdfService {
     options: SstPdfBuildOptions,
   ) {
     const w = pageInnerWidth(doc);
-    titleBlock(
+    await titleBlock(
       doc,
       'ORDEM DE SERVICO DE SEGURANCA',
       'NORMA REGULAMENTADORA — NR-01, item 1.4.1',
+      options,
     );
 
     fieldBox(doc, [
@@ -502,16 +586,17 @@ export class SstDocumentPdfService {
       }
     }
 
-    section(doc, "3. EPI'S DE USO OBRIGATORIO");
     const epis = uniqueStrings(payload.os?.epis ?? []);
-    if (epis.length === 0) {
-      bodyText(doc, 'Nenhuma necessidade de EPI vinculada a funcao.');
-    } else {
-      twoColumnBullets(doc, epis);
-    }
-
-    section(doc, "4. EPC'S DE USO OBRIGATORIO");
-    twoColumnBullets(doc, uniqueStrings(payload.os?.epcs ?? []));
+    itemCard(
+      doc,
+      "3. EPI'S DE USO OBRIGATORIO",
+      epis.length > 0 ? epis : ['Nenhuma necessidade de EPI vinculada a funcao.'],
+    );
+    itemCard(
+      doc,
+      "4. EPC'S DE USO OBRIGATORIO",
+      uniqueStrings(payload.os?.epcs ?? []),
+    );
 
     section(doc, '5. RECOMENDACOES GERAIS');
     numberedList(doc, payload.os?.recommendations ?? []);
@@ -574,10 +659,11 @@ export class SstDocumentPdfService {
     options: SstPdfBuildOptions,
   ) {
     const w = pageInnerWidth(doc);
-    titleBlock(
+    await titleBlock(
       doc,
       'COMPROVANTE DE TREINAMENTO DE INTEGRACAO DE SEGURANCA',
       'NR-01 — Disposicoes Gerais e Gerenciamento de Riscos Ocupacionais',
+      options,
     );
 
     fieldBox(doc, [

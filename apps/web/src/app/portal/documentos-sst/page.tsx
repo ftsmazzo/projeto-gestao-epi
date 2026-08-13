@@ -10,12 +10,15 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
 import {
   createPortalSstDocument,
+  deletePortalSstCompanyLogo,
   downloadPortalSstDocumentPdf,
+  fetchPortalSstCompanyLogoObjectUrl,
   fetchPortalSstDocuments,
   fetchPortalSstProfile,
   fetchPortalTrabalhadores,
   resendPortalSstDocumentLink,
   savePortalSstProfile,
+  uploadPortalSstCompanyLogo,
 } from '../../../lib/client-auth';
 
 function formatDate(iso: string | null) {
@@ -46,6 +49,7 @@ function PortalSstContent() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [lastUrl, setLastUrl] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -79,6 +83,27 @@ function PortalSstContent() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!profile?.hasLogo) {
+      setLogoPreview(null);
+      return;
+    }
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    void fetchPortalSstCompanyLogoObjectUrl().then((url) => {
+      if (cancelled) {
+        if (url) URL.revokeObjectURL(url);
+        return;
+      }
+      objectUrl = url;
+      setLogoPreview(url);
+    });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [profile?.hasLogo]);
 
   const selected = useMemo(
     () => workers.find((w) => w.id === workerId) ?? null,
@@ -130,11 +155,50 @@ function PortalSstContent() {
     setSaving(true);
     setError(null);
     try {
-      const next = await savePortalSstProfile(profile);
+      const { hasLogo: _hasLogo, ...rest } = profile;
+      const next = await savePortalSstProfile(rest);
       setProfile(next);
       setNotice('Dados da empresa salvos para os proximos documentos.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao salvar.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onUploadLogo(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const input = event.currentTarget.elements.namedItem(
+      'sst-logo-file',
+    ) as HTMLInputElement | null;
+    const file = input?.files?.[0];
+    if (!file) {
+      setError('Selecione o logo da empresa.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await uploadPortalSstCompanyLogo(file);
+      setProfile((prev) => (prev ? { ...prev, hasLogo: true } : prev));
+      setNotice('Logo da empresa salvo. Ele aparece a direita na O.S.');
+      if (input) input.value = '';
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao enviar logo.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onRemoveLogo() {
+    setSaving(true);
+    setError(null);
+    try {
+      await deletePortalSstCompanyLogo();
+      setProfile((prev) => (prev ? { ...prev, hasLogo: false } : prev));
+      setNotice('Logo da empresa removido.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao remover logo.');
     } finally {
       setSaving(false);
     }
@@ -349,6 +413,45 @@ function PortalSstContent() {
             <button className="btn btn-secondary" type="submit" disabled={saving}>
               Salvar dados
             </button>
+          </form>
+          <form className="form" onSubmit={(e) => void onUploadLogo(e)}>
+            <p className="page-lead">
+              Logo da empresa (direita do cabecalho). A esquerda fica o logo
+              da consultoria, ja enviado em Configuracoes.
+            </p>
+            {logoPreview ? (
+              <p>
+                <img
+                  src={logoPreview}
+                  alt="Logo da empresa"
+                  style={{ maxHeight: 64, maxWidth: 160 }}
+                />
+              </p>
+            ) : null}
+            <div className="field">
+              <label htmlFor="sst-logo-file">Arquivo (PNG, JPG ou WEBP)</label>
+              <input
+                id="sst-logo-file"
+                name="sst-logo-file"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+              />
+            </div>
+            <div className="btn-row">
+              <button className="btn btn-secondary" type="submit" disabled={saving}>
+                Enviar logo
+              </button>
+              {profile.hasLogo ? (
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void onRemoveLogo()}
+                >
+                  Remover logo
+                </button>
+              ) : null}
+            </div>
           </form>
         </section>
       ) : null}

@@ -6,6 +6,7 @@ export type ApiFilesSubdir =
   | 'delivery-evidence'
   | 'invoice-documents'
   | 'org-logos'
+  | 'client-logos'
   | 'sst-evidence';
 
 /**

@@ -23,6 +23,8 @@ import {
   uniqueStrings,
   type SstDocumentPayload,
 } from './sst-document-content';
+import { resolveOrgLogoAbsolutePath } from '../organization/org-logo.storage';
+import { resolveClientLogoAbsolutePath } from './sst-client-logo.storage';
 import {
   saveSstEvidenceFile,
   tryResolveSstPdfFacePath,
@@ -221,6 +223,10 @@ export class SstDocumentSignService {
           environment:
             link.worker.clientJobFunction?.environmentDescription ?? null,
         },
+        ...(await this.resolvePdfLogos(
+          link.organizationId,
+          link.servedClientId,
+        )),
       },
     );
     return {
@@ -253,6 +259,30 @@ export class SstDocumentSignService {
       );
     }
     return link;
+  }
+
+  private async resolvePdfLogos(
+    organizationId: string,
+    servedClientId: string,
+  ) {
+    const [org, profile] = await Promise.all([
+      this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { logoPath: true },
+      }),
+      this.prisma.sstClientProfile.findUnique({
+        where: { servedClientId },
+        select: { logoPath: true },
+      }),
+    ]);
+    return {
+      consultoriaLogoPath: org?.logoPath
+        ? resolveOrgLogoAbsolutePath(org.logoPath)
+        : null,
+      companyLogoPath: profile?.logoPath
+        ? resolveClientLogoAbsolutePath(profile.logoPath)
+        : null,
+    };
   }
 
   private async assertCpfLast4(

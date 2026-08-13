@@ -2722,6 +2722,7 @@ export interface SstClientProfile {
   city: string;
   integrationDurationHours: number;
   integrationTime: string;
+  hasLogo: boolean;
 }
 
 export interface SstDocumentListItem {
