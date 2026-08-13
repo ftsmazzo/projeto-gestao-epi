@@ -13,6 +13,8 @@ export type EpiNeedInput = {
   category?: EpiCategory | null;
   description?: string | null;
   aliases?: string[];
+  usefulLifeValue?: number | null;
+  usefulLifeUnit?: 'DIAS' | 'MESES' | 'ANOS' | null;
 };
 
 export function listEpiNeeds(params?: {

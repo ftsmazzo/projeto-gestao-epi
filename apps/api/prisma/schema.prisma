@@ -669,6 +669,9 @@ model EpiNeed {
   description    String?
   /// Aliases de busca (JSON array de strings).
   aliases        Json?
+  /// Vida util padrao da sugestao (dias corridos). CAEPI nao traz este dado.
+  usefulLifeValue Int?
+  usefulLifeUnit  EpiUsefulLifeUnit?
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt

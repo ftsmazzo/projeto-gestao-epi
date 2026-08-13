@@ -39,7 +39,6 @@ type ItemSelection = {
   quantity: number;
   usefulLifeValue: string;
   usefulLifeUnit: 'DIAS' | 'MESES' | 'ANOS';
-  usageDaysPerWeek: string;
 };
 
 function stripDiacritics(value: string) {
@@ -75,27 +74,33 @@ function lifeDefaultsFromRow(
   epiItemId: string,
 ): Pick<
   ItemSelection,
-  'usefulLifeValue' | 'usefulLifeUnit' | 'usageDaysPerWeek'
+  'usefulLifeValue' | 'usefulLifeUnit'
 > {
   const epi = row.linkedEpis.find((e) => e.epiItemId === epiItemId);
   if (epi?.usefulLifeValue != null && epi.usefulLifeValue > 0) {
     return {
       usefulLifeValue: String(epi.usefulLifeValue),
       usefulLifeUnit: epi.usefulLifeUnit ?? 'DIAS',
-      usageDaysPerWeek: '7',
+    };
+  }
+  if (
+    row.suggestedUsefulLifeValue != null &&
+    row.suggestedUsefulLifeValue > 0
+  ) {
+    return {
+      usefulLifeValue: String(row.suggestedUsefulLifeValue),
+      usefulLifeUnit: row.suggestedUsefulLifeUnit ?? 'DIAS',
     };
   }
   if (row.replacementIntervalDays != null && row.replacementIntervalDays > 0) {
     return {
       usefulLifeValue: String(row.replacementIntervalDays),
       usefulLifeUnit: 'DIAS',
-      usageDaysPerWeek: '7',
     };
   }
   return {
     usefulLifeValue: '',
     usefulLifeUnit: 'DIAS',
-    usageDaysPerWeek: '7',
   };
 }
 
@@ -293,11 +298,11 @@ function NeedConfigPanel({
           />
         </div>
         <div className="field">
-          <label>Vida util</label>
+          <label>Vida util (dias corridos)</label>
           <input
             type="number"
             min={1}
-            placeholder="Ex.: 90"
+            placeholder="Ex.: 180"
             value={selection.usefulLifeValue}
             onChange={(e) =>
               onChange({
@@ -322,28 +327,9 @@ function NeedConfigPanel({
             <option value="MESES">Meses</option>
             <option value="ANOS">Anos</option>
           </select>
-        </div>
-        <div className="field field--span-2">
-          <label>Dias de uso por semana</label>
-          <select
-            value={selection.usageDaysPerWeek}
-            onChange={(e) =>
-              onChange({
-                ...selection,
-                usageDaysPerWeek: e.target.value,
-              })
-            }
-          >
-            <option value="7">7 (diario)</option>
-            <option value="6">6 dias</option>
-            <option value="5">5 dias</option>
-            <option value="4">4 dias</option>
-            <option value="3">3 dias</option>
-            <option value="2">2 dias</option>
-            <option value="1">1 dia</option>
-          </select>
           <p className="field-hint">
-            Menos dias/semana = troca mais tarde na previsao.
+            Conta calendario a partir da entrega, independente de quantas vezes
+            a pessoa usar no periodo.
           </p>
         </div>
       </div>
@@ -604,7 +590,6 @@ function PortalEntregasContent() {
           livenessChallenge: facialResult.livenessChallenge,
           items: selectedItems.map(({ need, sel }) => {
             const lifeRaw = Number(sel.usefulLifeValue);
-            const usesRaw = Number(sel.usageDaysPerWeek);
             return {
               epiNeedId: need.epiNeedId,
               epiItemId: sel.epiItemId,
@@ -615,10 +600,6 @@ function PortalEntregasContent() {
               usefulLifeUnit:
                 Number.isFinite(lifeRaw) && lifeRaw > 0
                   ? sel.usefulLifeUnit
-                  : null,
-              usageDaysPerWeek:
-                Number.isFinite(usesRaw) && usesRaw >= 1 && usesRaw <= 7
-                  ? usesRaw
                   : null,
             };
           }),

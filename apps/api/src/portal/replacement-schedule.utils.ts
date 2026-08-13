@@ -13,56 +13,50 @@ export function usefulLifeToBaseDays(
 }
 
 /**
- * Ajusta dias de calendario pela frequencia de uso semanal.
- * Ex.: 30 dias de vida util com 3 dias/semana → ceil(30 * 7 / 3) = 70 dias.
- * Null ou 7 = uso diario (sem ajuste).
+ * Vida util e dia corrido: 1 uso ou 100 no periodo nao mudam a data.
+ * usageDaysPerWeek e ignorado (mantido so por compat de assinatura).
  */
 export function applyUsageFrequencyToCalendarDays(
   baseDays: number,
-  usageDaysPerWeek: number | null | undefined,
+  _usageDaysPerWeek?: number | null,
 ): number {
-  const uses =
-    usageDaysPerWeek == null || usageDaysPerWeek <= 0
-      ? 7
-      : Math.min(7, Math.max(1, Math.floor(usageDaysPerWeek)));
-  if (uses >= 7) return baseDays;
-  return Math.max(1, Math.ceil((baseDays * 7) / uses));
+  return Math.max(1, Math.floor(baseDays));
 }
 
 export function computeNextReplacementAt(input: {
   deliveredAt: Date;
-  /** Periodicidade da funcao (dias de calendario), se houver. */
+  /** Periodicidade da funcao (dias corridos), se nao houver vida util do EPI. */
   replacementIntervalDays?: number | null;
   usefulLifeValue?: number | null;
   usefulLifeUnit?: EpiUsefulLifeUnit | string | null;
   usageDaysPerWeek?: number | null;
 }): Date | null {
   const { deliveredAt } = input;
-  const uses = input.usageDaysPerWeek;
-
-  if (
-    input.replacementIntervalDays != null &&
-    input.replacementIntervalDays > 0
-  ) {
-    const days = applyUsageFrequencyToCalendarDays(
-      input.replacementIntervalDays,
-      uses,
-    );
-    const next = new Date(deliveredAt);
-    next.setUTCDate(next.getUTCDate() + days);
-    return next;
-  }
-
-  const baseDays = usefulLifeToBaseDays(
+  const fromLife = usefulLifeToBaseDays(
     input.usefulLifeValue,
     input.usefulLifeUnit,
   );
-  if (baseDays == null) return null;
-
-  const days = applyUsageFrequencyToCalendarDays(baseDays, uses);
+  const days =
+    fromLife ??
+    (input.replacementIntervalDays != null && input.replacementIntervalDays > 0
+      ? input.replacementIntervalDays
+      : null);
+  if (days == null) return null;
   const next = new Date(deliveredAt);
   next.setUTCDate(next.getUTCDate() + days);
   return next;
+}
+
+export function calendarDaysRemaining(next: Date, from: Date): number {
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.ceil((next.getTime() - from.getTime()) / msPerDay);
+}
+
+export function formatRemainingDays(days: number | null | undefined): string | null {
+  if (days == null || !Number.isFinite(days)) return null;
+  if (days < 0) return `Vencido ha ${Math.abs(days)} dia(s)`;
+  if (days === 0) return 'Vence hoje';
+  return `${days} dia(s) restante(s)`;
 }
 
 export function formatUsefulLifeSnapshot(

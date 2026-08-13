@@ -316,6 +316,10 @@ export class PortalPdfService {
                 (item.returnedQuantity
                   ? ` · Dev. ${item.returnedQuantity}`
                   : '') +
+                (item.usefulLifeLabel
+                  ? ` · Vida util ${item.usefulLifeLabel}`
+                  : '') +
+                (item.remainingLabel ? ` · ${item.remainingLabel}` : '') +
                 ` · ${item.statusLabel}`,
             );
         }

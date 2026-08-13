@@ -245,7 +245,7 @@ export function WorkerEpiSheetView({
                   <col className="epi-col-ca" />
                   <col className="epi-col-qty" />
                   <col className="epi-col-life" />
-                  <col className="epi-col-freq" />
+                  <col className="epi-col-remain" />
                   <col className="epi-col-next" />
                   <col className="epi-col-status" />
                 </colgroup>
@@ -255,7 +255,7 @@ export function WorkerEpiSheetView({
                     <th>CA</th>
                     <th>Qtd</th>
                     <th>Vida util</th>
-                    <th>Frequencia</th>
+                    <th>Dias faltantes</th>
                     <th>Prox. troca</th>
                     <th>Status</th>
                   </tr>
@@ -275,7 +275,7 @@ export function WorkerEpiSheetView({
                         {item.usefulLifeLabel ?? '—'}
                       </td>
                       <td className="epi-doc__cell-meta">
-                        {item.usageFrequencyLabel ?? '—'}
+                        {item.remainingLabel ?? '—'}
                       </td>
                       <td className="epi-doc__cell-meta">
                         {item.nextReplacementAt

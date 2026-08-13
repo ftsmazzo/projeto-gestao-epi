@@ -2,12 +2,15 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
-import { EpiCategory } from '@prisma/client';
+import { EpiCategory, EpiUsefulLifeUnit } from '@prisma/client';
+import { Type } from 'class-transformer';
 
 export class CreateEpiNeedDto {
   @IsString()
@@ -28,6 +31,16 @@ export class CreateEpiNeedDto {
   @IsArray()
   @IsString({ each: true })
   aliases?: string[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  usefulLifeValue?: number;
+
+  @IsOptional()
+  @IsEnum(EpiUsefulLifeUnit)
+  usefulLifeUnit?: EpiUsefulLifeUnit;
 }
 
 export class UpdateEpiNeedDto {
@@ -50,6 +63,16 @@ export class UpdateEpiNeedDto {
   @IsArray()
   @IsString({ each: true })
   aliases?: string[] | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  usefulLifeValue?: number | null;
+
+  @IsOptional()
+  @IsEnum(EpiUsefulLifeUnit)
+  usefulLifeUnit?: EpiUsefulLifeUnit | null;
 }
 
 export class UpdateEpiNeedStatusDto {

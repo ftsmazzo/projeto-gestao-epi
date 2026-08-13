@@ -291,7 +291,6 @@ export function DeliveryReceiptView({
               <col className="epi-col-ca" />
               <col className="epi-col-qty" />
               <col className="epi-col-life" />
-              <col className="epi-col-freq" />
               <col className="epi-col-next" />
             </colgroup>
             <thead>
@@ -300,7 +299,6 @@ export function DeliveryReceiptView({
                 <th>CA</th>
                 <th>Qtd</th>
                 <th>Vida util</th>
-                <th>Frequencia</th>
                 <th>Prox. troca</th>
               </tr>
             </thead>
@@ -320,9 +318,6 @@ export function DeliveryReceiptView({
                   <td className="mono epi-doc__cell-num">{item.quantity}</td>
                   <td className="epi-doc__cell-meta">
                     {item.usefulLifeLabel ?? '—'}
-                  </td>
-                  <td className="epi-doc__cell-meta">
-                    {item.usageFrequencyLabel ?? 'Uso diario'}
                   </td>
                   <td className="epi-doc__cell-meta">
                     {item.nextReplacementAt

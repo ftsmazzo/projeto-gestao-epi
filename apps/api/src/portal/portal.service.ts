@@ -71,8 +71,11 @@ import {
   resolveEvidenceAbsolutePath,
   saveFacialEvidenceFile,
 } from './facial-evidence.storage';
+import { resolveUsefulLife } from '../epi-needs/epi-useful-life.defaults';
 import {
+  calendarDaysRemaining,
   computeNextReplacementAt,
+  formatRemainingDays,
   formatUsageFrequencyLabel,
   formatUsefulLifeSnapshot,
 } from './replacement-schedule.utils';
@@ -2006,17 +2009,25 @@ export class PortalService {
       );
     }
 
+    const need = input.epiNeedId
+      ? await this.prisma.epiNeed.findFirst({
+          where: { id: input.epiNeedId, organizationId },
+          select: {
+            name: true,
+            category: true,
+            usefulLifeValue: true,
+            usefulLifeUnit: true,
+          },
+        })
+      : null;
     const name =
-      cert.equipmentName?.trim() ||
-      (input.epiNeedId
-        ? (
-            await this.prisma.epiNeed.findFirst({
-              where: { id: input.epiNeedId, organizationId },
-              select: { name: true },
-            })
-          )?.name
-        : null) ||
-      `EPI CA ${caNumber}`;
+      cert.equipmentName?.trim() || need?.name || `EPI CA ${caNumber}`;
+    const life = resolveUsefulLife({
+      name: need?.name ?? name,
+      category: need?.category,
+      value: need?.usefulLifeValue,
+      unit: need?.usefulLifeUnit,
+    });
 
     const created = await this.prisma.epiItem.create({
       data: {
@@ -2032,6 +2043,8 @@ export class PortalService {
         restriction: cert.restriction,
         technicalNotes: cert.analysisNotes,
         description: cert.equipmentDescription,
+        usefulLifeValue: life?.value ?? null,
+        usefulLifeUnit: life?.unit ?? null,
       },
       select: { id: true },
     });
@@ -2078,10 +2091,37 @@ export class PortalService {
   ) {
     const need = await this.prisma.epiNeed.findFirst({
       where: { id: epiNeedId, organizationId },
-      select: { id: true },
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        usefulLifeValue: true,
+        usefulLifeUnit: true,
+      },
     });
     if (!need) {
       throw new NotFoundException('Necessidade nao encontrada.');
+    }
+    const item = await this.prisma.epiItem.findFirst({
+      where: { id: epiItemId, organizationId },
+      select: { id: true, usefulLifeValue: true },
+    });
+    if (item && item.usefulLifeValue == null) {
+      const life = resolveUsefulLife({
+        name: need.name,
+        category: need.category,
+        value: need.usefulLifeValue,
+        unit: need.usefulLifeUnit,
+      });
+      if (life) {
+        await this.prisma.epiItem.update({
+          where: { id: item.id },
+          data: {
+            usefulLifeValue: life.value,
+            usefulLifeUnit: life.unit,
+          },
+        });
+      }
     }
     const existing = await this.prisma.epiItemNeed.findFirst({
       where: { organizationId, epiNeedId, epiItemId },
@@ -2634,6 +2674,9 @@ export class PortalService {
           select: {
             id: true,
             name: true,
+            category: true,
+            usefulLifeValue: true,
+            usefulLifeUnit: true,
             isActive: true,
             itemLinks: {
               select: {
@@ -2793,6 +2836,13 @@ export class PortalService {
         0,
       );
 
+      const needLife = resolveUsefulLife({
+        name: epiNeed.name,
+        category: epiNeed.category,
+        value: epiNeed.usefulLifeValue,
+        unit: epiNeed.usefulLifeUnit,
+      });
+
       return {
         requirementId: group.requirementId,
         requirementIds: group.requirementIds,
@@ -2808,19 +2858,36 @@ export class PortalService {
         replacementLabel: this.formatReplacementInterval(
           group.replacementIntervalDays,
         ),
+        suggestedUsefulLifeValue: needLife?.value ?? null,
+        suggestedUsefulLifeUnit: needLife?.unit ?? null,
+        suggestedUsefulLifeLabel: needLife
+          ? formatUsefulLife(needLife.value, needLife.unit)
+          : null,
         status,
         guidance,
         warnings: group.warnings,
         availableStock,
-        linkedEpis: linkedEpis.map((item) => ({
-          epiItemId: item.epiItemId,
-          name: item.name,
-          caNumber: item.caNumber,
-          caExpiresAt: item.caExpiresAt,
-          usefulLifeLabel: item.usefulLifeLabel,
-          totalQuantity: item.totalQuantity,
-          balances: item.balances,
-        })),
+        linkedEpis: linkedEpis.map((item) => {
+          const itemLife =
+            resolveUsefulLife({
+              name: item.name,
+              value: item.usefulLifeValue,
+              unit: item.usefulLifeUnit,
+            }) ?? needLife;
+          return {
+            epiItemId: item.epiItemId,
+            name: item.name,
+            caNumber: item.caNumber,
+            caExpiresAt: item.caExpiresAt,
+            usefulLifeValue: itemLife?.value ?? null,
+            usefulLifeUnit: itemLife?.unit ?? null,
+            usefulLifeLabel: itemLife
+              ? formatUsefulLife(itemLife.value, itemLife.unit)
+              : item.usefulLifeLabel,
+            totalQuantity: item.totalQuantity,
+            balances: item.balances,
+          };
+        }),
         suggestedEpiItemId: suggested?.epiItemId ?? null,
       };
     });
@@ -3008,6 +3075,7 @@ export class PortalService {
       },
     });
 
+    const generatedAt = new Date();
     const mapped = deliveries.map((row) => {
       const facial = row.evidences[0] ?? null;
       return {
@@ -3016,26 +3084,36 @@ export class PortalService {
         status: row.status,
         statusLabel: this.deliveryStatusLabel(row.status),
         deliveredAt: row.deliveredAt.toISOString(),
-        items: row.items.map((item) => ({
-          id: item.id,
-          needName: item.epiNeed.name,
-          epiName: item.epiItem.name,
-          caNumber: item.epiItem.caNumber,
-          quantity: item.quantity,
-          returnedQuantity: item.returnedQuantity,
-          cancelledQuantity: item.cancelledQuantity,
-          status: item.status,
-          statusLabel: this.itemStatusLabel(item.status),
-          nextReplacementAt: item.nextReplacementAt?.toISOString() ?? null,
-          usefulLifeLabel: formatUsefulLifeSnapshot(
-            item.usefulLifeValue,
-            item.usefulLifeUnit,
-          ),
-          usageFrequencyLabel: formatUsageFrequencyLabel(
-            item.usageDaysPerWeek,
-          ),
-          locationName: item.stockLocation.name,
-        })),
+        items: row.items.map((item) => {
+          const nextAt =
+            computeNextReplacementAt({
+              deliveredAt: row.deliveredAt,
+              usefulLifeValue: item.usefulLifeValue,
+              usefulLifeUnit: item.usefulLifeUnit,
+            }) ?? item.nextReplacementAt;
+          const remaining =
+            nextAt != null ? calendarDaysRemaining(nextAt, generatedAt) : null;
+          return {
+            id: item.id,
+            needName: item.epiNeed.name,
+            epiName: item.epiItem.name,
+            caNumber: item.epiItem.caNumber,
+            quantity: item.quantity,
+            returnedQuantity: item.returnedQuantity,
+            cancelledQuantity: item.cancelledQuantity,
+            status: item.status,
+            statusLabel: this.itemStatusLabel(item.status),
+            nextReplacementAt: nextAt?.toISOString() ?? null,
+            usefulLifeLabel: formatUsefulLifeSnapshot(
+              item.usefulLifeValue,
+              item.usefulLifeUnit,
+            ),
+            remainingDays: remaining,
+            remainingLabel: formatRemainingDays(remaining),
+            usageFrequencyLabel: null,
+            locationName: item.stockLocation.name,
+          };
+        }),
         evidence: facial
           ? {
               id: facial.id,
@@ -3056,7 +3134,7 @@ export class PortalService {
     });
 
     return {
-      generatedAt: new Date().toISOString(),
+      generatedAt: generatedAt.toISOString(),
       period: {
         from: fromDate ? fromDate.toISOString().slice(0, 10) : null,
         to: toDate ? toDate.toISOString().slice(0, 10) : null,
@@ -3584,6 +3662,9 @@ export class PortalService {
           select: {
             id: true,
             name: true,
+            category: true,
+            usefulLifeValue: true,
+            usefulLifeUnit: true,
             itemLinks: {
               where: {
                 epiItemId: { in: payload.items.map((i) => i.epiItemId) },
@@ -3751,32 +3832,30 @@ export class PortalService {
             },
           );
 
+          const needLife = resolveUsefulLife({
+            name: req.epiNeed.name,
+            category: req.epiNeed.category,
+            value: req.epiNeed.usefulLifeValue,
+            unit: req.epiNeed.usefulLifeUnit,
+          });
           const lifeValue =
             item.usefulLifeValue != null && item.usefulLifeValue > 0
               ? item.usefulLifeValue
-              : epi.usefulLifeValue;
+              : epi.usefulLifeValue ?? needLife?.value ?? null;
           const lifeUnit =
             item.usefulLifeValue != null && item.usefulLifeValue > 0
               ? (item.usefulLifeUnit ?? EpiUsefulLifeUnit.DIAS)
-              : epi.usefulLifeUnit;
-          const usageDaysPerWeek =
-            item.usageDaysPerWeek != null && item.usageDaysPerWeek > 0
-              ? Math.min(7, Math.max(1, item.usageDaysPerWeek))
-              : null;
+              : (epi.usefulLifeUnit ?? needLife?.unit ?? null);
           const intervalDays = resolveRestrictiveReplacementDays(
             intervalsByNeed.get(item.epiNeedId) ?? [],
           );
 
           const nextReplacementAt = computeNextReplacementAt({
             deliveredAt,
-            // Se o operador informou vida util na entrega, ela prevalece sobre a periodicidade.
             replacementIntervalDays:
-              item.usefulLifeValue != null && item.usefulLifeValue > 0
-                ? null
-                : intervalDays,
+              lifeValue != null && lifeValue > 0 ? null : intervalDays,
             usefulLifeValue: lifeValue,
             usefulLifeUnit: lifeUnit,
-            usageDaysPerWeek,
           });
 
           const snapshotLifeValue =
@@ -3807,7 +3886,7 @@ export class PortalService {
               nextReplacementAt,
               usefulLifeValue: snapshotLifeValue,
               usefulLifeUnit: snapshotLifeUnit,
-              usageDaysPerWeek,
+              usageDaysPerWeek: null,
             },
           });
 

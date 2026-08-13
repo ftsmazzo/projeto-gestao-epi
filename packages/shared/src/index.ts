@@ -999,6 +999,8 @@ export interface EpiNeed {
   category: EpiCategory | null;
   description: string | null;
   aliases: string[];
+  usefulLifeValue?: number | null;
+  usefulLifeUnit?: EpiUsefulLifeUnit | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -1831,6 +1833,9 @@ export interface PortalEpiCoverageNeedRow {
   quantity: number;
   replacementIntervalDays: number | null;
   replacementLabel: string | null;
+  suggestedUsefulLifeValue?: number | null;
+  suggestedUsefulLifeUnit?: EpiUsefulLifeUnit | null;
+  suggestedUsefulLifeLabel?: string | null;
   status: PortalEpiCoverageStatus;
   guidance: string | null;
   /** Avisos de criterio restritivo (qtd/periodicidade conflitantes). */
@@ -2379,6 +2384,8 @@ export interface PortalWorkerEpiSheetDeliveryItem {
   statusLabel: string;
   nextReplacementAt: string | null;
   usefulLifeLabel: string | null;
+  remainingDays?: number | null;
+  remainingLabel?: string | null;
   usageFrequencyLabel: string | null;
   locationName: string;
 }

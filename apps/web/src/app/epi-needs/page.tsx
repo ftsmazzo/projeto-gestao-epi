@@ -53,6 +53,20 @@ function stockStatusClass(status?: EpiNeed['stockStatus']) {
   return 'status-pill status-pill--inactive';
 }
 
+function usefulLifeLabel(need: {
+  usefulLifeValue?: number | null;
+  usefulLifeUnit?: string | null;
+}) {
+  if (need.usefulLifeValue == null || !need.usefulLifeUnit) return '—';
+  const unit =
+    need.usefulLifeUnit === 'DIAS'
+      ? 'dia(s)'
+      : need.usefulLifeUnit === 'MESES'
+        ? 'mes(es)'
+        : 'ano(s)';
+  return `${need.usefulLifeValue} ${unit}`;
+}
+
 function EpiNeedsContent() {
   const [mode, setMode] = useState<Mode>('list');
   const [loading, setLoading] = useState(true);
@@ -70,6 +84,8 @@ function EpiNeedsContent() {
   const [formCategory, setFormCategory] = useState<EpiCategory | ''>('');
   const [description, setDescription] = useState('');
   const [aliases, setAliases] = useState('');
+  const [lifeValue, setLifeValue] = useState('');
+  const [lifeUnit, setLifeUnit] = useState<'DIAS' | 'MESES' | 'ANOS'>('DIAS');
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -117,6 +133,8 @@ function EpiNeedsContent() {
     setFormCategory('');
     setDescription('');
     setAliases('');
+    setLifeValue('');
+    setLifeUnit('DIAS');
     setFormError(null);
   }
 
@@ -127,6 +145,10 @@ function EpiNeedsContent() {
     setFormCategory(need.category ?? '');
     setDescription(need.description ?? '');
     setAliases((need.aliases ?? []).join(', '));
+    setLifeValue(
+      need.usefulLifeValue != null ? String(need.usefulLifeValue) : '',
+    );
+    setLifeUnit(need.usefulLifeUnit ?? 'DIAS');
     setFormError(null);
   }
 
@@ -159,6 +181,7 @@ function EpiNeedsContent() {
     setFormError(null);
     setSaving(true);
     try {
+      const lifeRaw = Number(lifeValue);
       const payload = {
         name: name.trim(),
         category: formCategory || null,
@@ -167,6 +190,10 @@ function EpiNeedsContent() {
           .split(',')
           .map((item) => item.trim())
           .filter(Boolean),
+        usefulLifeValue:
+          Number.isFinite(lifeRaw) && lifeRaw > 0 ? lifeRaw : null,
+        usefulLifeUnit:
+          Number.isFinite(lifeRaw) && lifeRaw > 0 ? lifeUnit : null,
       };
       if (mode === 'create') {
         await createEpiNeed(payload);
@@ -262,8 +289,9 @@ function EpiNeedsContent() {
           <p className="page-kicker">Catalogo operacional</p>
           <h1 className="page-title">Necessidades de EPI</h1>
           <p className="page-lead">
-            Defina o que o trabalhador precisa usar e vincule aos EPIs reais
-            (com CA) que atendem essa necessidade.
+            Defina o que o trabalhador precisa usar, a vida util padrao em dias
+            corridos e vincule o EPI real (CA). O CAEPI nao traz vida util do
+            produto — so a validade do certificado.
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
@@ -350,6 +378,35 @@ function EpiNeedsContent() {
                   onChange={(e) => setDescription(e.target.value)}
                 />
               </div>
+              <div className="field">
+                <label htmlFor="need-life">Vida util padrao</label>
+                <input
+                  id="need-life"
+                  type="number"
+                  min={1}
+                  value={lifeValue}
+                  onChange={(e) => setLifeValue(e.target.value)}
+                  placeholder="Ex.: 180"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="need-life-unit">Unidade</label>
+                <select
+                  id="need-life-unit"
+                  value={lifeUnit}
+                  onChange={(e) =>
+                    setLifeUnit(e.target.value as 'DIAS' | 'MESES' | 'ANOS')
+                  }
+                >
+                  <option value="DIAS">Dias corridos</option>
+                  <option value="MESES">Meses</option>
+                  <option value="ANOS">Anos</option>
+                </select>
+                <p className="field-hint">
+                  Prazo do produto em calendario, nao em vezes de uso. Ao
+                  vincular o CA, este valor vai para o EPI real.
+                </p>
+              </div>
               <div className="field field--span-2">
                 <label htmlFor="need-aliases">
                   Aliases (separados por virgula)
@@ -385,7 +442,8 @@ function EpiNeedsContent() {
                 {detail.name}
               </h2>
               <p className="page-lead">
-                {categoryLabel(detail.category)} ·{' '}
+                {categoryLabel(detail.category)} · Vida util{' '}
+                {usefulLifeLabel(detail)} ·{' '}
                 <span className={stockStatusClass(detail.stockStatus)}>
                   {stockStatusLabel(detail.stockStatus)}
                 </span>{' '}
@@ -580,6 +638,7 @@ function EpiNeedsContent() {
                   <tr>
                     <th scope="col">Necessidade</th>
                     <th scope="col">Categoria</th>
+                    <th scope="col">Vida util</th>
                     <th scope="col">EPIs</th>
                     <th scope="col">Saldo</th>
                     <th scope="col">Situacao</th>
@@ -599,6 +658,7 @@ function EpiNeedsContent() {
                         ) : null}
                       </td>
                       <td>{categoryLabel(need.category)}</td>
+                      <td>{usefulLifeLabel(need)}</td>
                       <td className="mono">{need.linkedItemsCount ?? 0}</td>
                       <td className="mono">{need.totalStockQuantity ?? 0}</td>
                       <td>

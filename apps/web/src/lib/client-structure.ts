@@ -244,9 +244,9 @@ export function updateOccupationalRiskStatus(id: string, isActive: boolean) {
 /** Sugestoes de necessidades de EPI por nome de risco (nao aplicadas automaticamente). */
 export const RISK_EPI_NEED_SUGGESTIONS: Record<string, string[]> = {
   ruido: ['Protetor Auricular Plug', 'Protetor Auricular Concha'],
-  calor: ['Avental de Raspa', 'Luva de Vaqueta'],
-  poeira: ['Respirador PFF2'],
-  'corte/perfuracao': ['Luva de Vaqueta', 'Luva Nitrilica'],
+  calor: ['Avental de Raspa', 'Luva de Raspa', 'Luva de Vaqueta'],
+  poeira: ['Respirador PFF1', 'Respirador PFF2'],
+  'corte/perfuracao': ['Luva Anticorte', 'Luva de Vaqueta', 'Luva Nitrilica'],
   'queda de altura': ['Cinto de Seguranca', 'Talabarte'],
   'impacto nos olhos': ['Oculos de Seguranca', 'Viseira Facial'],
 };

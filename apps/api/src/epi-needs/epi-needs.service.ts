@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { EpiCategory, Prisma } from '@prisma/client';
+import { EpiCategory, EpiUsefulLifeUnit, Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import type {
@@ -17,6 +17,7 @@ import {
   DEFAULT_EPI_NEED_SEEDS,
   suggestNeedNamesFromText,
 } from './epi-need-suggest';
+import { resolveUsefulLife } from './epi-useful-life.defaults';
 
 function parseAliases(value: Prisma.JsonValue | null | undefined): string[] {
   if (!value) return [];
@@ -172,6 +173,17 @@ export class EpiNeedsService {
     const name = dto.name.trim();
     await this.assertUniqueName(organizationId, name);
 
+    const life =
+      dto.usefulLifeValue != null && dto.usefulLifeValue > 0
+        ? {
+            value: dto.usefulLifeValue,
+            unit: dto.usefulLifeUnit ?? EpiUsefulLifeUnit.DIAS,
+          }
+        : resolveUsefulLife({
+            name,
+            category: dto.category ?? null,
+          });
+
     const need = await this.prisma.epiNeed.create({
       data: {
         organizationId,
@@ -179,6 +191,8 @@ export class EpiNeedsService {
         category: dto.category ?? null,
         description: this.normalizeOptionalText(dto.description),
         aliases: this.normalizeAliases(dto.aliases),
+        usefulLifeValue: life?.value ?? null,
+        usefulLifeUnit: life?.unit ?? null,
       },
     });
 
@@ -219,6 +233,17 @@ export class EpiNeedsService {
           dto.aliases === undefined
             ? undefined
             : this.normalizeAliases(dto.aliases),
+        ...(dto.usefulLifeValue !== undefined
+          ? {
+              usefulLifeValue: dto.usefulLifeValue,
+              usefulLifeUnit:
+                dto.usefulLifeValue == null
+                  ? null
+                  : (dto.usefulLifeUnit ??
+                    existing.usefulLifeUnit ??
+                    EpiUsefulLifeUnit.DIAS),
+            }
+          : {}),
       },
     });
 
@@ -268,7 +293,7 @@ export class EpiNeedsService {
   async suggestDefaults(organizationId: string, userId: string) {
     const existing = await this.prisma.epiNeed.findMany({
       where: { organizationId },
-      select: { name: true },
+      select: { id: true, name: true, usefulLifeValue: true },
     });
     const existingNames = new Set(
       existing.map((row) => row.name.toLowerCase()),
@@ -277,6 +302,18 @@ export class EpiNeedsService {
     const created = [];
     for (const seed of DEFAULT_EPI_NEED_SEEDS) {
       if (existingNames.has(seed.name.toLowerCase())) {
+        const current = existing.find(
+          (row) => row.name.toLowerCase() === seed.name.toLowerCase(),
+        );
+        if (current) {
+          await this.prisma.epiNeed.update({
+            where: { id: current.id },
+            data: {
+              usefulLifeValue: seed.usefulLifeValue,
+              usefulLifeUnit: seed.usefulLifeUnit,
+            },
+          });
+        }
         continue;
       }
       const need = await this.prisma.epiNeed.create({
@@ -286,6 +323,8 @@ export class EpiNeedsService {
           category: seed.category,
           description: seed.description,
           aliases: seed.aliases,
+          usefulLifeValue: seed.usefulLifeValue,
+          usefulLifeUnit: seed.usefulLifeUnit,
           isActive: true,
         },
       });
@@ -349,10 +388,10 @@ export class EpiNeedsService {
     needId: string,
     dto: LinkEpiNeedItemDto,
   ) {
-    await this.requireNeed(organizationId, needId);
+    const need = await this.requireNeed(organizationId, needId);
     const epi = await this.prisma.epiItem.findFirst({
       where: { id: dto.epiItemId, organizationId },
-      select: { id: true, name: true },
+      select: { id: true, name: true, usefulLifeValue: true, usefulLifeUnit: true },
     });
     if (!epi) {
       throw new NotFoundException('EPI nao encontrado neste tenant.');
@@ -365,6 +404,24 @@ export class EpiNeedsService {
       throw new ConflictException(
         'Este EPI ja esta vinculado a esta necessidade.',
       );
+    }
+
+    if (epi.usefulLifeValue == null) {
+      const life = resolveUsefulLife({
+        name: need.name,
+        category: need.category,
+        value: need.usefulLifeValue,
+        unit: need.usefulLifeUnit,
+      });
+      if (life) {
+        await this.prisma.epiItem.update({
+          where: { id: epi.id },
+          data: {
+            usefulLifeValue: life.value,
+            usefulLifeUnit: life.unit,
+          },
+        });
+      }
     }
 
     const link = await this.prisma.epiItemNeed.create({
