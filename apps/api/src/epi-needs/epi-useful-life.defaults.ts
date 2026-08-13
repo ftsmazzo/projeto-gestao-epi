@@ -19,8 +19,12 @@ function specOf(value: number, unit: EpiUsefulLifeUnit): UsefulLifeSpec {
   return { value, unit };
 }
 
-/** Mesma tabela das sugestoes + aliases, para nao haver dois padroes. */
-const BY_NEED_NAME: Record<string, UsefulLifeSpec> = (() => {
+function isDisposableOneDay(spec: UsefulLifeSpec): boolean {
+  return spec.value === 1 && spec.unit === EpiUsefulLifeUnit.DIAS;
+}
+
+/** Lookup exato por nome oficial ou alias. Sem fuzzy de palavra curta. */
+const BY_EXACT_KEY: Record<string, UsefulLifeSpec> = (() => {
   const map: Record<string, UsefulLifeSpec> = {};
   for (const seed of DEFAULT_EPI_NEED_SEEDS) {
     const spec = specOf(seed.usefulLifeValue, seed.usefulLifeUnit);
@@ -50,18 +54,25 @@ export function standardUsefulLifeForNeed(
   category?: string | null,
 ): UsefulLifeSpec | null {
   const key = normalizeNeedKey(name ?? '');
-  if (key && BY_NEED_NAME[key]) return BY_NEED_NAME[key];
-  if (key) {
+  if (key && BY_EXACT_KEY[key]) return BY_EXACT_KEY[key];
+
+  if (key.length >= 8) {
     let best: { spec: UsefulLifeSpec; len: number } | null = null;
-    for (const [seed, spec] of Object.entries(BY_NEED_NAME)) {
-      if (key.includes(seed) || seed.includes(key)) {
-        if (!best || seed.length > best.len) {
-          best = { spec, len: seed.length };
+    for (const seed of DEFAULT_EPI_NEED_SEEDS) {
+      const nameKey = normalizeNeedKey(seed.name);
+      if (nameKey.length < 8) continue;
+      if (key.includes(nameKey) || nameKey.includes(key)) {
+        if (!best || nameKey.length > best.len) {
+          best = {
+            spec: specOf(seed.usefulLifeValue, seed.usefulLifeUnit),
+            len: nameKey.length,
+          };
         }
       }
     }
     if (best) return best.spec;
   }
+
   if (category && category in BY_CATEGORY) {
     return BY_CATEGORY[category as EpiCategory] ?? null;
   }
@@ -74,15 +85,21 @@ export function resolveUsefulLife(input: {
   value?: number | null;
   unit?: string | null;
 }): UsefulLifeSpec | null {
-  if (input.value != null && input.value > 0 && input.unit) {
-    const unit = input.unit as EpiUsefulLifeUnit;
-    if (
-      unit === EpiUsefulLifeUnit.DIAS ||
-      unit === EpiUsefulLifeUnit.MESES ||
-      unit === EpiUsefulLifeUnit.ANOS
-    ) {
-      return { value: input.value, unit };
-    }
+  const fromName = standardUsefulLifeForNeed(input.name, input.category);
+  const stored =
+    input.value != null && input.value > 0 && input.unit
+      ? specOf(input.value, input.unit as EpiUsefulLifeUnit)
+      : null;
+  const storedValid =
+    stored &&
+    (stored.unit === EpiUsefulLifeUnit.DIAS ||
+      stored.unit === EpiUsefulLifeUnit.MESES ||
+      stored.unit === EpiUsefulLifeUnit.ANOS);
+
+  // 1 dia gravado no item foi o vazamento do PFF2 antigo — so mantem se o nome tambem for 1 dia.
+  if (storedValid && isDisposableOneDay(stored) && fromName && !isDisposableOneDay(fromName)) {
+    return fromName;
   }
-  return standardUsefulLifeForNeed(input.name, input.category);
+  if (storedValid) return stored;
+  return fromName;
 }

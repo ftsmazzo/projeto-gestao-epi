@@ -69,6 +69,17 @@ function statusPillClass(status: PortalEpiCoverageStatus) {
   return 'status-pill status-pill--inactive';
 }
 
+function toCalendarDays(
+  value?: number | null,
+  unit?: string | null,
+): number | null {
+  if (value == null || value <= 0) return null;
+  if (unit === 'MESES') return value * 30;
+  if (unit === 'ANOS') return value * 365;
+  if (unit === 'DIAS' || !unit) return value;
+  return value;
+}
+
 function lifeDefaultsFromRow(
   row: PortalEpiCoverageNeedRow,
   epiItemId: string,
@@ -77,29 +88,19 @@ function lifeDefaultsFromRow(
   'usefulLifeValue' | 'usefulLifeUnit'
 > {
   const epi = row.linkedEpis.find((e) => e.epiItemId === epiItemId);
-  if (epi?.usefulLifeValue != null && epi.usefulLifeValue > 0) {
-    return {
-      usefulLifeValue: String(epi.usefulLifeValue),
-      usefulLifeUnit: epi.usefulLifeUnit ?? 'DIAS',
-    };
-  }
-  if (
-    row.suggestedUsefulLifeValue != null &&
-    row.suggestedUsefulLifeValue > 0
-  ) {
-    return {
-      usefulLifeValue: String(row.suggestedUsefulLifeValue),
-      usefulLifeUnit: row.suggestedUsefulLifeUnit ?? 'DIAS',
-    };
-  }
-  if (row.replacementIntervalDays != null && row.replacementIntervalDays > 0) {
-    return {
-      usefulLifeValue: String(row.replacementIntervalDays),
-      usefulLifeUnit: 'DIAS',
-    };
-  }
+  const fromEpi = toCalendarDays(epi?.usefulLifeValue, epi?.usefulLifeUnit);
+  const fromNeed = toCalendarDays(
+    row.suggestedUsefulLifeValue,
+    row.suggestedUsefulLifeUnit,
+  );
+  const days =
+    fromEpi ??
+    fromNeed ??
+    (row.replacementIntervalDays != null && row.replacementIntervalDays > 1
+      ? row.replacementIntervalDays
+      : null);
   return {
-    usefulLifeValue: '',
+    usefulLifeValue: days != null ? String(days) : '',
     usefulLifeUnit: 'DIAS',
   };
 }
@@ -308,28 +309,12 @@ function NeedConfigPanel({
               onChange({
                 ...selection,
                 usefulLifeValue: e.target.value,
+                usefulLifeUnit: 'DIAS',
               })
             }
           />
-        </div>
-        <div className="field">
-          <label>Unidade</label>
-          <select
-            value={selection.usefulLifeUnit}
-            onChange={(e) =>
-              onChange({
-                ...selection,
-                usefulLifeUnit: e.target.value as 'DIAS' | 'MESES' | 'ANOS',
-              })
-            }
-          >
-            <option value="DIAS">Dias</option>
-            <option value="MESES">Meses</option>
-            <option value="ANOS">Anos</option>
-          </select>
           <p className="field-hint">
-            Conta calendario a partir da entrega, independente de quantas vezes
-            a pessoa usar no periodo.
+            Dias de calendario a partir da entrega. Botina 180, plug 30, PFF 3.
           </p>
         </div>
       </div>

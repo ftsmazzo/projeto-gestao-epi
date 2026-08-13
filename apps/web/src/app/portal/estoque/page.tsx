@@ -90,56 +90,28 @@ function matchInvoiceLine(
   }
   return lines.length === 1 ? lines[0] : null;
 }
-const STOP_WORDS = new Set([
-  'de',
-  'da',
-  'do',
-  'das',
-  'dos',
-  'para',
-  'com',
-  'e',
-  'ou',
-  'em',
-]);
-
-/** Extrai termos uteis para CAEPI a partir do nome da necessidade. */
-function needSearchTerms(needName: string): string[] {
-  const cleaned = needName.trim();
-  if (!cleaned) return [];
-  const terms: string[] = [cleaned];
-  const tokens = cleaned
-    .split(/\s+/)
-    .map((t) => t.replace(/[^\p{L}\p{N}]/gu, ''))
-    .filter((t) => t.length >= SEARCH_MIN && !STOP_WORDS.has(t.toLowerCase()));
-  for (const token of tokens) {
-    if (!terms.some((t) => t.toLowerCase() === token.toLowerCase())) {
-      terms.push(token);
-    }
-  }
-  const folded = cleaned
+/** Sempre o nome inteiro da necessidade — token solto (protetor, seguranca) lista o catalogo todo. */
+function preferredCaepiQuery(needName: string): string {
+  const folded = needName
     .normalize('NFD')
     .replace(/\p{M}/gu, '')
     .toLowerCase();
-  // Nome operacional vs nome oficial CAEPI
-  if (
-    folded.includes('viseira') &&
-    !terms.some((t) => t.toLowerCase().includes('protetor facial'))
-  ) {
-    terms.push('protetor facial');
-  }
-  return terms;
+  if (folded.includes('viseira')) return 'protetor facial';
+  return needName.trim();
 }
 
-/** Termo inicial preferido ao abrir o seletor (sinonimo oficial quando houver). */
-function preferredCaepiQuery(needName: string): string {
-  const terms = needSearchTerms(needName);
-  const synonym = terms.find((t) => /protetor facial/i.test(t));
-  if (synonym) return synonym;
-  return terms[1] ?? terms[0] ?? needName;
-}
+const CAEPI_PICKER_LIMIT = 20;
 
-const CAEPI_PICKER_LIMIT = 50;
+function filterSuggestionsForNeed(
+  needName: string,
+  items: CaCertificateSearchItem[],
+) {
+  return items.filter(
+    (item) =>
+      assessNeedEquipmentCompatibility(needName, item.equipmentName)
+        .compatible,
+  );
+}
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return '—';
@@ -313,7 +285,11 @@ function PortalEstoqueContent() {
     setSearching(true);
     setSearchMessage(null);
     const handle = window.setTimeout(() => {
-      void searchPortalCaepi(q, CAEPI_PICKER_LIMIT)
+      void searchPortalCaepi(
+        q,
+        /^\d{3,}$/.test(caDigits(q)) ? 5 : 15,
+        /^\d{3,}$/.test(caDigits(q)) ? undefined : { validOnly: true },
+      )
         .then((res) => {
           setSuggestions(res.items);
           setSearchMessage(
@@ -366,17 +342,21 @@ function PortalEstoqueContent() {
       ),
     );
     try {
+      const needName = needRows[index]?.needName ?? query;
+      const isCaNumber = /^\d{3,}$/.test(caDigits(query));
       let res = await searchPortalCaepi(query, CAEPI_PICKER_LIMIT, {
-        validOnly: true,
+        validOnly: !isCaNumber,
       });
-      // Se o nome operacional nao bate, tenta sinonimos / tokens (ex.: Viseira → Protetor facial).
-      if (res.items.length === 0) {
-        for (const fallback of needSearchTerms(query)) {
-          if (fallback.toLowerCase() === query.toLowerCase()) continue;
-          res = await searchPortalCaepi(fallback, CAEPI_PICKER_LIMIT, {
+      let items = isCaNumber
+        ? res.items
+        : filterSuggestionsForNeed(needName, res.items);
+      if (items.length === 0 && !isCaNumber) {
+        const synonym = preferredCaepiQuery(needName);
+        if (synonym.toLowerCase() !== query.toLowerCase()) {
+          res = await searchPortalCaepi(synonym, CAEPI_PICKER_LIMIT, {
             validOnly: true,
           });
-          if (res.items.length > 0) break;
+          items = filterSuggestionsForNeed(needName, res.items);
         }
       }
       setNeedRows((prev) =>
@@ -385,12 +365,11 @@ function PortalEstoqueContent() {
             ? {
                 ...r,
                 suggestLoading: false,
-                suggestions: res.items,
+                suggestions: items,
                 suggestMessage:
-                  res.items.length === 0
-                    ? res.message ??
-                      `Nenhum CA valido na base para "${query}". Tente o numero do CA.`
-                    : res.message,
+                  items.length === 0
+                    ? `Nenhum CA desta necessidade para "${query}". Digite o numero do CA.`
+                    : `${items.length} CA(s) desta necessidade.`,
               }
             : r,
         ),

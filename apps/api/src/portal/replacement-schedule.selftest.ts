@@ -37,6 +37,14 @@ function run() {
   assert.strictEqual(plug?.value, 1);
   assert.strictEqual(plug?.unit, EpiUsefulLifeUnit.MESES);
 
+  const leaked = resolveUsefulLife({
+    name: 'Botina de Seguranca',
+    value: 1,
+    unit: 'DIAS',
+  });
+  assert.strictEqual(leaked?.value, 6);
+  assert.strictEqual(leaked?.unit, EpiUsefulLifeUnit.MESES);
+
   const helmet = resolveUsefulLife({ name: 'Capacete de Seguranca' });
   assert.strictEqual(helmet?.value, 5);
   assert.strictEqual(helmet?.unit, EpiUsefulLifeUnit.ANOS);

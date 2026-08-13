@@ -5405,11 +5405,6 @@ body.delivery-face-open .pwa-install-banner {
   padding-inline: 0.75rem;
 }
 
-.ops-nav-link.is-active {
-  background: var(--color-accent-muted);
-  color: var(--color-accent-active);
-}
-
 /* Journey rail — implantacao do cliente */
 .journey-rail {
   display: grid;
