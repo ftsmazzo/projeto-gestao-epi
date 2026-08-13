@@ -23,6 +23,10 @@ import {
   parseCaepiDateValue,
   parseCaepiFile,
 } from './caepi-import.utils';
+import {
+  buildCaepiTextMatchWhere,
+  caepiTextMatchesQuery,
+} from './caepi-search.utils';
 
 export type CaepiImportError = {
   row: number;
@@ -82,27 +86,6 @@ export const CAEPI_BASE_INCOMPLETE_THRESHOLD = 1000;
 /** Cap por fase (VALIDO / demais). Sem orderBy no banco, um unico take puxava so vencidos. */
 const SEARCH_CANDIDATE_CAP = 250;
 const UPSERT_BATCH_SIZE = 40;
-
-/** Sinonimos comuns EPI ↔ nome oficial CAEPI (ex.: Viseira → Protetor facial). */
-function expandEquipmentSearchTerms(term: string): string[] {
-  const folded = term
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase();
-  const extras: string[] = [];
-  if (folded.includes('viseira')) extras.push('protetor facial');
-  if (folded.includes('protetor facial')) extras.push('viseira');
-  if (folded.includes('oculos')) extras.push('protetor ocular');
-  if (folded.includes('botina') || folded.includes('calcado')) {
-    extras.push('botina', 'calcado');
-  }
-  if (folded.includes('plug')) extras.push('insercao', 'auricular');
-  if (folded.includes('concha') || folded.includes('abafador')) {
-    extras.push('concha', 'abafador');
-  }
-  if (folded.includes('pff')) extras.push('pff2', 'pff1');
-  return [...new Set([term, ...extras].map((t) => t.trim()).filter(Boolean))];
-}
 
 @Injectable()
 export class CaepiService {
@@ -271,21 +254,7 @@ export class CaepiService {
       };
     }
 
-    const equipmentTerms = expandEquipmentSearchTerms(qTrimmed);
-    const textOr = equipmentTerms.flatMap((term) => [
-      { equipmentName: { contains: term, mode: 'insensitive' as const } },
-      {
-        equipmentDescription: {
-          contains: term,
-          mode: 'insensitive' as const,
-        },
-      },
-      { manufacturerName: { contains: term, mode: 'insensitive' as const } },
-      { reference: { contains: term, mode: 'insensitive' as const } },
-      { caNumber: { contains: qCa, mode: 'insensitive' as const } },
-    ]);
-
-    const matchWhere = { OR: textOr };
+    const matchWhere = buildCaepiTextMatchWhere(qTrimmed, qCa);
 
     // Busca em duas fases: VALIDO primeiro (com validade mais longa), depois o resto.
     // Um unico findMany+take sem orderBy devolvia amostra arbitraria — quase so vencidos.
@@ -331,6 +300,10 @@ export class CaepiService {
       const aPrefix = a.caNumber.toLowerCase().startsWith(qCaLower) ? 0 : 1;
       const bPrefix = b.caNumber.toLowerCase().startsWith(qCaLower) ? 0 : 1;
       if (aPrefix !== bPrefix) return aPrefix - bPrefix;
+
+      const aName = caepiTextMatchesQuery(a.equipmentName, qTrimmed) ? 0 : 1;
+      const bName = caepiTextMatchesQuery(b.equipmentName, qTrimmed) ? 0 : 1;
+      if (aName !== bName) return aName - bName;
 
       const aValid = a.status === CaCertificateStatus.VALIDO ? 0 : 1;
       const bValid = b.status === CaCertificateStatus.VALIDO ? 0 : 1;

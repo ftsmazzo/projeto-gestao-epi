@@ -78,6 +78,7 @@ import {
   formatRemainingDays,
   formatUsageFrequencyLabel,
   formatUsefulLifeSnapshot,
+  usefulLifeToBaseDays,
 } from './replacement-schedule.utils';
 import {
   groupCoverageRequirementsByNeed,
@@ -2104,16 +2105,18 @@ export class PortalService {
     }
     const item = await this.prisma.epiItem.findFirst({
       where: { id: epiItemId, organizationId },
-      select: { id: true, usefulLifeValue: true },
+      select: { id: true, usefulLifeValue: true, usefulLifeUnit: true },
     });
-    if (item && item.usefulLifeValue == null) {
+    const leakedOneDay =
+      item?.usefulLifeValue === 1 && item.usefulLifeUnit === EpiUsefulLifeUnit.DIAS;
+    if (item && (item.usefulLifeValue == null || leakedOneDay)) {
       const life = resolveUsefulLife({
         name: need.name,
         category: need.category,
         value: need.usefulLifeValue,
         unit: need.usefulLifeUnit,
       });
-      if (life) {
+      if (life && (item.usefulLifeValue == null || leakedOneDay)) {
         await this.prisma.epiItem.update({
           where: { id: item.id },
           data: {
@@ -2863,6 +2866,9 @@ export class PortalService {
         suggestedUsefulLifeLabel: needLife
           ? formatUsefulLife(needLife.value, needLife.unit)
           : null,
+        suggestedUsefulLifeDays: needLife
+          ? usefulLifeToBaseDays(needLife.value, needLife.unit)
+          : null,
         status,
         guidance,
         warnings: group.warnings,
@@ -2891,6 +2897,9 @@ export class PortalService {
             usefulLifeLabel: itemLife
               ? formatUsefulLife(itemLife.value, itemLife.unit)
               : item.usefulLifeLabel,
+            usefulLifeDays: itemLife
+              ? usefulLifeToBaseDays(itemLife.value, itemLife.unit)
+              : null,
             totalQuantity: item.totalQuantity,
             balances: item.balances,
           };

@@ -576,6 +576,7 @@ a.btn-ghost:hover {
     flex: 1 1 0;
     min-width: 0;
     max-width: calc(100vw - 14.5rem);
+    overflow-x: hidden;
   }
 
   .portal-sidebar__nav {
@@ -1374,7 +1375,8 @@ input.portal-qty-input[inputmode='decimal'] {
 }
 
 .flow-sticky-bar .field {
-  min-width: 16rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .flow-sticky-bar .btn {

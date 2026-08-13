@@ -7,6 +7,7 @@ export const API_DEFAULT_PORT = 3001;
 
 export * from './face-biometrics';
 export * from './life-pricing';
+export * from './caepi-need-query';
 import type { LivenessChallengeType } from './face-biometrics';
 
 export type HealthStatus = 'ok' | 'degraded' | 'down';
@@ -546,13 +547,20 @@ export function suggestCategoryFromEquipment(
     .replace(/[\u0300-\u036f]/g, '')
     .toUpperCase();
   if (!text) return 'OUTROS';
-  if (text.includes('RESPIRADOR') || text.includes('RESPIRATORIO')) {
+  if (
+    text.includes('RESPIRADOR') ||
+    text.includes('RESPIRATORIO') ||
+    text.includes('PFF') ||
+    text.includes('SEMIFACIAL FILTRANTE')
+  ) {
     return 'RESPIRATORIA';
   }
   if (
     text.includes('PROTETOR AUDITIVO') ||
     text.includes('AUDITIVO') ||
-    text.includes('AURICULAR')
+    text.includes('AURICULAR') ||
+    text.includes('INSERCAO') ||
+    text.includes('CONCHA')
   ) {
     return 'AUDITIVA';
   }
@@ -1808,6 +1816,8 @@ export interface PortalEpiCoverageLinkedItem {
   usefulLifeValue: number | null;
   usefulLifeUnit: EpiUsefulLifeUnit | null;
   usefulLifeLabel: string | null;
+  /** Dias corridos ja convertidos (6 meses → 180). */
+  usefulLifeDays?: number | null;
   totalQuantity: number;
   balances: Array<{
     stockLocationId: string;
@@ -1836,6 +1846,8 @@ export interface PortalEpiCoverageNeedRow {
   suggestedUsefulLifeValue?: number | null;
   suggestedUsefulLifeUnit?: EpiUsefulLifeUnit | null;
   suggestedUsefulLifeLabel?: string | null;
+  /** Dias corridos ja convertidos (6 meses → 180). */
+  suggestedUsefulLifeDays?: number | null;
   status: PortalEpiCoverageStatus;
   guidance: string | null;
   /** Avisos de criterio restritivo (qtd/periodicidade conflitantes). */

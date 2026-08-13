@@ -9,7 +9,10 @@ import type {
   PortalReportsStockResponse,
   PortalStockBalanceRow,
 } from '@gestao-epi/shared';
-import { assessNeedEquipmentCompatibility } from '@gestao-epi/shared';
+import {
+  assessNeedEquipmentCompatibility,
+  preferredCaepiQuery,
+} from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { StockConsumptionCharts } from '../../../components/portal/StockConsumptionCharts';
@@ -90,63 +93,8 @@ function matchInvoiceLine(
   }
   return lines.length === 1 ? lines[0] : null;
 }
-const GENERIC_NEED_TOKENS = new Set([
-  'protetor',
-  'protecao',
-  'seguranca',
-  'equipamento',
-  'peca',
-  'tipo',
-  'para',
-  'com',
-  'real',
-]);
 
-/** Termo que a CAEPI costuma ter — nao o nome operacional inteiro. */
-function preferredCaepiQuery(needName: string): string {
-  const folded = needName
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
-  if (folded.includes('viseira')) return 'protetor facial';
-  if (folded.includes('plug') || folded.includes('insercao')) return 'plug';
-  if (folded.includes('concha') || folded.includes('abafador')) return 'concha';
-  if (folded.includes('pff2') || folded.includes('n95')) return 'pff2';
-  if (folded.includes('pff1') || folded.includes('contra po')) return 'pff';
-  if (folded.includes('facial inteira') || folded.includes('full face')) {
-    return 'facial inteira';
-  }
-  if (folded.includes('botina') || folded.includes('calcado')) return 'botina';
-  if (folded.includes('bota') && folded.includes('borracha')) return 'bota';
-  if (folded.includes('capacete')) return 'capacete';
-  if (folded.includes('oculos') && folded.includes('ampla')) return 'ampla visao';
-  if (folded.includes('oculos')) return 'oculos';
-  if (folded.includes('luva') && folded.includes('raspa')) return 'luva raspa';
-  if (folded.includes('luva') && folded.includes('vaqueta')) return 'vaqueta';
-  if (folded.includes('luva') && folded.includes('pvc')) return 'luva pvc';
-  if (folded.includes('luva') && folded.includes('nitril')) return 'nitrilica';
-  if (folded.includes('luva') && folded.includes('malha')) return 'luva malha';
-  if (folded.includes('luva') && folded.includes('isolante')) return 'luva isolante';
-  if (folded.includes('luva')) return 'luva';
-  if (folded.includes('avental') && folded.includes('pvc')) return 'avental pvc';
-  if (folded.includes('avental')) return 'avental';
-  if (folded.includes('perneira')) return 'perneira';
-  if (folded.includes('mascara') && folded.includes('solda')) return 'solda';
-  if (folded.includes('cinto') || folded.includes('paraquedista')) {
-    return 'paraquedista';
-  }
-  if (folded.includes('talabarte')) return 'talabarte';
-  if (folded.includes('trava')) return 'trava-quedas';
-  if (folded.includes('creme')) return 'creme';
-  const tokens = folded
-    .split(/\s+/)
-    .map((t) => t.replace(/[^a-z0-9]+/g, ''))
-    .filter((t) => t.length >= 4 && !GENERIC_NEED_TOKENS.has(t));
-  tokens.sort((a, b) => b.length - a.length);
-  return tokens[0] || needName.trim();
-}
-
-const CAEPI_PICKER_LIMIT = 20;
+const CAEPI_PICKER_LIMIT = 50;
 
 function sortSuggestionsForNeed(
   needName: string,
@@ -396,10 +344,7 @@ function PortalEstoqueContent() {
     try {
       const needName = needRows[index]?.needName ?? query;
       const isCaNumber = /^\d{3,}$/.test(caDigits(query));
-      const searchTerm =
-        isCaNumber || query.length >= 3
-          ? query
-          : preferredCaepiQuery(needName);
+      const searchTerm = query;
       let res = await searchPortalCaepi(searchTerm, CAEPI_PICKER_LIMIT, {
         validOnly: !isCaNumber,
       });
@@ -452,8 +397,7 @@ function PortalEstoqueContent() {
   function openNeedPicker(index: number) {
     const row = needRows[index];
     if (!row) return;
-    const initialQ =
-      row.pickerQuery.trim() || preferredCaepiQuery(row.needName);
+    const initialQ = preferredCaepiQuery(row.needName);
     setNeedRows((prev) =>
       prev.map((r, i) =>
         i === index
@@ -482,12 +426,12 @@ function PortalEstoqueContent() {
         return {
           ...r,
           picked: cert,
-          selected: check.compatible,
+          selected: true,
           picking: false,
           suggestions: [],
           suggestMessage: check.compatible
             ? null
-            : `CA ${cert.caNumber} nao combina: ${check.reason}`,
+            : `CA ${cert.caNumber}: ${check.reason} Confira se e o EPI certo.`,
         };
       }),
     );
@@ -502,21 +446,9 @@ function PortalEstoqueContent() {
         quantity: row.quantity,
         unitCostCents: parseReaisToCents(row.unitPriceReais),
         needName: row.needName,
-        equipmentName: row.picked!.equipmentName,
       }));
     if (items.length === 0) {
       setError('Selecione o EPI (CA) de cada necessidade que deseja incluir.');
-      return;
-    }
-    const mismatch = items.find(
-      (item) =>
-        !assessNeedEquipmentCompatibility(item.needName, item.equipmentName)
-          .compatible,
-    );
-    if (mismatch) {
-      setError(
-        `CA ${mismatch.caNumber} nao combina com "${mismatch.needName}". Escolha outro CA.`,
-      );
       return;
     }
     setSaving(true);

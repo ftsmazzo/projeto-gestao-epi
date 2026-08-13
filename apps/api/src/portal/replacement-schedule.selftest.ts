@@ -64,6 +64,11 @@ function run() {
   const raspaGlove = resolveUsefulLife({ name: 'Luva de Raspa' });
   assert.strictEqual(raspaGlove?.value, 15);
 
+  const bootDays = usefulLifeToBaseDays(boot!.value, boot!.unit);
+  assert.strictEqual(bootDays, 180);
+  const pff = resolveUsefulLife({ name: 'Respirador PFF2' });
+  assert.strictEqual(usefulLifeToBaseDays(pff?.value, pff?.unit), 3);
+
   console.log('replacement-schedule.selftest ok');
 }
 

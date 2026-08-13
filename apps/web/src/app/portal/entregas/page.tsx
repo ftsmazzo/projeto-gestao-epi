@@ -88,11 +88,15 @@ function lifeDefaultsFromRow(
   'usefulLifeValue' | 'usefulLifeUnit'
 > {
   const epi = row.linkedEpis.find((e) => e.epiItemId === epiItemId);
-  const fromEpi = toCalendarDays(epi?.usefulLifeValue, epi?.usefulLifeUnit);
-  const fromNeed = toCalendarDays(
-    row.suggestedUsefulLifeValue,
-    row.suggestedUsefulLifeUnit,
-  );
+  const fromEpi =
+    epi?.usefulLifeDays ??
+    toCalendarDays(epi?.usefulLifeValue, epi?.usefulLifeUnit);
+  const fromNeed =
+    row.suggestedUsefulLifeDays ??
+    toCalendarDays(
+      row.suggestedUsefulLifeValue,
+      row.suggestedUsefulLifeUnit,
+    );
   const days =
     fromEpi != null && fromEpi === 1 && fromNeed != null && fromNeed > 1
       ? fromNeed
