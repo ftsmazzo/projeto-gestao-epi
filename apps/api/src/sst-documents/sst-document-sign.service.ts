@@ -19,8 +19,14 @@ import {
 import { CommunicationsService } from '../communications/communications.service';
 import { stripCpf } from '../common/cpf';
 import { PrismaService } from '../prisma/prisma.service';
-import type { SstDocumentPayload } from './sst-document-content';
-import { saveSstEvidenceFile } from './sst-document-evidence.storage';
+import {
+  uniqueStrings,
+  type SstDocumentPayload,
+} from './sst-document-content';
+import {
+  saveSstEvidenceFile,
+  tryResolveSstEvidenceAbsolutePath,
+} from './sst-document-evidence.storage';
 import { SstDocumentPdfService } from './sst-document-pdf.service';
 
 const MAX_FAILED_ATTEMPTS = 5;
@@ -43,6 +49,9 @@ export class SstDocumentSignService {
     const firstName =
       link.worker.name.trim().split(/\s+/)[0] || link.worker.name;
     const payload = link.document.payload as SstDocumentPayload;
+    if (payload.os?.epis) {
+      payload.os.epis = uniqueStrings(payload.os.epis);
+    }
     return {
       workerFirstName: firstName,
       documentTitle: link.document.title,
@@ -169,7 +178,7 @@ export class SstDocumentSignService {
     const link = await this.prisma.sstDocumentLink.findUnique({
       where: { tokenHash: hash },
       include: {
-        document: true,
+        document: { include: { evidence: true } },
         worker: { select: { cpf: true } },
       },
     });
@@ -180,7 +189,12 @@ export class SstDocumentSignService {
     }
     const buffer = await this.pdf.build(
       link.document.payload as SstDocumentPayload,
-      link.document.signedAt?.toISOString() ?? null,
+      {
+        signedAt: link.document.signedAt?.toISOString() ?? null,
+        evidenceAbsolutePath: tryResolveSstEvidenceAbsolutePath(
+          link.document.evidence?.filePath,
+        ),
+      },
     );
     return {
       buffer,

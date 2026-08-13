@@ -320,7 +320,8 @@ export default function SstSignPage() {
                 </p>
                 {payload.os.epis.length > 0 ? (
                   <p className="enroll-page__hint">
-                    EPIs: {payload.os.epis.join(', ')}
+                    EPIs:{' '}
+                    {[...new Set(payload.os.epis)].join(', ')}
                   </p>
                 ) : null}
               </>

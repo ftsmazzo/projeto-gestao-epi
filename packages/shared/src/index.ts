@@ -2800,6 +2800,7 @@ export interface PublicSstUnlockResponse {
       epcs: string[];
       recommendations: string[];
       responsibilities: string[];
+      observations?: string[];
     } | null;
     termText: string;
     generatedAt: string;

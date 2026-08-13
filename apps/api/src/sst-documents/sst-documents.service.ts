@@ -20,11 +20,16 @@ import {
   buildOsTerm,
   DEFAULT_EPCS,
   DEFAULT_INTEGRATION_TOPICS,
+  DEFAULT_OS_OBSERVATIONS,
   DEFAULT_OS_RECOMMENDATIONS,
   DEFAULT_OS_RESPONSIBILITIES,
+  isGenericSource,
   maskCpf,
+  uniqueRisks,
+  uniqueStrings,
   type SstDocumentPayload,
 } from './sst-document-content';
+import { tryResolveSstEvidenceAbsolutePath } from './sst-document-evidence.storage';
 import { SstDocumentPdfService } from './sst-document-pdf.service';
 
 const LINK_TTL_MS = 24 * 60 * 60 * 1000;
@@ -257,16 +262,18 @@ export class SstDocumentsService {
     servedClientId: string,
     documentId: string,
   ) {
-    const document = await this.requireDocument(
-      organizationId,
-      servedClientId,
-      documentId,
-    );
+    const document = await this.prisma.sstDocument.findFirst({
+      where: { id: documentId, organizationId, servedClientId },
+      include: { evidence: true },
+    });
+    if (!document) throw new NotFoundException('Documento nao encontrado.');
     const payload = document.payload as SstDocumentPayload;
-    const buffer = await this.pdf.build(
-      payload,
-      document.signedAt?.toISOString() ?? null,
-    );
+    const buffer = await this.pdf.build(payload, {
+      signedAt: document.signedAt?.toISOString() ?? null,
+      evidenceAbsolutePath: tryResolveSstEvidenceAbsolutePath(
+        document.evidence?.filePath,
+      ),
+    });
     const slug =
       document.type === SstDocumentType.ORDEM_SERVICO ? 'os' : 'integracao';
     return {
@@ -408,25 +415,44 @@ export class SstDocumentsService {
       return base;
     }
 
-    const risks = (job?.risks ?? []).map((link) => ({
-      category: link.risk.category,
-      agent: link.risk.name,
-      source: link.source ?? link.risk.description ?? null,
-      evaluation: 'Qualitativa',
-      exposure: link.exposure ?? null,
-    }));
-    const epis = (job?.epiRequirements ?? [])
-      .filter((row) => row.isActive)
-      .map((row) => row.epiNeed.name);
+    const risks = uniqueRisks(
+      (job?.risks ?? []).map((link) => {
+        const fonte = !isGenericSource(link.source)
+          ? link.source
+          : link.possibleDamage?.trim() ||
+            link.notes?.trim() ||
+            (link.risk.description &&
+            !isGenericSource(link.risk.description)
+              ? link.risk.description
+              : null);
+        return {
+          category: link.risk.category,
+          agent: link.risk.name,
+          source: fonte,
+          evaluation: 'Qualitativa',
+          exposure: link.exposure?.trim() || 'Habitual e intermitente',
+        };
+      }),
+    );
+    const epiByNeed = new Map<string, string>();
+    for (const row of job?.epiRequirements ?? []) {
+      if (!row.isActive || epiByNeed.has(row.epiNeedId)) continue;
+      const note = row.notes?.trim();
+      epiByNeed.set(
+        row.epiNeedId,
+        note ? `${row.epiNeed.name} (${note})` : row.epiNeed.name,
+      );
+    }
 
     base.os = {
       environment: job?.environmentDescription ?? null,
       functionDescription: job?.description ?? null,
       risks,
-      epis,
+      epis: uniqueStrings([...epiByNeed.values()]),
       epcs: [...DEFAULT_EPCS],
       recommendations: [...DEFAULT_OS_RECOMMENDATIONS],
       responsibilities: [...DEFAULT_OS_RESPONSIBILITIES],
+      observations: [...DEFAULT_OS_OBSERVATIONS],
     };
     base.termText = buildOsTerm(
       client.legalName,
@@ -513,7 +539,11 @@ export class SstDocumentsService {
         clientJobFunction: {
           include: {
             risks: {
-              include: {
+              select: {
+                source: true,
+                exposure: true,
+                possibleDamage: true,
+                notes: true,
                 risk: {
                   select: {
                     name: true,
@@ -525,7 +555,12 @@ export class SstDocumentsService {
             },
             epiRequirements: {
               where: { isActive: true },
-              include: { epiNeed: { select: { name: true } } },
+              select: {
+                epiNeedId: true,
+                isActive: true,
+                notes: true,
+                epiNeed: { select: { name: true } },
+              },
             },
           },
         },

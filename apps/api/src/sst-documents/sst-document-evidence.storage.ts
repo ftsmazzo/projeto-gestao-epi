@@ -42,3 +42,15 @@ export async function saveSstEvidenceFile(input: {
 export function resolveSstEvidenceAbsolutePath(relativePath: string): string {
   return resolveInsideRoot(getSstEvidenceRoot(), relativePath);
 }
+
+export function tryResolveSstEvidenceAbsolutePath(
+  relativePath: string | null | undefined,
+): string | null {
+  if (!relativePath?.trim()) return null;
+  try {
+    const absolute = resolveSstEvidenceAbsolutePath(relativePath);
+    return existsSync(absolute) ? absolute : null;
+  } catch {
+    return null;
+  }
+}
