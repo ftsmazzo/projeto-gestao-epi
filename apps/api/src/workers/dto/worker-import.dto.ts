@@ -98,3 +98,53 @@ export class ConfirmWorkerImportDto {
   @Type(() => WorkerImportConfirmRowDto)
   rows!: WorkerImportConfirmRowDto[];
 }
+
+export class EnrichWorkerImportSectorDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  name!: string;
+}
+
+export class EnrichWorkerImportJobDto {
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  name!: string;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  sectorName!: string;
+}
+
+export class EnrichWorkerImportLinkJobDto {
+  @IsString()
+  @MinLength(1)
+  jobFunctionId!: string;
+
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  targetSectorName!: string;
+}
+
+export class EnrichWorkerImportStructureDto {
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EnrichWorkerImportSectorDto)
+  createSectors?: EnrichWorkerImportSectorDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EnrichWorkerImportJobDto)
+  createJobs?: EnrichWorkerImportJobDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => EnrichWorkerImportLinkJobDto)
+  linkJobs?: EnrichWorkerImportLinkJobDto[];
+}

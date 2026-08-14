@@ -349,6 +349,38 @@ export interface WorkerImportPreviewResponse {
     availableAfter: number;
   };
   rows: WorkerImportPreviewRow[];
+  /** Lacunas de estrutura detectadas no CSV — para enriquecer antes do confirm. */
+  structureGaps?: WorkerImportStructureGaps | null;
+}
+
+export interface WorkerImportStructureGaps {
+  missingSectors: string[];
+  missingJobs: Array<{
+    jobName: string;
+    sectorName: string;
+    /** Funcoes com o mesmo nome em outro setor (ex.: Geral do PGR). */
+    orphanCandidates: Array<{
+      id: string;
+      name: string;
+      sectorId: string;
+      sectorName: string;
+    }>;
+  }>;
+  existingSectors: Array<{ id: string; name: string }>;
+}
+
+export interface WorkerImportEnrichStructureInput {
+  createSectors?: Array<{ name: string }>;
+  createJobs?: Array<{ name: string; sectorName: string }>;
+  /** Move funcao existente (ex.: Geral) para o setor da planilha. */
+  linkJobs?: Array<{ jobFunctionId: string; targetSectorName: string }>;
+}
+
+export interface WorkerImportEnrichStructureResult {
+  sectorsCreated: number;
+  jobsCreated: number;
+  jobsLinked: number;
+  warnings: string[];
 }
 
 export interface WorkerImportConfirmRowInput {

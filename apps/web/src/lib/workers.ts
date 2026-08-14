@@ -97,6 +97,19 @@ export function previewWorkerCsvImport(
   );
 }
 
+export function enrichWorkerImportStructure(
+  servedClientId: string,
+  input: import('@gestao-epi/shared').WorkerImportEnrichStructureInput,
+) {
+  return apiFetch<import('@gestao-epi/shared').WorkerImportEnrichStructureResult>(
+    `/served-clients/${servedClientId}/workers/import/enrich-structure`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
 export function confirmWorkerCsvImport(
   servedClientId: string,
   rows: WorkerImportConfirmRowInput[],

@@ -3,11 +3,14 @@ import { WorkerStatus } from '@prisma/client';
 import type {
   WorkerImportConfirmResponse,
   WorkerImportConfirmRowInput,
+  WorkerImportEnrichStructureInput,
+  WorkerImportEnrichStructureResult,
   WorkerImportMatchBy,
   WorkerImportNormalizedPayload,
   WorkerImportPreviewResponse,
   WorkerImportPreviewRow,
   WorkerImportRowAction,
+  WorkerImportStructureGaps,
 } from '@gestao-epi/shared';
 import { AuditService } from '../audit/audit.service';
 import { resolveCsvImportInput } from '../common/csv-text-encoding';
@@ -350,6 +353,16 @@ export class WorkerImportService {
       );
     }
 
+    const structureGaps = this.buildStructureGaps(mappedRows, structure);
+    if (
+      structureGaps.missingSectors.length > 0 ||
+      structureGaps.missingJobs.length > 0
+    ) {
+      warnings.push(
+        'Ha setores/funcoes da planilha ausentes na estrutura. Use "Completar estrutura" abaixo para criar ou religar (ex.: funcoes no setor Geral do PGR) e revalide o CSV.',
+      );
+    }
+
     return {
       warnings,
       totals: {
@@ -368,6 +381,284 @@ export class WorkerImportService {
         availableAfter: Math.max(0, life.allocated - slotUsed),
       },
       rows,
+      structureGaps,
+    };
+  }
+
+  async enrichStructure(
+    organizationId: string,
+    userId: string,
+    servedClientId: string,
+    input: WorkerImportEnrichStructureInput,
+  ): Promise<WorkerImportEnrichStructureResult> {
+    await this.assertClient(organizationId, servedClientId);
+
+    const result: WorkerImportEnrichStructureResult = {
+      sectorsCreated: 0,
+      jobsCreated: 0,
+      jobsLinked: 0,
+      warnings: [],
+    };
+
+    const sectorIdByMatch = new Map<string, string>();
+    const existingSectors = await this.prisma.clientSector.findMany({
+      where: { organizationId, servedClientId, isActive: true },
+      select: { id: true, name: true },
+    });
+    for (const sector of existingSectors) {
+      sectorIdByMatch.set(normalizeMatchName(sector.name), sector.id);
+    }
+
+    for (const item of input.createSectors ?? []) {
+      const name = item.name.trim();
+      if (name.length < 2) continue;
+      const key = normalizeMatchName(name);
+      if (sectorIdByMatch.has(key)) {
+        result.warnings.push(`Setor "${name}" ja existia.`);
+        continue;
+      }
+      const created = await this.prisma.clientSector.create({
+        data: {
+          organizationId,
+          servedClientId,
+          name,
+        },
+      });
+      sectorIdByMatch.set(key, created.id);
+      result.sectorsCreated += 1;
+      await this.audit.log({
+        action: 'client_sector.created',
+        organizationId,
+        userId,
+        entityType: 'ClientSector',
+        entityId: created.id,
+        metadata: { servedClientId, name, source: 'worker_import_enrich' },
+      });
+    }
+
+    for (const item of input.linkJobs ?? []) {
+      const targetName = item.targetSectorName.trim();
+      const targetKey = normalizeMatchName(targetName);
+      let sectorId = sectorIdByMatch.get(targetKey);
+      if (!sectorId) {
+        const created = await this.prisma.clientSector.create({
+          data: {
+            organizationId,
+            servedClientId,
+            name: targetName,
+          },
+        });
+        sectorId = created.id;
+        sectorIdByMatch.set(targetKey, sectorId);
+        result.sectorsCreated += 1;
+      }
+
+      const job = await this.prisma.clientJobFunction.findFirst({
+        where: {
+          id: item.jobFunctionId,
+          organizationId,
+          servedClientId,
+        },
+        select: { id: true, name: true, sectorId: true },
+      });
+      if (!job) {
+        result.warnings.push(
+          `Funcao ${item.jobFunctionId} nao encontrada para religar.`,
+        );
+        continue;
+      }
+      if (job.sectorId === sectorId) {
+        result.warnings.push(
+          `Funcao "${job.name}" ja esta no setor "${targetName}".`,
+        );
+        continue;
+      }
+
+      const clash = await this.prisma.clientJobFunction.findFirst({
+        where: {
+          organizationId,
+          servedClientId,
+          sectorId,
+          isActive: true,
+          name: { equals: job.name, mode: 'insensitive' },
+          NOT: { id: job.id },
+        },
+        select: { id: true },
+      });
+      if (clash) {
+        result.warnings.push(
+          `Nao foi possivel mover "${job.name}" — ja existe no setor "${targetName}".`,
+        );
+        continue;
+      }
+
+      await this.prisma.clientJobFunction.update({
+        where: { id: job.id },
+        data: { sectorId },
+      });
+      result.jobsLinked += 1;
+      await this.audit.log({
+        action: 'client_job_function.updated',
+        organizationId,
+        userId,
+        entityType: 'ClientJobFunction',
+        entityId: job.id,
+        metadata: {
+          servedClientId,
+          name: job.name,
+          sectorId,
+          source: 'worker_import_enrich_link',
+        },
+      });
+    }
+
+    for (const item of input.createJobs ?? []) {
+      const jobName = item.name.trim();
+      const sectorName = item.sectorName.trim();
+      if (jobName.length < 2 || sectorName.length < 2) continue;
+      const sectorKey = normalizeMatchName(sectorName);
+      let sectorId = sectorIdByMatch.get(sectorKey);
+      if (!sectorId) {
+        const created = await this.prisma.clientSector.create({
+          data: {
+            organizationId,
+            servedClientId,
+            name: sectorName,
+          },
+        });
+        sectorId = created.id;
+        sectorIdByMatch.set(sectorKey, sectorId);
+        result.sectorsCreated += 1;
+      }
+
+      const existingJob = await this.prisma.clientJobFunction.findFirst({
+        where: {
+          organizationId,
+          servedClientId,
+          sectorId,
+          isActive: true,
+          name: { equals: jobName, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (existingJob) {
+        result.warnings.push(
+          `Funcao "${jobName}" ja existia no setor "${sectorName}".`,
+        );
+        continue;
+      }
+
+      const created = await this.prisma.clientJobFunction.create({
+        data: {
+          organizationId,
+          servedClientId,
+          sectorId,
+          name: jobName,
+        },
+      });
+      result.jobsCreated += 1;
+      await this.audit.log({
+        action: 'client_job_function.created',
+        organizationId,
+        userId,
+        entityType: 'ClientJobFunction',
+        entityId: created.id,
+        metadata: {
+          servedClientId,
+          name: jobName,
+          sectorId,
+          source: 'worker_import_enrich',
+        },
+      });
+    }
+
+    return result;
+  }
+
+  private buildStructureGaps(
+    mappedRows: Array<{
+      mapped: {
+        sector?: string | null;
+        jobFunction?: string | null;
+      };
+    }>,
+    structure: StructureContext,
+  ): WorkerImportStructureGaps {
+    const missingSectorSet = new Set<string>();
+    const missingJobMap = new Map<
+      string,
+      {
+        jobName: string;
+        sectorName: string;
+        orphanCandidates: WorkerImportStructureGaps['missingJobs'][number]['orphanCandidates'];
+      }
+    >();
+
+    for (const row of mappedRows) {
+      const sectorName = normalizeOptionalText(row.mapped.sector);
+      const jobName = normalizeOptionalText(row.mapped.jobFunction);
+      if (!sectorName && !jobName) continue;
+
+      let sectorId: string | null = null;
+      if (sectorName) {
+        const sector = structure.sectors.find(
+          (item) =>
+            item.isActive && item.match === normalizeMatchName(sectorName),
+        );
+        if (!sector) {
+          missingSectorSet.add(sectorName);
+        } else {
+          sectorId = sector.id;
+        }
+      }
+
+      if (jobName && sectorName) {
+        const inSector = structure.jobs.some(
+          (job) =>
+            job.isActive &&
+            job.sectorId === sectorId &&
+            job.match === normalizeMatchName(jobName),
+        );
+        if (!inSector) {
+          const key = `${normalizeMatchName(sectorName)}::${normalizeMatchName(jobName)}`;
+          if (!missingJobMap.has(key)) {
+            const orphans = structure.jobs
+              .filter(
+                (job) =>
+                  job.isActive &&
+                  job.match === normalizeMatchName(jobName) &&
+                  job.sectorId !== sectorId,
+              )
+              .map((job) => ({
+                id: job.id,
+                name: job.name,
+                sectorId: job.sectorId,
+                sectorName: job.sectorName,
+              }));
+            missingJobMap.set(key, {
+              jobName,
+              sectorName,
+              orphanCandidates: orphans,
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      missingSectors: Array.from(missingSectorSet).sort((a, b) =>
+        a.localeCompare(b, 'pt-BR'),
+      ),
+      missingJobs: Array.from(missingJobMap.values()).sort((a, b) =>
+        `${a.sectorName}:${a.jobName}`.localeCompare(
+          `${b.sectorName}:${b.jobName}`,
+          'pt-BR',
+        ),
+      ),
+      existingSectors: structure.sectors
+        .filter((s) => s.isActive)
+        .map((s) => ({ id: s.id, name: s.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')),
     };
   }
 

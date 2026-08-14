@@ -22,6 +22,7 @@ import { UpdateWorkerDto } from './dto/update-worker.dto';
 import { UpdateWorkerStatusDto } from './dto/update-worker-status.dto';
 import {
   ConfirmWorkerImportDto,
+  EnrichWorkerImportStructureDto,
   PreviewWorkerImportDto,
 } from './dto/worker-import.dto';
 import { WORKER_CSV_TEMPLATE } from './worker-import.utils';
@@ -102,6 +103,24 @@ export class WorkersController {
       user.organizationId,
       servedClientId,
       { csvText: dto.csvText, csvBase64: dto.csvBase64 },
+    );
+  }
+
+  @Post('served-clients/:servedClientId/workers/import/enrich-structure')
+  enrichImportStructure(
+    @CurrentUser() user: JwtPayload,
+    @Param('servedClientId') servedClientId: string,
+    @Body() dto: EnrichWorkerImportStructureDto,
+  ) {
+    return this.workerImport.enrichStructure(
+      user.organizationId,
+      user.sub,
+      servedClientId,
+      {
+        createSectors: dto.createSectors,
+        createJobs: dto.createJobs,
+        linkJobs: dto.linkJobs,
+      },
     );
   }
 

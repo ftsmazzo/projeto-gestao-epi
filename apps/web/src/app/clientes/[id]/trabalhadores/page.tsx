@@ -25,6 +25,7 @@ import {
   confirmWorkerCsvImport,
   createWorker,
   downloadCsvText,
+  enrichWorkerImportStructure,
   generateWorkerFacialEnrollmentLink,
   getClientLifeSummary,
   getWorkerCsvTemplate,
@@ -144,7 +145,14 @@ export default function ClienteTrabalhadoresPage() {
   const [importFileName, setImportFileName] = useState<string | null>(null);
   const [importPreview, setImportPreview] =
     useState<WorkerImportPreviewResponse | null>(null);
+  const [importCsvPayload, setImportCsvPayload] = useState<{
+    csvBase64: string;
+    csvText: string;
+  } | null>(null);
   const [importBusy, setImportBusy] = useState(false);
+  const [jobLinkChoice, setJobLinkChoice] = useState<Record<string, string>>(
+    {},
+  );
   const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const activeSectors = useMemo(
@@ -282,16 +290,20 @@ export default function ClienteTrabalhadoresPage() {
     setMode('closed');
     setPanel('import');
     setImportPreview(null);
+    setImportCsvPayload(null);
     setImportFileName(null);
     setImportMessage(null);
+    setJobLinkChoice({});
     setError(null);
   }
 
   function closeImport() {
     setPanel('list');
     setImportPreview(null);
+    setImportCsvPayload(null);
     setImportFileName(null);
     setImportMessage(null);
+    setJobLinkChoice({});
   }
 
   async function onDownloadTemplate() {
@@ -317,17 +329,79 @@ export default function ClienteTrabalhadoresPage() {
     setImportFileName(file.name);
     try {
       const filePayload = await readCsvFileForImport(file);
+      setImportCsvPayload({
+        csvBase64: filePayload.csvBase64,
+        csvText: filePayload.csvText,
+      });
       const preview = await previewWorkerCsvImport(clientId, {
         csvBase64: filePayload.csvBase64,
         csvText: filePayload.csvText,
       });
       setImportPreview(preview);
+      const defaults: Record<string, string> = {};
+      for (const job of preview.structureGaps?.missingJobs ?? []) {
+        const key = `${job.sectorName}::${job.jobName}`;
+        defaults[key] = job.orphanCandidates[0]?.id
+          ? `link:${job.orphanCandidates[0].id}`
+          : 'create';
+      }
+      setJobLinkChoice(defaults);
     } catch (err) {
       setImportPreview(null);
+      setImportCsvPayload(null);
       setError(
         err instanceof Error
           ? err.message
           : 'Falha ao gerar previa da importacao.',
+      );
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function onEnrichStructure() {
+    if (!clientId || !importPreview?.structureGaps || !importCsvPayload) return;
+    const gaps = importPreview.structureGaps;
+    setImportBusy(true);
+    setError(null);
+    setImportMessage(null);
+    try {
+      const createSectors = gaps.missingSectors.map((name) => ({ name }));
+      const createJobs: Array<{ name: string; sectorName: string }> = [];
+      const linkJobs: Array<{
+        jobFunctionId: string;
+        targetSectorName: string;
+      }> = [];
+
+      for (const job of gaps.missingJobs) {
+        const key = `${job.sectorName}::${job.jobName}`;
+        const choice = jobLinkChoice[key] ?? 'create';
+        if (choice.startsWith('link:')) {
+          linkJobs.push({
+            jobFunctionId: choice.slice('link:'.length),
+            targetSectorName: job.sectorName,
+          });
+        } else {
+          createJobs.push({ name: job.jobName, sectorName: job.sectorName });
+        }
+      }
+
+      const enrich = await enrichWorkerImportStructure(clientId, {
+        createSectors,
+        createJobs,
+        linkJobs,
+      });
+      const preview = await previewWorkerCsvImport(clientId, importCsvPayload);
+      setImportPreview(preview);
+      setImportMessage(
+        `Estrutura enriquecida: ${enrich.sectorsCreated} setor(es), ${enrich.jobsCreated} funcao(oes), ${enrich.jobsLinked} religada(s). CSV revalidado.`,
+      );
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Falha ao completar a estrutura a partir da planilha.',
       );
     } finally {
       setImportBusy(false);
@@ -510,8 +584,9 @@ export default function ClienteTrabalhadoresPage() {
                 Importar trabalhadores
               </h2>
               <p className="page-lead">
-                CSV com unidade, setor e funcao ja existentes na estrutura do
-                cliente. EPIs necessarios vem da funcao (sem copia fixa).
+                CSV com unidade, setor e funcao. Se faltar estrutura (comum apos
+                PGR com funcoes no setor Geral), complete e religue aqui antes de
+                confirmar.
               </p>
             </div>
             <button
@@ -612,6 +687,104 @@ export default function ClienteTrabalhadoresPage() {
                   </strong>
                 </div>
               </section>
+
+              {importPreview.structureGaps &&
+              (importPreview.structureGaps.missingSectors.length > 0 ||
+                importPreview.structureGaps.missingJobs.length > 0) ? (
+                <section
+                  className="surface"
+                  style={{ marginTop: '1rem', marginBottom: '1rem' }}
+                  aria-label="Completar estrutura"
+                >
+                  <p className="page-kicker">Completar estrutura</p>
+                  <p className="page-lead">
+                    A planilha trouxe setores/funcoes que ainda nao batem com a
+                    estrutura do cliente. Crie o que faltar ou religue funcoes
+                    que o PGR deixou em outro setor (ex.: Geral).
+                  </p>
+
+                  {importPreview.structureGaps.missingSectors.length > 0 ? (
+                    <>
+                      <p className="field-hint">
+                        Setores a criar (
+                        {importPreview.structureGaps.missingSectors.length}):
+                      </p>
+                      <ul>
+                        {importPreview.structureGaps.missingSectors.map(
+                          (name) => (
+                            <li key={name}>{name}</li>
+                          ),
+                        )}
+                      </ul>
+                    </>
+                  ) : null}
+
+                  {importPreview.structureGaps.missingJobs.length > 0 ? (
+                    <div className="table-wrap" style={{ marginTop: '0.75rem' }}>
+                      <table className="data-table">
+                        <thead>
+                          <tr>
+                            <th>Setor (planilha)</th>
+                            <th>Funcao</th>
+                            <th>Acao</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importPreview.structureGaps.missingJobs.map(
+                            (job) => {
+                              const key = `${job.sectorName}::${job.jobName}`;
+                              return (
+                                <tr key={key}>
+                                  <td>{job.sectorName}</td>
+                                  <td>{job.jobName}</td>
+                                  <td>
+                                    <select
+                                      value={jobLinkChoice[key] ?? 'create'}
+                                      onChange={(e) =>
+                                        setJobLinkChoice((prev) => ({
+                                          ...prev,
+                                          [key]: e.target.value,
+                                        }))
+                                      }
+                                      disabled={importBusy}
+                                    >
+                                      <option value="create">
+                                        Criar funcao neste setor
+                                      </option>
+                                      {job.orphanCandidates.map((orphan) => (
+                                        <option
+                                          key={orphan.id}
+                                          value={`link:${orphan.id}`}
+                                        >
+                                          Religar de &quot;{orphan.sectorName}
+                                          &quot;
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                </tr>
+                              );
+                            },
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+
+                  <div className="btn-row" style={{ marginTop: '0.85rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={importBusy}
+                      onClick={() => void onEnrichStructure()}
+                    >
+                      {importBusy
+                        ? 'Aplicando...'
+                        : 'Aplicar e revalidar CSV'}
+                    </button>
+                  </div>
+                </section>
+              ) : null}
 
               <div className="table-wrap">
                 <table className="data-table">
