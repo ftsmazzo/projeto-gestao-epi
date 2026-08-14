@@ -183,11 +183,14 @@ const ENVIRONMENT_LINE_RE =
   /^(trabalham em|trabalhos externos|ambiente interno|ambiente administrativo|balc[aã]o de atendimento|interno e ventilado|interno e climatizado|em diversos locais)/i;
 
 const SECTOR_HINT_RE =
-  /^(produc|classific|administr|vendas|transporte|apoio|torref|manutenc|qualidade|logistica|expedicao|almoxarif|servic|extern|intern|obra|canteiro|campo|oficina|montag)/i;
+  /^(produc|classific|administr|vendas|transporte|apoio|torref|manutenc|qualidade|logistica|expedicao|almoxarif|servic|extern|intern|obra|canteiro|campo|oficina|montag|caldeir|serraria|acm)/i;
 
 /** Setores conhecidos do layout real (para split mesma linha e detecção). */
 const KNOWN_SECTOR_RE =
-  /^(PRODU[CÇ][AÃ]O|CLASSIFICA[CÇ][AÃ]O|ADMINISTRATIVO|VENDAS|TRANSPORTE|APOIO\s*ADM|TORREFA[CÇ][AÃ]O|MANUTEN[CÇ][AÃ]O|QUALIDADE|LOG[IÍ]STICA|EXPEDI[CÇ][AÃ]O|ALMOXARIFADO|SERVI[CÇ]OS?\s+EXTERNOS?|SERVI[CÇ]OS?\s+INTERNOS?|OBRAS?|CANTEIRO(?:\s+DE\s+OBRAS?)?)\b/i;
+  /^(PRODU[CÇ][AÃ]O|CLASSIFICA[CÇ][AÃ]O|ADMINISTRATIVO|VENDAS|TRANSPORTE|APOIO\s*ADM|TORREFA[CÇ][AÃ]O|MANUTEN[CÇ][AÃ]O|QUALIDADE|LOG[IÍ]STICA|EXPEDI[CÇ][AÃ]O|ALMOXARIFADO|SERVI[CÇ]OS?\s+EXTERNOS?|SERVI[CÇ]OS?\s+INTERNOS?|OBRAS?|CANTEIRO(?:\s+DE\s+OBRAS?)?|CALDEIRARIA(?:\s+(?:LEVE|PESADA))?|SERRARIA|ACM)\b/i;
+
+const LEVEL_SUFFIX_RE =
+  /\b(j[uú]nior|junior|pleno|s[eê]nior|senior)\b/i;
 
 const PLACEHOLDER_RE =
   /^(?:[\s\-_*•.]+|\*{2,}|_{2,}|x{2,}|n\/a|s\/n|nao informado|não informado)$/i;
@@ -549,12 +552,78 @@ function extractCompany(text: string, warnings: string[]): PgroCompanyData {
 
 function isJunkName(value: string): boolean {
   const key = normalizeTextKey(value);
-  if (!key || key.length < 3) return true;
+  if (!key || key.length < 2) return true;
   if (STOP_WORDS.has(key)) return true;
   if (JUNK_NAME_RE.test(key)) return true;
+  // Siglas de setor (ACM, QMA) — 2 a 5 letras — nao sao lixo.
+  if (/^[a-z]{2,5}$/i.test(key)) return false;
   if (key.split(' ').length === 1 && key.length <= 3) return true;
   if (/^(?:i|ii|iii|iv|v)(?:\s*,\s*(?:i|ii|iii|iv|v))*$/i.test(key)) return true;
   return false;
+}
+
+function looksLikeSectorCode(name: string): boolean {
+  const cleaned = cleanLine(name);
+  return /^[A-ZÀ-Ÿ]{2,6}(?:\s*\([A-Z0-9/]+\))?$/u.test(cleaned);
+}
+
+/**
+ * "Produção Senior" / "Almoxarifado Júnior" sao fragmento de cargo, nao setor.
+ */
+function hasJobLevelSuffix(name: string): boolean {
+  return LEVEL_SUFFIX_RE.test(cleanLine(name));
+}
+
+/**
+ * Aceita setor real (ACM, Caldeiraria Leve, PRODUÇÃO SERRARIA) e rejeita cargo disfarçado.
+ */
+function resolveSectorLine(line: string): string | null {
+  const cleaned = cleanLine(line);
+  if (!cleaned) return null;
+  if (hasJobLevelSuffix(cleaned)) return null;
+  if (looksLikeJobTitle(cleaned) && !KNOWN_SECTOR_RE.test(cleaned)) return null;
+
+  if (looksLikeSectorCode(cleaned)) {
+    return cleaned.toUpperCase();
+  }
+
+  const known = cleaned.match(KNOWN_SECTOR_RE);
+  if (known && known.index === 0) {
+    const rest = cleanLine(cleaned.slice(known[0].length));
+    if (!rest) return known[0].toUpperCase().replace(/\s+/g, ' ').trim();
+    if (hasJobLevelSuffix(rest)) return null;
+    if (looksLikeJobTitle(rest)) return null;
+    // Ex.: "Produção Serraria", "Qualidade (QMA)", "Caldeiraria Leve"
+    if (rest.length <= 24 && rest.split(/\s+/).length <= 2) {
+      return cleaned.toUpperCase().replace(/\s+/g, ' ').trim();
+    }
+    return known[0].toUpperCase().replace(/\s+/g, ' ').trim();
+  }
+
+  // Title Case departamento (Caldeiraria Leve / Caldeiraria Pesada)
+  if (
+    /^[A-ZÀ-Ÿ][a-zà-ÿ]+(?:\s+[A-ZÀ-Ÿa-zà-ÿ]+){0,2}$/u.test(cleaned) &&
+    cleaned.length <= 35 &&
+    cleaned.split(/\s+/).length <= 3 &&
+    !isProseLine(cleaned) &&
+    (SECTOR_HINT_RE.test(normalizeTextKey(cleaned)) ||
+      /^(caldeiraria|serraria|pintura|solda|usinagem|montagem|adesivagem)/i.test(
+        normalizeTextKey(cleaned),
+      ))
+  ) {
+    return cleaned.toUpperCase().replace(/\s+/g, ' ').trim();
+  }
+
+  if (
+    isValidSectorName(cleaned) &&
+    !looksLikeJobTitle(cleaned) &&
+    cleaned === cleaned.toUpperCase() &&
+    cleaned.length <= 30
+  ) {
+    return cleaned.toUpperCase().replace(/\s+/g, ' ').trim();
+  }
+
+  return null;
 }
 
 function looksLikeJobTitle(name: string): boolean {
@@ -622,14 +691,15 @@ function canJoinJobContinuation(current: string, next: string): boolean {
   // (exceto sufixo de especialidade: TÉCNICA, EXTERNO, etc.)
   const titleSuffix =
     /^(t[eé]cnica|t[eé]cnico|externo|externa|interno|carreteiro|geral|j[uú]nior|pleno|s[eê]nior)$/i;
-  if (
-    isValidFunctionName(normalizeFunctionDisplayName(a)) &&
-    !isIncompleteJobFragment(a) &&
-    (looksLikeJobTitle(b) || KNOWN_SECTOR_RE.test(b)) &&
-    !titleSuffix.test(b)
-  ) {
-    return false;
-  }
+    if (
+      isValidFunctionName(normalizeFunctionDisplayName(a)) &&
+      !isIncompleteJobFragment(a) &&
+      (looksLikeJobTitle(b) || Boolean(resolveSectorLine(b))) &&
+      !titleSuffix.test(b) &&
+      !hasJobLevelSuffix(b)
+    ) {
+      return false;
+    }
 
   // AJUDANTE DE INSTALAÇÃO + TÉCNICA / VENDEDOR + TÉCNICO
   if (
@@ -645,7 +715,12 @@ function canJoinJobContinuation(current: string, next: string): boolean {
   const nextContinues =
     /^(DE|DA|DO|DOS|DAS|E)\b/i.test(b) ||
     /^(III|II|IV|V|I)\b/i.test(b) ||
-    (/^[A-ZÀ-Ÿ0-9() ,./-]+$/u.test(b) && b.split(/\s+/).length <= 4);
+    titleSuffix.test(b) ||
+    // Title Case apos prep: "Auxiliar De" + "Produção Senior"
+    (/^[A-Za-zÀ-ÿ0-9() ,./-]+$/u.test(b) &&
+      b.split(/\s+/).length <= 4 &&
+      !isProseLine(b) &&
+      !/[.;:]/.test(b));
 
   // "TÉCNICO DE" + "MANUTENÇÃO" / "AUXILIAR" + "ADMINISTRATIVO"
   // permite juntar mesmo se a próxima palavra for setor conhecido.
@@ -654,7 +729,12 @@ function canJoinJobContinuation(current: string, next: string): boolean {
   }
 
   // Não juntar setor puro na sequência (exceto casos acima)
-  if (KNOWN_SECTOR_RE.test(b) && !looksLikeJobTitle(b) && b.split(/\s+/).length <= 2) {
+  if (
+    resolveSectorLine(b) &&
+    !looksLikeJobTitle(b) &&
+    !hasJobLevelSuffix(b) &&
+    b.split(/\s+/).length <= 2
+  ) {
     return false;
   }
 
@@ -709,6 +789,7 @@ function splitSectorAndFunctionSameLine(
 
 function isValidSectorName(name: string): boolean {
   const cleaned = cleanLine(name);
+  if (hasJobLevelSuffix(cleaned)) return false;
   if (
     /^(fun[cç][aã]o(?:es)?|setor|ghe|cbo|anexo|descri[cç][aã]o(?:\s+do\s+cargo)?|local|epi|epc|servi[cç]os?|externos?|internos?|ambiente)$/i.test(
       cleaned,
@@ -1068,13 +1149,9 @@ function extractSectorFunctionPairsFromGheBody(
       continue;
     }
 
-    if (
-      isValidSectorName(line) &&
-      !looksLikeJobTitle(line) &&
-      (KNOWN_SECTOR_RE.test(line) ||
-        (line === line.toUpperCase() && line.length <= 30))
-    ) {
-      currentSector = line.toUpperCase();
+    const sectorResolved = resolveSectorLine(line);
+    if (sectorResolved) {
+      currentSector = sectorResolved;
       continue;
     }
 
@@ -1138,7 +1215,7 @@ function extractSectorFunctionPairsFromGheBody(
 function extractRisksFromBlocks(
   fullText: string,
   blocks: GheBlock[],
-  allFunctionNames: string[],
+  _allFunctionNames: string[],
   extraRiskAliases: Array<{
     raw: string;
     canonical: string;
@@ -1240,19 +1317,15 @@ function extractRisksFromBlocks(
       );
       const aprho = fullText.match(aprhoRe)?.[0] ?? block.body;
       const fnNames = block.pairs.map((p) => p.functionName);
-      pushSeedHits(
-        aprho,
-        fnNames.length > 0 ? fnNames : allFunctionNames,
-        block.gheName,
-        'GHE',
-        block.pairs,
-      );
+      pushSeedHits(aprho, fnNames, block.gheName, 'GHE', block.pairs);
     }
   } else {
-    pushSeedHits(fullText, allFunctionNames, null, 'KEYWORD');
+    // Sem GHE: detecta risco mas nao associa a todas as funcoes (payload enorme).
+    pushSeedHits(fullText, [], null, 'KEYWORD');
   }
 
-  pushSeedHits(fullText, allFunctionNames, null, 'KEYWORD');
+  // Passada global so para achar riscos faltantes — sem inflar functionNames.
+  pushSeedHits(fullText, [], null, 'KEYWORD');
 
   const byName = new Map<string, PgroExtractedRisk>();
   for (const risk of risks) {
@@ -1282,8 +1355,8 @@ function extractRisksFromBlocks(
 function extractEpiNeedsFromBlocks(
   fullText: string,
   blocks: GheBlock[],
-  allFunctionNames: string[],
-  riskNames: string[],
+  _allFunctionNames: string[],
+  _riskNames: string[],
   warnings: string[],
   extraEpiAliases: Array<{ raw: string; canonical: string }> = [],
 ): PgroExtractedEpiNeed[] {
@@ -1348,8 +1421,9 @@ function extractEpiNeedsFromBlocks(
         matchedEpiNeedId: null,
         matchedEpiNeedName: null,
         createNew: true,
-        functionNames: associated ? [...functionNames] : [...allFunctionNames],
-        riskNames: [...riskNames],
+        // Nao copia todas as funcoes/riscos — estoura o body no confirm (Maestralle ~100kb+).
+        functionNames: associated ? [...functionNames] : [],
+        riskNames: [],
         included: associated,
         confidence: associated ? 'high' : 'low',
         extractionSource,
@@ -1373,10 +1447,10 @@ function extractEpiNeedsFromBlocks(
       );
     }
   } else {
-    scan(fullText, allFunctionNames, null, 'GLOBAL');
+    scan(fullText, [], null, 'GLOBAL');
   }
 
-  scan(fullText, allFunctionNames, null, 'KEYWORD');
+  scan(fullText, [], null, 'KEYWORD');
 
   const byName = new Map<string, PgroExtractedEpiNeed>();
   for (const item of found) {

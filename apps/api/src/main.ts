@@ -22,7 +22,11 @@ function resolveCorsOrigin(): boolean | string | string[] {
 }
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  // PGR grande (dezenas de GHE) ultrapassa o default Express de 100kb no confirm.
+  const express = await import('express');
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
   app.enableCors({
     origin: resolveCorsOrigin(),

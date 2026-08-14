@@ -483,6 +483,58 @@ assert(
   'weak detector',
 );
 
+// Maestralle-like: ACM + cargo Title Case quebrado (nao virar setor PRODUÇÃO SENIOR)
+const maestralleLike = parsePgroText(`
+Identificação CONTRATADA
+Razão Social: Maestralle Industria Ltda
+CNPJ: 12.345.678/0001-90
+Município: Sao Paulo Estado: SP
+
+Caracterização do GHE 01 – Auxiliar De Produção Júnior/ Auxiliar De Produção Senior
+Setor Cargo/Função Descrição da Atividade Descrição do Ambiente
+ACM
+Auxiliar De
+Produção Júnior
+Preparação de superficies.
+Trabalham Em Ambiente
+Interno E Ventilados
+ACM
+Auxiliar De
+Produção Senior
+Preparação de superficies.
+Trabalham Em Ambiente
+Interno E Ventilados
+APRHO do GHE 01 – Auxiliar De Produção
+Ruído
+Protetor Auricular Plug
+
+Caracterização do GHE 02 – Soldador
+Caldeiraria Leve
+Soldador Júnior
+Solda e corte.
+APRHO do GHE 02
+Calor
+`);
+assert(
+  maestralleLike.sectors.some((s) => s.name === 'ACM'),
+  `faltou ACM: ${maestralleLike.sectors.map((s) => s.name).join(' | ')}`,
+);
+assert(
+  maestralleLike.sectors.some((s) => /CALDEIRARIA LEVE/i.test(s.name)),
+  `faltou Caldeiraria Leve: ${maestralleLike.sectors.map((s) => s.name).join(' | ')}`,
+);
+assert(
+  !maestralleLike.sectors.some((s) => /PRODU[CÇ][AÃ]O\s+SENIOR/i.test(s.name)),
+  `setor falso PRODUÇÃO SENIOR: ${maestralleLike.sectors.map((s) => s.name).join(' | ')}`,
+);
+assert(
+  maestralleLike.functions.some(
+    (f) =>
+      f.sectorName === 'ACM' && /AUXILIAR DE PRODU/i.test(f.name),
+  ),
+  `funcoes ACM: ${maestralleLike.functions.map((f) => `${f.sectorName}:${f.name}`).join(' | ')}`,
+);
+
 console.log('pgro-parser.selftest OK');
 console.log(
   JSON.stringify(
