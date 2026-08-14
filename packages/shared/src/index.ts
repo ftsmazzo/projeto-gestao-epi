@@ -358,7 +358,7 @@ export interface WorkerImportStructureGaps {
   missingJobs: Array<{
     jobName: string;
     sectorName: string;
-    /** Funcoes com o mesmo nome em outro setor (ex.: Geral do PGR). */
+    /** Mesma funcao ja cadastrada em outros setores (informativo; nao mover). */
     orphanCandidates: Array<{
       id: string;
       name: string;
@@ -371,12 +371,18 @@ export interface WorkerImportStructureGaps {
 
 export interface WorkerImportEnrichStructureInput {
   createSectors?: Array<{ name: string }>;
+  /**
+   * Cria a funcao no setor informado se ainda nao existir la.
+   * A mesma funcao pode existir em varios setores — nunca desvincula de outro.
+   */
   createJobs?: Array<{ name: string; sectorName: string }>;
-  /** Move funcao existente (ex.: Geral) para o setor da planilha. */
+  /**
+   * @deprecated Nao move mais. Tratado como create no setor alvo (regra multi-setor).
+   */
   linkJobs?: Array<{ jobFunctionId: string; targetSectorName: string }>;
   /**
-   * Apos casar setores/funcoes, faz uniao de riscos e necessidades de EPI
-   * entre funcoes irmas (mesmo nome). Default: true.
+   * Apos criar setores/funcoes, une riscos e necessidades de EPI
+   * entre funcoes irmas (mesmo nome em setores distintos). Default: true.
    */
   syncRisksAndNeeds?: boolean;
 }

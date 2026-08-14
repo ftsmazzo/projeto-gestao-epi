@@ -150,9 +150,6 @@ export default function ClienteTrabalhadoresPage() {
     csvText: string;
   } | null>(null);
   const [importBusy, setImportBusy] = useState(false);
-  const [jobLinkChoice, setJobLinkChoice] = useState<Record<string, string>>(
-    {},
-  );
   const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const activeSectors = useMemo(
@@ -293,7 +290,6 @@ export default function ClienteTrabalhadoresPage() {
     setImportCsvPayload(null);
     setImportFileName(null);
     setImportMessage(null);
-    setJobLinkChoice({});
     setError(null);
   }
 
@@ -303,7 +299,6 @@ export default function ClienteTrabalhadoresPage() {
     setImportCsvPayload(null);
     setImportFileName(null);
     setImportMessage(null);
-    setJobLinkChoice({});
   }
 
   async function onDownloadTemplate() {
@@ -338,14 +333,6 @@ export default function ClienteTrabalhadoresPage() {
         csvText: filePayload.csvText,
       });
       setImportPreview(preview);
-      const defaults: Record<string, string> = {};
-      for (const job of preview.structureGaps?.missingJobs ?? []) {
-        const key = `${job.sectorName}::${job.jobName}`;
-        defaults[key] = job.orphanCandidates[0]?.id
-          ? `link:${job.orphanCandidates[0].id}`
-          : 'create';
-      }
-      setJobLinkChoice(defaults);
     } catch (err) {
       setImportPreview(null);
       setImportCsvPayload(null);
@@ -367,35 +354,21 @@ export default function ClienteTrabalhadoresPage() {
     setImportMessage(null);
     try {
       const createSectors = gaps.missingSectors.map((name) => ({ name }));
-      const createJobs: Array<{ name: string; sectorName: string }> = [];
-      const linkJobs: Array<{
-        jobFunctionId: string;
-        targetSectorName: string;
-      }> = [];
-
-      for (const job of gaps.missingJobs) {
-        const key = `${job.sectorName}::${job.jobName}`;
-        const choice = jobLinkChoice[key] ?? 'create';
-        if (choice.startsWith('link:')) {
-          linkJobs.push({
-            jobFunctionId: choice.slice('link:'.length),
-            targetSectorName: job.sectorName,
-          });
-        } else {
-          createJobs.push({ name: job.jobName, sectorName: job.sectorName });
-        }
-      }
+      // Sempre cria no setor da planilha; nunca move funcao de outro setor.
+      const createJobs = gaps.missingJobs.map((job) => ({
+        name: job.jobName,
+        sectorName: job.sectorName,
+      }));
 
       const enrich = await enrichWorkerImportStructure(clientId, {
         createSectors,
         createJobs,
-        linkJobs,
         syncRisksAndNeeds: true,
       });
       const preview = await previewWorkerCsvImport(clientId, importCsvPayload);
       setImportPreview(preview);
       setImportMessage(
-        `Estrutura casada: ${enrich.sectorsCreated} setor(es), ${enrich.jobsCreated} funcao(oes), ${enrich.jobsLinked} religada(s); riscos ${enrich.risksCopied}, necessidades ${enrich.needsCopied}. CSV revalidado.`,
+        `Estrutura preenchida: ${enrich.sectorsCreated} setor(es), ${enrich.jobsCreated} funcao(oes) nos setores da planilha; riscos ${enrich.risksCopied}, necessidades ${enrich.needsCopied} sincronizados entre irmas. CSV revalidado.`,
       );
       await load();
     } catch (err) {
@@ -411,6 +384,16 @@ export default function ClienteTrabalhadoresPage() {
 
   async function onConfirmImport() {
     if (!clientId || !importPreview) return;
+    const gaps = importPreview.structureGaps;
+    if (
+      gaps &&
+      (gaps.missingSectors.length > 0 || gaps.missingJobs.length > 0)
+    ) {
+      setError(
+        'Ainda ha setores/funcoes faltando. Use "Criar faltantes + sincronizar riscos/EPIs" antes de confirmar a importacao.',
+      );
+      return;
+    }
     const rows = importPreview.rows
       .filter((row) => row.status === 'valid' && row.payload)
       .map((row) => ({
@@ -697,11 +680,12 @@ export default function ClienteTrabalhadoresPage() {
                   style={{ marginTop: '1rem', marginBottom: '1rem' }}
                   aria-label="Completar estrutura"
                 >
-                  <p className="page-kicker">Casar estrutura (PGR + planilha)</p>
+                  <p className="page-kicker">Completar estrutura (PGR + planilha)</p>
                   <p className="page-lead">
-                    1) Casa setores/funcoes sem duplicar (religa o que veio no
-                    Geral do PGR). 2) Preenche o que estiver vazio. 3) Atualiza
-                    riscos e necessidades de EPI entre funcoes irmas.
+                    A planilha preenche lacunas do PGR: cria setores e funcoes
+                    que faltam. A mesma funcao pode existir em varios setores —
+                    nunca move nem desvincula a que ja esta em outro. Depois
+                    une riscos e necessidades de EPI entre funcoes irmas.
                   </p>
 
                   {importPreview.structureGaps.missingSectors.length > 0 ? (
@@ -726,43 +710,25 @@ export default function ClienteTrabalhadoresPage() {
                         <thead>
                           <tr>
                             <th>Setor (planilha)</th>
-                            <th>Funcao</th>
-                            <th>Acao</th>
+                            <th>Funcao a criar neste setor</th>
+                            <th>Ja existe em</th>
                           </tr>
                         </thead>
                         <tbody>
                           {importPreview.structureGaps.missingJobs.map(
                             (job) => {
                               const key = `${job.sectorName}::${job.jobName}`;
+                              const elsewhere =
+                                job.orphanCandidates.length > 0
+                                  ? job.orphanCandidates
+                                      .map((o) => o.sectorName)
+                                      .join(', ')
+                                  : '—';
                               return (
                                 <tr key={key}>
                                   <td>{job.sectorName}</td>
                                   <td>{job.jobName}</td>
-                                  <td>
-                                    <select
-                                      value={jobLinkChoice[key] ?? 'create'}
-                                      onChange={(e) =>
-                                        setJobLinkChoice((prev) => ({
-                                          ...prev,
-                                          [key]: e.target.value,
-                                        }))
-                                      }
-                                      disabled={importBusy}
-                                    >
-                                      <option value="create">
-                                        Criar funcao neste setor
-                                      </option>
-                                      {job.orphanCandidates.map((orphan) => (
-                                        <option
-                                          key={orphan.id}
-                                          value={`link:${orphan.id}`}
-                                        >
-                                          Religar de &quot;{orphan.sectorName}
-                                          &quot;
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </td>
+                                  <td>{elsewhere}</td>
                                 </tr>
                               );
                             },
@@ -781,7 +747,7 @@ export default function ClienteTrabalhadoresPage() {
                     >
                       {importBusy
                         ? 'Aplicando...'
-                        : 'Casar estrutura + riscos/EPIs e revalidar'}
+                        : 'Criar faltantes + sincronizar riscos/EPIs'}
                     </button>
                   </div>
                 </section>
@@ -859,7 +825,14 @@ export default function ClienteTrabalhadoresPage() {
                   type="button"
                   className="btn btn-primary"
                   disabled={
-                    importBusy || importPreview.totals.valid === 0
+                    importBusy ||
+                    importPreview.totals.valid === 0 ||
+                    Boolean(
+                      importPreview.structureGaps &&
+                        (importPreview.structureGaps.missingSectors.length >
+                          0 ||
+                          importPreview.structureGaps.missingJobs.length > 0),
+                    )
                   }
                   onClick={() => void onConfirmImport()}
                 >

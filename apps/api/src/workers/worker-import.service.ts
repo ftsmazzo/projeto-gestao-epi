@@ -448,96 +448,16 @@ export class WorkerImportService {
       });
     }
 
-    const linkOneJob = async (
-      jobFunctionId: string,
-      targetSectorName: string,
-    ) => {
-      const targetName = targetSectorName.trim();
-      const targetKey = normalizeMatchName(targetName);
-      let sectorId = sectorIdByMatch.get(targetKey);
-      if (!sectorId) {
-        const created = await this.prisma.clientSector.create({
-          data: {
-            organizationId,
-            servedClientId,
-            name: targetName,
-          },
-        });
-        sectorId = created.id;
-        sectorIdByMatch.set(targetKey, sectorId);
-        result.sectorsCreated += 1;
-      }
+    /**
+     * REGRA: a mesma funcao pode existir em varios setores.
+     * Nunca move/desvincula — so cria no setor alvo se ainda nao existir la.
+     * linkJobs legado e tratado como create (nao move), para nao quebrar vidas.
+     */
+    const ensureJobInSector = async (jobNameRaw: string, sectorNameRaw: string) => {
+      const jobName = jobNameRaw.trim();
+      const sectorName = sectorNameRaw.trim();
+      if (jobName.length < 2 || sectorName.length < 2) return;
 
-      const job = allJobs.find((j) => j.id === jobFunctionId);
-      if (!job) {
-        const fresh = await this.prisma.clientJobFunction.findFirst({
-          where: { id: jobFunctionId, organizationId, servedClientId },
-          select: {
-            id: true,
-            name: true,
-            sectorId: true,
-            sector: { select: { name: true } },
-          },
-        });
-        if (!fresh) {
-          result.warnings.push(
-            `Funcao ${jobFunctionId} nao encontrada para religar.`,
-          );
-          return;
-        }
-        allJobs.push(fresh);
-      }
-      const current = allJobs.find((j) => j.id === jobFunctionId)!;
-      if (current.sectorId === sectorId) {
-        result.warnings.push(
-          `Funcao "${current.name}" ja esta no setor "${targetName}".`,
-        );
-        return;
-      }
-
-      const clash = allJobs.find(
-        (j) =>
-          j.id !== current.id &&
-          j.sectorId === sectorId &&
-          normalizeMatchName(j.name) === normalizeMatchName(current.name),
-      );
-      if (clash) {
-        result.warnings.push(
-          `Nao foi possivel mover "${current.name}" — ja existe no setor "${targetName}" (sem duplicar).`,
-        );
-        return;
-      }
-
-      await this.prisma.clientJobFunction.update({
-        where: { id: current.id },
-        data: { sectorId },
-      });
-      current.sectorId = sectorId;
-      current.sector = { name: targetName };
-      result.jobsLinked += 1;
-      await this.audit.log({
-        action: 'client_job_function.updated',
-        organizationId,
-        userId,
-        entityType: 'ClientJobFunction',
-        entityId: current.id,
-        metadata: {
-          servedClientId,
-          name: current.name,
-          sectorId,
-          source: 'worker_import_enrich_link',
-        },
-      });
-    };
-
-    for (const item of input.linkJobs ?? []) {
-      await linkOneJob(item.jobFunctionId, item.targetSectorName);
-    }
-
-    for (const item of input.createJobs ?? []) {
-      const jobName = item.name.trim();
-      const sectorName = item.sectorName.trim();
-      if (jobName.length < 2 || sectorName.length < 2) continue;
       const sectorKey = normalizeMatchName(sectorName);
       let sectorId = sectorIdByMatch.get(sectorKey);
       if (!sectorId) {
@@ -562,23 +482,21 @@ export class WorkerImportService {
         result.warnings.push(
           `Funcao "${jobName}" ja existia no setor "${sectorName}" — reutilizada.`,
         );
-        continue;
+        return;
       }
 
-      // Sem duplicar: se a funcao ja existe noutro setor (ex.: Geral do PGR), religa.
-      const orphans = allJobs.filter(
+      const siblingsElsewhere = allJobs.filter(
         (j) =>
           j.sectorId !== sectorId && normalizeMatchName(j.name) === jobKey,
       );
-      if (orphans.length > 0) {
-        const preferGeral =
-          orphans.find((j) => normalizeMatchName(j.sector.name) === 'geral') ??
-          orphans[0];
-        await linkOneJob(preferGeral.id, sectorName);
+      if (siblingsElsewhere.length > 0) {
+        const places = siblingsElsewhere
+          .map((j) => j.sector.name)
+          .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+          .join(', ');
         result.warnings.push(
-          `Funcao "${jobName}" religada de "${preferGeral.sector.name}" → "${sectorName}" (sem duplicar).`,
+          `Funcao "${jobName}" tambem existe em: ${places}. Criando copia neste setor (sem desvincular).`,
         );
-        continue;
       }
 
       const created = await this.prisma.clientJobFunction.create({
@@ -607,8 +525,45 @@ export class WorkerImportService {
           name: jobName,
           sectorId,
           source: 'worker_import_enrich',
+          siblingsPreserved: siblingsElsewhere.map((j) => j.id),
         },
       });
+    };
+
+    for (const item of input.linkJobs ?? []) {
+      // Legado: clientes antigos enviavam "religar". Nao movemos mais.
+      const source =
+        allJobs.find((j) => j.id === item.jobFunctionId) ??
+        (await this.prisma.clientJobFunction.findFirst({
+          where: {
+            id: item.jobFunctionId,
+            organizationId,
+            servedClientId,
+          },
+          select: {
+            id: true,
+            name: true,
+            sectorId: true,
+            sector: { select: { name: true } },
+          },
+        }));
+      if (!source) {
+        result.warnings.push(
+          `Funcao ${item.jobFunctionId} nao encontrada — pedido de religacao ignorado.`,
+        );
+        continue;
+      }
+      if (!allJobs.some((j) => j.id === source.id)) {
+        allJobs.push(source);
+      }
+      result.warnings.push(
+        `Religacao ignorada (regra multi-setor): criando "${source.name}" em "${item.targetSectorName}" sem mover a original.`,
+      );
+      await ensureJobInSector(source.name, item.targetSectorName);
+    }
+
+    for (const item of input.createJobs ?? []) {
+      await ensureJobInSector(item.name, item.sectorName);
     }
 
     const shouldSync = input.syncRisksAndNeeds !== false;
@@ -842,9 +797,7 @@ export class WorkerImportService {
                 sectorName: job.sectorName,
               }))
               .sort((a, b) => {
-                const aGeral = normalizeMatchName(a.sectorName) === 'geral' ? 0 : 1;
-                const bGeral = normalizeMatchName(b.sectorName) === 'geral' ? 0 : 1;
-                if (aGeral !== bGeral) return aGeral - bGeral;
+                // Informativo: onde a mesma funcao ja existe (nao e candidato a mover).
                 return a.sectorName.localeCompare(b.sectorName, 'pt-BR');
               });
             missingJobMap.set(key, {

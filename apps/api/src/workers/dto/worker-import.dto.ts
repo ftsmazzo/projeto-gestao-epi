@@ -149,7 +149,7 @@ export class EnrichWorkerImportStructureDto {
   @Type(() => EnrichWorkerImportLinkJobDto)
   linkJobs?: EnrichWorkerImportLinkJobDto[];
 
-  /** Default true: sincroniza riscos/EPIs entre funcoes de mesmo nome. */
+  /** Default true: une riscos/EPIs entre funcoes irmas (mesmo nome, setores distintos). */
   @IsOptional()
   @IsBoolean()
   syncRisksAndNeeds?: boolean;
