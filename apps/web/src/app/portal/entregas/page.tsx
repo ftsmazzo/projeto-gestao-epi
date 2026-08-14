@@ -32,6 +32,9 @@ const DELIVERY_STEPS = [
   { id: 'face', label: 'Biometria' },
 ] as const;
 
+/** Sem busca/filtro, nao despeja centenas de cards na tela. */
+const WORKER_LIST_SOFT_CAP = 20;
+
 type ItemSelection = {
   selected: boolean;
   epiItemId: string;
@@ -333,6 +336,8 @@ function PortalEntregasContent() {
   const searchParams = useSearchParams();
   const workerFromQuery = searchParams.get('worker');
   const autoSelectedRef = useRef<string | null>(null);
+  const coverageSectionRef = useRef<HTMLElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const [prep, setPrep] = useState<PortalEntregasPreparacaoResponse | null>(
     null,
@@ -356,6 +361,7 @@ function PortalEntregasContent() {
   const [epiConfigIndex, setEpiConfigIndex] = useState(0);
   const [notes, setNotes] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [workerPickerOpen, setWorkerPickerOpen] = useState(true);
   const [query, setQuery] = useState('');
   const [unitId, setUnitId] = useState('');
   const [sectorId, setSectorId] = useState('');
@@ -424,6 +430,21 @@ function PortalEntregasContent() {
       return hay.includes(needle);
     });
   }, [prep, query, unitId, sectorId, jobId]);
+
+  const hasWorkerRefine = Boolean(
+    query.trim() || unitId || sectorId || jobId,
+  );
+  const workersToShow = useMemo(() => {
+    if (hasWorkerRefine) return filteredWorkers;
+    return filteredWorkers.slice(0, WORKER_LIST_SOFT_CAP);
+  }, [filteredWorkers, hasWorkerRefine]);
+  const workerListTruncated =
+    !hasWorkerRefine && filteredWorkers.length > WORKER_LIST_SOFT_CAP;
+
+  const selectedWorkerOption = useMemo(() => {
+    if (!selectedId || !prep) return null;
+    return prep.workers.find((w) => w.id === selectedId) ?? null;
+  }, [prep, selectedId]);
 
   const jobsForFilter = useMemo(() => {
     if (!prep) return [];
@@ -529,6 +550,7 @@ function PortalEntregasContent() {
         next[need.epiNeedId] = defaultSelection(need);
       }
       setSelections(next);
+      setWorkerPickerOpen(false);
     } catch (err) {
       setCoverage(null);
       setSelections({});
@@ -541,6 +563,28 @@ function PortalEntregasContent() {
       setLoadingCoverage(false);
     }
   }
+
+  function openWorkerPicker() {
+    setWorkerPickerOpen(true);
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    });
+  }
+
+  useEffect(() => {
+    if (workerPickerOpen || loadingCoverage || !coverage || !selectedId) return;
+    const t = window.setTimeout(() => {
+      coverageSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [workerPickerOpen, loadingCoverage, coverage, selectedId]);
 
   useEffect(() => {
     if (!prep || !workerFromQuery) return;
@@ -626,8 +670,7 @@ function PortalEntregasContent() {
           <p className="page-kicker">Dia a dia</p>
           <h1 className="page-title page-title--sm">Entrega de EPI</h1>
           <p className="page-lead">
-            Escolha trabalhador e EPIs. A biometria abre em tela cheia — sem
-            rolar a pagina para confirmar.
+            Busque o trabalhador, escolha os EPIs e valide a face em tela cheia.
           </p>
         </div>
       </header>
@@ -692,7 +735,14 @@ function PortalEntregasContent() {
             <button
               type="button"
               className="btn btn-secondary"
-              onClick={() => setReceipt(null)}
+              onClick={() => {
+                setReceipt(null);
+                setSelectedId(null);
+                setCoverage(null);
+                setSelections({});
+                setWorkerPickerOpen(true);
+                closeFaceFlow();
+              }}
             >
               Nova entrega
             </button>
@@ -745,118 +795,195 @@ function PortalEntregasContent() {
             <h2 id="worker-select-title" className="page-title page-title--sm">
               1. Trabalhador
             </h2>
-            <div className="form-grid">
-              <div className="field">
-                <label htmlFor="entrega-worker-search">Buscar</label>
-                <input
-                  id="entrega-worker-search"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Nome, matricula ou CPF mascarado"
-                  autoComplete="off"
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="entrega-unit">Unidade</label>
-                <select
-                  id="entrega-unit"
-                  value={unitId}
-                  onChange={(e) => setUnitId(e.target.value)}
-                >
-                  <option value="">Todas</option>
-                  {prep.filters.units.map((unit) => (
-                    <option key={unit.id} value={unit.id}>
-                      {unit.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="entrega-sector">Setor</label>
-                <select
-                  id="entrega-sector"
-                  value={sectorId}
-                  onChange={(e) => {
-                    setSectorId(e.target.value);
-                    setJobId('');
-                  }}
-                >
-                  <option value="">Todos</option>
-                  {prep.filters.sectors.map((sector) => (
-                    <option key={sector.id} value={sector.id}>
-                      {sector.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="entrega-job">Funcao</label>
-                <select
-                  id="entrega-job"
-                  value={jobId}
-                  onChange={(e) => setJobId(e.target.value)}
-                >
-                  <option value="">Todas</option>
-                  {jobsForFilter.map((job) => (
-                    <option key={job.id} value={job.id}>
-                      {job.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
 
-            <div className="portal-pick-list" role="list" aria-label="Trabalhadores">
-              {filteredWorkers.length === 0 ? (
-                <p className="page-lead">Nenhum trabalhador ativo encontrado.</p>
-              ) : (
-                filteredWorkers.map((worker) => {
-                  const selected = selectedId === worker.id;
-                  return (
-                    <article
-                      key={worker.id}
-                      role="listitem"
-                      className={`portal-pick-card${selected ? ' is-selected' : ''}`}
+            {selectedId && !workerPickerOpen ? (
+              <div className="portal-selected-worker" role="status">
+                <div className="portal-selected-worker__main">
+                  <strong className="portal-selected-worker__title">
+                    {coverage?.worker.name ??
+                      selectedWorkerOption?.name ??
+                      'Trabalhador selecionado'}
+                  </strong>
+                  <p className="portal-selected-worker__meta">
+                    {(coverage?.worker.registration ??
+                      selectedWorkerOption?.registration)
+                      ? `Mat. ${coverage?.worker.registration ?? selectedWorkerOption?.registration}`
+                      : 'Sem matricula'}
+                    {' · '}
+                    {coverage?.worker.unitName ??
+                      selectedWorkerOption?.unitName ??
+                      'Sem unidade'}
+                    {' · '}
+                    {coverage?.worker.sectorName ??
+                      selectedWorkerOption?.sectorName ??
+                      'Sem setor'}
+                    {' · '}
+                    {coverage?.worker.jobFunctionName ??
+                      selectedWorkerOption?.jobFunctionName ??
+                      'Sem funcao'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={openWorkerPicker}
+                >
+                  Trocar
+                </button>
+              </div>
+            ) : (
+              <>
+                <p className="field-hint">
+                  Busque por nome ou matricula — com muitos trabalhadores, a
+                  lista so mostra um trecho ate voce filtrar.
+                </p>
+                <div className="form-grid">
+                  <div className="field">
+                    <label htmlFor="entrega-worker-search">Buscar</label>
+                    <input
+                      ref={searchInputRef}
+                      id="entrega-worker-search"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Nome, matricula ou CPF mascarado"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="entrega-unit">Unidade</label>
+                    <select
+                      id="entrega-unit"
+                      value={unitId}
+                      onChange={(e) => setUnitId(e.target.value)}
                     >
-                      <div className="portal-pick-card__body">
-                        <div className="portal-pick-card__main">
-                          <strong className="portal-pick-card__title">
-                            {worker.name}
-                          </strong>
-                          <p className="portal-pick-card__meta">
-                            {worker.registration
-                              ? `Mat. ${worker.registration}`
-                              : 'Sem matricula'}
-                            {worker.cpfMasked ? ` · ${worker.cpfMasked}` : ''}
-                          </p>
-                          <p className="portal-pick-card__meta">
-                            {worker.unitName ?? 'Sem unidade'}
-                            {' · '}
-                            {worker.sectorName ?? 'Sem setor'}
-                          </p>
-                          <p className="portal-pick-card__meta">
-                            {worker.jobFunctionName ?? 'Sem funcao'}
-                            {' · '}
-                            {worker.requiredEpiCount} EPI
-                            {worker.requiredEpiCount === 1 ? '' : 's'}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          className={`btn ${selected ? 'btn-primary' : 'btn-secondary'} portal-pick-card__action`}
-                          onClick={() => void selectWorker(worker)}
+                      <option value="">Todas</option>
+                      {prep.filters.units.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="entrega-sector">Setor</label>
+                    <select
+                      id="entrega-sector"
+                      value={sectorId}
+                      onChange={(e) => {
+                        setSectorId(e.target.value);
+                        setJobId('');
+                      }}
+                    >
+                      <option value="">Todos</option>
+                      {prep.filters.sectors.map((sector) => (
+                        <option key={sector.id} value={sector.id}>
+                          {sector.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="field">
+                    <label htmlFor="entrega-job">Funcao</label>
+                    <select
+                      id="entrega-job"
+                      value={jobId}
+                      onChange={(e) => setJobId(e.target.value)}
+                    >
+                      <option value="">Todas</option>
+                      {jobsForFilter.map((job) => (
+                        <option key={job.id} value={job.id}>
+                          {job.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <p className="field-hint" style={{ marginTop: '0.65rem' }}>
+                  {filteredWorkers.length === 0
+                    ? 'Nenhum resultado com os filtros atuais.'
+                    : workerListTruncated
+                      ? `Mostrando ${workersToShow.length} de ${filteredWorkers.length}. Digite na busca ou filtre por setor/funcao.`
+                      : `${filteredWorkers.length} trabalhador(es)`}
+                </p>
+
+                <div
+                  className="portal-pick-list portal-pick-list--scroll"
+                  role="list"
+                  aria-label="Trabalhadores"
+                >
+                  {workersToShow.length === 0 ? (
+                    <p className="page-lead">
+                      Nenhum trabalhador ativo encontrado.
+                    </p>
+                  ) : (
+                    workersToShow.map((worker) => {
+                      const selected = selectedId === worker.id;
+                      return (
+                        <article
+                          key={worker.id}
+                          role="listitem"
+                          className={`portal-pick-card${selected ? ' is-selected' : ''}`}
                         >
-                          {selected ? 'Selecionado' : 'Selecionar'}
-                        </button>
-                      </div>
-                    </article>
-                  );
-                })
-              )}
-            </div>
+                          <div className="portal-pick-card__body">
+                            <div className="portal-pick-card__main">
+                              <strong className="portal-pick-card__title">
+                                {worker.name}
+                              </strong>
+                              <p className="portal-pick-card__meta">
+                                {worker.registration
+                                  ? `Mat. ${worker.registration}`
+                                  : 'Sem matricula'}
+                                {worker.cpfMasked
+                                  ? ` · ${worker.cpfMasked}`
+                                  : ''}
+                              </p>
+                              <p className="portal-pick-card__meta">
+                                {worker.unitName ?? 'Sem unidade'}
+                                {' · '}
+                                {worker.sectorName ?? 'Sem setor'}
+                              </p>
+                              <p className="portal-pick-card__meta">
+                                {worker.jobFunctionName ?? 'Sem funcao'}
+                                {' · '}
+                                {worker.requiredEpiCount} EPI
+                                {worker.requiredEpiCount === 1 ? '' : 's'}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className={`btn ${selected ? 'btn-primary' : 'btn-secondary'} portal-pick-card__action`}
+                              onClick={() => void selectWorker(worker)}
+                            >
+                              {selected ? 'Selecionado' : 'Selecionar'}
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })
+                  )}
+                </div>
+
+                {selectedId ? (
+                  <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setWorkerPickerOpen(false)}
+                    >
+                      Manter selecao e ir aos EPIs
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            )}
           </section>
 
-          <section className="portal-card" aria-labelledby="coverage-title">
+          <section
+            ref={coverageSectionRef}
+            className="portal-card"
+            aria-labelledby="coverage-title"
+          >
             <h2 id="coverage-title" className="page-title page-title--sm">
               2. EPIs a entregar
             </h2>
