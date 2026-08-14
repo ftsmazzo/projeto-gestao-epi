@@ -231,7 +231,8 @@ export class PgroService {
       epiRequirementsExisting: 0,
     };
 
-    const result = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(
+      async (tx) => {
       let servedClientId =
         dto.servedClientId?.trim() || run.servedClientId || null;
 
@@ -609,6 +610,38 @@ export class PgroService {
       }
 
       const epiNeedIdByName = new Map<string, string>();
+      const jobIds = [...new Set(jobIdByName.values())];
+      const existingReqRows =
+        jobIds.length > 0
+          ? await tx.jobFunctionEpiRequirement.findMany({
+              where: {
+                organizationId,
+                jobFunctionId: { in: jobIds },
+                isActive: true,
+              },
+              select: {
+                jobFunctionId: true,
+                epiNeedId: true,
+                riskId: true,
+              },
+            })
+          : [];
+      const existingReqKeys = new Set(
+        existingReqRows.map(
+          (row) =>
+            `${row.jobFunctionId}|${row.epiNeedId}|${row.riskId ?? ''}`,
+        ),
+      );
+      const epiRequirementsToCreate: Array<{
+        organizationId: string;
+        jobFunctionId: string;
+        epiNeedId: string;
+        riskId: string | null;
+        isRequired: boolean;
+        quantity: number;
+        source: 'PGRO';
+      }> = [];
+
       for (const epi of dto.epiNeeds.filter((e) => e.included)) {
         let needId = epi.matchedEpiNeedId?.trim() || null;
         if (needId) {
@@ -677,34 +710,30 @@ export class PgroService {
               : [null];
 
           for (const riskId of riskIds) {
-            const existingReq =
-              await tx.jobFunctionEpiRequirement.findFirst({
-                where: {
-                  organizationId,
-                  jobFunctionId: jobId,
-                  epiNeedId: needId!,
-                  isActive: true,
-                  ...(riskId ? { riskId } : { riskId: null }),
-                },
-              });
-            if (existingReq) {
+            const key = `${jobId}|${needId}|${riskId ?? ''}`;
+            if (existingReqKeys.has(key)) {
               summary.epiRequirementsExisting += 1;
               continue;
             }
-            await tx.jobFunctionEpiRequirement.create({
-              data: {
-                organizationId,
-                jobFunctionId: jobId,
-                epiNeedId: needId!,
-                riskId,
-                isRequired: true,
-                quantity: 1,
-                source: 'PGRO',
-              },
+            existingReqKeys.add(key);
+            epiRequirementsToCreate.push({
+              organizationId,
+              jobFunctionId: jobId,
+              epiNeedId: needId!,
+              riskId,
+              isRequired: true,
+              quantity: 1,
+              source: 'PGRO',
             });
-            summary.epiRequirementsCreated += 1;
           }
         }
+      }
+
+      if (epiRequirementsToCreate.length > 0) {
+        await tx.jobFunctionEpiRequirement.createMany({
+          data: epiRequirementsToCreate,
+        });
+        summary.epiRequirementsCreated += epiRequirementsToCreate.length;
       }
 
       if (dto.archiveMissing) {
@@ -734,7 +763,13 @@ export class PgroService {
       });
 
       return updated;
-    });
+      },
+      {
+        // PGR grande: setores + funcoes + riscos + EPIs passam dos 5s padrao.
+        maxWait: 15_000,
+        timeout: 120_000,
+      },
+    );
 
     await this.audit.log({
       action: 'pgro_import.confirmed',
