@@ -368,7 +368,7 @@ export default function ClienteTrabalhadoresPage() {
       const preview = await previewWorkerCsvImport(clientId, importCsvPayload);
       setImportPreview(preview);
       setImportMessage(
-        `Estrutura preenchida: ${enrich.sectorsCreated} setor(es), ${enrich.jobsCreated} funcao(oes) nos setores da planilha; riscos ${enrich.risksCopied}, necessidades ${enrich.needsCopied} sincronizados entre irmas. CSV revalidado.`,
+        `Estrutura preenchida: ${enrich.sectorsCreated} setor(es), ${enrich.jobsCreated} funcao(oes); PGR reverso ${enrich.pgroRisksLinked} risco(s)/${enrich.pgroNeedsLinked} necessidade(s); irmas ${enrich.risksCopied}/${enrich.needsCopied}. CSV revalidado.`,
       );
       await load();
     } catch (err) {
@@ -683,9 +683,9 @@ export default function ClienteTrabalhadoresPage() {
                   <p className="page-kicker">Completar estrutura (PGR + planilha)</p>
                   <p className="page-lead">
                     A planilha preenche lacunas do PGR: cria setores e funcoes
-                    que faltam. A mesma funcao pode existir em varios setores —
-                    nunca move nem desvincula a que ja esta em outro. Depois
-                    une riscos e necessidades de EPI entre funcoes irmas.
+                    que faltam (a mesma funcao pode existir em varios setores).
+                    Depois relê o texto guardado do PGR para completar riscos e
+                    EPIs vazios, e une cobertura entre funcoes irmas.
                   </p>
 
                   {importPreview.structureGaps.missingSectors.length > 0 ? (

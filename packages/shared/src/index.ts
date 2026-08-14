@@ -393,6 +393,10 @@ export interface WorkerImportEnrichStructureResult {
   jobsLinked: number;
   risksCopied: number;
   needsCopied: number;
+  /** Validacao reversa: riscos ligados a partir do texto guardado do PGR. */
+  pgroRisksLinked: number;
+  /** Validacao reversa: necessidades ligadas a partir do texto do PGR. */
+  pgroNeedsLinked: number;
   warnings: string[];
 }
 

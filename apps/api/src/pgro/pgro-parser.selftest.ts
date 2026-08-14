@@ -10,6 +10,7 @@ import {
   normalizeFunctionDisplayName,
   normalizeFunctionKey,
   parsePgroText,
+  reminePgroCoverageForJobs,
   shouldPreferLlmStructure,
   shouldUsePgroLlmFallback,
 } from './pgro-parser';
@@ -609,6 +610,22 @@ assert(
     shouldPreferLlmStructure(broken, llmOk) === true,
     'preferir LLM quando heuristic inventou setor Junior/Senior',
   );
+}
+
+// Validacao reversa: setor/funcao da planilha → riscos do GHE no texto.
+{
+  const remine = reminePgroCoverageForJobs(SAMPLE_REAL, [
+    { sectorName: 'PRODUCAO', functionName: 'AUXILIAR DE PRODUCAO I' },
+    { sectorName: 'APOIO ADM', functionName: 'AUXILIAR DE LIMPEZA' },
+  ]);
+  const prod = remine.find((r) => /AUXILIAR DE PRODUCAO I/i.test(r.functionName));
+  const limpeza = remine.find((r) => /LIMPEZA/i.test(r.functionName));
+  assert(Boolean(prod && prod.matchedGheNames.length > 0), 'remine achou GHE producao');
+  assert(
+    Boolean(prod && prod.risks.length > 0),
+    `remine riscos producao: ${prod?.risks.map((r) => r.name).join(',') ?? 'none'}`,
+  );
+  assert(Boolean(limpeza && limpeza.matchedGheNames.length > 0), 'remine achou GHE limpeza');
 }
 
 console.log('pgro-parser.selftest OK');

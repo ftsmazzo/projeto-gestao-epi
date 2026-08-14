@@ -15,6 +15,7 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { resolveCsvImportInput } from '../common/csv-text-encoding';
 import { cpfAuditMeta, isValidCpf, stripCpf } from '../common/cpf';
+import { PgroService } from '../pgro/pgro.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   mapWorkerCsvRecord,
@@ -58,6 +59,7 @@ export class WorkerImportService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly pgro: PgroService,
   ) {}
 
   async preview(
@@ -399,6 +401,8 @@ export class WorkerImportService {
       jobsLinked: 0,
       risksCopied: 0,
       needsCopied: 0,
+      pgroRisksLinked: 0,
+      pgroNeedsLinked: 0,
       warnings: [],
     };
 
@@ -568,6 +572,17 @@ export class WorkerImportService {
 
     const shouldSync = input.syncRisksAndNeeds !== false;
     if (shouldSync) {
+      // 1) Remineracao reversa: planilha/setor → texto do PGR guardado.
+      const backfill = await this.pgro.backfillCoverageFromStoredPgr(
+        organizationId,
+        userId,
+        servedClientId,
+      );
+      result.pgroRisksLinked = backfill.risksLinked;
+      result.pgroNeedsLinked = backfill.needsLinked;
+      result.warnings.push(...backfill.warnings);
+
+      // 2) Uniao entre funcoes irmas (mesmo nome em setores distintos).
       const synced = await this.syncRisksAndNeedsFromSiblingJobs(
         organizationId,
         servedClientId,

@@ -37,6 +37,7 @@ import {
 import {
   normalizeTextKey,
   parsePgroText,
+  reminePgroCoverageForJobs,
   shouldPreferLlmStructure,
   shouldUsePgroLlmFallback,
   type PgroExtractedEpiNeed,
@@ -239,6 +240,7 @@ export class PgroService {
         extractedEpiNeeds: epiNeeds as Prisma.InputJsonValue,
         warnings: allWarnings as Prisma.InputJsonValue,
         parseMeta: parseMeta as Prisma.InputJsonValue,
+        sourceText: documentText.slice(0, 5_000_000),
         errorMessage: parseResult.textExtractable
           ? null
           : parseResult.warnings[0] ??
@@ -1310,6 +1312,251 @@ export class PgroService {
       throw new NotFoundException('Cliente do portal nao encontrado.');
     }
     return client;
+  }
+
+  /**
+   * Validacao reversa: usa o texto do ultimo PGR do cliente e, para funcoes
+   * sem risco/EPI, remonta cobertura a partir dos GHEs que batem com setor/funcao.
+   */
+  async backfillCoverageFromStoredPgr(
+    organizationId: string,
+    userId: string,
+    servedClientId: string,
+  ): Promise<{
+    jobsScanned: number;
+    jobsFilled: number;
+    risksLinked: number;
+    needsLinked: number;
+    warnings: string[];
+  }> {
+    await this.requirePortalClient(organizationId, servedClientId);
+
+    const result = {
+      jobsScanned: 0,
+      jobsFilled: 0,
+      risksLinked: 0,
+      needsLinked: 0,
+      warnings: [] as string[],
+    };
+
+    const run = await this.prisma.pgroImportRun.findFirst({
+      where: {
+        organizationId,
+        servedClientId,
+        sourceText: { not: null },
+        OR: [
+          { status: PgroImportStatus.CONFIRMED },
+          { status: PgroImportStatus.PARSED },
+        ],
+      },
+      orderBy: [{ finishedAt: 'desc' }, { createdAt: 'desc' }],
+      select: { id: true, sourceText: true, status: true, fileName: true },
+    });
+
+    if (!run?.sourceText?.trim()) {
+      result.warnings.push(
+        'Sem texto de PGR guardado para este cliente. Reimporte o .docx/.pdf uma vez para habilitar a validacao reversa de riscos/EPIs.',
+      );
+      return result;
+    }
+
+    const jobs = await this.prisma.clientJobFunction.findMany({
+      where: { organizationId, servedClientId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        sector: { select: { name: true } },
+        _count: {
+          select: {
+            risks: true,
+            epiRequirements: { where: { isActive: true } },
+          },
+        },
+      },
+    });
+
+    const needy = jobs.filter(
+      (j) => j._count.risks === 0 || j._count.epiRequirements === 0,
+    );
+    result.jobsScanned = needy.length;
+    if (needy.length === 0) {
+      result.warnings.push(
+        'Validacao reversa: nenhuma funcao sem risco/EPI para completar.',
+      );
+      return result;
+    }
+
+    const aliasRows = await this.prisma.pgroExtractionAlias.findMany({
+      where: { organizationId },
+      select: {
+        kind: true,
+        rawNormalized: true,
+        canonicalName: true,
+        category: true,
+      },
+      take: 2000,
+    });
+    const extraAliases = buildExtraAliasPack(aliasRows);
+
+    const mined = reminePgroCoverageForJobs(
+      run.sourceText,
+      needy.map((j) => ({
+        sectorName: j.sector.name,
+        functionName: j.name,
+      })),
+      { extraAliases },
+    );
+
+    const byJobKey = new Map<string, (typeof mined)[number]>();
+    for (const row of mined) {
+      byJobKey.set(
+        `${normalizeTextKey(row.sectorName)}::${normalizeTextKey(row.functionName)}`,
+        row,
+      );
+    }
+
+    for (const job of needy) {
+      const key = `${normalizeTextKey(job.sector.name)}::${normalizeTextKey(job.name)}`;
+      const pack = byJobKey.get(key);
+      if (!pack || (pack.risks.length === 0 && pack.epiNeeds.length === 0)) {
+        continue;
+      }
+
+      let filled = false;
+
+      if (job._count.risks === 0) {
+        for (const risk of pack.risks) {
+          const name = risk.name.trim();
+          if (!name) continue;
+          let riskRow = await this.prisma.occupationalRisk.findFirst({
+            where: {
+              organizationId,
+              category: risk.category,
+              name: { equals: name, mode: 'insensitive' },
+            },
+            select: { id: true },
+          });
+          if (!riskRow) {
+            riskRow = await this.prisma.occupationalRisk.create({
+              data: {
+                organizationId,
+                name,
+                category: risk.category,
+                description: 'Reminerado do PGR (validacao reversa)',
+              },
+              select: { id: true },
+            });
+          }
+          const existingLink = await this.prisma.jobFunctionRisk.findFirst({
+            where: {
+              organizationId,
+              jobFunctionId: job.id,
+              riskId: riskRow.id,
+            },
+            select: { id: true },
+          });
+          if (existingLink) continue;
+          await this.prisma.jobFunctionRisk.create({
+            data: {
+              organizationId,
+              jobFunctionId: job.id,
+              riskId: riskRow.id,
+              source: risk.source ?? 'PGRO',
+              exposure: risk.exposure,
+              possibleDamage: risk.possibleDamage,
+            },
+          });
+          result.risksLinked += 1;
+          filled = true;
+        }
+      }
+
+      if (job._count.epiRequirements === 0 && pack.epiNeeds.length > 0) {
+        const matched = await this.matchEpiNeeds(organizationId, pack.epiNeeds);
+        for (const epi of matched) {
+          const name = epi.suggestedName.trim();
+          if (!name) continue;
+          let needId = epi.matchedEpiNeedId;
+          if (!needId) {
+            const seed = resolveEpiNeedSeedByName(name);
+            const created = await this.prisma.epiNeed.create({
+              data: {
+                organizationId,
+                name,
+                description: 'Reminerado do PGR (validacao reversa)',
+                aliases: [],
+                category: seed?.category ?? null,
+                usefulLifeValue: seed?.usefulLifeValue ?? null,
+                usefulLifeUnit: seed?.usefulLifeUnit ?? null,
+              },
+              select: { id: true },
+            });
+            needId = created.id;
+          }
+          const exists = await this.prisma.jobFunctionEpiRequirement.findFirst({
+            where: {
+              organizationId,
+              jobFunctionId: job.id,
+              epiNeedId: needId,
+              riskId: null,
+              isActive: true,
+            },
+            select: { id: true },
+          });
+          if (exists) continue;
+          await this.prisma.jobFunctionEpiRequirement.create({
+            data: {
+              organizationId,
+              jobFunctionId: job.id,
+              epiNeedId: needId,
+              riskId: null,
+              isRequired: true,
+              quantity: 1,
+              source: 'PGRO',
+            },
+          });
+          result.needsLinked += 1;
+          filled = true;
+        }
+      }
+
+      if (filled) {
+        result.jobsFilled += 1;
+        if (pack.matchedGheNames.length > 0) {
+          result.warnings.push(
+            `PGR→${job.sector.name}/${job.name}: ${pack.matchedGheNames.slice(0, 3).join(', ')}`,
+          );
+        }
+      }
+    }
+
+    await this.audit.log({
+      action: 'pgro_import.coverage_backfilled',
+      organizationId,
+      userId,
+      entityType: 'ServedClient',
+      entityId: servedClientId,
+      metadata: {
+        runId: run.id,
+        fileName: run.fileName,
+        jobsScanned: result.jobsScanned,
+        jobsFilled: result.jobsFilled,
+        risksLinked: result.risksLinked,
+        needsLinked: result.needsLinked,
+      },
+    });
+
+    if (result.jobsFilled === 0) {
+      result.warnings.push(
+        'Validacao reversa nao encontrou riscos/EPIs adicionais no texto do PGR para as funcoes vazias.',
+      );
+    } else {
+      result.warnings.unshift(
+        `Validacao reversa do PGR (${run.fileName}): ${result.jobsFilled} funcao(oes), ${result.risksLinked} risco(s), ${result.needsLinked} necessidade(s).`,
+      );
+    }
+
+    return result;
   }
 
   private async matchEpiNeeds(

@@ -1790,6 +1790,130 @@ export function parsePgroText(
   return result;
 }
 
+export type ReminedJobCoverage = {
+  sectorName: string;
+  functionName: string;
+  risks: PgroExtractedRisk[];
+  epiNeeds: PgroExtractedEpiNeed[];
+  matchedGheNames: string[];
+};
+
+function namesLooselyMatch(a: string | null | undefined, b: string): boolean {
+  if (!a?.trim() || !b.trim()) return false;
+  const left = normalizeTextKey(a);
+  const right = normalizeTextKey(b);
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.includes(right) || right.includes(left)) return true;
+  const leftFn = normalizeFunctionKey(a);
+  const rightFn = normalizeFunctionKey(b);
+  return Boolean(leftFn && rightFn && leftFn === rightFn);
+}
+
+function gheBlockMatchesJob(
+  block: GheBlock,
+  sectorName: string,
+  functionName: string,
+): boolean {
+  for (const pair of block.pairs) {
+    if (namesLooselyMatch(pair.functionName, functionName)) return true;
+    if (
+      namesLooselyMatch(pair.sectorName, sectorName) &&
+      namesLooselyMatch(pair.functionName, functionName)
+    ) {
+      return true;
+    }
+  }
+  const hay = normalizeTextKey(
+    `${block.gheName}\n${block.headerLabel}\n${block.body}`,
+  );
+  const sectorKey = normalizeTextKey(sectorName);
+  const functionKeyNorm = normalizeTextKey(functionName);
+  if (functionKeyNorm && hay.includes(functionKeyNorm)) return true;
+  if (
+    sectorKey &&
+    hay.includes(sectorKey) &&
+    functionKeyNorm &&
+    hay.includes(functionKeyNorm.split(/\s+/).slice(0, 2).join(' '))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Validacao reversa: a partir de setor/funcao da planilha, reabre o texto do PGR
+ * e remonta riscos + necessidades dos GHEs que batem com esses nomes.
+ */
+export function reminePgroCoverageForJobs(
+  rawText: string,
+  jobs: Array<{ sectorName: string; functionName: string }>,
+  options?: ParsePgroOptions,
+): ReminedJobCoverage[] {
+  const text = rawText.replace(/\r/g, '\n');
+  if (text.replace(/\s/g, '').length < 80) return [];
+
+  const blocks = extractGheBlocks(text);
+  const extra = options?.extraAliases;
+  const out: ReminedJobCoverage[] = [];
+
+  for (const job of jobs) {
+    const sectorName = job.sectorName.trim();
+    const functionName = job.functionName.trim();
+    if (sectorName.length < 2 || functionName.length < 2) continue;
+
+    const relevant = blocks.filter((block) =>
+      gheBlockMatchesJob(block, sectorName, functionName),
+    );
+    if (relevant.length === 0) {
+      out.push({
+        sectorName,
+        functionName,
+        risks: [],
+        epiNeeds: [],
+        matchedGheNames: [],
+      });
+      continue;
+    }
+
+    const risks = extractRisksFromBlocks(
+      text,
+      relevant,
+      [functionName],
+      extra?.risks ?? [],
+    ).map((risk) => ({
+      ...risk,
+      tempId: randomUUID(),
+      functionNames: [...new Set([...risk.functionNames, functionName])],
+      included: true,
+    }));
+
+    const epiNeeds = extractEpiNeedsFromBlocks(
+      text,
+      relevant,
+      [functionName],
+      risks.map((r) => r.name),
+      [],
+      extra?.epiNeeds ?? [],
+    ).map((epi) => ({
+      ...epi,
+      tempId: randomUUID(),
+      functionNames: [...new Set([...epi.functionNames, functionName])],
+      included: true,
+    }));
+
+    out.push({
+      sectorName,
+      functionName,
+      risks,
+      epiNeeds,
+      matchedGheNames: [...new Set(relevant.map((b) => b.gheName))],
+    });
+  }
+
+  return out;
+}
+
 export function fingerprintText(text: string): string {
   return createHash('sha1').update(normalizeTextKey(text)).digest('hex');
 }
