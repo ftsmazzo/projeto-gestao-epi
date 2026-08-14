@@ -87,6 +87,27 @@ export type PgroParseResult = {
   ignoredCandidates: string[];
   textExtractable: boolean;
   textLength: number;
+  layout: PgroLayoutKind;
+  parseMethod: PgroParseMethod;
+  structureWeak: boolean;
+};
+
+export type PgroLayoutKind = 'GHE_APRHO' | 'CARGO_TABLE' | 'UNKNOWN';
+export type PgroParseMethod = 'HEURISTIC' | 'HEURISTIC_PLUS_LLM';
+
+export type PgroExtraAliasPack = {
+  sectors?: Array<{ raw: string; canonical: string }>;
+  jobFunctions?: Array<{ raw: string; canonical: string }>;
+  risks?: Array<{
+    raw: string;
+    canonical: string;
+    category?: OccupationalRiskCategory | null;
+  }>;
+  epiNeeds?: Array<{ raw: string; canonical: string }>;
+};
+
+export type ParsePgroOptions = {
+  extraAliases?: PgroExtraAliasPack;
 };
 
 const BR_UFS = new Set([
@@ -153,7 +174,7 @@ const STOP_WORDS = new Set([
 ]);
 
 const JOB_HINT_RE =
-  /\b(auxiliar|assistente|encarregado|operador|motorista|vendedor|tecnico|técnico|analista|supervisor|coordenador|gerente|diretor|diretora|ajudante|instalador|servente|faxineir|limpeza|mecanico|mecânico|eletricista|soldador|pedreiro|pintor|almoxarife|recepcionista|secretario|secretário|montador|solda|pedreir|carpinteiro|mestre de obras|servente|office boy|jovem aprendiz)\b/i;
+  /\b(auxiliar|assistente|encarregado|operador|motorista|vendedor|tecnico|técnico|analista|supervisor|coordenador|gerente|diretor|diretora|ajudante|instalador|servente|faxineir|limpeza|mecanico|mecânico|eletricista|soldador|pedreiro|pintor|almoxarife|recepcionista|secretario|secretário|montador|solda|pedreir|carpinteiro|mestre de obras|servente|office boy|jovem aprendiz|engenheiro|enfermeir|medico|médico|tecnolog|inspetor|caldeireiro|tornero|fresador|embalador|separador|conferente|vigilante|porteiro|cozinheir|garcom|garçom|frentista|bombeiro|soldador|serralheiro)\b/i;
 
 const ACTIVITY_START_RE =
   /\b(executar|realizar|classificar|operar|controlar|efetuar|desenvolver|auxiliar nas|responsaveis em|esta sob as responsabilidades|selecionam os|um vendedor|o auxiliar|o encarregado|realizacao de transporte|realização de transporte)\b/i;
@@ -878,7 +899,9 @@ function pickFirstValidSector(
 
 function extractSetorField(slice: string): string | null {
   const labeled = [
-    ...slice.matchAll(/SETOR\s*[:\-]\s*([A-Za-zÀ-ÿ0-9 .\/-]{3,60})/gi),
+    ...slice.matchAll(
+      /(?:SETOR|AREA|ÁREA|DEPARTAMENTO|SETOR\s*\/\s*AREA|SETOR\s*\/\s*ÁREA)\s*[:\-]\s*([A-Za-zÀ-ÿ0-9 .\/-]{3,60})/gi,
+    ),
   ];
   for (const match of labeled) {
     const raw = cleanLine(match[1].replace(/\s+GHE\s*[:.]?\s*\d+.*$/i, ''));
@@ -920,7 +943,7 @@ function extractCargoTableGheBlocks(text: string): GheBlock[] {
     const sector = pickFirstValidSector(extractSetorField(slice), header.label);
     const fnMatches = [
       ...slice.matchAll(
-        /FUN[CÇ][AÃ]O(?:ES)?\s*[:\-]?\s*([A-Za-zÀ-ÿ0-9 ,.\-/]{3,80})/gi,
+        /(?:FUN[CÇ][AÃ]O(?:ES)?|CARGO(?:S)?)\s*[:\-]?\s*([A-Za-zÀ-ÿ0-9 ,.\-/]{3,80})/gi,
       ),
     ];
     for (const fn of fnMatches) {
@@ -1116,8 +1139,43 @@ function extractRisksFromBlocks(
   fullText: string,
   blocks: GheBlock[],
   allFunctionNames: string[],
+  extraRiskAliases: Array<{
+    raw: string;
+    canonical: string;
+    category?: OccupationalRiskCategory | null;
+  }> = [],
 ): PgroExtractedRisk[] {
   const risks: PgroExtractedRisk[] = [];
+
+  type RiskSeedLike = {
+    name: string;
+    category: OccupationalRiskCategory;
+    aliases: string[];
+  };
+
+  const seeds: RiskSeedLike[] = [
+    ...DEFAULT_OCCUPATIONAL_RISK_SEEDS.map((s) => ({
+      name: s.name,
+      category: s.category,
+      aliases: [...s.aliases],
+    })),
+  ];
+  for (const extra of extraRiskAliases) {
+    const canonical = cleanLine(extra.canonical);
+    if (!canonical) continue;
+    const existing = seeds.find(
+      (s) => normalizeTextKey(s.name) === normalizeTextKey(canonical),
+    );
+    if (existing) {
+      existing.aliases.push(extra.raw, canonical);
+      continue;
+    }
+    seeds.push({
+      name: canonical,
+      category: extra.category ?? OccupationalRiskCategory.ACIDENTE,
+      aliases: [extra.raw, canonical],
+    });
+  }
 
   const pushSeedHits = (
     scopeText: string,
@@ -1135,7 +1193,7 @@ function extractRisksFromBlocks(
       pairs.find((pair) => pair.environment?.trim())?.environment ?? null;
     const jobName = functionNames[0] ?? null;
     const sectorName = pairs.find((pair) => pair.sectorName)?.sectorName ?? null;
-    for (const seed of DEFAULT_OCCUPATIONAL_RISK_SEEDS) {
+    for (const seed of seeds) {
       const aliases = [seed.name, ...seed.aliases].map(normalizeTextKey);
       const hit = aliases.some(
         (alias) =>
@@ -1227,9 +1285,30 @@ function extractEpiNeedsFromBlocks(
   allFunctionNames: string[],
   riskNames: string[],
   warnings: string[],
+  extraEpiAliases: Array<{ raw: string; canonical: string }> = [],
 ): PgroExtractedEpiNeed[] {
   const found: PgroExtractedEpiNeed[] = [];
   const seen = new Set<string>();
+
+  type EpiSeedLike = { name: string; aliases: string[] };
+  const seeds: EpiSeedLike[] = [
+    ...DEFAULT_EPI_NEED_SEEDS.map((s) => ({
+      name: s.name,
+      aliases: [...s.aliases],
+    })),
+  ];
+  for (const extra of extraEpiAliases) {
+    const canonical = cleanLine(extra.canonical);
+    if (!canonical) continue;
+    const existing = seeds.find(
+      (s) => normalizeTextKey(s.name) === normalizeTextKey(canonical),
+    );
+    if (existing) {
+      existing.aliases.push(extra.raw, canonical);
+      continue;
+    }
+    seeds.push({ name: canonical, aliases: [extra.raw, canonical] });
+  }
 
   const scan = (
     scopeText: string,
@@ -1238,7 +1317,7 @@ function extractEpiNeedsFromBlocks(
     extractionSource: ExtractionSource,
   ) => {
     const textKey = normalizeTextKey(scopeText);
-    for (const seed of DEFAULT_EPI_NEED_SEEDS) {
+    for (const seed of seeds) {
       const aliases = [seed.name, ...seed.aliases].map(normalizeTextKey);
       const hit = aliases.some(
         (alias) => alias.length >= 4 && textKey.includes(alias),
@@ -1297,7 +1376,6 @@ function extractEpiNeedsFromBlocks(
     scan(fullText, allFunctionNames, null, 'GLOBAL');
   }
 
-  // Outros layouts (tabela de cargos / inventario) listam EPIs fora do APRHO.
   scan(fullText, allFunctionNames, null, 'KEYWORD');
 
   const byName = new Map<string, PgroExtractedEpiNeed>();
@@ -1322,38 +1400,104 @@ function extractEpiNeedsFromBlocks(
   return [...byName.values()];
 }
 
-export function parsePgroText(rawText: string): PgroParseResult {
+export function detectPgroLayout(rawText: string): PgroLayoutKind {
+  const text = rawText.replace(/\r/g, '\n');
+  if (/Caracteriza[cç][aã]o\s+do\s+GHE\s*\d+/i.test(text)) {
+    return 'GHE_APRHO';
+  }
+  if (
+    /\bGHE\s*0*\d+\b/i.test(text) &&
+    /(?:FUN[CÇ][AÃ]O(?:ES)?|CARGO(?:S)?)\s*[:\-]?/i.test(text)
+  ) {
+    return 'CARGO_TABLE';
+  }
+  if (/APRHO\s+do\s+GHE/i.test(text)) {
+    return 'GHE_APRHO';
+  }
+  return 'UNKNOWN';
+}
+
+export function isPgroStructureWeak(result: {
+  layout: PgroLayoutKind;
+  sectors: unknown[];
+  functions: unknown[];
+  textExtractable: boolean;
+}): boolean {
+  if (!result.textExtractable) return true;
+  if (result.sectors.length === 0 || result.functions.length === 0) return true;
+  if (result.layout === 'UNKNOWN' && result.functions.length < 2) return true;
+  return false;
+}
+
+function emptyParseResult(
+  warnings: string[],
+  textLength: number,
+  layout: PgroLayoutKind = 'UNKNOWN',
+): PgroParseResult {
+  return {
+    company: {
+      legalName: null,
+      tradeName: null,
+      cnpj: null,
+      addressLine: null,
+      city: null,
+      state: null,
+      cnae: null,
+      riskGrade: null,
+      employeeCount: null,
+      rawText: null,
+    },
+    sectors: [],
+    functions: [],
+    risks: [],
+    epiNeeds: [],
+    warnings,
+    ignoredCandidates: [],
+    textExtractable: false,
+    textLength,
+    layout,
+    parseMethod: 'HEURISTIC',
+    structureWeak: true,
+  };
+}
+
+function applyLearnedNameAliases<T extends { name: string }>(
+  items: T[],
+  aliases: Array<{ raw: string; canonical: string }>,
+): T[] {
+  if (aliases.length === 0) return items;
+  return items.map((item) => {
+    const key = normalizeTextKey(item.name);
+    const hit = aliases.find(
+      (a) =>
+        normalizeTextKey(a.raw) === key ||
+        normalizeTextKey(a.canonical) === key,
+    );
+    if (!hit) return item;
+    return { ...item, name: hit.canonical };
+  });
+}
+
+export function parsePgroText(
+  rawText: string,
+  options?: ParsePgroOptions,
+): PgroParseResult {
   const warnings: string[] = [];
   const ignoredCandidates: string[] = [];
   const text = rawText.replace(/\r/g, '\n');
   const compact = text.replace(/[ \t]+/g, ' ').trim();
   const textExtractable = compact.replace(/\s/g, '').length >= 80;
+  const layout = detectPgroLayout(text);
+  const extra = options?.extraAliases;
 
   if (!textExtractable) {
-    return {
-      company: {
-        legalName: null,
-        tradeName: null,
-        cnpj: null,
-        addressLine: null,
-        city: null,
-        state: null,
-        cnae: null,
-        riskGrade: null,
-        employeeCount: null,
-        rawText: null,
-      },
-      sectors: [],
-      functions: [],
-      risks: [],
-      epiNeeds: [],
-      warnings: [
+    return emptyParseResult(
+      [
         'Este PDF parece nao ter texto extraivel. Use um PDF gerado digitalmente ou uma versao OCR.',
       ],
-      ignoredCandidates: [],
-      textExtractable: false,
-      textLength: compact.length,
-    };
+      compact.length,
+      layout,
+    );
   }
 
   const company = extractCompany(text, warnings);
@@ -1367,11 +1511,16 @@ export function parsePgroText(rawText: string): PgroParseResult {
   const gheBlocks = extractGheBlocks(text);
   if (gheBlocks.length === 0) {
     warnings.push(
-      'Blocos "Caracterizacao do GHE" nao detectados; setores/funcoes podem ficar incompletos.',
+      'Blocos de GHE/estrutura nao detectados pelo parser heuristic; setores/funcoes podem ficar incompletos.',
     );
   } else {
     warnings.push(
-      `${gheBlocks.length} bloco(s) de GHE detectados para extracao de setores/funcoes.`,
+      `${gheBlocks.length} bloco(s) de estrutura detectados (layout ${layout}).`,
+    );
+  }
+  if (layout === 'UNKNOWN') {
+    warnings.push(
+      'Layout do PGR nao reconhecido automaticamente — revise a extracao com cuidado.',
     );
   }
 
@@ -1412,14 +1561,35 @@ export function parsePgroText(rawText: string): PgroParseResult {
     }
   }
 
-  const sectors = uniqueByName(sectorItems);
-  const functions = uniqueBySectorAndFunction(functionItems);
+  let sectors = uniqueByName(
+    applyLearnedNameAliases(sectorItems, extra?.sectors ?? []),
+  );
+  let functions = uniqueBySectorAndFunction(
+    applyLearnedNameAliases(
+      functionItems,
+      extra?.jobFunctions ?? [],
+    ) as PgroExtractedFunction[],
+  );
+
+  if (extra?.sectors?.length) {
+    functions = functions.map((fn) => {
+      if (!fn.sectorName) return fn;
+      const hit = extra.sectors!.find(
+        (a) =>
+          normalizeTextKey(a.raw) === normalizeTextKey(fn.sectorName!) ||
+          normalizeTextKey(a.canonical) === normalizeTextKey(fn.sectorName!),
+      );
+      return hit ? { ...fn, sectorName: hit.canonical } : fn;
+    });
+  }
 
   if (sectors.length === 0) {
-    warnings.push('Nenhum setor valido identificado nos blocos de GHE.');
+    warnings.push('Nenhum setor valido identificado nos blocos de estrutura.');
   }
   if (functions.length === 0) {
-    warnings.push('Nenhuma funcao/cargo valida identificada nos blocos de GHE.');
+    warnings.push(
+      'Nenhuma funcao/cargo valida identificada nos blocos de estrutura.',
+    );
   }
   if (ignoredCandidates.length > 0) {
     warnings.push(
@@ -1431,6 +1601,7 @@ export function parsePgroText(rawText: string): PgroParseResult {
     text,
     gheBlocks,
     functions.map((f) => f.name),
+    extra?.risks ?? [],
   );
   if (risks.length === 0) {
     warnings.push('Nenhum risco ocupacional conhecido identificado no texto.');
@@ -1442,6 +1613,7 @@ export function parsePgroText(rawText: string): PgroParseResult {
     functions.map((f) => f.name),
     risks.map((r) => r.name),
     warnings,
+    extra?.epiNeeds ?? [],
   );
   if (epiNeeds.length === 0) {
     warnings.push(
@@ -1449,7 +1621,7 @@ export function parsePgroText(rawText: string): PgroParseResult {
     );
   }
 
-  return {
+  const result: PgroParseResult = {
     company,
     sectors,
     functions,
@@ -1459,7 +1631,12 @@ export function parsePgroText(rawText: string): PgroParseResult {
     ignoredCandidates: ignoredCandidates.slice(0, 40),
     textExtractable: true,
     textLength: compact.length,
+    layout,
+    parseMethod: 'HEURISTIC',
+    structureWeak: false,
   };
+  result.structureWeak = isPgroStructureWeak(result);
+  return result;
 }
 
 export function fingerprintText(text: string): string {

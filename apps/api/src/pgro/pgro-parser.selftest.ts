@@ -3,7 +3,9 @@
  * Executar: npx tsx src/pgro/pgro-parser.selftest.ts
  */
 import {
+  detectPgroLayout,
   expandFunctionNames,
+  isPgroStructureWeak,
   mergeBrokenJobTitleLines,
   normalizeFunctionDisplayName,
   normalizeFunctionKey,
@@ -422,6 +424,63 @@ assert(
 assert(
   contracted.epiNeeds.some((e) => /pff2|respirador/i.test(e.suggestedName)),
   'sem respirador/pff2',
+);
+
+// --- Layout detection + aliases aprendidos ---
+assert(detectPgroLayout(SAMPLE_REAL) === 'GHE_APRHO', 'layout SAMPLE_REAL');
+assert(
+  detectPgroLayout('Identificacao\nGHE 01\nPRODUCAO\nFUNCAO Montador\n') ===
+    'CARGO_TABLE',
+  'layout cargo table',
+);
+assert(
+  detectPgroLayout('Documento sem estrutura tipica de GHE') === 'UNKNOWN',
+  'layout unknown',
+);
+
+const withAliases = parsePgroText(
+  `
+Identificação CONTRATADA
+Razão Social: Empresa Alias Ltda
+CNPJ: 27.090.425/0001-95
+Município: Catanduva Estado: SP
+
+Caracterização do GHE 01 – Operador
+PRODUÇÃO
+OPERADOR DE LINHA
+APRHO do GHE 01
+Calçado de Segurança Tipo Botina
+`,
+  {
+    extraAliases: {
+      epiNeeds: [
+        {
+          raw: 'calcado de seguranca tipo botina',
+          canonical: 'Botina de Seguranca',
+        },
+      ],
+    },
+  },
+);
+assert(withAliases.layout === 'GHE_APRHO', 'alias sample layout');
+assert(
+  withAliases.epiNeeds.some((e) =>
+    /botina de seguranca/i.test(e.suggestedName),
+  ),
+  `alias epi nao bateu: ${withAliases.epiNeeds.map((e) => e.suggestedName).join(', ')}`,
+);
+assert(
+  withAliases.structureWeak === false || withAliases.functions.length > 0,
+  'estrutura nao deveria ser vazia',
+);
+assert(
+  isPgroStructureWeak({
+    layout: 'UNKNOWN',
+    sectors: [],
+    functions: [],
+    textExtractable: true,
+  }) === true,
+  'weak detector',
 );
 
 console.log('pgro-parser.selftest OK');

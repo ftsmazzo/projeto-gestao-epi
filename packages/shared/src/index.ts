@@ -1278,6 +1278,16 @@ export interface PgroImportRun {
   risks: PgroExtractedRisk[];
   epiNeeds: PgroExtractedEpiNeed[];
   warnings: string[];
+  /** Metadata de extracao (layout / metodo / fraco). */
+  parseMeta?: {
+    layout?: string;
+    parseMethod?: string;
+    structureWeak?: boolean;
+    textLength?: number;
+  } | null;
+  layout?: string | null;
+  parseMethod?: string | null;
+  structureWeak?: boolean | null;
   confirmSummary?: PgroImportConfirmSummary | null;
   errorMessage: string | null;
   createdByUserId: string | null;

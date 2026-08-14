@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Hooks, CTA e abertura de telas — ProntEPI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --teal: #0f766e; --teal-m: #e6f5f3; --ink: #0b1220; --ink2: #334155;
+      --muted: #64748b; --bg: #e9eef3; --surface: #fff; --border: #d7dee8;
+      --ok: #047857; --ok-bg: #ecfdf5; --warn-bg: #fffbeb; --warn: #78350f;
+      --danger-bg: #fef2f2; --danger: #991b1b; --graphite: #0f172a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: "Plus Jakarta Sans", system-ui, sans-serif; color: var(--ink);
+      background:
+        radial-gradient(900px 400px at 10% -10%, #c6ece7 0%, transparent 50%),
+        linear-gradient(180deg, #f7fafb 0%, var(--bg) 100%);
+      line-height: 1.5;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 1.5rem 1.2rem 4rem; }
+    header.hero {
+      background: var(--graphite); color: #fff; border-radius: 20px;
+      padding: 1.75rem; margin-bottom: 1.2rem;
+    }
+    .brand { font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase; color: #5eead4; font-weight: 700; }
+    h1 { margin: 0.35rem 0 0.4rem; font-size: 1.7rem; letter-spacing: -0.03em; }
+    header.hero p { margin: 0; color: #cbd5e1; }
+    .chip {
+      display: inline-block; margin: 0.75rem 0.35rem 0 0; background: #1e293b;
+      border: 1px solid #334155; color: #e2e8f0; border-radius: 999px;
+      padding: 0.25rem 0.65rem; font-size: 0.78rem; font-weight: 600;
+    }
+    .block {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 1.15rem 1.25rem; margin-bottom: 1rem;
+    }
+    h2 { margin: 0 0 0.4rem; font-size: 1.15rem; }
+    .lead { color: var(--ink2); margin: 0 0 0.75rem; }
+    .ok { background: var(--ok-bg); border: 1px solid #6ee7b7; color: #065f46; border-radius: 12px; padding: 0.75rem 0.9rem; font-size: 0.92rem; }
+    .warn { background: var(--warn-bg); border: 1px solid #fcd34d; color: var(--warn); border-radius: 12px; padding: 0.75rem 0.9rem; font-size: 0.92rem; }
+    .no { background: var(--danger-bg); border: 1px solid #fecaca; color: var(--danger); border-radius: 12px; padding: 0.75rem 0.9rem; font-size: 0.92rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; margin-top: 0.5rem; }
+    th, td { text-align: left; padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+    .prio { font-weight: 800; color: var(--teal); white-space: nowrap; }
+    .mono { font-family: "JetBrains Mono", monospace; font-size: 0.78rem; background: #f1f5f9; padding: 0.1rem 0.35rem; border-radius: 6px; }
+    .fala {
+      background: #fff; border-left: 4px solid var(--teal); padding: 0.75rem 0.85rem;
+      border-radius: 0 12px 12px 0; margin: 0.5rem 0;
+    }
+    .path {
+      background: #f8fafc; border: 1px solid var(--border); border-radius: 12px;
+      padding: 0.7rem 0.85rem; margin: 0.45rem 0; font-size: 0.9rem;
+    }
+    .path strong { color: var(--teal); }
+    ol { margin: 0.3rem 0 0; padding-left: 1.2rem; }
+    ol li { margin: 0.35rem 0; }
+    a { color: var(--teal); }
+    footer { text-align: center; color: var(--muted); font-size: 0.82rem; margin-top: 1rem; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="brand">ProntEPI · Antes de fechar o vídeo</div>
+      <h1>Hooks, CTA e abertura de telas</h1>
+      <p>O que focar, o que validar, o que destacar — e em que ordem abrir as telas para bater com a narração.</p>
+      <span class="chip">Gestão = vídeo 1</span>
+      <span class="chip">Portal = vídeo 2</span>
+      <span class="chip">Face = ouro</span>
+    </header>
+
+    <section class="block">
+      <h2>1. O que focar e validar (antes de gravar)</h2>
+      <p class="lead">Se isso não estiver verdadeiro na tela, o vídeo mente. Valide no piloto.</p>
+      <table>
+        <thead>
+          <tr><th>Validar</th><th>Por quê</th><th>Como checar</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>PGR → estrutura</strong></td>
+            <td>Seu diferencial nº 1 de implantação</td>
+            <td>Cliente com setores/funções/EPIs já vindos do PGR</td>
+          </tr>
+          <tr>
+            <td><strong>Vidas alocadas × usadas</strong></td>
+            <td>Modelo de negócio da consultoria</td>
+            <td>Dashboard + lista de clientes mostram cotas</td>
+          </tr>
+          <tr>
+            <td><strong>CAEPI com 1 clique</strong></td>
+            <td>Prova de atualidade oficial</td>
+            <td>Catálogo: busca por nome/CA válido</td>
+          </tr>
+          <tr>
+            <td><strong>Entrega + face + PDF</strong></td>
+            <td>Diferencial comercial do portal</td>
+            <td>1 trabalhador com face; estoque; comprovante abre</td>
+          </tr>
+          <tr>
+            <td><strong>Dois logins separados</strong></td>
+            <td>Evita confusão na demo</td>
+            <td>Janela A `/login` · Janela B `/portal/login`</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="warn" style="margin-top:0.85rem">
+        <strong>Não grave se:</strong> estoque zerado, trabalhador sem função, face falhando, ou vidas sem número na tela.
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>2. O que destacar (ordem de importância)</h2>
+      <p class="lead">Sua lista está boa. Ajuste só a <em>hierarquia</em>: o que vende primeiro não é “layout moderno”.</p>
+      <table>
+        <thead>
+          <tr><th>Prioridade</th><th>Diferencial</th><th>Como dizer em 1 frase</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="prio">1</td>
+            <td>Entrega com biometria facial + comprovante</td>
+            <td>“Quem recebeu o EPI fica comprovado — NR-06 na prática, sem papel solto.”</td>
+          </tr>
+          <tr>
+            <td class="prio">2</td>
+            <td>PGR → empresa pronta (estrutura + EPIs)</td>
+            <td>“Sobe o PGR e a estrutura do cliente nasce: setor, função e o que cada um precisa.”</td>
+          </tr>
+          <tr>
+            <td class="prio">3</td>
+            <td>Vidas: compra volume e aloca por cliente</td>
+            <td>“A consultoria compra vidas e controla a alocação por empresa — sem planilha.”</td>
+          </tr>
+          <tr>
+            <td class="prio">4</td>
+            <td>CAEPI oficial (Ministério do Trabalho)</td>
+            <td>“Base de CA atualizada direto da fonte oficial — consulta em um clique.”</td>
+          </tr>
+          <tr>
+            <td class="prio">5</td>
+            <td>Dois andares: consultoria × portal</td>
+            <td>“Consultoria implanta. A empresa opera o dia a dia no portal.”</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="no" style="margin-top:0.85rem">
+        <strong>Evite liderar com:</strong> “layout moderno”, “tecnologias de última geração”, “versátil”.
+        Isso todo mundo fala. Use no máximo como apoio (“telas limpas”), nunca como gancho.
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>3. Na gestão: falta algo?</h2>
+      <p class="lead">Você cobriu o núcleo. Para o vídeo 1 ficar redondo, inclua estes dois pontos (rápidos):</p>
+      <div class="grid2">
+        <div class="ok">
+          <strong>Incluir</strong>
+          <ul>
+            <li><strong>Assinaturas / vidas</strong> — plano e consumo (prova do modelo R$/vida).</li>
+            <li><strong>Necessidades + vida útil</strong> — consultoria define o padrão; o portal herda na troca.</li>
+            <li><strong>Separação clara</strong> — “aqui não tem entrega nem estoque do CNPJ”.</li>
+          </ul>
+        </div>
+        <div class="warn">
+          <strong>Opcional neste vídeo</strong>
+          <ul>
+            <li>Documentos SST (Integração / O.S.) — só se couber; senão vídeo 3.</li>
+            <li>Retenção biométrica / LGPD — uma frase basta.</li>
+            <li>Equipe da consultoria — só passe a lista, sem criar usuário.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>4. Hook e CTA (texto pronto)</h2>
+      <p class="lead">Abertura = dor + promessa. Fecho = próximo passo claro.</p>
+
+      <h3 style="margin:0.8rem 0 0.3rem;font-size:0.95rem">Hook — Vídeo 1 (Gestão) · ~20 s</h3>
+      <div class="fala">
+        “Implantar EPI em cliente novo costuma ser planilha, PGR na mão e CA desatualizado.
+        O ProntEPI é o sistema de entrega de EPI com biometria facial — feito para consultoria SST:
+        você sobe o PGR, a estrutura nasce; consulta CA oficial; compra vidas e aloca por empresa.
+        Neste vídeo: o lado de quem <strong>implanta</strong>. O dia a dia da empresa é o próximo.”
+      </div>
+
+      <h3 style="margin:0.8rem 0 0.3rem;font-size:0.95rem">CTA — Fecho Vídeo 1 · ~15 s</h3>
+      <div class="fala">
+        “Resumo: CNPJ, PGR, estrutura e vidas sob controle — portal liberado.
+        No próximo vídeo mostro a operação: estoque com preço, custo por área e a entrega com face.
+        Se quiser implantar um piloto na sua carteira, fale com a gente.”
+      </div>
+
+      <h3 style="margin:0.8rem 0 0.3rem;font-size:0.95rem">Hook — Vídeo 2 (Portal) · ~20 s</h3>
+      <div class="fala">
+        “Agora o Painel do Cliente — o login da <strong>empresa</strong>, não da consultoria.
+        Aqui o almoxarife entrega EPI com prova facial e a gestão vê custo e validade sem caçar planilha.”
+      </div>
+
+      <h3 style="margin:0.8rem 0 0.3rem;font-size:0.95rem">CTA — Fecho Vídeo 2 · ~20 s</h3>
+      <div class="fala">
+        “Estrutura certa, estoque com preço, entrega com face, custo e validade no radar.
+        O ProntEPI tira o EPI do caderno e coloca no comprovante.
+        Quer ver isso no seu CNPJ? Agende o piloto — a consultoria implantando, a empresa operando.”
+      </div>
+
+      <h3 style="margin:0.8rem 0 0.3rem;font-size:0.95rem">Short 45–60 s (só face)</h3>
+      <div class="fala">
+        “Trabalhador chega. O sistema já sabe o EPI da função. Confere o CA. Biometria — vira o rosto.
+        Comprovante pronto. Sem papel, sem dúvida de quem recebeu. ProntEPI — peça o piloto.”
+      </div>
+    </section>
+
+    <section class="block" id="abertura-telas">
+      <h2>5. Guia: abrir as telas alinhado à narração</h2>
+      <p class="lead">Regra: <strong>legenda/fala primeiro → clique depois → pause 1 s</strong>. Duas janelas Chrome sempre.</p>
+
+      <div class="ok" style="margin-bottom:0.85rem">
+        <strong>Setup de abas (antes de gravar)</strong><br />
+        Janela A (Gestão): Dashboard · Clientes · Assinaturas · Catálogo · Configurações · Cliente piloto (visão geral + estrutura + usuários)<br />
+        Janela B (Portal): Painel · Estrutura · Trabalhadores · Estoque · Custos · Entregas · Validade
+      </div>
+
+      <h3 style="margin:0.6rem 0 0.35rem;font-size:1rem">Vídeo 1 — Gestão</h3>
+
+      <div class="path">
+        <strong>0 · Abertura (hook)</strong> · <span class="mono">/login</span><br />
+        Mostrar login (sem digitar senha em close-up) → Enter → Dashboard já carregado.<br />
+        <em>Fala:</em> hook da seção 4.
+      </div>
+      <div class="path">
+        <strong>1 · Vidas e carteira</strong> · <span class="mono">/dashboard</span> → <span class="mono">/clientes</span><br />
+        Apontar cards de vidas/clientes → ir em Clientes e mostrar coluna/vidas alocadas e usadas.<br />
+        <em>Fala:</em> “compra volume de vidas e aloca por empresa”.
+      </div>
+      <div class="path">
+        <strong>2 · Plano (opcional 20 s)</strong> · <span class="mono">/assinaturas</span> ou tela de plano<br />
+        Só se a UI mostrar vidas contratadas. Senão pule — o dashboard já prova.
+      </div>
+      <div class="path">
+        <strong>3 · Cliente + gestor</strong> · Cliente piloto → <span class="mono">Usuários</span><br />
+        Visão geral do CNPJ → Usuários (gestor/operador). Não reenvie senha.
+      </div>
+      <div class="path">
+        <strong>4 · PGR / estrutura</strong> · <span class="mono">Estrutura</span> (PGR já confirmado)<br />
+        1 setor → 1 função → necessidades de EPI. Não grave o parse longo do PDF.
+      </div>
+      <div class="path">
+        <strong>5 · Necessidades / vida útil</strong> · <span class="mono">/epi-needs</span><br />
+        Abrir 1 necessidade (ex.: botina) com categoria Pé e vida útil. Uma frase: “padrão da consultoria”.
+      </div>
+      <div class="path">
+        <strong>6 · CAEPI</strong> · <span class="mono">/epis</span> (Catálogo)<br />
+        Buscar “protetor” ou um CA conhecido. Destacar: fonte oficial / um clique.
+      </div>
+      <div class="path">
+        <strong>7 · Configurações (rápido)</strong> · <span class="mono">/configuracoes</span><br />
+        Passar Equipe/contatos. Sem criar usuário. Fechar com CTA do vídeo 1.
+      </div>
+
+      <h3 style="margin:1rem 0 0.35rem;font-size:1rem">Vídeo 2 — Portal</h3>
+
+      <div class="path">
+        <strong>0 · Login portal (hook)</strong> · <span class="mono">/portal/login</span><br />
+        Entrar já logado se preferir — mas mostre a URL do portal.
+      </div>
+      <div class="path">
+        <strong>1 · Painel</strong> · <span class="mono">/portal</span><br />
+        KPIs de atenção (troca, CA, estoque).
+      </div>
+      <div class="path">
+        <strong>2 · Estrutura + trabalhadores</strong><br />
+        Estrutura (função com EPIs) → Trabalhadores (1 com face OK, 1 pendente). Sem CPF completo.
+      </div>
+      <div class="path">
+        <strong>3 · Estoque com valor</strong> · <span class="mono">/portal/estoque</span><br />
+        Entrada: necessidade + CA + qtd + R$. Preço = custo.
+      </div>
+      <div class="path">
+        <strong>4 · Custos</strong> · <span class="mono">/portal/custos</span><br />
+        Totais + um corte por setor.
+      </div>
+      <div class="path">
+        <strong>5 · Entrega facial (ouro)</strong> · <span class="mono">/portal/entregas</span><br />
+        Lista → um EPI → face → PDF. Sem pressa. Se falhar a câmera, regrave só esta cena.
+      </div>
+      <div class="path">
+        <strong>6 · Validade + CTA</strong> · <span class="mono">/portal/validade</span><br />
+        Cards de troca/CA → fecho com CTA do vídeo 2.
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>6. Frase-mãe (memorize só esta)</h2>
+      <div class="fala">
+        “Consultoria implanta com PGR e vidas. Empresa opera com estoque, custo e entrega facial comprovada.”
+      </div>
+      <p class="lead" style="margin-top:0.75rem;margin-bottom:0">
+        Kits: <a href="./guia-gravacao-prontepi.html">guia de cliques</a> ·
+        <a href="./legendas-narracao-prontepi.html">legendas / narração</a>
+      </p>
+    </section>
+
+    <footer>ProntEPI · Use antes de fechar a edição do CapCut</footer>
+  </div>
+</body>
+</html>

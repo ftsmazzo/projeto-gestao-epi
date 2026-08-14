@@ -121,6 +121,7 @@ model Organization {
   jobFunctionRisks  JobFunctionRisk[]
   jobFunctionEpiRequirements JobFunctionEpiRequirement[]
   pgroImportRuns    PgroImportRun[]
+  pgroExtractionAliases PgroExtractionAlias[]
   epiDeliveries     EpiDelivery[]
   epiDeliveryReturns EpiDeliveryReturn[]
   workerFacialReferences WorkerFacialReference[]
@@ -970,6 +971,8 @@ model PgroImportRun {
   extractedRisks     Json?
   extractedEpiNeeds  Json?
   warnings           Json?
+  /// Metadata de extracao: layout, parseMethod, llmUsed, etc.
+  parseMeta          Json?
   confirmSummary     Json?
   errorMessage       String?
   createdByUserId    String?
@@ -984,6 +987,38 @@ model PgroImportRun {
   @@index([servedClientId])
   @@index([status])
   @@index([createdAt])
+}
+
+enum PgroExtractionAliasKind {
+  SECTOR
+  JOB_FUNCTION
+  RISK
+  EPI_NEED
+  LAYOUT_HINT
+}
+
+/// Aliases aprendidos com confirmacoes humanas — melhoram o proximo PGR da org.
+model PgroExtractionAlias {
+  id             String                  @id @default(cuid())
+  organizationId String
+  kind           PgroExtractionAliasKind
+  /// Texto bruto normalizado visto no PDF.
+  rawNormalized  String
+  /// Nome canonico confirmado pelo humano.
+  canonicalName  String
+  /// Categoria do risco (quando kind=RISK).
+  category       OccupationalRiskCategory?
+  hitCount       Int                     @default(1)
+  lastSeenAt     DateTime                @default(now())
+  sourceRunId    String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, kind, rawNormalized])
+  @@index([organizationId, kind])
+  @@index([organizationId, lastSeenAt])
 }
 
 enum EpiDeliveryStatus {

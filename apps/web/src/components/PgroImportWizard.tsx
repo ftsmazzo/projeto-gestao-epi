@@ -124,6 +124,7 @@ export function PgroImportWizard({
   const [error, setError] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [parseMeta, setParseMeta] = useState<PgroImportRun['parseMeta']>(null);
   const [fileName, setFileName] = useState('');
   const [servedClientId, setServedClientId] = useState<string | null>(
     lockedClientId ?? null,
@@ -262,6 +263,16 @@ export function PgroImportWizard({
     setServedClientId(run.servedClientId ?? lockedClientId ?? null);
     setCompany(run.company ?? emptyCompany());
     setWarnings(run.warnings ?? []);
+    setParseMeta(
+      run.parseMeta ??
+        (run.layout || run.parseMethod
+          ? {
+              layout: run.layout ?? undefined,
+              parseMethod: run.parseMethod ?? undefined,
+              structureWeak: run.structureWeak ?? undefined,
+            }
+          : null),
+    );
     setSectors(
       (run.sectors ?? []).map((item) => ({
         ...item,
@@ -473,6 +484,37 @@ export function PgroImportWizard({
         <p className="error" role="alert">
           {error}
         </p>
+      ) : null}
+
+      {parseMeta &&
+      step !== 'upload' &&
+      (parseMeta.layout === 'UNKNOWN' ||
+        parseMeta.parseMethod === 'HEURISTIC_PLUS_LLM' ||
+        parseMeta.structureWeak) ? (
+        <section
+          className="surface"
+          aria-label="Layout novo"
+          style={{
+            borderColor: 'var(--color-warning, #d97706)',
+            background: 'var(--color-warning-bg, #fffbeb)',
+          }}
+        >
+          <p className="page-kicker">Layout / extracao</p>
+          <p style={{ margin: 0 }}>
+            {parseMeta.parseMethod === 'HEURISTIC_PLUS_LLM'
+              ? 'Este PGR usou IA para complementar a leitura (layout pouco conhecido). Revise setores, funcoes, riscos e EPIs com cuidado antes de confirmar — suas correcoes ajudam o proximo PDF da consultoria.'
+              : parseMeta.layout === 'UNKNOWN'
+                ? 'Layout do PGR nao reconhecido automaticamente. Revise a extracao com cuidado. Ao confirmar, o sistema aprende aliases para os proximos documentos.'
+                : 'Estrutura fraca detectada no PDF. Revise setores e funcoes antes de confirmar.'}
+          </p>
+          <p
+            className="muted"
+            style={{ margin: '0.5rem 0 0', fontSize: '0.85rem' }}
+          >
+            Layout: {parseMeta.layout ?? '—'} · Metodo:{' '}
+            {parseMeta.parseMethod ?? '—'}
+          </p>
+        </section>
       ) : null}
 
       {extractionWarnings.length > 0 && step !== 'upload' ? (

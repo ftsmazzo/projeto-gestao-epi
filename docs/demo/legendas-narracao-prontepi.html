@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Legendas e narração — ProntEPI (gravação só da tela)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --teal: #0f766e;
+      --teal-m: #e6f5f3;
+      --ink: #0b1220;
+      --ink2: #334155;
+      --muted: #64748b;
+      --bg: #e9eef3;
+      --surface: #fff;
+      --border: #d7dee8;
+      --ok: #047857;
+      --ok-bg: #ecfdf5;
+      --warn-bg: #fffbeb;
+      --warn: #78350f;
+      --graphite: #0f172a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(900px 400px at 10% -10%, #c6ece7 0%, transparent 50%),
+        linear-gradient(180deg, #f7fafb 0%, var(--bg) 100%);
+      line-height: 1.5;
+    }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 1.5rem 1.2rem 4rem; }
+    header.hero {
+      background: var(--graphite); color: #fff; border-radius: 20px;
+      padding: 1.75rem 1.75rem 1.5rem; margin-bottom: 1.25rem;
+    }
+    header.hero .brand {
+      font-size: 0.75rem; letter-spacing: 0.14em; text-transform: uppercase;
+      color: #5eead4; font-weight: 700;
+    }
+    header.hero h1 { margin: 0.35rem 0 0.4rem; font-size: 1.75rem; letter-spacing: -0.03em; }
+    header.hero p { margin: 0; color: #cbd5e1; }
+    .chip {
+      display: inline-block; margin: 0.8rem 0.35rem 0 0;
+      background: #1e293b; border: 1px solid #334155; color: #e2e8f0;
+      border-radius: 999px; padding: 0.25rem 0.65rem; font-size: 0.78rem; font-weight: 600;
+    }
+    .block {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 16px; padding: 1.15rem 1.25rem; margin-bottom: 1rem;
+    }
+    .block h2 { margin: 0 0 0.45rem; font-size: 1.15rem; }
+    .lead { color: var(--ink2); margin: 0 0 0.75rem; }
+    .okbox {
+      background: var(--ok-bg); border: 1px solid #6ee7b7; color: #065f46;
+      border-radius: 12px; padding: 0.75rem 0.9rem; font-size: 0.92rem;
+    }
+    .notebox {
+      background: var(--warn-bg); border: 1px solid #fcd34d; color: var(--warn);
+      border-radius: 12px; padding: 0.75rem 0.9rem; font-size: 0.92rem;
+    }
+    ol.steps { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+    ol.steps li { margin: 0.35rem 0; }
+    .toolbar {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0 0.2rem;
+    }
+    button, .btn {
+      font-family: inherit; cursor: pointer; border: 0; border-radius: 10px;
+      padding: 0.5rem 0.8rem; font-weight: 700; font-size: 0.88rem;
+      background: var(--teal); color: #fff;
+    }
+    button.secondary { background: #fff; color: var(--teal); border: 1px solid var(--teal); }
+    button.ghost { background: #f1f5f9; color: var(--ink2); }
+    .scene {
+      border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+      margin: 0.85rem 0 0; background: #f8fafc;
+    }
+    .scene-head {
+      display: flex; flex-wrap: wrap; gap: 0.4rem 0.7rem; align-items: center;
+      padding: 0.65rem 0.9rem; background: var(--teal-m); border-bottom: 1px solid #b7e0da;
+    }
+    .scene-head strong { font-size: 0.98rem; }
+    .badge {
+      font-size: 0.68rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+      background: var(--teal); color: #fff; border-radius: 999px; padding: 0.15rem 0.45rem;
+    }
+    .badge.v2 { background: #0e7490; }
+    .mins { color: #115e59; font-weight: 700; font-size: 0.82rem; }
+    .where {
+      font-family: "JetBrains Mono", monospace; font-size: 0.72rem;
+      background: #fff; border: 1px solid var(--border); border-radius: 8px;
+      padding: 0.1rem 0.35rem; color: var(--ink2);
+    }
+    .scene-body { padding: 0.85rem 0.95rem 1rem; }
+    .label {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--muted); font-weight: 800; margin: 0.55rem 0 0.3rem;
+    }
+    .label:first-child { margin-top: 0; }
+    .text {
+      background: #fff; border-left: 4px solid var(--teal);
+      border-radius: 0 10px 10px 0; padding: 0.7rem 0.8rem; white-space: pre-wrap;
+      font-size: 0.94rem;
+    }
+    .text.cap { border-left-color: #0e7490; font-size: 0.9rem; }
+    .row-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.45rem; }
+    .toast {
+      position: fixed; bottom: 1.2rem; left: 50%; transform: translateX(-50%);
+      background: var(--graphite); color: #fff; padding: 0.55rem 0.9rem;
+      border-radius: 999px; font-size: 0.85rem; font-weight: 600;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s;
+      z-index: 20;
+    }
+    .toast.show { opacity: 1; }
+    footer { text-align: center; color: var(--muted); font-size: 0.82rem; margin-top: 1.2rem; }
+    a { color: var(--teal); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="hero">
+      <div class="brand">ProntEPI · Kit de pós-produção</div>
+      <h1>Grave só a tela. Texto entra depois.</h1>
+      <p>
+        Não precisa narrar ao vivo. Grave o caminho em silêncio (ou com clique).
+        Depois cole a <strong>legenda</strong> no CapCut — ou gere voz automática com o texto da narração.
+      </p>
+      <span class="chip">Sem falar na hora</span>
+      <span class="chip">Legenda pronta</span>
+      <span class="chip">Narração TTS opcional</span>
+    </header>
+
+    <section class="block">
+      <h2>Fluxo recomendado (o mais fácil)</h2>
+      <div class="okbox">
+        <strong>Melhor opção pra você:</strong> gravar tela muda + legenda grande no vídeo.
+        O público lê o caminho enquanto você clica. Depois, se quiser voz, gera TTS em 5 minutos.
+      </div>
+      <ol class="steps">
+        <li><strong>OBS:</strong> só “Captura de tela”. Microfone desligado.</li>
+        <li>Grave <strong>uma cena por vez</strong> (use o guia de gravação). Pause 1s quando a tela carregar.</li>
+        <li>No <strong>CapCut</strong>: importe as cenas na ordem.</li>
+        <li>Em cada cena, clique <em>Copiar legenda</em> abaixo e cole como texto na timeline (estilo legenda / título).</li>
+        <li>(Opcional) Clique <em>Copiar narração</em> → ElevenLabs / CapCut Text-to-Speech / Edge Ler em voz alta → importe o áudio.</li>
+      </ol>
+      <div class="notebox" style="margin-top:0.85rem">
+        <strong>Importante:</strong> os tempos do SRT são <em>estimados</em>. No CapCut você arrasta o bloco até bater com o clique da tela. Não precisa bater no segundo.
+      </div>
+      <div class="toolbar">
+        <button type="button" id="dl-v1">Baixar SRT — Vídeo 1 (Gestão)</button>
+        <button type="button" id="dl-v2" class="secondary">Baixar SRT — Vídeo 2 (Portal)</button>
+        <button type="button" id="copy-all-caps" class="ghost">Copiar todas as legendas</button>
+        <a class="btn secondary" href="./guia-gravacao-prontepi.html" style="text-decoration:none;display:inline-flex;align-items:center">Abrir guia de cliques</a>
+      </div>
+    </section>
+
+    <section class="block">
+      <h2>Como gerar narração automática (opcional)</h2>
+      <p class="lead">Se quiser voz sem gravar microfone:</p>
+      <ol class="steps">
+        <li><strong>CapCut</strong> → Texto → Texto para fala (português BR) — cola a narração de cada cena.</li>
+        <li><strong>ElevenLabs</strong> (melhor voz): cole a narração, baixe MP3, coloque sob a cena.</li>
+        <li><strong>Microsoft Edge</strong>: abra esta página → botão direito → “Ler em voz alta” em um bloco colado no Bloco de Notas (rápido e grátis).</li>
+      </ol>
+    </section>
+
+    <section class="block" id="v1">
+      <h2>Vídeo 1 — Gestão (consultoria)</h2>
+      <p class="lead">Legendas curtas na tela + narração completa para TTS.</p>
+      <div id="scenes-v1"></div>
+    </section>
+
+    <section class="block" id="v2">
+      <h2>Vídeo 2 — Portal do Cliente</h2>
+      <p class="lead">O vídeo comercial. Legenda ajuda muito na entrega facial.</p>
+      <div id="scenes-v2"></div>
+    </section>
+
+    <footer>
+      ProntEPI · Use junto com <code>guia-gravacao-prontepi.html</code> · abra no Chrome
+    </footer>
+  </div>
+
+  <div class="toast" id="toast">Copiado</div>
+
+  <script>
+    const SCENES = {
+      v1: [
+        {
+          id: "v1-0",
+          badge: "Vídeo 1",
+          title: "Cena 0 — Abertura",
+          mins: "~20 s",
+          where: "/login",
+          caption: "ProntEPI · Consultoria SST\nPGR · CA oficial · Vidas\nQuem implanta o cliente",
+          narration: "Implantar EPI em cliente novo costuma ser planilha, PGR na mão e CA desatualizado. O ProntEPI é o sistema de entrega de EPI com biometria facial — feito para consultoria SST: você sobe o PGR, a estrutura nasce; consulta CA oficial; compra vidas e aloca por empresa. Neste vídeo: o lado de quem implanta. O dia a dia da empresa é o próximo.",
+          start: 0,
+          end: 20,
+        },
+        {
+          id: "v1-1",
+          badge: "Vídeo 1",
+          title: "Cena 1 — Dashboard",
+          mins: "~50 s",
+          where: "/dashboard",
+          caption: "Carteira da consultoria\nVidas · Clientes · Atenção\nEstoque e entrega ficam no portal",
+          narration: "Aqui a consultoria vê a carteira: vidas contratadas, clientes atendidos e o que pede atenção. Importante: estoque, entrega e custo do CNPJ não ficam nesta tela. Isso é do portal da empresa.",
+          start: 20,
+          end: 70,
+        },
+        {
+          id: "v1-2",
+          badge: "Vídeo 1",
+          title: "Cena 2 — Cliente + gestor",
+          mins: "~1 min 20 s",
+          where: "/clientes → usuários",
+          caption: "Cadastro do CNPJ\nGestor do portal por e-mail / WhatsApp\nOperação fica no portal",
+          narration: "Cadastramos o CNPJ e já criamos o gestor do portal. O convite sai por e-mail — e por WhatsApp se informarmos o número. A resposta do e-mail usa o contato de suporte em Configurações. Quem opera almoxarifado é usuário do portal, não desta gestão.",
+          start: 70,
+          end: 150,
+        },
+        {
+          id: "v1-3",
+          badge: "Vídeo 1",
+          title: "Cena 3 — PGR e estrutura",
+          mins: "~1 min 40 s",
+          where: "PGR / estrutura",
+          caption: "Importar PGR\nSetores · Funções · Riscos · EPIs\nConsultoria valida · Portal entrega",
+          narration: "O pulo da implantação é o PGR. A consultoria sobe o PDF; o sistema lê setores, funções, riscos e necessidades de EPI. A estrutura fica pronta para o cliente: cada função já nasce com os EPIs que o trabalhador precisa. A consultoria valida. Quem entrega é o portal.",
+          start: 150,
+          end: 250,
+        },
+        {
+          id: "v1-4",
+          badge: "Vídeo 1",
+          title: "Cena 4 — Catálogo e configurações",
+          mins: "~1 min 30 s",
+          where: "/epis · /configuracoes",
+          caption: "Catálogo CAEPI\nConfigurações · Equipe da consultoria\nConvite por e-mail e WhatsApp",
+          narration: "No Catálogo de EPIs o gestor consulta a base oficial CAEPI: nome do equipamento ou número do CA, validade e fabricante. Não é cadastro interno — cadastro de estoque fica no portal da empresa. Em Configurações ficam juntos contatos, equipe, retenção biométrica e o reset geral. O administrador geral adiciona quem vai usar a gestão: administrador ou membro. O convite também vai por e-mail e WhatsApp, com resposta para o suporte.",
+          start: 250,
+          end: 340,
+        },
+        {
+          id: "v1-5",
+          badge: "Vídeo 1",
+          title: "Cena 5 — Fecho",
+          mins: "~15 s",
+          where: "—",
+          caption: "CNPJ · PGR · Estrutura · Vidas\nPróximo: operação da empresa\nPeça o piloto",
+          narration: "Resumo: CNPJ, PGR, estrutura e vidas sob controle — portal liberado. No próximo vídeo mostro a operação: estoque com preço, custo por área e a entrega com face. Se quiser implantar um piloto na sua carteira, fale com a gente.",
+          start: 340,
+          end: 355,
+        },
+      ],
+      v2: [
+        {
+          id: "v2-0",
+          badge: "Vídeo 2",
+          title: "Cena 0 — Login do portal",
+          mins: "~20 s",
+          where: "/portal/login",
+          caption: "Painel do Cliente\nLogin da empresa (CNPJ)\nEntrega facial · custo · validade",
+          narration: "Agora o Painel do Cliente — o login da empresa, não da consultoria. Aqui o almoxarife entrega EPI com prova facial e a gestão vê custo e validade sem caçar planilha.",
+          start: 0,
+          end: 20,
+        },
+        {
+          id: "v2-1",
+          badge: "Vídeo 2",
+          title: "Cena 1 — Painel",
+          mins: "~45 s",
+          where: "/portal",
+          caption: "O que pede atenção hoje\nTrocas · CA · Estoque · Biometria",
+          narration: "A home mostra o que pede atenção hoje: troca de EPI, CA vencendo, estoque baixo e biometria pendente. O time não precisa caçar planilha. O painel aponta o próximo passo.",
+          start: 20,
+          end: 65,
+        },
+        {
+          id: "v2-2",
+          badge: "Vídeo 2",
+          title: "Cena 2 — Estrutura e trabalhadores",
+          mins: "~1 min 20 s",
+          where: "/estrutura · /trabalhadores",
+          caption: "Estrutura do PGR\nFunção destrava a entrega\nCadastro facial pelo WhatsApp",
+          narration: "A estrutura veio do PGR: setor, função e EPIs obrigatórios. No trabalhador, a função é o que destrava a entrega. Sem função, o sistema não sabe o que entregar. Dá para enviar o link de cadastro facial no WhatsApp — o colaborador faz no celular, em menos de um minuto.",
+          start: 65,
+          end: 145,
+        },
+        {
+          id: "v2-3",
+          badge: "Vídeo 2",
+          title: "Cena 3 — Estoque com valor",
+          mins: "~2 min",
+          where: "/portal/estoque",
+          caption: "Entrada por necessidade\nCA oficial + quantidade + valor\nPreço vira custo do EPI",
+          narration: "Estoque começa pelo que a função precisa. Escolho o CA na base oficial — só válidos — informo a quantidade e o valor unitário. Se tiver a nota, anexo foto ou PDF. Se o PDF tiver texto, o sistema sugere valor e quantidade. Sempre conferimos antes de salvar. Esse preço vira o custo do EPI na empresa.",
+          start: 145,
+          end: 265,
+        },
+        {
+          id: "v2-4",
+          badge: "Vídeo 2",
+          title: "Cena 4 — Custos",
+          mins: "~50 s",
+          where: "/portal/custos",
+          caption: "Estoque · Compras · Entregas\nCusto por setor e por função",
+          narration: "Custos junta o preço da entrada com as entregas. Dá para ver valor em estoque, o que foi comprado e o que saiu por EPI, por setor e por função. A direção enxerga quanto cada área consome de proteção.",
+          start: 265,
+          end: 315,
+        },
+        {
+          id: "v2-5a",
+          badge: "Vídeo 2",
+          title: "Cena 5A — Entrega (lista)",
+          mins: "~1 min",
+          where: "/portal/entregas",
+          caption: "Escolher trabalhador\nSó os EPIs da função\nLista primeiro · depois um a um",
+          narration: "Vou entregar EPI. Escolho o trabalhador. O sistema mostra só o que a função exige, com o risco ao lado. Marco os itens. Não é uma tela cheia de campo: primeiro a lista, depois um EPI por vez.",
+          start: 315,
+          end: 375,
+        },
+        {
+          id: "v2-5b",
+          badge: "Vídeo 2",
+          title: "Cena 5B — Entrega (um EPI)",
+          mins: "~1 min",
+          where: "/portal/entregas",
+          caption: "CA · Local · Quantidade\nVida útil · Dias por semana\nPróxima troca no calendário",
+          narration: "Neste EPI eu confirmo o CA, o local de estoque, a quantidade, a vida útil e quantos dias por semana ele usa. Isso calcula a próxima troca com calendário real — não só vence em doze meses.",
+          start: 375,
+          end: 435,
+        },
+        {
+          id: "v2-5c",
+          badge: "Vídeo 2",
+          title: "Cena 5C — Entrega (face)",
+          mins: "~1 min 30 s",
+          where: "/portal/entregas",
+          caption: "Biometria facial\nOlhar de frente · virar o rosto\nComprovante com foto · NR-06",
+          narration: "Para fechar, a biometria. A câmera pede para olhar de frente e virar o rosto — a seta acompanha. Isso prova quem recebeu. Gera o comprovante com foto. NR-06 na prática, sem papel solto.",
+          start: 435,
+          end: 525,
+        },
+        {
+          id: "v2-6",
+          badge: "Vídeo 2",
+          title: "Cena 6 — Validade e fecho",
+          mins: "~1 min 10 s",
+          where: "/validade · /relatorios",
+          caption: "Estrutura · Estoque · Face · Custo\nDo caderno ao comprovante\nAgende o piloto",
+          narration: "Validade mostra CA vencendo e troca perto do prazo. Relatórios servem para auditoria e reunião com a direção. Resumo do portal: estrutura certa, estoque com preço, entrega com face, custo e validade no radar. O ProntEPI tira o EPI do caderno e coloca no comprovante. Quer ver isso no seu CNPJ? Agende o piloto — a consultoria implantando, a empresa operando.",
+          start: 525,
+          end: 595,
+        },
+      ],
+    };
+
+    function toast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.add("show");
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => el.classList.remove("show"), 1600);
+    }
+
+    async function copyText(text, label) {
+      await navigator.clipboard.writeText(text);
+      toast(label || "Copiado");
+    }
+
+    function pad(n) {
+      return String(n).padStart(2, "0");
+    }
+
+    function toSrtTime(sec) {
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = Math.floor(sec % 60);
+      const ms = Math.floor((sec % 1) * 1000);
+      return `${pad(h)}:${pad(m)}:${pad(s)},${String(ms).padStart(3, "0")}`;
+    }
+
+    function buildSrt(scenes) {
+      return scenes
+        .map((scene, i) => {
+          return `${i + 1}\n${toSrtTime(scene.start)} --> ${toSrtTime(scene.end)}\n${scene.caption}\n`;
+        })
+        .join("\n");
+    }
+
+    function download(filename, content) {
+      const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function renderScenes(targetId, scenes, videoKey) {
+      const root = document.getElementById(targetId);
+      root.innerHTML = scenes
+        .map((scene) => {
+          return `
+          <article class="scene" data-id="${scene.id}">
+            <div class="scene-head">
+              <span class="badge ${videoKey === "v2" ? "v2" : ""}">${scene.badge}</span>
+              <strong>${scene.title}</strong>
+              <span class="mins">${scene.mins}</span>
+              <span class="where">${scene.where}</span>
+            </div>
+            <div class="scene-body">
+              <div class="label">Legenda (na tela)</div>
+              <div class="text cap" data-cap>${escapeHtml(scene.caption)}</div>
+              <div class="row-actions">
+                <button type="button" class="secondary" data-copy-cap>Copiar legenda</button>
+              </div>
+              <div class="label">Narração (TTS / voz)</div>
+              <div class="text" data-nar>${escapeHtml(scene.narration)}</div>
+              <div class="row-actions">
+                <button type="button" data-copy-nar>Copiar narração</button>
+                <button type="button" class="ghost" data-speak>Ouvir (Edge/Chrome)</button>
+              </div>
+            </div>
+          </article>`;
+        })
+        .join("");
+
+      root.querySelectorAll("article.scene").forEach((article, idx) => {
+        const scene = scenes[idx];
+        article.querySelector("[data-copy-cap]").addEventListener("click", () =>
+          copyText(scene.caption, "Legenda copiada"),
+        );
+        article.querySelector("[data-copy-nar]").addEventListener("click", () =>
+          copyText(scene.narration, "Narração copiada"),
+        );
+        article.querySelector("[data-speak]").addEventListener("click", () => {
+          window.speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(scene.narration);
+          u.lang = "pt-BR";
+          u.rate = 1;
+          window.speechSynthesis.speak(u);
+          toast("Reproduzindo…");
+        });
+      });
+    }
+
+    function escapeHtml(value) {
+      return value
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    renderScenes("scenes-v1", SCENES.v1, "v1");
+    renderScenes("scenes-v2", SCENES.v2, "v2");
+
+    document.getElementById("dl-v1").addEventListener("click", () => {
+      download("prontepi-video1-gestao.srt", buildSrt(SCENES.v1));
+      toast("SRT Vídeo 1 baixado");
+    });
+    document.getElementById("dl-v2").addEventListener("click", () => {
+      download("prontepi-video2-portal.srt", buildSrt(SCENES.v2));
+      toast("SRT Vídeo 2 baixado");
+    });
+    document.getElementById("copy-all-caps").addEventListener("click", () => {
+      const all = [...SCENES.v1, ...SCENES.v2]
+        .map((s) => `## ${s.title}\n${s.caption}`)
+        .join("\n\n");
+      copyText(all, "Todas as legendas copiadas");
+    });
+  </script>
+</body>
+</html>

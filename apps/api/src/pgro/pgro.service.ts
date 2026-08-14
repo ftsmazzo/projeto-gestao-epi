@@ -30,7 +30,13 @@ import {
   functionKey,
   type ExistingPgroSector,
 } from './pgro-diff';
+import { buildExtraAliasPack, learnFromConfirm } from './pgro-learn';
 import {
+  extractPgroWithOpenAiText,
+  mergePgroParseResults,
+} from './pgro-llm-extract';
+import {
+  isPgroStructureWeak,
   normalizeTextKey,
   parsePgroText,
   type PgroExtractedEpiNeed,
@@ -88,9 +94,48 @@ export class PgroService {
 
     const startedAt = new Date();
     let parseResult: PgroParseResult;
+    let pdfText = '';
     try {
       const parsedPdf = await pdfParse(file.buffer);
-      parseResult = parsePgroText(parsedPdf.text ?? '');
+      pdfText = parsedPdf.text ?? '';
+
+      const aliasRows = await this.prisma.pgroExtractionAlias.findMany({
+        where: { organizationId },
+        select: {
+          kind: true,
+          rawNormalized: true,
+          canonicalName: true,
+          category: true,
+        },
+        take: 2000,
+      });
+      const extraAliases = buildExtraAliasPack(aliasRows);
+
+      parseResult = parsePgroText(pdfText, { extraAliases });
+
+      if (
+        parseResult.textExtractable &&
+        isPgroStructureWeak(parseResult) &&
+        process.env.OPENAI_API_KEY?.trim()
+      ) {
+        try {
+          const llmPart = await extractPgroWithOpenAiText(pdfText, parseResult);
+          if (llmPart && llmPart.parseMethod === 'HEURISTIC_PLUS_LLM') {
+            parseResult = mergePgroParseResults(parseResult, llmPart);
+          } else if (llmPart) {
+            parseResult = {
+              ...parseResult,
+              warnings: llmPart.warnings,
+            };
+          }
+        } catch (llmErr) {
+          parseResult.warnings.push(
+            `IA indisponivel na extracao: ${
+              llmErr instanceof Error ? llmErr.message : String(llmErr)
+            }`,
+          );
+        }
+      }
     } catch (err) {
       const run = await this.prisma.pgroImportRun.create({
         data: {
@@ -108,6 +153,11 @@ export class PgroService {
           warnings: [
             'Nao foi possivel extrair texto do PDF. Verifique se o arquivo nao esta corrompido.',
           ],
+          parseMeta: {
+            layout: 'UNKNOWN',
+            parseMethod: 'HEURISTIC',
+            structureWeak: true,
+          } as Prisma.InputJsonValue,
         },
       });
       return this.toDto(run);
@@ -127,6 +177,13 @@ export class PgroService {
       ...parseResult.ignoredCandidates.map((item) => `Ignorado: ${item}`),
     ];
 
+    const parseMeta = {
+      layout: parseResult.layout,
+      parseMethod: parseResult.parseMethod,
+      structureWeak: parseResult.structureWeak,
+      textLength: parseResult.textLength,
+    };
+
     const run = await this.prisma.pgroImportRun.create({
       data: {
         organizationId,
@@ -141,6 +198,7 @@ export class PgroService {
         extractedRisks: parseResult.risks as Prisma.InputJsonValue,
         extractedEpiNeeds: epiNeeds as Prisma.InputJsonValue,
         warnings: allWarnings as Prisma.InputJsonValue,
+        parseMeta: parseMeta as Prisma.InputJsonValue,
         errorMessage: parseResult.textExtractable
           ? null
           : parseResult.warnings[0] ??
@@ -159,6 +217,9 @@ export class PgroService {
         fileName: run.fileName,
         status: run.status,
         textExtractable: parseResult.textExtractable,
+        layout: parseResult.layout,
+        parseMethod: parseResult.parseMethod,
+        structureWeak: parseResult.structureWeak,
         sectors: parseResult.sectors.length,
         functions: parseResult.functions.length,
         risks: parseResult.risks.length,
@@ -755,6 +816,36 @@ export class PgroService {
         );
       }
 
+      await learnFromConfirm(
+        tx,
+        organizationId,
+        run.id,
+        dto,
+        {
+          sectors: (run.extractedSectors as Array<{
+            tempId?: string;
+            name?: string;
+            rawText?: string;
+          }> | null) ?? null,
+          functions: (run.extractedFunctions as Array<{
+            tempId?: string;
+            name?: string;
+            rawText?: string;
+          }> | null) ?? null,
+          risks: (run.extractedRisks as Array<{
+            tempId?: string;
+            name?: string;
+            rawText?: string;
+          }> | null) ?? null,
+          epiNeeds: (run.extractedEpiNeeds as Array<{
+            tempId?: string;
+            suggestedName?: string;
+            extractedText?: string;
+            matchedEpiNeedId?: string | null;
+          }> | null) ?? null,
+        },
+      );
+
       const updated = await tx.pgroImportRun.update({
         where: { id: run.id },
         data: {
@@ -1219,12 +1310,24 @@ export class PgroService {
     extractedRisks: Prisma.JsonValue | null;
     extractedEpiNeeds: Prisma.JsonValue | null;
     warnings: Prisma.JsonValue | null;
+    parseMeta?: Prisma.JsonValue | null;
     confirmSummary: Prisma.JsonValue | null;
     errorMessage: string | null;
     createdByUserId: string | null;
     createdAt: Date;
     updatedAt: Date;
   }) {
+    const meta =
+      run.parseMeta &&
+      typeof run.parseMeta === 'object' &&
+      !Array.isArray(run.parseMeta)
+        ? (run.parseMeta as {
+            layout?: string;
+            parseMethod?: string;
+            structureWeak?: boolean;
+          })
+        : null;
+
     return {
       id: run.id,
       organizationId: run.organizationId,
@@ -1239,6 +1342,10 @@ export class PgroService {
       risks: run.extractedRisks ?? [],
       epiNeeds: run.extractedEpiNeeds ?? [],
       warnings: (run.warnings as string[] | null) ?? [],
+      parseMeta: meta,
+      layout: meta?.layout ?? null,
+      parseMethod: meta?.parseMethod ?? null,
+      structureWeak: meta?.structureWeak ?? null,
       confirmSummary: run.confirmSummary,
       errorMessage: run.errorMessage,
       createdByUserId: run.createdByUserId,
