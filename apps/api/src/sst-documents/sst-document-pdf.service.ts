@@ -124,6 +124,46 @@ function ensureSpace(doc: PDFKit.PDFDocument, needed = 56) {
   }
 }
 
+function extractEmbeddedRaster(svg: string): Buffer | null {
+  const match =
+    /data:image\/(?:png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=\s]+)/i.exec(svg);
+  if (!match?.[1]) return null;
+  try {
+    const buffer = Buffer.from(match[1].replace(/\s+/g, ''), 'base64');
+    return buffer.length > 32 ? buffer : null;
+  } catch {
+    return null;
+  }
+}
+
+function loadSvgToPdf():
+  | ((
+      document: PDFKit.PDFDocument,
+      svg: string,
+      left: number,
+      top: number,
+      opts?: { width?: number; height?: number; preserveAspectRatio?: string },
+    ) => void)
+  | null {
+  try {
+    // CJS: svg-to-pdfkit exporta a funcao direto.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const loaded = require('svg-to-pdfkit') as
+      | ((
+          document: PDFKit.PDFDocument,
+          svg: string,
+          left: number,
+          top: number,
+          opts?: object,
+        ) => void)
+      | { default?: (document: PDFKit.PDFDocument, svg: string, left: number, top: number, opts?: object) => void };
+    const fn = typeof loaded === 'function' ? loaded : loaded.default;
+    return typeof fn === 'function' ? fn : null;
+  } catch {
+    return null;
+  }
+}
+
 async function drawLogo(
   doc: PDFKit.PDFDocument,
   filePath: string | null | undefined,
@@ -135,11 +175,18 @@ async function drawLogo(
   if (!filePath || !existsSync(filePath)) return;
   try {
     if (/\.svg$/i.test(filePath)) {
-      const imported = await import('svg-to-pdfkit');
-      const svgToPdf =
-        (imported as { default?: typeof imported.default }).default ??
-        (imported as unknown as typeof imported.default);
       const svg = await readFile(filePath, 'utf8');
+      const embedded = extractEmbeddedRaster(svg);
+      if (embedded) {
+        doc.image(embedded, x, y, {
+          fit: [w, h],
+          align: 'center',
+          valign: 'center',
+        });
+        return;
+      }
+      const svgToPdf = loadSvgToPdf();
+      if (!svgToPdf) return;
       svgToPdf(doc, svg, x, y, {
         width: w,
         height: h,
@@ -163,31 +210,50 @@ async function titleBlock(
   const x = doc.page.margins.left;
   const w = pageInnerWidth(doc);
   const y = doc.y;
-  const h = 58;
-  const logoW = 74;
-  const logoH = 46;
+  const logoW = 70;
+  const logoH = 40;
+  const pad = 8;
+  const titleX = x + logoW + 14;
+  const titleW = Math.max(140, w - (logoW + 14) * 2);
+
+  doc.font('Helvetica-Bold').fontSize(10);
+  const titleH = doc.heightOfString(title, { width: titleW, align: 'center' });
+  doc.font('Helvetica').fontSize(7.5);
+  const subH = doc.heightOfString(subtitle, { width: titleW, align: 'center' });
+  const textBlockH = titleH + 6 + subH;
+  const h = Math.max(logoH + pad * 2, textBlockH + pad * 2);
+
   doc.rect(x, y, w, h).strokeColor('#0f766e').lineWidth(1.1).stroke();
-  await drawLogo(doc, options.consultoriaLogoPath, x + 8, y + 6, logoW, logoH);
   await drawLogo(
     doc,
-    options.companyLogoPath,
-    x + w - logoW - 8,
-    y + 6,
+    options.consultoriaLogoPath,
+    x + pad,
+    y + (h - logoH) / 2,
     logoW,
     logoH,
   );
-  const titleX = x + logoW + 16;
-  const titleW = w - (logoW + 16) * 2;
+  await drawLogo(
+    doc,
+    options.companyLogoPath,
+    x + w - logoW - pad,
+    y + (h - logoH) / 2,
+    logoW,
+    logoH,
+  );
+  const textTop = y + Math.max(pad, (h - textBlockH) / 2);
   doc
     .font('Helvetica-Bold')
-    .fontSize(11)
+    .fontSize(10)
     .fillColor('#0f172a')
-    .text(title, titleX, y + 12, { width: titleW, align: 'center' });
+    .text(title, titleX, textTop, { width: titleW, align: 'center' });
   doc
     .font('Helvetica')
-    .fontSize(8)
+    .fontSize(7.5)
     .fillColor('#334155')
-    .text(subtitle, titleX, y + 32, { width: titleW, align: 'center' });
+    .text(subtitle, titleX, textTop + titleH + 6, {
+      width: titleW,
+      align: 'center',
+    });
   doc.fillColor('#0f172a');
   doc.y = y + h + 8;
 }

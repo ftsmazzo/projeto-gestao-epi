@@ -61,9 +61,14 @@ export function listApiFilesRootCandidates(
   return [...new Set(list)];
 }
 
+function persistentFilesParent(): string | null {
+  if (existsSync('/app/files')) return '/app/files';
+  return null;
+}
+
 /**
  * Resolve raiz canonica de escrita.
- * Preferencia: env → pasta legada com conteudo → apps/api/files/{subdir}.
+ * Preferencia: env → /app/files/{subdir} em producao → pasta legada com conteudo.
  */
 export function resolveApiFilesRoot(
   subdir: ApiFilesSubdir,
@@ -75,7 +80,10 @@ export function resolveApiFilesRoot(
     return fromEnv;
   }
 
-  const preferred = join(findApiPackageRoot(), 'files', subdir);
+  const parent = persistentFilesParent();
+  const preferred = parent
+    ? join(parent, subdir)
+    : join(findApiPackageRoot(), 'files', subdir);
   const candidates = listApiFilesRootCandidates(subdir, envValue);
 
   for (const candidate of candidates) {
