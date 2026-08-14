@@ -120,6 +120,7 @@ export class WorkersController {
         createSectors: dto.createSectors,
         createJobs: dto.createJobs,
         linkJobs: dto.linkJobs,
+        syncRisksAndNeeds: dto.syncRisksAndNeeds,
       },
     );
   }

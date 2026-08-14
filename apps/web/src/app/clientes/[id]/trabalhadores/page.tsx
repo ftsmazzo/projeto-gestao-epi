@@ -390,11 +390,12 @@ export default function ClienteTrabalhadoresPage() {
         createSectors,
         createJobs,
         linkJobs,
+        syncRisksAndNeeds: true,
       });
       const preview = await previewWorkerCsvImport(clientId, importCsvPayload);
       setImportPreview(preview);
       setImportMessage(
-        `Estrutura enriquecida: ${enrich.sectorsCreated} setor(es), ${enrich.jobsCreated} funcao(oes), ${enrich.jobsLinked} religada(s). CSV revalidado.`,
+        `Estrutura casada: ${enrich.sectorsCreated} setor(es), ${enrich.jobsCreated} funcao(oes), ${enrich.jobsLinked} religada(s); riscos ${enrich.risksCopied}, necessidades ${enrich.needsCopied}. CSV revalidado.`,
       );
       await load();
     } catch (err) {
@@ -696,11 +697,11 @@ export default function ClienteTrabalhadoresPage() {
                   style={{ marginTop: '1rem', marginBottom: '1rem' }}
                   aria-label="Completar estrutura"
                 >
-                  <p className="page-kicker">Completar estrutura</p>
+                  <p className="page-kicker">Casar estrutura (PGR + planilha)</p>
                   <p className="page-lead">
-                    A planilha trouxe setores/funcoes que ainda nao batem com a
-                    estrutura do cliente. Crie o que faltar ou religue funcoes
-                    que o PGR deixou em outro setor (ex.: Geral).
+                    1) Casa setores/funcoes sem duplicar (religa o que veio no
+                    Geral do PGR). 2) Preenche o que estiver vazio. 3) Atualiza
+                    riscos e necessidades de EPI entre funcoes irmas.
                   </p>
 
                   {importPreview.structureGaps.missingSectors.length > 0 ? (
@@ -780,7 +781,7 @@ export default function ClienteTrabalhadoresPage() {
                     >
                       {importBusy
                         ? 'Aplicando...'
-                        : 'Aplicar e revalidar CSV'}
+                        : 'Casar estrutura + riscos/EPIs e revalidar'}
                     </button>
                   </div>
                 </section>

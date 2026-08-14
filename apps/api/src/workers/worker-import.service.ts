@@ -397,6 +397,8 @@ export class WorkerImportService {
       sectorsCreated: 0,
       jobsCreated: 0,
       jobsLinked: 0,
+      risksCopied: 0,
+      needsCopied: 0,
       warnings: [],
     };
 
@@ -409,12 +411,22 @@ export class WorkerImportService {
       sectorIdByMatch.set(normalizeMatchName(sector.name), sector.id);
     }
 
+    const allJobs = await this.prisma.clientJobFunction.findMany({
+      where: { organizationId, servedClientId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        sectorId: true,
+        sector: { select: { name: true } },
+      },
+    });
+
     for (const item of input.createSectors ?? []) {
       const name = item.name.trim();
       if (name.length < 2) continue;
       const key = normalizeMatchName(name);
       if (sectorIdByMatch.has(key)) {
-        result.warnings.push(`Setor "${name}" ja existia.`);
+        result.warnings.push(`Setor "${name}" ja existia — reutilizado.`);
         continue;
       }
       const created = await this.prisma.clientSector.create({
@@ -436,8 +448,11 @@ export class WorkerImportService {
       });
     }
 
-    for (const item of input.linkJobs ?? []) {
-      const targetName = item.targetSectorName.trim();
+    const linkOneJob = async (
+      jobFunctionId: string,
+      targetSectorName: string,
+    ) => {
+      const targetName = targetSectorName.trim();
       const targetKey = normalizeMatchName(targetName);
       let sectorId = sectorIdByMatch.get(targetKey);
       if (!sectorId) {
@@ -453,63 +468,70 @@ export class WorkerImportService {
         result.sectorsCreated += 1;
       }
 
-      const job = await this.prisma.clientJobFunction.findFirst({
-        where: {
-          id: item.jobFunctionId,
-          organizationId,
-          servedClientId,
-        },
-        select: { id: true, name: true, sectorId: true },
-      });
+      const job = allJobs.find((j) => j.id === jobFunctionId);
       if (!job) {
-        result.warnings.push(
-          `Funcao ${item.jobFunctionId} nao encontrada para religar.`,
-        );
-        continue;
+        const fresh = await this.prisma.clientJobFunction.findFirst({
+          where: { id: jobFunctionId, organizationId, servedClientId },
+          select: {
+            id: true,
+            name: true,
+            sectorId: true,
+            sector: { select: { name: true } },
+          },
+        });
+        if (!fresh) {
+          result.warnings.push(
+            `Funcao ${jobFunctionId} nao encontrada para religar.`,
+          );
+          return;
+        }
+        allJobs.push(fresh);
       }
-      if (job.sectorId === sectorId) {
+      const current = allJobs.find((j) => j.id === jobFunctionId)!;
+      if (current.sectorId === sectorId) {
         result.warnings.push(
-          `Funcao "${job.name}" ja esta no setor "${targetName}".`,
+          `Funcao "${current.name}" ja esta no setor "${targetName}".`,
         );
-        continue;
+        return;
       }
 
-      const clash = await this.prisma.clientJobFunction.findFirst({
-        where: {
-          organizationId,
-          servedClientId,
-          sectorId,
-          isActive: true,
-          name: { equals: job.name, mode: 'insensitive' },
-          NOT: { id: job.id },
-        },
-        select: { id: true },
-      });
+      const clash = allJobs.find(
+        (j) =>
+          j.id !== current.id &&
+          j.sectorId === sectorId &&
+          normalizeMatchName(j.name) === normalizeMatchName(current.name),
+      );
       if (clash) {
         result.warnings.push(
-          `Nao foi possivel mover "${job.name}" — ja existe no setor "${targetName}".`,
+          `Nao foi possivel mover "${current.name}" — ja existe no setor "${targetName}" (sem duplicar).`,
         );
-        continue;
+        return;
       }
 
       await this.prisma.clientJobFunction.update({
-        where: { id: job.id },
+        where: { id: current.id },
         data: { sectorId },
       });
+      current.sectorId = sectorId;
+      current.sector = { name: targetName };
       result.jobsLinked += 1;
       await this.audit.log({
         action: 'client_job_function.updated',
         organizationId,
         userId,
         entityType: 'ClientJobFunction',
-        entityId: job.id,
+        entityId: current.id,
         metadata: {
           servedClientId,
-          name: job.name,
+          name: current.name,
           sectorId,
           source: 'worker_import_enrich_link',
         },
       });
+    };
+
+    for (const item of input.linkJobs ?? []) {
+      await linkOneJob(item.jobFunctionId, item.targetSectorName);
     }
 
     for (const item of input.createJobs ?? []) {
@@ -531,19 +553,30 @@ export class WorkerImportService {
         result.sectorsCreated += 1;
       }
 
-      const existingJob = await this.prisma.clientJobFunction.findFirst({
-        where: {
-          organizationId,
-          servedClientId,
-          sectorId,
-          isActive: true,
-          name: { equals: jobName, mode: 'insensitive' },
-        },
-        select: { id: true },
-      });
-      if (existingJob) {
+      const jobKey = normalizeMatchName(jobName);
+      const existingInSector = allJobs.find(
+        (j) =>
+          j.sectorId === sectorId && normalizeMatchName(j.name) === jobKey,
+      );
+      if (existingInSector) {
         result.warnings.push(
-          `Funcao "${jobName}" ja existia no setor "${sectorName}".`,
+          `Funcao "${jobName}" ja existia no setor "${sectorName}" — reutilizada.`,
+        );
+        continue;
+      }
+
+      // Sem duplicar: se a funcao ja existe noutro setor (ex.: Geral do PGR), religa.
+      const orphans = allJobs.filter(
+        (j) =>
+          j.sectorId !== sectorId && normalizeMatchName(j.name) === jobKey,
+      );
+      if (orphans.length > 0) {
+        const preferGeral =
+          orphans.find((j) => normalizeMatchName(j.sector.name) === 'geral') ??
+          orphans[0];
+        await linkOneJob(preferGeral.id, sectorName);
+        result.warnings.push(
+          `Funcao "${jobName}" religada de "${preferGeral.sector.name}" → "${sectorName}" (sem duplicar).`,
         );
         continue;
       }
@@ -555,6 +588,12 @@ export class WorkerImportService {
           sectorId,
           name: jobName,
         },
+      });
+      allJobs.push({
+        id: created.id,
+        name: jobName,
+        sectorId,
+        sector: { name: sectorName },
       });
       result.jobsCreated += 1;
       await this.audit.log({
@@ -572,7 +611,174 @@ export class WorkerImportService {
       });
     }
 
+    const shouldSync = input.syncRisksAndNeeds !== false;
+    if (shouldSync) {
+      const synced = await this.syncRisksAndNeedsFromSiblingJobs(
+        organizationId,
+        servedClientId,
+        userId,
+      );
+      result.risksCopied = synced.risksCopied;
+      result.needsCopied = synced.needsCopied;
+      result.warnings.push(...synced.warnings);
+    }
+
     return result;
+  }
+
+  /**
+   * Uniao de riscos e necessidades de EPI entre funcoes de mesmo nome.
+   * Cada irma recebe o que falta das demais (tipicamente PGR → planilha).
+   */
+  private async syncRisksAndNeedsFromSiblingJobs(
+    organizationId: string,
+    servedClientId: string,
+    userId: string,
+  ): Promise<{
+    risksCopied: number;
+    needsCopied: number;
+    warnings: string[];
+  }> {
+    const warnings: string[] = [];
+    let risksCopied = 0;
+    let needsCopied = 0;
+
+    const jobs = await this.prisma.clientJobFunction.findMany({
+      where: { organizationId, servedClientId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        sector: { select: { name: true } },
+        risks: {
+          select: {
+            riskId: true,
+            exposure: true,
+            source: true,
+            possibleDamage: true,
+            riskLevel: true,
+            notes: true,
+          },
+        },
+        epiRequirements: {
+          where: { isActive: true },
+          select: {
+            epiNeedId: true,
+            riskId: true,
+            isRequired: true,
+            quantity: true,
+            replacementIntervalDays: true,
+            notes: true,
+            source: true,
+          },
+        },
+      },
+    });
+
+    const byName = new Map<string, typeof jobs>();
+    for (const job of jobs) {
+      const key = normalizeMatchName(job.name);
+      const list = byName.get(key) ?? [];
+      list.push(job);
+      byName.set(key, list);
+    }
+
+    for (const [, group] of byName) {
+      if (group.length < 2) continue;
+
+      const riskPool = new Map<
+        string,
+        (typeof jobs)[number]['risks'][number]
+      >();
+      for (const job of group) {
+        for (const link of job.risks) {
+          const prev = riskPool.get(link.riskId);
+          // Preferencia: vinculo com source preenchido (ex.: PGRO).
+          if (!prev || (!prev.source && link.source)) {
+            riskPool.set(link.riskId, link);
+          }
+        }
+      }
+
+      const needPool = new Map<
+        string,
+        (typeof jobs)[number]['epiRequirements'][number]
+      >();
+      for (const job of group) {
+        for (const req of job.epiRequirements) {
+          const key = `${req.epiNeedId}|${req.riskId ?? ''}`;
+          const prev = needPool.get(key);
+          if (!prev || (prev.source !== 'PGRO' && req.source === 'PGRO')) {
+            needPool.set(key, req);
+          }
+        }
+      }
+
+      if (riskPool.size === 0 && needPool.size === 0) continue;
+
+      for (const receiver of group) {
+        const receiverRiskIds = new Set(receiver.risks.map((r) => r.riskId));
+        for (const link of riskPool.values()) {
+          if (receiverRiskIds.has(link.riskId)) continue;
+          await this.prisma.jobFunctionRisk.create({
+            data: {
+              organizationId,
+              jobFunctionId: receiver.id,
+              riskId: link.riskId,
+              exposure: link.exposure,
+              source: link.source ?? 'IMPORT',
+              possibleDamage: link.possibleDamage,
+              riskLevel: link.riskLevel,
+              notes: link.notes,
+            },
+          });
+          receiverRiskIds.add(link.riskId);
+          receiver.risks.push(link);
+          risksCopied += 1;
+        }
+
+        const receiverNeedKeys = new Set(
+          receiver.epiRequirements.map(
+            (r) => `${r.epiNeedId}|${r.riskId ?? ''}`,
+          ),
+        );
+        for (const req of needPool.values()) {
+          const key = `${req.epiNeedId}|${req.riskId ?? ''}`;
+          if (receiverNeedKeys.has(key)) continue;
+          await this.prisma.jobFunctionEpiRequirement.create({
+            data: {
+              organizationId,
+              jobFunctionId: receiver.id,
+              epiNeedId: req.epiNeedId,
+              riskId: req.riskId,
+              isRequired: req.isRequired,
+              quantity: req.quantity,
+              replacementIntervalDays: req.replacementIntervalDays,
+              notes: req.notes,
+              source: req.source === 'PGRO' ? 'PGRO' : 'IMPORT',
+            },
+          });
+          receiverNeedKeys.add(key);
+          receiver.epiRequirements.push(req);
+          needsCopied += 1;
+        }
+      }
+    }
+
+    if (risksCopied > 0 || needsCopied > 0) {
+      await this.audit.log({
+        action: 'client_structure.risks_needs_synced',
+        organizationId,
+        userId,
+        entityType: 'ServedClient',
+        entityId: servedClientId,
+        metadata: { risksCopied, needsCopied, source: 'worker_import_enrich' },
+      });
+      warnings.push(
+        `Riscos/necessidades sincronizados entre funcoes irmas: ${risksCopied} risco(s), ${needsCopied} necessidade(s).`,
+      );
+    }
+
+    return { risksCopied, needsCopied, warnings };
   }
 
   private buildStructureGaps(
@@ -634,7 +840,13 @@ export class WorkerImportService {
                 name: job.name,
                 sectorId: job.sectorId,
                 sectorName: job.sectorName,
-              }));
+              }))
+              .sort((a, b) => {
+                const aGeral = normalizeMatchName(a.sectorName) === 'geral' ? 0 : 1;
+                const bGeral = normalizeMatchName(b.sectorName) === 'geral' ? 0 : 1;
+                if (aGeral !== bGeral) return aGeral - bGeral;
+                return a.sectorName.localeCompare(b.sectorName, 'pt-BR');
+              });
             missingJobMap.set(key, {
               jobName,
               sectorName,

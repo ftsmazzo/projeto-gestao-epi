@@ -374,12 +374,19 @@ export interface WorkerImportEnrichStructureInput {
   createJobs?: Array<{ name: string; sectorName: string }>;
   /** Move funcao existente (ex.: Geral) para o setor da planilha. */
   linkJobs?: Array<{ jobFunctionId: string; targetSectorName: string }>;
+  /**
+   * Apos casar setores/funcoes, faz uniao de riscos e necessidades de EPI
+   * entre funcoes irmas (mesmo nome). Default: true.
+   */
+  syncRisksAndNeeds?: boolean;
 }
 
 export interface WorkerImportEnrichStructureResult {
   sectorsCreated: number;
   jobsCreated: number;
   jobsLinked: number;
+  risksCopied: number;
+  needsCopied: number;
   warnings: string[];
 }
 

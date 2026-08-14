@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsArray,
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -147,4 +148,9 @@ export class EnrichWorkerImportStructureDto {
   @ValidateNested({ each: true })
   @Type(() => EnrichWorkerImportLinkJobDto)
   linkJobs?: EnrichWorkerImportLinkJobDto[];
+
+  /** Default true: sincroniza riscos/EPIs entre funcoes de mesmo nome. */
+  @IsOptional()
+  @IsBoolean()
+  syncRisksAndNeeds?: boolean;
 }
