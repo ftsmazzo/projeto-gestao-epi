@@ -1085,7 +1085,11 @@ export class PortalService {
     };
   }
 
-  async searchEpis(organizationId: string, q: string) {
+  async searchEpis(
+    organizationId: string,
+    servedClientId: string,
+    q: string,
+  ) {
     const query = q.trim();
     if (query.length < 3) {
       throw new BadRequestException(
@@ -1104,82 +1108,106 @@ export class PortalService {
       }
     >();
 
-    // 1) Necessidades do catalogo tecnico (o que o PGRO/Consultoria alimenta)
-    const needs = await this.prisma.epiNeed.findMany({
-      where: { organizationId, isActive: true },
-      select: {
-        id: true,
-        name: true,
-        itemLinks: {
-          select: {
-            epiItem: { select: { ...epiCatalogSelect, isActive: true } },
+    // Somente necessidades da estrutura deste cliente (nao o catalogo inteiro da consultoria).
+    const clientNeedIds = await this.listClientActiveNeedIds(
+      organizationId,
+      servedClientId,
+    );
+    const clientStockedItemIds = await this.listClientStockedEpiItemIds(
+      organizationId,
+      servedClientId,
+    );
+
+    if (clientNeedIds.length > 0) {
+      const needs = await this.prisma.epiNeed.findMany({
+        where: {
+          organizationId,
+          isActive: true,
+          id: { in: clientNeedIds },
+        },
+        select: {
+          id: true,
+          name: true,
+          itemLinks: {
+            select: {
+              epiItem: { select: { ...epiCatalogSelect, isActive: true } },
+            },
           },
         },
-      },
-      take: 300,
-    });
+        take: 300,
+      });
 
-    for (const need of needs) {
-      if (!stripDiacritics(need.name).includes(needle)) continue;
-      const activeLinks = need.itemLinks.filter((l) => l.epiItem?.isActive);
-      if (activeLinks.length > 0) {
-        for (const link of activeLinks) {
-          const mapped = mapEpiSearchItem(link.epiItem as EpiCatalogSelect);
-          byId.set(mapped.id, {
-            ...mapped,
+      for (const need of needs) {
+        if (!stripDiacritics(need.name).includes(needle)) continue;
+        const localLinks = need.itemLinks.filter(
+          (l) =>
+            l.epiItem?.isActive && clientStockedItemIds.has(l.epiItem.id),
+        );
+        if (localLinks.length > 0) {
+          for (const link of localLinks) {
+            const mapped = mapEpiSearchItem(link.epiItem as EpiCatalogSelect);
+            byId.set(mapped.id, {
+              ...mapped,
+              epiNeedId: need.id,
+              needName: need.name,
+            });
+          }
+        } else {
+          // Necessidade da estrutura deste cliente, ainda sem CA/estoque local.
+          byId.set(`need:${need.id}`, {
+            id: `need:${need.id}`,
+            name: need.name,
+            caNumber: null,
+            caExpiresAt: null,
+            usefulLifeValue: null,
+            usefulLifeUnit: null,
+            usefulLifeLabel: null,
+            unitOfMeasure: 'UNIDADE',
+            category: null,
             epiNeedId: need.id,
             needName: need.name,
+            requiresCa: true,
           });
         }
-      } else {
-        // Necessidade sem EPI real ainda — usuario informa o CA na entrada
-        byId.set(`need:${need.id}`, {
-          id: `need:${need.id}`,
-          name: need.name,
-          caNumber: null,
-          caExpiresAt: null,
-          usefulLifeValue: null,
-          usefulLifeUnit: null,
-          usefulLifeLabel: null,
-          unitOfMeasure: 'UNIDADE',
-          category: null,
-          epiNeedId: need.id,
-          needName: need.name,
-          requiresCa: true,
-        });
       }
     }
 
-    // 2) EPIs reais do catalogo
-    const catalog = await this.prisma.epiItem.findMany({
-      where: { organizationId, isActive: true },
-      select: {
-        ...epiCatalogSelect,
-        externalCode: true,
-        manufacturerName: true,
-      },
-      orderBy: { name: 'asc' },
-      take: 500,
-    });
+    // EPIs reais ja presentes no estoque deste cliente.
+    if (clientStockedItemIds.size > 0) {
+      const catalog = await this.prisma.epiItem.findMany({
+        where: {
+          organizationId,
+          isActive: true,
+          id: { in: Array.from(clientStockedItemIds) },
+        },
+        select: {
+          ...epiCatalogSelect,
+          externalCode: true,
+          manufacturerName: true,
+        },
+        orderBy: { name: 'asc' },
+        take: 500,
+      });
 
-    for (const item of catalog) {
-      const nameKey = stripDiacritics(item.name);
-      const caKey = stripDiacritics(item.caNumber ?? '');
-      const codeKey = stripDiacritics(item.externalCode ?? '');
-      const mfrKey = stripDiacritics(item.manufacturerName ?? '');
-      if (
-        nameKey.includes(needle) ||
-        caKey.includes(stripDiacritics(caNeedle)) ||
-        codeKey.includes(needle) ||
-        mfrKey.includes(needle)
-      ) {
-        if (!byId.has(item.id)) {
-          byId.set(item.id, mapEpiSearchItem(item));
+      for (const item of catalog) {
+        const nameKey = stripDiacritics(item.name);
+        const caKey = stripDiacritics(item.caNumber ?? '');
+        const codeKey = stripDiacritics(item.externalCode ?? '');
+        const mfrKey = stripDiacritics(item.manufacturerName ?? '');
+        if (
+          nameKey.includes(needle) ||
+          caKey.includes(stripDiacritics(caNeedle)) ||
+          codeKey.includes(needle) ||
+          mfrKey.includes(needle)
+        ) {
+          if (!byId.has(item.id)) {
+            byId.set(item.id, mapEpiSearchItem(item));
+          }
         }
       }
     }
 
-    // 3) CAEPI → cruza com itens existentes pelo CA
+    // CAEPI → cruza com itens ja estocados neste cliente pelo CA.
     if (byId.size < 20) {
       try {
         const caepi = await this.caepi.searchCertificates(query, 15);
@@ -1192,6 +1220,7 @@ export class PortalService {
               organizationId,
               isActive: true,
               caNumber: { in: caNumbers },
+              id: { in: Array.from(clientStockedItemIds) },
             },
             select: epiCatalogSelect,
           });
@@ -2084,6 +2113,41 @@ export class PortalService {
     }
   }
 
+  private async listClientActiveNeedIds(
+    organizationId: string,
+    servedClientId: string,
+  ): Promise<string[]> {
+    const rows = await this.prisma.jobFunctionEpiRequirement.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        jobFunction: { servedClientId, isActive: true },
+      },
+      select: { epiNeedId: true },
+      distinct: ['epiNeedId'],
+    });
+    return rows.map((row) => row.epiNeedId);
+  }
+
+  /** EPIs que ja tiveram saldo neste cliente (entrada/estoque local). */
+  private async listClientStockedEpiItemIds(
+    organizationId: string,
+    servedClientId: string,
+    epiItemIds?: string[],
+  ): Promise<Set<string>> {
+    if (epiItemIds && epiItemIds.length === 0) return new Set();
+    const rows = await this.prisma.epiStockBalance.findMany({
+      where: {
+        organizationId,
+        ...(epiItemIds?.length ? { epiItemId: { in: epiItemIds } } : {}),
+        stockLocation: { servedClientId, isActive: true },
+      },
+      select: { epiItemId: true },
+      distinct: ['epiItemId'],
+    });
+    return new Set(rows.map((row) => row.epiItemId));
+  }
+
   private async ensureNeedItemLink(
     organizationId: string,
     epiNeedId: string,
@@ -2212,6 +2276,18 @@ export class PortalService {
       }
     >();
 
+    const linkedItemIds = new Set<string>();
+    for (const req of requirements) {
+      for (const link of req.epiNeed.itemLinks) {
+        if (link.epiItem.isActive) linkedItemIds.add(link.epiItem.id);
+      }
+    }
+    const clientStockedItemIds = await this.listClientStockedEpiItemIds(
+      organizationId,
+      servedClientId,
+      Array.from(linkedItemIds),
+    );
+
     for (const req of requirements) {
       const need = req.epiNeed;
       let entry = byNeed.get(need.id);
@@ -2234,6 +2310,8 @@ export class PortalService {
       );
       for (const link of need.itemLinks) {
         if (!link.epiItem.isActive) continue;
+        // Vinculo org-wide da consultoria so vale neste gestor se o CA ja entrou no estoque local.
+        if (!clientStockedItemIds.has(link.epiItem.id)) continue;
         if (entry.items.some((i) => i.id === link.epiItem.id)) continue;
         entry.items.push({
           id: link.epiItem.id,
@@ -2250,57 +2328,18 @@ export class PortalService {
       }
     }
 
-    const catalog = await this.prisma.epiItem.findMany({
-      where: { organizationId, isActive: true },
-      select: epiCatalogSelect,
-      take: 500,
-    });
-
     return Array.from(byNeed.values())
       .map((n) => {
         const items = n.items.sort((a, b) =>
           a.name.localeCompare(b.name, 'pt-BR'),
         );
-        let suggestedItems: typeof items = [];
-        if (items.length === 0) {
-          const needKey = stripDiacritics(n.needName);
-          const tokens = needKey
-            .split(/\s+/)
-            .filter((t) => t.length >= 3)
-            .flatMap((t) => (t.endsWith('s') && t.length > 3 ? [t, t.slice(0, -1)] : [t]));
-          suggestedItems = catalog
-            .filter((item) => {
-              const nameKey = stripDiacritics(item.name);
-              if (nameKey.includes(needKey) || needKey.includes(nameKey)) {
-                return true;
-              }
-              return tokens.some(
-                (token) =>
-                  nameKey.includes(token) ||
-                  (token.length >= 4 && nameKey.includes(token.slice(0, 4))),
-              );
-            })
-            .slice(0, 5)
-            .map((item) => ({
-              id: item.id,
-              name: item.name,
-              caNumber: item.caNumber,
-              caExpiresAt: item.caExpiresAt?.toISOString() ?? null,
-              usefulLifeValue: item.usefulLifeValue,
-              usefulLifeUnit: item.usefulLifeUnit,
-              usefulLifeLabel: formatUsefulLife(
-                item.usefulLifeValue,
-                item.usefulLifeUnit,
-              ),
-            }));
-        }
         return {
           ...n,
           jobNames: n.jobNames.sort((a, b) => a.localeCompare(b, 'pt-BR')),
           items,
-          suggestedItems,
+          suggestedItems: [] as typeof items,
           hasLinkedEpi: items.length > 0,
-          hasCatalogSuggestions: suggestedItems.length > 0,
+          hasCatalogSuggestions: false,
         };
       })
       .sort((a, b) => a.needName.localeCompare(b.needName, 'pt-BR'));
@@ -2371,8 +2410,22 @@ export class PortalService {
     const now = Date.now();
     const soonMs = VALIDITY_SOON_DAYS * 24 * 60 * 60 * 1000;
 
+    const linkedItemIds = new Set<string>();
     for (const req of requirements) {
-      const links = req.epiNeed.itemLinks.filter((l) => l.epiItem.isActive);
+      for (const link of req.epiNeed.itemLinks) {
+        if (link.epiItem.isActive) linkedItemIds.add(link.epiItem.id);
+      }
+    }
+    const clientStockedItemIds = await this.listClientStockedEpiItemIds(
+      organizationId,
+      servedClientId,
+      Array.from(linkedItemIds),
+    );
+
+    for (const req of requirements) {
+      const links = req.epiNeed.itemLinks.filter(
+        (l) => l.epiItem.isActive && clientStockedItemIds.has(l.epiItem.id),
+      );
       if (links.length === 0) {
         const key = `need:${req.epiNeedId}`;
         const existing = map.get(key);

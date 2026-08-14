@@ -653,7 +653,7 @@ export class PortalController {
     @Query('q') q = '',
   ) {
     this.assertClient(user);
-    return this.portal.searchEpis(user.organizationId, q);
+    return this.portal.searchEpis(user.organizationId, user.servedClientId, q);
   }
 
   @Get('epis/by-ca')
