@@ -35,9 +35,9 @@ import {
   mergePgroParseResults,
 } from './pgro-llm-extract';
 import {
-  isPgroStructureWeak,
   normalizeTextKey,
   parsePgroText,
+  shouldPreferLlmStructure,
   shouldUsePgroLlmFallback,
   type PgroExtractedEpiNeed,
   type PgroParseResult,
@@ -133,17 +133,17 @@ export class PgroService {
             parseResult,
           );
           if (llmPart && llmPart.parseMethod === 'HEURISTIC_PLUS_LLM') {
+            const preferLlmStructure = shouldPreferLlmStructure(
+              parseResult,
+              llmPart,
+            );
             parseResult = mergePgroParseResults(parseResult, llmPart, {
-              // Heuristic trouxe estrutura, mas com sinais de erro → prioriza setores/funcoes da IA.
-              preferLlmStructure: !isPgroStructureWeak({
-                layout: parseResult.layout,
-                sectors: parseResult.sectors,
-                functions: parseResult.functions,
-                textExtractable: parseResult.textExtractable,
-              }),
+              preferLlmStructure,
             });
             parseResult.warnings.push(
-              `Fallback de IA aplicado sobre o texto do ${documentKind === 'DOCX' ? 'Word' : 'PDF'}. Revise setores e funcoes.`,
+              preferLlmStructure
+                ? `IA substituiu estrutura duvidosa do ${documentKind === 'DOCX' ? 'Word' : 'PDF'}. Revise setores e funcoes.`
+                : `IA apenas complementou buracos (estrutura heuristica preservada — PGR grande). Revise setores e funcoes.`,
             );
           } else if (llmPart) {
             parseResult = {
@@ -208,12 +208,20 @@ export class PgroService {
       ...parseResult.ignoredCandidates.map((item) => `Ignorado: ${item}`),
     ];
 
+    const gheHeaderCount = (
+      documentText.match(/Caracteriza[cç][aã]o\s+do\s+GHE\s*\d+/gi) ?? []
+    ).length;
     const parseMeta = {
       layout: parseResult.layout,
       parseMethod: parseResult.parseMethod,
       structureWeak: parseResult.structureWeak,
       textLength: parseResult.textLength,
       sourceFormat: documentKind,
+      gheHeaderCount,
+      functionCount: parseResult.functions.length,
+      sectorCount: parseResult.sectors.length,
+      riskCount: parseResult.risks.length,
+      epiNeedCount: parseResult.epiNeeds.length,
     };
 
     const run = await this.prisma.pgroImportRun.create({
@@ -547,15 +555,22 @@ export class PgroService {
         return created.id;
       };
 
-      const jobIdByName = new Map<string, string>();
+      const jobIdByKey = new Map<string, string>();
+      const jobIdsByBareName = new Map<string, string[]>();
       const rememberJob = (
         name: string,
         sectorName: string | null,
         id: string,
       ) => {
-        jobIdByName.set(normalizeTextKey(name), id);
-        jobIdByName.set(functionKey(sectorName, name), id);
+        jobIdByKey.set(functionKey(sectorName, name), id);
+        const bare = normalizeTextKey(name);
+        const list = jobIdsByBareName.get(bare) ?? [];
+        if (!list.includes(id)) list.push(id);
+        jobIdsByBareName.set(bare, list);
       };
+      const resolveJobIds = (jobName: string): string[] =>
+        jobIdsByBareName.get(normalizeTextKey(jobName)) ?? [];
+      const allJobIds = () => [...new Set([...jobIdsByBareName.values()].flat())];
       for (const fn of dto.functions.filter((f) => f.included)) {
         const name = fn.name.trim();
         let sectorId: string | null = null;
@@ -644,18 +659,23 @@ export class PgroService {
         }
 
         const riskId = riskIdByName.get(normalizeTextKey(name))!;
-        const targetJobs =
+        const targetJobIds =
           risk.functionNames && risk.functionNames.length > 0
-            ? risk.functionNames
-            : [...jobIdByName.keys()];
-        for (const jobName of targetJobs) {
-          const jobId = jobIdByName.get(normalizeTextKey(jobName));
-          if (!jobId) continue;
-          const jobFn = dto.functions.find(
-            (fn) =>
-              fn.included &&
-              normalizeTextKey(fn.name) === normalizeTextKey(jobName),
-          );
+            ? [
+                ...new Set(
+                  risk.functionNames.flatMap((jobName) =>
+                    resolveJobIds(jobName),
+                  ),
+                ),
+              ]
+            : allJobIds();
+        for (const jobId of targetJobIds) {
+          const jobFn = dto.functions.find((fn) => {
+            if (!fn.included) return false;
+            const key = functionKey(fn.sectorName, fn.name);
+            return jobIdByKey.get(key) === jobId;
+          });
+          const jobName = jobFn?.name ?? name;
           const inferred = inferOsRiskContext({
             agent: name,
             category: risk.category,
@@ -705,7 +725,7 @@ export class PgroService {
       }
 
       const epiNeedIdByName = new Map<string, string>();
-      const jobIds = [...new Set(jobIdByName.values())];
+      const jobIds = allJobIds();
       const existingReqRows =
         jobIds.length > 0
           ? await tx.jobFunctionEpiRequirement.findMany({
@@ -793,16 +813,19 @@ export class PgroService {
           }
         }
 
-        const targetJobs =
+        const targetJobIds =
           epi.functionNames && epi.functionNames.length > 0
-            ? epi.functionNames
-            : [...jobIdByName.keys()];
+            ? [
+                ...new Set(
+                  epi.functionNames.flatMap((jobName) =>
+                    resolveJobIds(jobName),
+                  ),
+                ),
+              ]
+            : allJobIds();
         const riskNames = epi.riskNames ?? [];
 
-        for (const jobName of targetJobs) {
-          const jobId = jobIdByName.get(normalizeTextKey(jobName));
-          if (!jobId) continue;
-
+        for (const jobId of targetJobIds) {
           const riskIds: Array<string | null> =
             riskNames.length > 0
               ? riskNames

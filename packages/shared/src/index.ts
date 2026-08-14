@@ -1331,6 +1331,11 @@ export interface PgroImportRun {
     textLength?: number;
     /** PDF ou DOCX — origem do texto extraido. */
     sourceFormat?: 'PDF' | 'DOCX' | string;
+    gheHeaderCount?: number;
+    functionCount?: number;
+    sectorCount?: number;
+    riskCount?: number;
+    epiNeedCount?: number;
   } | null;
   layout?: string | null;
   parseMethod?: string | null;

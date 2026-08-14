@@ -222,21 +222,42 @@ export function mergePgroParseResults(
     ];
   }
 
-  const riskKeys = new Set(heuristic.risks.map((r) => normalizeTextKey(r.name)));
-  const risks = [
-    ...heuristic.risks,
-    ...llm.risks.filter((r) => !riskKeys.has(normalizeTextKey(r.name))),
-  ];
-
-  const epiKeys = new Set(
-    heuristic.epiNeeds.map((e) => normalizeTextKey(e.suggestedName)),
+  const riskByName = new Map(
+    heuristic.risks.map((r) => [normalizeTextKey(r.name), r] as const),
   );
-  const epiNeeds = [
-    ...heuristic.epiNeeds,
-    ...llm.epiNeeds.filter(
-      (e) => !epiKeys.has(normalizeTextKey(e.suggestedName)),
-    ),
-  ];
+  for (const risk of llm.risks) {
+    const key = normalizeTextKey(risk.name);
+    const existing = riskByName.get(key);
+    if (!existing) {
+      riskByName.set(key, risk);
+      continue;
+    }
+    existing.functionNames = [
+      ...new Set([...existing.functionNames, ...risk.functionNames]),
+    ];
+    if (!existing.source && risk.source) existing.source = risk.source;
+    if (!existing.exposure && risk.exposure) existing.exposure = risk.exposure;
+  }
+  const risks = [...riskByName.values()];
+
+  const epiByName = new Map(
+    heuristic.epiNeeds.map((e) => [normalizeTextKey(e.suggestedName), e] as const),
+  );
+  for (const epi of llm.epiNeeds) {
+    const key = normalizeTextKey(epi.suggestedName);
+    const existing = epiByName.get(key);
+    if (!existing) {
+      epiByName.set(key, epi);
+      continue;
+    }
+    existing.functionNames = [
+      ...new Set([...existing.functionNames, ...epi.functionNames]),
+    ];
+    existing.riskNames = [
+      ...new Set([...(existing.riskNames ?? []), ...(epi.riskNames ?? [])]),
+    ];
+  }
+  const epiNeeds = [...epiByName.values()];
 
   const company: PgroCompanyData = {
     legalName: heuristic.company.legalName ?? llm.company.legalName,

@@ -907,15 +907,23 @@ type GheBlock = {
 function extractGheBlocks(text: string): GheBlock[] {
   const blocks: GheBlock[] = [];
   const headerRe =
-    /Caracteriza[cç][aã]o\s+do\s+GHE\s*(\d+)\s*[–\-:]\s*([^\n]{2,200})/gi;
+    /Caracteriza[cç][aã]o\s+do\s+GHE\s*(\d+)\s*[–\-—:]?\s*([^\n]{0,200})/gi;
   const headers: Array<{ index: number; number: string; label: string }> = [];
 
   let match: RegExpExecArray | null;
   while ((match = headerRe.exec(text)) != null) {
+    let label = cleanLine(match[2] ?? '');
+    if (!label || /^(SETOR|FUN[CÇ]|CARGO|CBO)\b/i.test(label)) {
+      const after = text.slice(match.index + match[0].length, match.index + match[0].length + 240);
+      const nextLine = after.split(/\n/).map((l) => cleanLine(l)).find((l) => l.length >= 3);
+      if (nextLine && !/^APRHO\b/i.test(nextLine) && !/^Caracteriza/i.test(nextLine)) {
+        label = nextLine.slice(0, 160);
+      }
+    }
     headers.push({
       index: match.index,
       number: match[1].padStart(2, '0'),
-      label: cleanLine(match[2]),
+      label: label || `GHE ${match[1]}`,
     });
   }
 
@@ -1312,7 +1320,7 @@ function extractRisksFromBlocks(
   if (blocks.length > 0) {
     for (const block of blocks) {
       const aprhoRe = new RegExp(
-        `APRHO\\s+do\\s+GHE\\s*0*${Number(block.gheNumber)}[\\s\\S]{0,4000}`,
+        `APRHO\\s+do\\s+GHE\\s*0*${Number(block.gheNumber)}[\\s\\S]{0,12000}`,
         'i',
       );
       const aprho = fullText.match(aprhoRe)?.[0] ?? block.body;
@@ -1435,7 +1443,7 @@ function extractEpiNeedsFromBlocks(
   if (blocks.length > 0) {
     for (const block of blocks) {
       const aprhoRe = new RegExp(
-        `APRHO\\s+do\\s+GHE\\s*0*${Number(block.gheNumber)}[\\s\\S]{0,5000}`,
+        `APRHO\\s+do\\s+GHE\\s*0*${Number(block.gheNumber)}[\\s\\S]{0,12000}`,
         'i',
       );
       const aprho = fullText.match(aprhoRe)?.[0] ?? block.body;
@@ -1536,6 +1544,40 @@ export function shouldUsePgroLlmFallback(result: PgroParseResult): boolean {
   }
 
   return false;
+}
+
+/**
+ * So troca a estrutura heuristica pela IA quando a heuristic esta
+ * claramente quebrada. Nunca quando ela ja achou muitos GHEs/funcoes —
+ * o trecho enviado a LLM nao cabe um PGR grande (50+ GHEs).
+ */
+export function shouldPreferLlmStructure(
+  heuristic: PgroParseResult,
+  llm: PgroParseResult,
+): boolean {
+  const levelHits = heuristic.sectors.filter((s) =>
+    LEVEL_NAME_RE.test(s.name),
+  ).length;
+  const heuristicBroken =
+    isPgroStructureWeak(heuristic) ||
+    levelHits >= 1 ||
+    (heuristic.functions.length >= 40 && heuristic.sectors.length <= 4);
+
+  if (!heuristicBroken) return false;
+
+  // LLM precisa trazer pelo menos uma estrutura utilizavel.
+  if (llm.functions.length === 0 && llm.sectors.length === 0) return false;
+
+  // Se a heuristic ja tem massa grande (PGR completo), nao descartar por um
+  // JSON parcial da IA.
+  if (
+    heuristic.functions.length >= 20 &&
+    llm.functions.length < Math.floor(heuristic.functions.length * 0.6)
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 function emptyParseResult(

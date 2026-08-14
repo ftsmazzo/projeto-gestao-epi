@@ -523,6 +523,15 @@ export function PgroImportWizard({
             {parseMeta.sourceFormat
               ? ` · Origem: ${parseMeta.sourceFormat}`
               : ''}
+            {parseMeta.gheHeaderCount != null
+              ? ` · GHE: ${parseMeta.gheHeaderCount}`
+              : ''}
+            {parseMeta.functionCount != null
+              ? ` · Funcoes: ${parseMeta.functionCount}`
+              : ''}
+            {parseMeta.riskCount != null
+              ? ` · Riscos: ${parseMeta.riskCount}`
+              : ''}
           </p>
         </section>
       ) : null}

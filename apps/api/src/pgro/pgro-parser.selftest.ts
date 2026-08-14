@@ -10,6 +10,7 @@ import {
   normalizeFunctionDisplayName,
   normalizeFunctionKey,
   parsePgroText,
+  shouldPreferLlmStructure,
   shouldUsePgroLlmFallback,
 } from './pgro-parser';
 
@@ -570,6 +571,45 @@ assert(
   ),
   `funcoes ACM: ${maestralleLike.functions.map((f) => `${f.sectorName}:${f.name}`).join(' | ')}`,
 );
+
+// Nunca trocar estrutura boa por JSON parcial da IA (PGR grande).
+{
+  const strong = parsePgroText(SAMPLE_REAL);
+  const thinLlm = {
+    ...strong,
+    sectors: strong.sectors.slice(0, 1),
+    functions: strong.functions.slice(0, 2),
+    parseMethod: 'HEURISTIC_PLUS_LLM' as const,
+  };
+  assert(
+    shouldPreferLlmStructure(strong, thinLlm) === false,
+    'nao preferir LLM quando heuristic ja tem massa de funcoes',
+  );
+
+  const broken = {
+    ...strong,
+    sectors: [
+      {
+        tempId: 'bad',
+        name: 'PRODUCAO SENIOR',
+        rawText: 'PRODUCAO SENIOR',
+        included: true,
+        confidence: 'high' as const,
+        source: 'GHE' as const,
+        gheName: null,
+      },
+    ],
+    functions: strong.functions.slice(0, 3),
+  };
+  const llmOk = {
+    ...strong,
+    parseMethod: 'HEURISTIC_PLUS_LLM' as const,
+  };
+  assert(
+    shouldPreferLlmStructure(broken, llmOk) === true,
+    'preferir LLM quando heuristic inventou setor Junior/Senior',
+  );
+}
 
 console.log('pgro-parser.selftest OK');
 console.log(
