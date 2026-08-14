@@ -39,6 +39,7 @@ import {
   isPgroStructureWeak,
   normalizeTextKey,
   parsePgroText,
+  shouldUsePgroLlmFallback,
   type PgroExtractedEpiNeed,
   type PgroParseResult,
 } from './pgro-parser';
@@ -113,15 +114,31 @@ export class PgroService {
 
       parseResult = parsePgroText(pdfText, { extraAliases });
 
-      if (
-        parseResult.textExtractable &&
-        isPgroStructureWeak(parseResult) &&
-        process.env.OPENAI_API_KEY?.trim()
-      ) {
+      const wantsLlm = shouldUsePgroLlmFallback(parseResult);
+      const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
+
+      if (parseResult.textExtractable && wantsLlm && !hasOpenAiKey) {
+        parseResult.warnings.push(
+          'Extracao automatica duvidosa (PGR impresso/Word ou layout complexo), mas OPENAI_API_KEY nao esta configurada na API — fallback de IA nao rodou. Configure a chave no EasyPanel para melhorar o preview.',
+        );
+      }
+
+      if (parseResult.textExtractable && wantsLlm && hasOpenAiKey) {
         try {
           const llmPart = await extractPgroWithOpenAiText(pdfText, parseResult);
           if (llmPart && llmPart.parseMethod === 'HEURISTIC_PLUS_LLM') {
-            parseResult = mergePgroParseResults(parseResult, llmPart);
+            parseResult = mergePgroParseResults(parseResult, llmPart, {
+              // Heuristic trouxe estrutura, mas com sinais de erro → prioriza setores/funcoes da IA.
+              preferLlmStructure: !isPgroStructureWeak({
+                layout: parseResult.layout,
+                sectors: parseResult.sectors,
+                functions: parseResult.functions,
+                textExtractable: parseResult.textExtractable,
+              }),
+            });
+            parseResult.warnings.push(
+              'Fallback de IA aplicado sobre o texto do PDF (nao e scan). Revise setores e funcoes.',
+            );
           } else if (llmPart) {
             parseResult = {
               ...parseResult,

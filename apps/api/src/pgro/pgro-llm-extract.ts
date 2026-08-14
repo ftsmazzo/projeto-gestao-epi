@@ -176,35 +176,51 @@ function llmToParseResult(
 
 /**
  * Preenche buracos da heuristica com resultado LLM.
- * Nao remove itens high-confidence ja encontrados.
+ * Nao remove itens high-confidence ja encontrados — salvo quando
+ * preferLlmStructure=true (heuristic duvidosa: troca estrutura pela IA).
  */
 export function mergePgroParseResults(
   heuristic: PgroParseResult,
   llm: PgroParseResult,
+  options?: { preferLlmStructure?: boolean },
 ): PgroParseResult {
-  const sectorKeys = new Set(
-    heuristic.sectors.map((s) => normalizeTextKey(s.name)),
-  );
-  const sectors = [
-    ...heuristic.sectors,
-    ...llm.sectors.filter((s) => !sectorKeys.has(normalizeTextKey(s.name))),
-  ];
+  const preferLlm = Boolean(options?.preferLlmStructure);
 
-  const fnKeys = new Set(
-    heuristic.functions.map(
-      (f) =>
-        `${normalizeTextKey(f.sectorName ?? '')}::${normalizeTextKey(f.name)}`,
-    ),
-  );
-  const functions = [
-    ...heuristic.functions,
-    ...llm.functions.filter(
-      (f) =>
-        !fnKeys.has(
+  const dropLevelSectors = (sectors: PgroExtractedSector[]) =>
+    sectors.filter((s) => !/\b(j[uú]nior|junior|pleno|s[eê]nior|senior)\b/i.test(s.name));
+
+  let sectors: PgroExtractedSector[];
+  let functions: PgroExtractedFunction[];
+
+  if (preferLlm && llm.sectors.length > 0) {
+    sectors = dropLevelSectors(llm.sectors);
+    functions =
+      llm.functions.length > 0 ? llm.functions : heuristic.functions;
+  } else {
+    const sectorKeys = new Set(
+      heuristic.sectors.map((s) => normalizeTextKey(s.name)),
+    );
+    sectors = dropLevelSectors([
+      ...heuristic.sectors,
+      ...llm.sectors.filter((s) => !sectorKeys.has(normalizeTextKey(s.name))),
+    ]);
+
+    const fnKeys = new Set(
+      heuristic.functions.map(
+        (f) =>
           `${normalizeTextKey(f.sectorName ?? '')}::${normalizeTextKey(f.name)}`,
-        ),
-    ),
-  ];
+      ),
+    );
+    functions = [
+      ...heuristic.functions,
+      ...llm.functions.filter(
+        (f) =>
+          !fnKeys.has(
+            `${normalizeTextKey(f.sectorName ?? '')}::${normalizeTextKey(f.name)}`,
+          ),
+      ),
+    ];
+  }
 
   const riskKeys = new Set(heuristic.risks.map((r) => normalizeTextKey(r.name)));
   const risks = [
@@ -278,7 +294,7 @@ export async function extractPgroWithOpenAiText(
       {
         role: 'system',
         content:
-          'Voce extrai estrutura de um PGR/PGRO brasileiro (setores, funcoes/cargos, riscos ocupacionais e EPIs). Responda so JSON valido. Ignore empresa elaboradora/consultoria SST; foque na empresa CONTRATADA/cliente. Nomes em portugues.',
+          'Voce extrai estrutura de um PGR/PGRO brasileiro (setores, funcoes/cargos, riscos ocupacionais e EPIs). Responda so JSON valido. Ignore empresa elaboradora/consultoria SST; foque na empresa CONTRATADA/cliente. Nomes em portugues. IMPORTANTE: setor e a area/departamento (ex.: ACM, Caldeiraria Leve, Almoxarifado). Nunca coloque Junior/Pleno/Senior no nome do setor — isso pertence ao cargo/funcao. PDF impresso de Word e valido (tem texto).',
       },
       {
         role: 'user',

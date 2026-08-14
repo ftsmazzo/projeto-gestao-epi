@@ -10,6 +10,7 @@ import {
   normalizeFunctionDisplayName,
   normalizeFunctionKey,
   parsePgroText,
+  shouldUsePgroLlmFallback,
 } from './pgro-parser';
 
 /** Trechos no formato real extraído de files/PGRO.pdf e files/PGRO2.pdf */
@@ -482,6 +483,41 @@ assert(
   }) === true,
   'weak detector',
 );
+
+{
+  const manyNoSector: ReturnType<typeof parsePgroText> = {
+    ...parsePgroText('Razao Social: X\nCNPJ: 12.345.678/0001-90\nMunicipio: SP Estado: SP\ntexto '.repeat(40)),
+    layout: 'GHE_APRHO',
+    textExtractable: true,
+    sectors: [
+      {
+        tempId: '1',
+        name: 'PRODUÇÃO SENIOR',
+        rawText: 'PRODUÇÃO SENIOR',
+        included: true,
+        confidence: 'high',
+        source: 'GHE',
+        gheName: null,
+      },
+    ],
+    functions: Array.from({ length: 12 }).map((_, i) => ({
+      tempId: `f${i}`,
+      name: `OPERADOR ${i}`,
+      sectorName: null,
+      activityDescription: null,
+      environmentDescription: null,
+      gheName: null,
+      rawText: `OPERADOR ${i}`,
+      included: true,
+      confidence: 'high' as const,
+      source: 'GHE' as const,
+    })),
+  };
+  assert(
+    shouldUsePgroLlmFallback(manyNoSector) === true,
+    'IA deve entrar com setores nivel + funcoes sem setor',
+  );
+}
 
 // Maestralle-like: ACM + cargo Title Case quebrado (nao virar setor PRODUÇÃO SENIOR)
 const maestralleLike = parsePgroText(`

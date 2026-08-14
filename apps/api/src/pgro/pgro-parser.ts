@@ -1503,6 +1503,41 @@ export function isPgroStructureWeak(result: {
   return false;
 }
 
+const LEVEL_NAME_RE =
+  /\b(j[uú]nior|junior|pleno|s[eê]nior|senior)\b/i;
+
+/**
+ * Quando a heuristic “acha” muita coisa errada (Word/PDF impresso), ainda assim
+ * vale chamar a IA — nao so quando vem vazio.
+ */
+export function shouldUsePgroLlmFallback(result: PgroParseResult): boolean {
+  if (!result.textExtractable) return false;
+  if (isPgroStructureWeak(result)) return true;
+  if (result.layout === 'UNKNOWN') return true;
+
+  const sectorLevelHits = result.sectors.filter((s) =>
+    LEVEL_NAME_RE.test(s.name),
+  ).length;
+  if (sectorLevelHits >= 1) return true;
+
+  const noSector = result.functions.filter(
+    (f) => !f.sectorName || !f.sectorName.trim(),
+  ).length;
+  if (
+    result.functions.length >= 8 &&
+    noSector / result.functions.length >= 0.3
+  ) {
+    return true;
+  }
+
+  // Documento grande com poucos setores reais → heuristic provavelmente errou.
+  if (result.functions.length >= 40 && result.sectors.length <= 4) {
+    return true;
+  }
+
+  return false;
+}
+
 function emptyParseResult(
   warnings: string[],
   textLength: number,
