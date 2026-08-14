@@ -46,9 +46,9 @@
   --sidebar-width: 14.5rem;
   --header-height: 3.5rem;
 
-  --font-display: var(--font-source), 'Source Sans 3', system-ui, sans-serif;
-  --font-sans: var(--font-source), 'Source Sans 3', system-ui, sans-serif;
-  --font-mono: var(--font-jetbrains), 'JetBrains Mono', ui-monospace, monospace;
+  --font-display: 'Source Sans 3', system-ui, sans-serif;
+  --font-sans: 'Source Sans 3', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
   --space-page: 1.15rem;
   --content-narrow: 26rem;
   --content-wide: 40rem;

@@ -1,23 +1,16 @@
 import type { Metadata, Viewport } from 'next';
-import { JetBrains_Mono, Source_Sans_3 } from 'next/font/google';
 import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
 import { ServiceWorkerRegister } from '../components/ServiceWorkerRegister';
 import './globals.css';
 import './adminlte-skin.css';
 
-const sourceSans = Source_Sans_3({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
-  variable: '--font-source',
-  display: 'swap',
-});
-
-const jetbrains = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['500', '600'],
-  variable: '--font-jetbrains',
-  display: 'swap',
-});
+// Fontes self-hosted via npm (sem fetch no Google no `next build` / Docker).
+import '@fontsource/source-sans-3/400.css';
+import '@fontsource/source-sans-3/500.css';
+import '@fontsource/source-sans-3/600.css';
+import '@fontsource/source-sans-3/700.css';
+import '@fontsource/jetbrains-mono/500.css';
+import '@fontsource/jetbrains-mono/600.css';
 
 export const metadata: Metadata = {
   title: {
@@ -60,7 +53,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" className={`${sourceSans.variable} ${jetbrains.variable}`}>
+    <html lang="pt-BR">
       <body>
         {children}
         <ServiceWorkerRegister />

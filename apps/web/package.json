@@ -11,6 +11,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/source-sans-3": "^5.3.0",
     "@gestao-epi/shared": "*",
     "next": "^15.2.3",
     "react": "^19.0.0",
