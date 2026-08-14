@@ -225,6 +225,8 @@ export const DEFAULT_EPI_NEED_SEEDS: DefaultEpiNeedSeed[] = [
     aliases: [
       'bota de borracha',
       'botas de borracha',
+      'botina de borracha',
+      'botinas de borracha',
       'bota de pvc',
       'bota impermeavel',
     ],
@@ -369,6 +371,43 @@ function normalizeMatchText(value: string): string {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** Resolve seed oficial (categoria + vida util) pelo nome ou alias. */
+export function resolveEpiNeedSeedByName(name: string): DefaultEpiNeedSeed | null {
+  const key = normalizeMatchText(name);
+  if (!key) return null;
+
+  for (const seed of DEFAULT_EPI_NEED_SEEDS) {
+    if (normalizeMatchText(seed.name) === key) return seed;
+    if (seed.aliases.some((alias) => normalizeMatchText(alias) === key)) {
+      return seed;
+    }
+  }
+
+  let best: DefaultEpiNeedSeed | null = null;
+  let bestScore = 0;
+  for (const seed of DEFAULT_EPI_NEED_SEEDS) {
+    const candidates = [seed.name, ...seed.aliases].map(normalizeMatchText);
+    for (const candidate of candidates) {
+      if (candidate.length < 5) continue;
+      if (!key.includes(candidate) && !candidate.includes(key)) continue;
+      const score = Math.min(key.length, candidate.length);
+      if (score > bestScore) {
+        bestScore = score;
+        best = seed;
+      }
+    }
+  }
+  if (best) return best;
+
+  if (/\b(botina|bota|calcado|sapato|perneira)\b/.test(key)) {
+    return (
+      DEFAULT_EPI_NEED_SEEDS.find((seed) => seed.name === 'Botina de Seguranca') ??
+      null
+    );
+  }
+  return null;
 }
 
 export type EpiNeedMatchInput = {

@@ -21,6 +21,7 @@ import {
   inferOsRiskContext,
   isGenericRiskSource,
 } from '../client-structure/risk-context';
+import { resolveEpiNeedSeedByName } from '../epi-needs/epi-need-suggest';
 import { ServedClientsService } from '../served-clients/served-clients.service';
 import type { ConfirmPgroImportDto } from './dto/pgro-import.dto';
 import {
@@ -675,11 +676,17 @@ export class PgroService {
             epiNeedIdByName.set(normalizeTextKey(name), existing.id);
             summary.epiNeedsExisting += 1;
           } else if (epi.createNew !== false) {
+            const seed = resolveEpiNeedSeedByName(name);
             const created = await tx.epiNeed.create({
               data: {
                 organizationId,
                 name,
-                description: 'Criada via importacao assistida de PGRO/PGR',
+                category: seed?.category ?? null,
+                description:
+                  seed?.description ??
+                  'Criada via importacao assistida de PGRO/PGR',
+                usefulLifeValue: seed?.usefulLifeValue ?? null,
+                usefulLifeUnit: seed?.usefulLifeUnit ?? null,
               },
             });
             needId = created.id;

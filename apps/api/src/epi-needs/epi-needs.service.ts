@@ -15,6 +15,7 @@ import type {
 } from './dto/epi-need.dto';
 import {
   DEFAULT_EPI_NEED_SEEDS,
+  resolveEpiNeedSeedByName,
   suggestNeedNamesFromText,
 } from './epi-need-suggest';
 import { resolveUsefulLife } from './epi-useful-life.defaults';
@@ -184,15 +185,18 @@ export class EpiNeedsService {
             category: dto.category ?? null,
           });
 
+    const seed = resolveEpiNeedSeedByName(name);
+    const category = dto.category ?? seed?.category ?? null;
+
     const need = await this.prisma.epiNeed.create({
       data: {
         organizationId,
         name,
-        category: dto.category ?? null,
+        category,
         description: this.normalizeOptionalText(dto.description),
         aliases: this.normalizeAliases(dto.aliases),
-        usefulLifeValue: life?.value ?? null,
-        usefulLifeUnit: life?.unit ?? null,
+        usefulLifeValue: life?.value ?? seed?.usefulLifeValue ?? null,
+        usefulLifeUnit: life?.unit ?? seed?.usefulLifeUnit ?? null,
       },
     });
 
@@ -293,7 +297,12 @@ export class EpiNeedsService {
   async suggestDefaults(organizationId: string, userId: string) {
     const existing = await this.prisma.epiNeed.findMany({
       where: { organizationId },
-      select: { id: true, name: true, usefulLifeValue: true },
+      select: {
+        id: true,
+        name: true,
+        category: true,
+        usefulLifeValue: true,
+      },
     });
     const existingNames = new Set(
       existing.map((row) => row.name.toLowerCase()),
@@ -311,6 +320,7 @@ export class EpiNeedsService {
             data: {
               usefulLifeValue: seed.usefulLifeValue,
               usefulLifeUnit: seed.usefulLifeUnit,
+              ...(current.category ? {} : { category: seed.category }),
             },
           });
         }
@@ -329,6 +339,28 @@ export class EpiNeedsService {
         },
       });
       created.push({ ...need, aliases: parseAliases(need.aliases) });
+    }
+
+    // Necessidades ja criadas pelo PGR (ex.: "Botina de Borracha") sem categoria.
+    const orphanNeeds = await this.prisma.epiNeed.findMany({
+      where: { organizationId, OR: [{ category: null }, { usefulLifeValue: null }] },
+      select: { id: true, name: true, category: true, usefulLifeValue: true },
+    });
+    for (const orphan of orphanNeeds) {
+      const seed = resolveEpiNeedSeedByName(orphan.name);
+      if (!seed) continue;
+      await this.prisma.epiNeed.update({
+        where: { id: orphan.id },
+        data: {
+          ...(orphan.category ? {} : { category: seed.category }),
+          ...(orphan.usefulLifeValue != null
+            ? {}
+            : {
+                usefulLifeValue: seed.usefulLifeValue,
+                usefulLifeUnit: seed.usefulLifeUnit,
+              }),
+        },
+      });
     }
 
     await this.audit.log({
