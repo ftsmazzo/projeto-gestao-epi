@@ -19,6 +19,7 @@ import {
   listJobFunctionEpiRequirements,
 } from '../../../../lib/client-structure';
 import { formatCpf, formatCpfInput, stripCpf } from '../../../../lib/cpf';
+import { readCsvFileForImport } from '../../../../lib/csv-file';
 import { listOperationalUnits } from '../../../../lib/operational-units';
 import {
   confirmWorkerCsvImport,
@@ -315,8 +316,11 @@ export default function ClienteTrabalhadoresPage() {
     setError(null);
     setImportFileName(file.name);
     try {
-      const csvText = await file.text();
-      const preview = await previewWorkerCsvImport(clientId, csvText);
+      const filePayload = await readCsvFileForImport(file);
+      const preview = await previewWorkerCsvImport(clientId, {
+        csvBase64: filePayload.csvBase64,
+        csvText: filePayload.csvText,
+      });
       setImportPreview(preview);
     } catch (err) {
       setImportPreview(null);

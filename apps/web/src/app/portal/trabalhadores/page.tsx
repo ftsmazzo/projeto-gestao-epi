@@ -17,6 +17,7 @@ import {
   useState,
 } from 'react';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
+import { readCsvFileForImport } from '../../../lib/csv-file';
 import {
   confirmPortalWorkerCsvImport,
   createPortalWorker,
@@ -283,8 +284,11 @@ function PortalTrabalhadoresContent() {
     setImportMessage(null);
     setImportFileName(file.name);
     try {
-      const csvText = await file.text();
-      const preview = await previewPortalWorkerCsvImport(csvText);
+      const filePayload = await readCsvFileForImport(file);
+      const preview = await previewPortalWorkerCsvImport({
+        csvBase64: filePayload.csvBase64,
+        csvText: filePayload.csvText,
+      });
       setImportPreview(preview);
     } catch (err) {
       setImportPreview(null);

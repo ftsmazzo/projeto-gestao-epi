@@ -10,6 +10,7 @@
     "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
     "lint": "eslint \"src/**/*.ts\" --max-warnings=0",
     "test:cnpj": "npx --yes tsx src/common/cnpj.selftest.ts",
+    "test:csv-encoding": "npx --yes tsx src/common/csv-text-encoding.selftest.ts",
     "test:epi-coverage": "npx --yes tsx src/portal/portal-epi-coverage.selftest.ts",
     "test:caepi-search": "npx --yes tsx src/caepi/caepi-search.selftest.ts",
     "test:replacement": "npx --yes tsx src/portal/replacement-schedule.selftest.ts",

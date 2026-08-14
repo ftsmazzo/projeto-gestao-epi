@@ -439,7 +439,7 @@ export class PortalController {
     return this.portal.previewWorkerImport(
       user.organizationId,
       user.servedClientId,
-      dto.csvText,
+      { csvText: dto.csvText, csvBase64: dto.csvBase64 },
     );
   }
 

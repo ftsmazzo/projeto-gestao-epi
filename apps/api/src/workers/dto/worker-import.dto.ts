@@ -13,9 +13,17 @@ import {
 import { WorkerStatus } from '@prisma/client';
 
 export class PreviewWorkerImportDto {
+  /** Texto CSV (UTF-8). Preferir csvBase64 quando o arquivo veio do Excel. */
+  @IsOptional()
   @IsString()
   @MinLength(1)
-  csvText!: string;
+  csvText?: string;
+
+  /** Bytes do arquivo em base64 — o backend detecta UTF-8 vs Windows-1252. */
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  csvBase64?: string;
 }
 
 export class WorkerImportPayloadDto {

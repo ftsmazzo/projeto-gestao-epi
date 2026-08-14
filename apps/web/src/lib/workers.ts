@@ -86,13 +86,13 @@ export function getWorkerCsvTemplate(servedClientId: string) {
 
 export function previewWorkerCsvImport(
   servedClientId: string,
-  csvText: string,
+  input: { csvText?: string; csvBase64?: string },
 ) {
   return apiFetch<WorkerImportPreviewResponse>(
     `/served-clients/${servedClientId}/workers/import/preview`,
     {
       method: 'POST',
-      body: JSON.stringify({ csvText }),
+      body: JSON.stringify(input),
     },
   );
 }

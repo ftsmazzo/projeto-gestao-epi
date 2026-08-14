@@ -10,6 +10,7 @@ import type {
   WorkerImportRowAction,
 } from '@gestao-epi/shared';
 import { AuditService } from '../audit/audit.service';
+import { resolveCsvImportInput } from '../common/csv-text-encoding';
 import { cpfAuditMeta, isValidCpf, stripCpf } from '../common/cpf';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -59,12 +60,17 @@ export class WorkerImportService {
   async preview(
     organizationId: string,
     servedClientId: string,
-    csvText: string,
+    input: { csvText?: string; csvBase64?: string },
   ): Promise<WorkerImportPreviewResponse> {
     await this.assertClient(organizationId, servedClientId);
 
-    if (!csvText?.trim()) {
-      throw new BadRequestException('Envie o conteudo CSV para a previa.');
+    let csvText: string;
+    try {
+      csvText = resolveCsvImportInput(input);
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error ? err.message : 'Envie o conteudo CSV para a previa.',
+      );
     }
 
     const { headers, records } = parseCsvText(csvText);

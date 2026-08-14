@@ -1004,10 +1004,10 @@ export class PortalService {
   async previewWorkerImport(
     organizationId: string,
     servedClientId: string,
-    csvText: string,
+    input: { csvText?: string; csvBase64?: string },
   ) {
     await this.requireClient(organizationId, servedClientId);
-    return this.workerImport.preview(organizationId, servedClientId, csvText);
+    return this.workerImport.preview(organizationId, servedClientId, input);
   }
 
   async confirmWorkerImport(

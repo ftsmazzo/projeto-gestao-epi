@@ -1,4 +1,5 @@
 import type { WorkerStatus } from '@gestao-epi/shared';
+import { sanitizeCsvCellText } from '../common/csv-text-encoding';
 import {
   detectCsvDelimiter,
   parseCsvText,
@@ -15,6 +16,10 @@ export type WorkerCsvCanonicalField =
   | 'sector'
   | 'jobFunction'
   | 'status';
+
+export function sanitizeImportedWorkerText(value: string): string {
+  return sanitizeCsvCellText(value);
+}
 
 /**
  * Normaliza cabecalho CSV: remove acentos/cedilha, lower-case, espacos -> _,
@@ -183,7 +188,7 @@ export function mapWorkerCsvRecord(
   const raw: Record<string, string> = {};
 
   headers.forEach((header, index) => {
-    const value = (cells[index] ?? '').trim();
+    const value = sanitizeImportedWorkerText(cells[index] ?? '');
     raw[header] = value;
     const field = resolveWorkerCsvColumn(header);
     if (!field) {
@@ -212,7 +217,7 @@ export function normalizeMatchName(value: string): string {
 
 export function normalizeOptionalText(value?: string | null): string | null {
   if (value === undefined || value === null) return null;
-  const trimmed = value.trim();
+  const trimmed = sanitizeImportedWorkerText(value);
   return trimmed.length > 0 ? trimmed : null;
 }
 

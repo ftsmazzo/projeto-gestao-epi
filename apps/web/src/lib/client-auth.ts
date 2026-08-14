@@ -274,12 +274,15 @@ export async function getPortalWorkerCsvTemplate() {
   }>('/portal/trabalhadores/import/csv-template');
 }
 
-export async function previewPortalWorkerCsvImport(csvText: string) {
+export async function previewPortalWorkerCsvImport(input: {
+  csvText?: string;
+  csvBase64?: string;
+}) {
   return clientApiFetch<WorkerImportPreviewResponse>(
     '/portal/trabalhadores/import/preview',
     {
       method: 'POST',
-      body: JSON.stringify({ csvText }),
+      body: JSON.stringify(input),
     },
   );
 }

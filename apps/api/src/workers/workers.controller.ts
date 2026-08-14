@@ -101,7 +101,7 @@ export class WorkersController {
     return this.workerImport.preview(
       user.organizationId,
       servedClientId,
-      dto.csvText,
+      { csvText: dto.csvText, csvBase64: dto.csvBase64 },
     );
   }
 
