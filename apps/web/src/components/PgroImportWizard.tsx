@@ -295,7 +295,7 @@ export function PgroImportWizard({
     if (run.status === 'FAILED') {
       setError(
         run.errorMessage ??
-          'Este PDF parece nao ter texto extraivel. Use um PDF gerado digitalmente ou uma versao OCR.',
+          'Este arquivo parece nao ter texto extraivel. Prefira o .docx original do Word ou um PDF com texto selecionavel.',
       );
       setStep('upload');
       return;
@@ -312,7 +312,14 @@ export function PgroImportWizard({
     const input = form.elements.namedItem('pgroFile') as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) {
-      setError('Selecione um arquivo PDF.');
+      setError('Selecione um arquivo Word (.docx) ou PDF.');
+      return;
+    }
+    const name = (file.name || '').toLowerCase();
+    if (name.endsWith('.doc') && !name.endsWith('.docx')) {
+      setError(
+        'Arquivo .doc (Word antigo) nao e suportado. Salve como .docx ou envie o PDF.',
+      );
       return;
     }
     setUploading(true);
@@ -324,7 +331,7 @@ export function PgroImportWizard({
       applyRun(run);
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : 'Falha ao processar o PDF.',
+        err instanceof Error ? err.message : 'Falha ao processar o documento.',
       );
     } finally {
       setUploading(false);
@@ -447,8 +454,8 @@ export function PgroImportWizard({
           </h1>
           <p className="page-lead">
             {isUpdateMode
-              ? 'Envie o PDF neste ambiente do cliente, revise os dados e confirme. Setores e funcoes que sumirem do PGR saem das telas operacionais, mas o historico permanece.'
-              : 'Envie o PDF, revise os dados extraidos em blocos e confirme a implantacao. Nada e gravado apenas pelo upload.'}
+              ? 'Envie o Word (.docx) — preferencial — ou PDF neste ambiente do cliente, revise e confirme. Setores e funcoes que sumirem do PGR saem das telas operacionais, mas o historico permanece.'
+              : 'Envie o Word (.docx) — preferencial — ou PDF, revise os dados extraidos e confirme. Nada e gravado apenas pelo upload.'}
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
@@ -502,10 +509,10 @@ export function PgroImportWizard({
           <p className="page-kicker">Layout / extracao</p>
           <p style={{ margin: 0 }}>
             {parseMeta.parseMethod === 'HEURISTIC_PLUS_LLM'
-              ? 'Este PGR usou IA para complementar a leitura (layout pouco conhecido). Revise setores, funcoes, riscos e EPIs com cuidado antes de confirmar — suas correcoes ajudam o proximo PDF da consultoria.'
+              ? 'Este PGR usou IA para complementar a leitura (layout pouco conhecido). Revise setores, funcoes, riscos e EPIs com cuidado antes de confirmar — suas correcoes ajudam o proximo documento da consultoria.'
               : parseMeta.layout === 'UNKNOWN'
                 ? 'Layout do PGR nao reconhecido automaticamente. Revise a extracao com cuidado. Ao confirmar, o sistema aprende aliases para os proximos documentos.'
-                : 'Estrutura fraca detectada no PDF. Revise setores e funcoes antes de confirmar.'}
+                : 'Estrutura fraca detectada no documento. Revise setores e funcoes antes de confirmar.'}
           </p>
           <p
             className="muted"
@@ -513,6 +520,9 @@ export function PgroImportWizard({
           >
             Layout: {parseMeta.layout ?? '—'} · Metodo:{' '}
             {parseMeta.parseMethod ?? '—'}
+            {parseMeta.sourceFormat
+              ? ` · Origem: ${parseMeta.sourceFormat}`
+              : ''}
           </p>
         </section>
       ) : null}
@@ -543,11 +553,11 @@ export function PgroImportWizard({
       {step === 'upload' ? (
         <section className="surface" aria-labelledby="upload-title">
           <h2 id="upload-title" className="page-title page-title--sm">
-            Upload do PDF
+            Upload do PGR
           </h2>
           <p className="page-lead">
-            Use um PDF gerado digitalmente (ex.: exportado do Word). PDFs
-            escaneados sem OCR nao serao lidos nesta etapa.
+            Preferencial: arquivo Word original (.docx). PDF continua aceito
+            quando tiver texto selecionavel (nao escaneado sem OCR).
           </p>
           {lockedClientId ? (
             <p className="field-hint">
@@ -556,12 +566,12 @@ export function PgroImportWizard({
           ) : null}
           <form className="form" onSubmit={onUpload}>
             <div className="field">
-              <label htmlFor="pgroFile">Arquivo PDF</label>
+              <label htmlFor="pgroFile">Arquivo Word (.docx) ou PDF</label>
               <input
                 id="pgroFile"
                 name="pgroFile"
                 type="file"
-                accept="application/pdf,.pdf"
+                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,.pdf"
                 required
               />
             </div>
@@ -571,7 +581,7 @@ export function PgroImportWizard({
                 className="btn btn-primary"
                 disabled={uploading}
               >
-                {uploading ? 'Extraindo...' : 'Analisar PDF'}
+                {uploading ? 'Extraindo...' : 'Analisar documento'}
               </button>
             </div>
           </form>

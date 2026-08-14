@@ -12,7 +12,6 @@ import {
   ServedClientStatus,
   WorkerStatus,
 } from '@prisma/client';
-import pdfParse from 'pdf-parse';
 import { AuditService } from '../audit/audit.service';
 import { validateCnpj } from '../common/cnpj';
 import { ensureMatrizOperationalUnit } from '../operational-units/matriz-unit';
@@ -43,6 +42,7 @@ import {
   type PgroExtractedEpiNeed,
   type PgroParseResult,
 } from './pgro-parser';
+import { extractPgroDocumentText } from './pgro-text-extract';
 
 type ConfirmOptions = {
   skipManagementRole?: boolean;
@@ -79,14 +79,21 @@ export class PgroService {
       this.assertManagementRole(membershipRole);
     }
     if (!file?.buffer?.length) {
-      throw new BadRequestException('Envie um arquivo PDF.');
+      throw new BadRequestException('Envie um arquivo Word (.docx) ou PDF.');
     }
-    if (
-      file.mimetype &&
-      !file.mimetype.includes('pdf') &&
-      !file.originalname.toLowerCase().endsWith('.pdf')
-    ) {
-      throw new BadRequestException('O arquivo deve ser um PDF.');
+
+    let documentKind: 'PDF' | 'DOCX';
+    let documentText: string;
+    try {
+      const extracted = await extractPgroDocumentText(file);
+      documentKind = extracted.kind;
+      documentText = extracted.text;
+    } catch (err) {
+      throw new BadRequestException(
+        err instanceof Error
+          ? err.message
+          : 'Formato nao suportado. Envie .docx ou PDF.',
+      );
     }
 
     if (servedClientId) {
@@ -95,11 +102,7 @@ export class PgroService {
 
     const startedAt = new Date();
     let parseResult: PgroParseResult;
-    let pdfText = '';
     try {
-      const parsedPdf = await pdfParse(file.buffer);
-      pdfText = parsedPdf.text ?? '';
-
       const aliasRows = await this.prisma.pgroExtractionAlias.findMany({
         where: { organizationId },
         select: {
@@ -112,20 +115,23 @@ export class PgroService {
       });
       const extraAliases = buildExtraAliasPack(aliasRows);
 
-      parseResult = parsePgroText(pdfText, { extraAliases });
+      parseResult = parsePgroText(documentText, { extraAliases });
 
       const wantsLlm = shouldUsePgroLlmFallback(parseResult);
       const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
 
       if (parseResult.textExtractable && wantsLlm && !hasOpenAiKey) {
         parseResult.warnings.push(
-          'Extracao automatica duvidosa (PGR impresso/Word ou layout complexo), mas OPENAI_API_KEY nao esta configurada na API — fallback de IA nao rodou. Configure a chave no EasyPanel para melhorar o preview.',
+          'Extracao automatica duvidosa (layout complexo), mas OPENAI_API_KEY nao esta configurada na API — fallback de IA nao rodou. Configure a chave no EasyPanel para melhorar o preview.',
         );
       }
 
       if (parseResult.textExtractable && wantsLlm && hasOpenAiKey) {
         try {
-          const llmPart = await extractPgroWithOpenAiText(pdfText, parseResult);
+          const llmPart = await extractPgroWithOpenAiText(
+            documentText,
+            parseResult,
+          );
           if (llmPart && llmPart.parseMethod === 'HEURISTIC_PLUS_LLM') {
             parseResult = mergePgroParseResults(parseResult, llmPart, {
               // Heuristic trouxe estrutura, mas com sinais de erro → prioriza setores/funcoes da IA.
@@ -137,7 +143,7 @@ export class PgroService {
               }),
             });
             parseResult.warnings.push(
-              'Fallback de IA aplicado sobre o texto do PDF (nao e scan). Revise setores e funcoes.',
+              `Fallback de IA aplicado sobre o texto do ${documentKind === 'DOCX' ? 'Word' : 'PDF'}. Revise setores e funcoes.`,
             );
           } else if (llmPart) {
             parseResult = {
@@ -153,27 +159,35 @@ export class PgroService {
           );
         }
       }
+
+      if (documentKind === 'DOCX') {
+        parseResult.warnings.unshift(
+          'Texto extraido do Word (.docx) — formato preferencial para PGR.',
+        );
+      }
     } catch (err) {
+      if (err instanceof BadRequestException) throw err;
       const run = await this.prisma.pgroImportRun.create({
         data: {
           organizationId,
           servedClientId: servedClientId || null,
           status: PgroImportStatus.FAILED,
-          fileName: file.originalname || 'pgro.pdf',
+          fileName: file.originalname || 'pgro',
           startedAt,
           finishedAt: new Date(),
           errorMessage:
             err instanceof Error
               ? err.message
-              : 'Falha ao ler o PDF.',
+              : 'Falha ao ler o documento.',
           createdByUserId: userId,
           warnings: [
-            'Nao foi possivel extrair texto do PDF. Verifique se o arquivo nao esta corrompido.',
+            'Nao foi possivel processar o arquivo. Prefira o .docx original do Word ou um PDF com texto selecionavel.',
           ],
           parseMeta: {
             layout: 'UNKNOWN',
             parseMethod: 'HEURISTIC',
             structureWeak: true,
+            sourceFormat: documentKind,
           } as Prisma.InputJsonValue,
         },
       });
@@ -199,6 +213,7 @@ export class PgroService {
       parseMethod: parseResult.parseMethod,
       structureWeak: parseResult.structureWeak,
       textLength: parseResult.textLength,
+      sourceFormat: documentKind,
     };
 
     const run = await this.prisma.pgroImportRun.create({
@@ -206,7 +221,7 @@ export class PgroService {
         organizationId,
         servedClientId: servedClientId || null,
         status,
-        fileName: file.originalname || 'pgro.pdf',
+        fileName: file.originalname || (documentKind === 'DOCX' ? 'pgro.docx' : 'pgro.pdf'),
         startedAt,
         finishedAt: status === PgroImportStatus.FAILED ? new Date() : null,
         companyData: parseResult.company as Prisma.InputJsonValue,
@@ -219,7 +234,7 @@ export class PgroService {
         errorMessage: parseResult.textExtractable
           ? null
           : parseResult.warnings[0] ??
-            'Este PDF parece nao ter texto extraivel.',
+            'Este arquivo parece nao ter texto extraivel.',
         createdByUserId: userId,
       },
     });
@@ -233,6 +248,7 @@ export class PgroService {
       metadata: {
         fileName: run.fileName,
         status: run.status,
+        sourceFormat: documentKind,
         textExtractable: parseResult.textExtractable,
         layout: parseResult.layout,
         parseMethod: parseResult.parseMethod,
