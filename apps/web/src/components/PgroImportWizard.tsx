@@ -60,14 +60,18 @@ const RISK_CATEGORIES: { value: OccupationalRiskCategory; label: string }[] = [
   { value: 'OUTROS', label: 'Outros' },
 ];
 
-function qualityBadge(item: {
-  confidence?: 'high' | 'low';
-  source?: string;
-  extractionSource?: string;
-  gheName?: string | null;
-}) {
+function qualityBadge(
+  item: {
+    confidence?: 'high' | 'low';
+    source?: string;
+    extractionSource?: string;
+    gheName?: string | null;
+  },
+  options?: { showGheName?: boolean },
+) {
   const source = item.source ?? item.extractionSource;
   const confidence = item.confidence ?? 'high';
+  const showGheName = options?.showGheName !== false;
   return (
     <span className="epi-need-picker">
       {source === 'GHE' ? (
@@ -78,7 +82,7 @@ function qualityBadge(item: {
       {confidence === 'low' ? (
         <span className="status-pill status-pill--warn">Baixa confianca</span>
       ) : null}
-      {item.gheName ? (
+      {showGheName && item.gheName ? (
         <span className="table-sub">{item.gheName}</span>
       ) : null}
     </span>
@@ -871,9 +875,11 @@ export function PgroImportWizard({
       {step === 'setores' ? (
         <ReviewList
           title="Setores encontrados"
+          lead="Lista de setores unicos do PGR — varios GHEs podem compartilhar o mesmo setor (por isso os numeros de GHE nao aparecem em sequencia aqui). As funcoes de cada GHE ficam no proximo passo."
           empty="Nenhum setor extraido. Inclua abaixo o que o scan nao pegou."
           items={highSectors}
           lowItems={lowSectors}
+          showGheName={false}
           onToggle={(tempId) =>
             setSectors((prev) =>
               prev.map((item) =>
@@ -1386,20 +1392,24 @@ export function PgroImportWizard({
 
 function ReviewList({
   title,
+  lead,
   empty,
   items,
   lowItems = [],
   footer,
+  showGheName = true,
   onToggle,
   onRename,
   onPrev,
   onNext,
 }: {
   title: string;
+  lead?: string;
   empty: string;
   items: PgroExtractedSector[];
   lowItems?: PgroExtractedSector[];
   footer?: ReactNode;
+  showGheName?: boolean;
   onToggle: (tempId: string) => void;
   onRename: (tempId: string, name: string) => void;
   onPrev: () => void;
@@ -1420,7 +1430,7 @@ function ReviewList({
             value={item.name}
             onChange={(e) => onRename(item.tempId, e.target.value)}
           />
-          {qualityBadge(item)}
+          {qualityBadge(item, { showGheName })}
         </td>
         <td>
           <span className="table-sub">{item.rawText}</span>
@@ -1432,6 +1442,7 @@ function ReviewList({
   return (
     <section className="surface">
       <h2 className="page-title page-title--sm">{title}</h2>
+      {lead ? <p className="page-lead">{lead}</p> : null}
       {items.length === 0 && lowItems.length === 0 ? (
         <p className="page-lead">{empty}</p>
       ) : (
