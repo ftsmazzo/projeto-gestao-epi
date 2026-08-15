@@ -973,7 +973,7 @@ model PgroImportRun {
   warnings           Json?
   /// Metadata de extracao: layout, parseMethod, llmUsed, etc.
   parseMeta          Json?
-  /// Texto extraido do PDF/DOCX (para remineracao reversa na planilha).
+  /// Texto extraido do PDF/DOCX table-aware (tabs = colunas) para remineracao reversa.
   sourceText         String?
   confirmSummary     Json?
   errorMessage       String?

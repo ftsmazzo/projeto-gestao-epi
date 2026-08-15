@@ -1,3 +1,8 @@
+import {
+  countCharacterizationHeaders,
+  gheTableBlocksToExtracted,
+  parseGheTableBlocks,
+} from './pgro-ghe-tables';
 import { createHash, randomUUID } from 'crypto';
 import { OccupationalRiskCategory } from '@prisma/client';
 import { DEFAULT_EPI_NEED_SEEDS } from '../epi-needs/epi-need-suggest';
@@ -77,6 +82,17 @@ export type PgroExtractedEpiNeed = {
   gheName: string | null;
 };
 
+export type PgroCoverageStats = {
+  gheHeaderCount: number;
+  ghesWithFunctions: number;
+  functionsWithSector: number;
+  functionCount: number;
+  sectorCount: number;
+  riskRowCount: number;
+  epiItemCount: number;
+  coverageOk: boolean;
+};
+
 export type PgroParseResult = {
   company: PgroCompanyData;
   sectors: PgroExtractedSector[];
@@ -90,6 +106,8 @@ export type PgroParseResult = {
   layout: PgroLayoutKind;
   parseMethod: PgroParseMethod;
   structureWeak: boolean;
+  /** Cobertura do motor tabular de GHE (quando aplicavel). */
+  coverage?: PgroCoverageStats | null;
 };
 
 export type PgroLayoutKind = 'GHE_APRHO' | 'CARGO_TABLE' | 'UNKNOWN';
@@ -1659,6 +1677,91 @@ export function parsePgroText(
     warnings.push('Razao social nao encontrada com confianca.');
   }
 
+  // Motor tabular (DOCX/Word): Caracterizacao + APRHO por linha de tabela.
+  const headerCount = countCharacterizationHeaders(text);
+  const tableBlocks = parseGheTableBlocks(text);
+  const tabular = gheTableBlocksToExtracted(tableBlocks);
+  const tabularStrong =
+    headerCount > 0 &&
+    tabular.stats.ghesWithFunctions >=
+      Math.max(1, Math.ceil(headerCount * 0.85));
+
+  if (tabularStrong) {
+    warnings.push(
+      `Motor tabular: ${tabular.stats.ghesWithFunctions}/${tabular.stats.gheHeaderCount} GHE(s) com funcao; ${tabular.stats.functionCount} funcao(oes), ${tabular.stats.sectorCount} setor(es), ${tabular.stats.riskRowCount} linha(s) de risco, ${tabular.stats.epiItemCount} EPI(s).`,
+    );
+    if (!tabular.stats.coverageOk) {
+      warnings.push(
+        'Cobertura tabular incompleta — revise setores/funcoes antes de confirmar.',
+      );
+    }
+
+    let sectors = uniqueByName(
+      applyLearnedNameAliases(tabular.sectors, extra?.sectors ?? []),
+    );
+    let functions = uniqueBySectorAndFunction(
+      applyLearnedNameAliases(
+        tabular.functions,
+        extra?.jobFunctions ?? [],
+      ) as PgroExtractedFunction[],
+    );
+    if (extra?.sectors?.length) {
+      functions = functions.map((fn) => {
+        if (!fn.sectorName) return fn;
+        const hit = extra.sectors!.find(
+          (a) =>
+            normalizeTextKey(a.raw) === normalizeTextKey(fn.sectorName!) ||
+            normalizeTextKey(a.canonical) === normalizeTextKey(fn.sectorName!),
+        );
+        return hit ? { ...fn, sectorName: hit.canonical } : fn;
+      });
+    }
+
+    let risks = tabular.risks;
+    let epiNeeds = tabular.epiNeeds;
+    if (extra?.risks?.length) {
+      risks = applyLearnedNameAliases(risks, extra.risks) as PgroExtractedRisk[];
+    }
+    if (extra?.epiNeeds?.length) {
+      epiNeeds = epiNeeds.map((item) => {
+        const key = normalizeTextKey(item.suggestedName);
+        const hit = extra.epiNeeds!.find(
+          (a) =>
+            normalizeTextKey(a.raw) === key ||
+            normalizeTextKey(a.canonical) === key,
+        );
+        return hit
+          ? { ...item, suggestedName: hit.canonical, extractedText: hit.canonical }
+          : item;
+      });
+    }
+
+    const result: PgroParseResult = {
+      company,
+      sectors,
+      functions,
+      risks,
+      epiNeeds,
+      warnings,
+      ignoredCandidates: ignoredCandidates.slice(0, 40),
+      textExtractable: true,
+      textLength: compact.length,
+      layout: 'GHE_APRHO',
+      parseMethod: 'HEURISTIC',
+      structureWeak: false,
+      coverage: tabular.stats,
+    };
+    result.structureWeak =
+      isPgroStructureWeak(result) || !tabular.stats.coverageOk;
+    return result;
+  }
+
+  if (headerCount > 0 && !tabularStrong) {
+    warnings.push(
+      `Motor tabular incompleto (${tabular.stats.ghesWithFunctions}/${headerCount} GHE). Usando heuristic legado como fallback.`,
+    );
+  }
+
   const gheBlocks = extractGheBlocks(text);
   if (gheBlocks.length === 0) {
     warnings.push(
@@ -1844,6 +1947,7 @@ function gheBlockMatchesJob(
 /**
  * Validacao reversa: a partir de setor/funcao da planilha, reabre o texto do PGR
  * e remonta riscos + necessidades dos GHEs que batem com esses nomes.
+ * Prefere o motor tabular (Caracterizacao + APRHO); fallback no heuristic legado.
  */
 export function reminePgroCoverageForJobs(
   rawText: string,
@@ -1852,6 +1956,139 @@ export function reminePgroCoverageForJobs(
 ): ReminedJobCoverage[] {
   const text = rawText.replace(/\r/g, '\n');
   if (text.replace(/\s/g, '').length < 80) return [];
+
+  const tableBlocks = parseGheTableBlocks(text);
+  const tabularReady =
+    tableBlocks.filter((b) => b.pairs.length > 0).length >=
+    Math.max(1, Math.ceil(countCharacterizationHeaders(text) * 0.5));
+
+  if (tabularReady) {
+    const out: ReminedJobCoverage[] = [];
+    for (const job of jobs) {
+      const sectorName = job.sectorName.trim();
+      const functionName = job.functionName.trim();
+      if (sectorName.length < 2 || functionName.length < 2) continue;
+
+      const sectorKey = normalizeTextKey(sectorName);
+      const functionKey = normalizeTextKey(functionName);
+      const relevant = tableBlocks.filter((block) =>
+        block.pairs.some((pair) => {
+          const pairFn = normalizeTextKey(pair.functionName);
+          const pairSector = normalizeTextKey(pair.sectorName);
+          if (pairFn !== functionKey) return false;
+          return (
+            !sectorKey ||
+            pairSector === sectorKey ||
+            pairSector.includes(sectorKey) ||
+            sectorKey.includes(pairSector)
+          );
+        }),
+      );
+
+      if (relevant.length === 0) {
+        out.push({
+          sectorName,
+          functionName,
+          risks: [],
+          epiNeeds: [],
+          matchedGheNames: [],
+        });
+        continue;
+      }
+
+      const riskMap = new Map<string, PgroExtractedRisk>();
+      const epiMap = new Map<string, PgroExtractedEpiNeed>();
+
+      for (const block of relevant) {
+        for (const row of block.risks) {
+          const key = normalizeTextKey(row.agent);
+          const existing = riskMap.get(key);
+          if (!existing) {
+            riskMap.set(key, {
+              tempId: randomUUID(),
+              name: row.agent,
+              category: row.category,
+              exposure: row.exposure,
+              source: row.source,
+              possibleDamage: row.possibleDamage,
+              riskLevel: row.riskLevel,
+              functionNames: [functionName],
+              rawText: row.agent,
+              included: true,
+              confidence: 'high',
+              extractionSource: 'GHE',
+              gheName: block.gheName,
+            });
+          } else if (!existing.functionNames.includes(functionName)) {
+            existing.functionNames.push(functionName);
+          }
+
+          for (const epi of row.epiTexts) {
+            const epiKey = normalizeTextKey(epi);
+            const prev = epiMap.get(epiKey);
+            if (!prev) {
+              epiMap.set(epiKey, {
+                tempId: randomUUID(),
+                extractedText: epi,
+                suggestedName: epi,
+                matchedEpiNeedId: null,
+                matchedEpiNeedName: null,
+                createNew: true,
+                functionNames: [functionName],
+                riskNames: [row.agent],
+                included: true,
+                confidence: 'high',
+                extractionSource: 'GHE',
+                gheName: block.gheName,
+              });
+            } else {
+              if (!prev.functionNames.includes(functionName)) {
+                prev.functionNames.push(functionName);
+              }
+              if (!prev.riskNames.includes(row.agent)) {
+                prev.riskNames.push(row.agent);
+              }
+            }
+          }
+        }
+      }
+
+      let risks = [...riskMap.values()];
+      let epiNeeds = [...epiMap.values()];
+      if (options?.extraAliases?.risks?.length) {
+        risks = applyLearnedNameAliases(
+          risks,
+          options.extraAliases.risks,
+        ) as PgroExtractedRisk[];
+      }
+      if (options?.extraAliases?.epiNeeds?.length) {
+        epiNeeds = epiNeeds.map((item) => {
+          const key = normalizeTextKey(item.suggestedName);
+          const hit = options.extraAliases!.epiNeeds!.find(
+            (a) =>
+              normalizeTextKey(a.raw) === key ||
+              normalizeTextKey(a.canonical) === key,
+          );
+          return hit
+            ? {
+                ...item,
+                suggestedName: hit.canonical,
+                extractedText: hit.canonical,
+              }
+            : item;
+        });
+      }
+
+      out.push({
+        sectorName,
+        functionName,
+        risks,
+        epiNeeds,
+        matchedGheNames: [...new Set(relevant.map((b) => b.gheName))],
+      });
+    }
+    return out;
+  }
 
   const blocks = extractGheBlocks(text);
   const extra = options?.extraAliases;

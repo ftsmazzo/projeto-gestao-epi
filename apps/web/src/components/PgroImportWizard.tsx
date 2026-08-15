@@ -144,6 +144,8 @@ export function PgroImportWizard({
   const [catalogNeeds, setCatalogNeeds] = useState<EpiNeed[]>([]);
   const [catalogRisks, setCatalogRisks] = useState<OccupationalRisk[]>([]);
   const [summary, setSummary] = useState<PgroImportConfirmSummary | null>(null);
+  const [forceConfirmWeakCoverage, setForceConfirmWeakCoverage] =
+    useState(false);
 
   useEffect(() => {
     if (!lockedClientId) return;
@@ -177,6 +179,15 @@ export function PgroImportWizard({
   const ignoredWarnings = useMemo(
     () => warnings.filter((w) => w.startsWith('Ignorado:')),
     [warnings],
+  );
+
+  const coverageIncomplete = useMemo(
+    () =>
+      parseMeta?.coverageOk === false ||
+      (parseMeta?.gheHeaderCount != null &&
+        parseMeta?.ghesWithFunctions != null &&
+        parseMeta.ghesWithFunctions < parseMeta.gheHeaderCount),
+    [parseMeta],
   );
 
   const highSectors = useMemo(
@@ -273,6 +284,7 @@ export function PgroImportWizard({
             }
           : null),
     );
+    setForceConfirmWeakCoverage(false);
     setSectors(
       (run.sectors ?? []).map((item) => ({
         ...item,
@@ -348,6 +360,17 @@ export function PgroImportWizard({
         return;
       }
     }
+    const coverageIncomplete =
+      parseMeta?.coverageOk === false ||
+      (parseMeta?.gheHeaderCount != null &&
+        parseMeta?.ghesWithFunctions != null &&
+        parseMeta.ghesWithFunctions < parseMeta.gheHeaderCount);
+    if (coverageIncomplete && !forceConfirmWeakCoverage) {
+      setError(
+        'Cobertura de GHE incompleta. Revise setores/funcoes ou marque o override explicito no passo final.',
+      );
+      return;
+    }
     setConfirming(true);
     setError(null);
     try {
@@ -355,6 +378,9 @@ export function PgroImportWizard({
         servedClientId,
         archiveMissing: isUpdateMode,
         skipCompanyUpdate: isUpdateMode,
+        forceConfirmWeakCoverage: coverageIncomplete
+          ? forceConfirmWeakCoverage
+          : undefined,
         company: {
           legalName: company.legalName,
           tradeName: company.tradeName,
@@ -497,22 +523,32 @@ export function PgroImportWizard({
       step !== 'upload' &&
       (parseMeta.layout === 'UNKNOWN' ||
         parseMeta.parseMethod === 'HEURISTIC_PLUS_LLM' ||
-        parseMeta.structureWeak) ? (
+        parseMeta.structureWeak ||
+        coverageIncomplete ||
+        parseMeta.coverageOk === true) ? (
         <section
           className="surface"
-          aria-label="Layout novo"
-          style={{
-            borderColor: 'var(--color-warning, #d97706)',
-            background: 'var(--color-warning-bg, #fffbeb)',
-          }}
+          aria-label="Layout / extracao"
+          style={
+            coverageIncomplete || parseMeta.structureWeak
+              ? {
+                  borderColor: 'var(--color-warning, #d97706)',
+                  background: 'var(--color-warning-bg, #fffbeb)',
+                }
+              : undefined
+          }
         >
-          <p className="page-kicker">Layout / extracao</p>
+          <p className="page-kicker">Cobertura GHE / extracao</p>
           <p style={{ margin: 0 }}>
-            {parseMeta.parseMethod === 'HEURISTIC_PLUS_LLM'
-              ? 'Este PGR usou IA para complementar a leitura (layout pouco conhecido). Revise setores, funcoes, riscos e EPIs com cuidado antes de confirmar — suas correcoes ajudam o proximo documento da consultoria.'
-              : parseMeta.layout === 'UNKNOWN'
-                ? 'Layout do PGR nao reconhecido automaticamente. Revise a extracao com cuidado. Ao confirmar, o sistema aprende aliases para os proximos documentos.'
-                : 'Estrutura fraca detectada no documento. Revise setores e funcoes antes de confirmar.'}
+            {coverageIncomplete
+              ? `Cobertura incompleta: ${parseMeta.ghesWithFunctions ?? 0}/${parseMeta.gheHeaderCount ?? 0} GHE(s) com setor+funcao. Nao confirme cego — revise a lista ou use o override no passo final.`
+              : parseMeta.parseMethod === 'HEURISTIC_PLUS_LLM'
+                ? 'Este PGR usou IA para complementar a leitura (layout pouco conhecido). Revise setores, funcoes, riscos e EPIs com cuidado antes de confirmar — suas correcoes ajudam o proximo documento da consultoria.'
+                : parseMeta.layout === 'UNKNOWN'
+                  ? 'Layout do PGR nao reconhecido automaticamente. Revise a extracao com cuidado. Ao confirmar, o sistema aprende aliases para os proximos documentos.'
+                  : parseMeta.structureWeak
+                    ? 'Estrutura fraca detectada no documento. Revise setores e funcoes antes de confirmar.'
+                    : `Motor tabular: ${parseMeta.ghesWithFunctions ?? parseMeta.gheHeaderCount ?? '—'}/${parseMeta.gheHeaderCount ?? '—'} GHE(s) com funcao.`}
           </p>
           <p
             className="muted"
@@ -520,17 +556,26 @@ export function PgroImportWizard({
           >
             Layout: {parseMeta.layout ?? '—'} · Metodo:{' '}
             {parseMeta.parseMethod ?? '—'}
+            {parseMeta.motor ? ` · Motor: ${parseMeta.motor}` : ''}
             {parseMeta.sourceFormat
               ? ` · Origem: ${parseMeta.sourceFormat}`
               : ''}
             {parseMeta.gheHeaderCount != null
-              ? ` · GHE: ${parseMeta.gheHeaderCount}`
+              ? ` · GHE: ${parseMeta.ghesWithFunctions ?? '—'}/${parseMeta.gheHeaderCount}`
               : ''}
             {parseMeta.functionCount != null
               ? ` · Funcoes: ${parseMeta.functionCount}`
               : ''}
-            {parseMeta.riskCount != null
-              ? ` · Riscos: ${parseMeta.riskCount}`
+            {parseMeta.functionsWithSector != null
+              ? ` · Com setor: ${parseMeta.functionsWithSector}`
+              : ''}
+            {parseMeta.riskLinks != null
+              ? ` · Riscos: ${parseMeta.riskLinks}`
+              : parseMeta.riskCount != null
+                ? ` · Riscos: ${parseMeta.riskCount}`
+                : ''}
+            {parseMeta.epiLinks != null
+              ? ` · EPIs: ${parseMeta.epiLinks}`
               : ''}
           </p>
         </section>
@@ -1290,6 +1335,29 @@ export function PgroImportWizard({
               Ultima confirmacao: cliente {summary.servedClientId}.
             </p>
           ) : null}
+          {coverageIncomplete ? (
+            <label
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                alignItems: 'flex-start',
+                margin: '0.75rem 0',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={forceConfirmWeakCoverage}
+                onChange={(e) =>
+                  setForceConfirmWeakCoverage(e.target.checked)
+                }
+              />
+              <span>
+                Entendo que a cobertura de GHE esta incompleta (
+                {parseMeta?.ghesWithFunctions ?? 0}/
+                {parseMeta?.gheHeaderCount ?? 0}) e quero confirmar mesmo assim.
+              </span>
+            </label>
+          ) : null}
           <div className="btn-row">
             <button type="button" className="btn btn-secondary" onClick={goPrev}>
               Voltar
@@ -1297,7 +1365,10 @@ export function PgroImportWizard({
             <button
               type="button"
               className="btn btn-primary"
-              disabled={confirming}
+              disabled={
+                confirming ||
+                (coverageIncomplete && !forceConfirmWeakCoverage)
+              }
               onClick={() => void onConfirm()}
             >
               {confirming

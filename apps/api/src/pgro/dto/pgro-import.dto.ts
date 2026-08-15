@@ -212,4 +212,9 @@ export class ConfirmPgroImportDto {
   @ValidateNested({ each: true })
   @Type(() => ConfirmPgroEpiNeedDto)
   epiNeeds!: ConfirmPgroEpiNeedDto[];
+
+  /** Override explicito quando cobertura tabular de GHE esta incompleta. */
+  @IsOptional()
+  @IsBoolean()
+  forceConfirmWeakCoverage?: boolean;
 }

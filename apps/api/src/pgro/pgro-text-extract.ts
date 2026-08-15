@@ -6,6 +6,8 @@ export type PgroDocumentKind = 'PDF' | 'DOCX';
 export type PgroTextExtractResult = {
   kind: PgroDocumentKind;
   text: string;
+  /** HTML bruto do Mammoth (DOCX) — remine tabular. */
+  sourceHtml?: string | null;
 };
 
 function fileNameOf(file: Express.Multer.File): string {
@@ -60,21 +62,59 @@ function decodeHtmlEntities(value: string): string {
     );
 }
 
-/** HTML do Word → texto com quebras (essencial para achar GHE/APRHO). */
-export function htmlToStructuredText(html: string): string {
-  let value = html
-    .replace(/\r/g, '\n')
-    .replace(/<\/(p|h[1-6]|li|div|tr|table|section|article)>/gi, '\n')
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/t[dh]>/gi, '\t')
+/** Texto de uma celula: remove tags, unifica quebras internas em espaco. */
+export function cellHtmlToText(cellHtml: string): string {
+  let value = cellHtml
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/p>/gi, ' ')
     .replace(/<[^>]+>/g, ' ');
   value = decodeHtmlEntities(value);
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Converte HTML do Word em documento linear table-aware:
+ * cada <tr> vira UMA linha com celulas separadas por TAB.
+ * Nunca colapsa tabs em espaco.
+ */
+export function htmlToTableAwareText(html: string): string {
+  let value = html.replace(/\r/g, '\n');
+
+  value = value.replace(/<table\b[^>]*>[\s\S]*?<\/table>/gi, (tableHtml) => {
+    const rows: string[] = [];
+    const trRe = /<tr\b[^>]*>[\s\S]*?<\/tr>/gi;
+    let trMatch: RegExpExecArray | null;
+    while ((trMatch = trRe.exec(tableHtml)) != null) {
+      const cells: string[] = [];
+      const tdRe = /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi;
+      let tdMatch: RegExpExecArray | null;
+      while ((tdMatch = tdRe.exec(trMatch[0])) != null) {
+        cells.push(cellHtmlToText(tdMatch[1]));
+      }
+      if (cells.some((c) => c.length > 0)) {
+        rows.push(cells.join('\t'));
+      }
+    }
+    return `\n${rows.join('\n')}\n`;
+  });
+
+  value = value
+    .replace(/<\/(p|h[1-6]|li|div|section|article)>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ');
+  value = decodeHtmlEntities(value);
+
   return value
-    .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n[ \t]+/g, '\n')
-    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ ]+\n/g, '\n')
+    .replace(/\n[ ]+/g, '\n')
+    .replace(/[ ]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/** @deprecated Preferir htmlToTableAwareText — mantido para testes legados. */
+export function htmlToStructuredText(html: string): string {
+  return htmlToTableAwareText(html).replace(/\t/g, ' ').replace(/[ ]{2,}/g, ' ');
 }
 
 function countGheMarkers(text: string): number {
@@ -86,15 +126,23 @@ function countGheMarkers(text: string): number {
 }
 
 /**
- * Extrai texto do .docx priorizando estrutura (tabelas/paragrafos).
- * rawText sozinho cola celulas e derruba o parser de GHE.
+ * Extrai texto do .docx priorizando tabelas (tr → linha com tabs).
  */
 export async function extractDocxText(buffer: Buffer): Promise<string> {
+  const extracted = await extractDocxDocument(buffer);
+  return extracted.text;
+}
+
+export async function extractDocxDocument(buffer: Buffer): Promise<{
+  text: string;
+  html: string;
+}> {
   const [htmlResult, rawResult] = await Promise.all([
     mammoth.convertToHtml({ buffer }),
     mammoth.extractRawText({ buffer }),
   ]);
-  const fromHtml = htmlToStructuredText(htmlResult.value ?? '');
+  const html = htmlResult.value ?? '';
+  const fromHtml = htmlToTableAwareText(html);
   const fromRaw = (rawResult.value ?? '').trim();
 
   if (!fromHtml && !fromRaw) {
@@ -102,16 +150,20 @@ export async function extractDocxText(buffer: Buffer): Promise<string> {
       'Nao foi possivel extrair texto do Word (.docx). Verifique se o arquivo nao esta vazio ou protegido.',
     );
   }
-  if (!fromHtml) return fromRaw;
-  if (!fromRaw) return fromHtml;
 
-  const scoreHtml = countGheMarkers(fromHtml);
-  const scoreRaw = countGheMarkers(fromRaw);
-  if (scoreHtml !== scoreRaw) {
-    return scoreHtml > scoreRaw ? fromHtml : fromRaw;
+  let text = fromHtml || fromRaw;
+  if (fromHtml && fromRaw) {
+    const scoreHtml = countGheMarkers(fromHtml);
+    const scoreRaw = countGheMarkers(fromRaw);
+    // Prefere HTML table-aware mesmo empatado — raw cola celulas.
+    if (scoreRaw > scoreHtml * 1.2 && fromRaw.length > fromHtml.length * 1.5) {
+      text = fromRaw;
+    } else {
+      text = fromHtml;
+    }
   }
-  // Empate: HTML costuma preservar melhor as quebras de tabela.
-  return fromHtml.length >= fromRaw.length * 0.8 ? fromHtml : fromRaw;
+
+  return { text, html };
 }
 
 export async function extractPgroDocumentText(
@@ -120,10 +172,10 @@ export async function extractPgroDocumentText(
   const kind = detectPgroDocumentKind(file);
 
   if (kind === 'DOCX') {
-    const text = await extractDocxText(file.buffer);
-    return { kind, text };
+    const { text, html } = await extractDocxDocument(file.buffer);
+    return { kind, text, sourceHtml: html };
   }
 
   const parsed = await pdfParse(file.buffer);
-  return { kind: 'PDF', text: parsed.text ?? '' };
+  return { kind: 'PDF', text: parsed.text ?? '', sourceHtml: null };
 }

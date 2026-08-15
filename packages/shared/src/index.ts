@@ -1336,10 +1336,16 @@ export interface PgroImportRun {
     /** PDF ou DOCX — origem do texto extraido. */
     sourceFormat?: 'PDF' | 'DOCX' | string;
     gheHeaderCount?: number;
+    ghesWithFunctions?: number | null;
+    functionsWithSector?: number | null;
+    coverageOk?: boolean | null;
+    riskLinks?: number;
+    epiLinks?: number;
     functionCount?: number;
     sectorCount?: number;
     riskCount?: number;
     epiNeedCount?: number;
+    motor?: 'TABULAR' | 'TABULAR_PARTIAL' | 'LEGACY' | string;
   } | null;
   layout?: string | null;
   parseMethod?: string | null;
@@ -1395,6 +1401,8 @@ export interface ConfirmPgroImportPayload {
   archiveMissing?: boolean;
   /** Nao sobrescreve razao social/CNPJ do cliente ja cadastrado. */
   skipCompanyUpdate?: boolean;
+  /** Override quando cobertura tabular de GHE esta incompleta. */
+  forceConfirmWeakCoverage?: boolean;
   company: {
     legalName?: string | null;
     tradeName?: string | null;

@@ -209,9 +209,11 @@ export class PgroService {
       ...parseResult.ignoredCandidates.map((item) => `Ignorado: ${item}`),
     ];
 
-    const gheHeaderCount = (
-      documentText.match(/Caracteriza[cç][aã]o\s+do\s+GHE\s*\d+/gi) ?? []
-    ).length;
+    const gheHeaderCount =
+      parseResult.coverage?.gheHeaderCount ??
+      (
+        documentText.match(/Caracteriza[cç][aã]o\s+do\s+GHE\s*\d+/gi) ?? []
+      ).length;
     const parseMeta = {
       layout: parseResult.layout,
       parseMethod: parseResult.parseMethod,
@@ -219,10 +221,20 @@ export class PgroService {
       textLength: parseResult.textLength,
       sourceFormat: documentKind,
       gheHeaderCount,
+      ghesWithFunctions: parseResult.coverage?.ghesWithFunctions ?? null,
+      functionsWithSector: parseResult.coverage?.functionsWithSector ?? null,
+      coverageOk: parseResult.coverage?.coverageOk ?? null,
+      riskLinks: parseResult.coverage?.riskRowCount ?? parseResult.risks.length,
+      epiLinks: parseResult.coverage?.epiItemCount ?? parseResult.epiNeeds.length,
       functionCount: parseResult.functions.length,
       sectorCount: parseResult.sectors.length,
       riskCount: parseResult.risks.length,
       epiNeedCount: parseResult.epiNeeds.length,
+      motor: parseResult.coverage
+        ? parseResult.coverage.coverageOk
+          ? 'TABULAR'
+          : 'TABULAR_PARTIAL'
+        : 'LEGACY',
     };
 
     const run = await this.prisma.pgroImportRun.create({
@@ -311,6 +323,27 @@ export class PgroService {
     if (run.status !== PgroImportStatus.PARSED) {
       throw new BadRequestException(
         'Somente importacoes em status PARSED podem ser confirmadas.',
+      );
+    }
+
+    const runMeta =
+      run.parseMeta &&
+      typeof run.parseMeta === 'object' &&
+      !Array.isArray(run.parseMeta)
+        ? (run.parseMeta as {
+            coverageOk?: boolean | null;
+            gheHeaderCount?: number | null;
+            ghesWithFunctions?: number | null;
+          })
+        : null;
+    if (
+      runMeta?.coverageOk === false &&
+      !dto.forceConfirmWeakCoverage
+    ) {
+      const covered = runMeta.ghesWithFunctions ?? 0;
+      const total = runMeta.gheHeaderCount ?? 0;
+      throw new BadRequestException(
+        `Cobertura de GHE incompleta (${covered}/${total}). Revise setores/funcoes no preview ou confirme com override explicito (forceConfirmWeakCoverage).`,
       );
     }
 
