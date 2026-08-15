@@ -16,6 +16,7 @@
     "test:replacement": "npx --yes tsx src/portal/replacement-schedule.selftest.ts",
     "test:pgro-golden": "npx --yes tsx src/pgro/pgro-ghe-tables.golden.selftest.ts",
     "test:pgro-parser": "npx --yes tsx src/pgro/pgro-parser.selftest.ts",
+    "test:worker-match": "npx --yes tsx src/workers/worker-structure-match.selftest.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",

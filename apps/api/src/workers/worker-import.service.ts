@@ -25,6 +25,10 @@ import {
   parseCsvText,
   parseWorkerStatus,
 } from './worker-import.utils';
+import {
+  findBestJobMatch,
+  findBestSectorMatch,
+} from './worker-structure-match';
 
 type StructureContext = {
   units: Array<{ id: string; name: string; match: string }>;
@@ -218,39 +222,49 @@ export class WorkerImportService {
       }
 
       if (sectorNameRaw) {
-        const sectorMatches = structure.sectors.filter(
-          (item) => item.match === normalizeMatchName(sectorNameRaw),
-        );
-        let sector = sectorMatches.find((item) => item.isActive) ?? sectorMatches[0];
-        if (unitId && sectorMatches.length > 1) {
-          const byUnit = sectorMatches.find(
-            (item) => item.operationalUnitId === unitId && item.isActive,
-          );
-          if (byUnit) sector = byUnit;
-        }
-        if (!sector) {
+        const activeSectors = structure.sectors.filter((item) => item.isActive);
+        const pool =
+          unitId && activeSectors.some((s) => s.operationalUnitId === unitId)
+            ? activeSectors.filter(
+                (s) =>
+                  s.operationalUnitId === unitId ||
+                  s.operationalUnitId == null,
+              )
+            : activeSectors;
+        const sectorHit =
+          findBestSectorMatch(sectorNameRaw, pool, (s) => s.name) ??
+          findBestSectorMatch(sectorNameRaw, activeSectors, (s) => s.name);
+        if (!sectorHit) {
           errors.push(`Setor "${sectorNameRaw}" nao encontrado neste cliente.`);
         } else {
-          sectorId = sector.id;
-          resolved.sectorName = sector.name;
+          sectorId = sectorHit.item.id;
+          resolved.sectorName = sectorHit.item.name;
+          if (sectorHit.score < 98) {
+            warnings.push(
+              `Setor da planilha "${sectorNameRaw}" associado a "${sectorHit.item.name}" (PGR).`,
+            );
+          }
         }
       }
 
       if (jobNameRaw && sectorId) {
-        const jobMatches = structure.jobs.filter(
-          (item) =>
-            item.sectorId === sectorId &&
-            item.match === normalizeMatchName(jobNameRaw),
+        const jobsInSector = structure.jobs.filter(
+          (item) => item.sectorId === sectorId && item.isActive,
         );
-        const job = jobMatches.find((item) => item.isActive) ?? jobMatches[0];
-        if (!job) {
+        const jobHit = findBestJobMatch(jobNameRaw, jobsInSector, (j) => j.name);
+        if (!jobHit) {
           errors.push(
-            `Funcao "${jobNameRaw}" nao encontrada no setor "${sectorNameRaw}".`,
+            `Funcao "${jobNameRaw}" nao encontrada no setor "${resolved.sectorName ?? sectorNameRaw}".`,
           );
         } else {
-          jobId = job.id;
-          resolved.jobFunctionName = job.name;
-          resolved.requiredEpiCount = job.requiredEpiCount;
+          jobId = jobHit.item.id;
+          resolved.jobFunctionName = jobHit.item.name;
+          resolved.requiredEpiCount = jobHit.item.requiredEpiCount;
+          if (jobHit.score < 98) {
+            warnings.push(
+              `Funcao da planilha "${jobNameRaw}" associada a "${jobHit.item.name}" (PGR).`,
+            );
+          }
         }
       } else if (jobNameRaw && !sectorId) {
         // setor ausente ja gerou erro
@@ -411,7 +425,8 @@ export class WorkerImportService {
       where: { organizationId, servedClientId, isActive: true },
       select: { id: true, name: true },
     });
-    for (const sector of existingSectors) {
+    const sectorCatalog = [...existingSectors];
+    for (const sector of sectorCatalog) {
       sectorIdByMatch.set(normalizeMatchName(sector.name), sector.id);
     }
 
@@ -433,6 +448,18 @@ export class WorkerImportService {
         result.warnings.push(`Setor "${name}" ja existia — reutilizado.`);
         continue;
       }
+      const soft = findBestSectorMatch(
+        name,
+        sectorCatalog,
+        (s) => s.name,
+      );
+      if (soft && soft.score >= 88) {
+        sectorIdByMatch.set(key, soft.item.id);
+        result.warnings.push(
+          `Setor da planilha "${name}" associado ao existente "${soft.item.name}" — nao duplicado.`,
+        );
+        continue;
+      }
       const created = await this.prisma.clientSector.create({
         data: {
           organizationId,
@@ -441,6 +468,7 @@ export class WorkerImportService {
         },
       });
       sectorIdByMatch.set(key, created.id);
+      sectorCatalog.push({ id: created.id, name });
       result.sectorsCreated += 1;
       await this.audit.log({
         action: 'client_sector.created',
@@ -465,6 +493,20 @@ export class WorkerImportService {
       const sectorKey = normalizeMatchName(sectorName);
       let sectorId = sectorIdByMatch.get(sectorKey);
       if (!sectorId) {
+        const softSector = findBestSectorMatch(
+          sectorName,
+          sectorCatalog,
+          (s) => s.name,
+        );
+        if (softSector && softSector.score >= 88) {
+          sectorId = softSector.item.id;
+          sectorIdByMatch.set(sectorKey, sectorId);
+          result.warnings.push(
+            `Setor "${sectorName}" associado a "${softSector.item.name}".`,
+          );
+        }
+      }
+      if (!sectorId) {
         const created = await this.prisma.clientSector.create({
           data: {
             organizationId,
@@ -475,24 +517,25 @@ export class WorkerImportService {
         sectorId = created.id;
         sectorIdByMatch.set(sectorKey, sectorId);
         result.sectorsCreated += 1;
+        sectorCatalog.push({ id: created.id, name: sectorName });
       }
 
       const jobKey = normalizeMatchName(jobName);
-      const existingInSector = allJobs.find(
-        (j) =>
-          j.sectorId === sectorId && normalizeMatchName(j.name) === jobKey,
-      );
+      const jobsInSector = allJobs.filter((j) => j.sectorId === sectorId);
+      const existingInSector =
+        jobsInSector.find((j) => normalizeMatchName(j.name) === jobKey) ??
+        findBestJobMatch(jobName, jobsInSector, (j) => j.name)?.item;
       if (existingInSector) {
         result.warnings.push(
-          `Funcao "${jobName}" ja existia no setor "${sectorName}" — reutilizada.`,
+          `Funcao "${jobName}" ja existia no setor como "${existingInSector.name}" — reutilizada.`,
         );
         return;
       }
 
-      const siblingsElsewhere = allJobs.filter(
-        (j) =>
-          j.sectorId !== sectorId && normalizeMatchName(j.name) === jobKey,
-      );
+      const siblingsElsewhere = allJobs.filter((j) => {
+        if (j.sectorId === sectorId) return false;
+        return Boolean(findBestJobMatch(jobName, [j], (x) => x.name));
+      });
       if (siblingsElsewhere.length > 0) {
         const places = siblingsElsewhere
           .map((j) => j.sector.name)
@@ -776,35 +819,38 @@ export class WorkerImportService {
       if (!sectorName && !jobName) continue;
 
       let sectorId: string | null = null;
+      let resolvedSectorName: string | null = null;
       if (sectorName) {
-        const sector = structure.sectors.find(
-          (item) =>
-            item.isActive && item.match === normalizeMatchName(sectorName),
+        const sectorHit = findBestSectorMatch(
+          sectorName,
+          structure.sectors.filter((item) => item.isActive),
+          (s) => s.name,
         );
-        if (!sector) {
+        if (!sectorHit) {
           missingSectorSet.add(sectorName);
         } else {
-          sectorId = sector.id;
+          sectorId = sectorHit.item.id;
+          resolvedSectorName = sectorHit.item.name;
         }
       }
 
       if (jobName && sectorName) {
-        const inSector = structure.jobs.some(
-          (job) =>
-            job.isActive &&
-            job.sectorId === sectorId &&
-            job.match === normalizeMatchName(jobName),
+        const jobsInSector = structure.jobs.filter(
+          (job) => job.isActive && job.sectorId === sectorId,
         );
+        const inSector = sectorId
+          ? findBestJobMatch(jobName, jobsInSector, (j) => j.name)
+          : null;
         if (!inSector) {
           const key = `${normalizeMatchName(sectorName)}::${normalizeMatchName(jobName)}`;
           if (!missingJobMap.has(key)) {
             const orphans = structure.jobs
-              .filter(
-                (job) =>
-                  job.isActive &&
-                  job.match === normalizeMatchName(jobName) &&
-                  job.sectorId !== sectorId,
-              )
+              .filter((job) => {
+                if (!job.isActive || job.sectorId === sectorId) return false;
+                return Boolean(
+                  findBestJobMatch(jobName, [job], (j) => j.name),
+                );
+              })
               .map((job) => ({
                 id: job.id,
                 name: job.name,
@@ -812,12 +858,11 @@ export class WorkerImportService {
                 sectorName: job.sectorName,
               }))
               .sort((a, b) => {
-                // Informativo: onde a mesma funcao ja existe (nao e candidato a mover).
                 return a.sectorName.localeCompare(b.sectorName, 'pt-BR');
               });
             missingJobMap.set(key, {
               jobName,
-              sectorName,
+              sectorName: resolvedSectorName ?? sectorName,
               orphanCandidates: orphans,
             });
           }

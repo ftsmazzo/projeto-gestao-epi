@@ -682,10 +682,10 @@ export default function ClienteTrabalhadoresPage() {
                 >
                   <p className="page-kicker">Completar estrutura (PGR + planilha)</p>
                   <p className="page-lead">
-                    A planilha preenche lacunas do PGR: cria setores e funcoes
-                    que faltam (a mesma funcao pode existir em varios setores).
-                    Depois relê o texto guardado do PGR para completar riscos e
-                    EPIs vazios, e une cobertura entre funcoes irmas.
+                    A planilha usa nomes do RH (muitas vezes abreviados). O
+                    sistema tenta casar com setores/funcoes do PGR antes de
+                    criar faltantes. So o que sobrar de verdade entra aqui;
+                    depois relê o PGR e une cobertura entre funcoes irmas.
                   </p>
 
                   {importPreview.structureGaps.missingSectors.length > 0 ? (
