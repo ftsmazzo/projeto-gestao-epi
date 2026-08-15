@@ -186,6 +186,17 @@ export function normalizeTextKey(value: string): string {
     .trim();
 }
 
+function clampExtractedText(
+  value: string | null | undefined,
+  max: number,
+): string | null {
+  if (!value) return null;
+  const cleaned = value.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return null;
+  if (cleaned.length <= max) return cleaned;
+  return `${cleaned.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+}
+
 function isNegatedAliasHit(textKey: string, alias: string): boolean {
   const index = textKey.indexOf(alias);
   if (index < 0) return false;
@@ -1763,8 +1774,8 @@ export function parsePgroText(
         tempId: randomUUID(),
         name: pair.functionName,
         sectorName: pair.sectorName,
-        activityDescription: pair.activity,
-        environmentDescription: pair.environment,
+        activityDescription: clampExtractedText(pair.activity, 2000),
+        environmentDescription: clampExtractedText(pair.environment, 2000),
         gheName: block.gheName,
         rawText: pair.rawText,
         included: true,

@@ -411,8 +411,12 @@ export function PgroImportWizard({
           tempId: f.tempId,
           name: f.name,
           sectorName: f.sectorName,
-          activityDescription: f.activityDescription,
-          environmentDescription: f.environmentDescription,
+          activityDescription: f.activityDescription
+            ? f.activityDescription.slice(0, 2000)
+            : f.activityDescription,
+          environmentDescription: f.environmentDescription
+            ? f.environmentDescription.slice(0, 2000)
+            : f.environmentDescription,
           included: f.included,
         })),
         risks: risks.map((r) => ({

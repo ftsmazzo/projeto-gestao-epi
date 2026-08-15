@@ -83,6 +83,14 @@ function cleanCell(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+function clampText(value: string | null | undefined, max: number): string | null {
+  if (!value) return null;
+  const cleaned = cleanCell(value);
+  if (!cleaned) return null;
+  if (cleaned.length <= max) return cleaned;
+  return `${cleaned.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+}
+
 function isCharacterizationHeader(line: string): RegExpMatchArray | null {
   return line.match(
     /^Caracteriza[cç][aã]o\s+do\s+GHE\s*(\d+)\s*[–\-—:]?\s*(.*)$/i,
@@ -348,8 +356,8 @@ export function gheTableBlocksToExtracted(blocks: ParsedGheTableBlock[]): {
           tempId: randomUUID(),
           name: pair.functionName,
           sectorName: pair.sectorName.toUpperCase(),
-          activityDescription: pair.activity,
-          environmentDescription: pair.environment,
+          activityDescription: clampText(pair.activity, 2000),
+          environmentDescription: clampText(pair.environment, 2000),
           gheName: block.gheName,
           rawText: pair.functionName,
           included: true,
