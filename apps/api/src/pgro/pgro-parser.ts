@@ -3,6 +3,13 @@ import {
   gheTableBlocksToExtracted,
   parseGheTableBlocks,
 } from './pgro-ghe-tables';
+import type {
+  ExtractionSource,
+  PgroExtractedEpiNeed,
+  PgroExtractedFunction,
+  PgroExtractedRisk,
+  PgroExtractedSector,
+} from './pgro-extract-types';
 import { createHash, randomUUID } from 'crypto';
 import { OccupationalRiskCategory } from '@prisma/client';
 import { DEFAULT_EPI_NEED_SEEDS } from '../epi-needs/epi-need-suggest';
@@ -12,8 +19,14 @@ import {
 } from '../client-structure/risk-context';
 import { DEFAULT_OCCUPATIONAL_RISK_SEEDS } from '../client-structure/risk-seeds';
 
-export type ExtractionConfidence = 'high' | 'low';
-export type ExtractionSource = 'GHE' | 'KEYWORD' | 'GLOBAL';
+export type {
+  ExtractionConfidence,
+  ExtractionSource,
+  PgroExtractedEpiNeed,
+  PgroExtractedFunction,
+  PgroExtractedRisk,
+  PgroExtractedSector,
+} from './pgro-extract-types';
 
 export type PgroCompanyData = {
   legalName: string | null;
@@ -26,60 +39,6 @@ export type PgroCompanyData = {
   riskGrade: string | null;
   employeeCount: number | null;
   rawText: string | null;
-};
-
-export type PgroExtractedSector = {
-  tempId: string;
-  name: string;
-  rawText: string;
-  included: boolean;
-  confidence: ExtractionConfidence;
-  source: ExtractionSource;
-  gheName: string | null;
-};
-
-export type PgroExtractedFunction = {
-  tempId: string;
-  name: string;
-  sectorName: string | null;
-  activityDescription: string | null;
-  environmentDescription: string | null;
-  gheName: string | null;
-  rawText: string;
-  included: boolean;
-  confidence: ExtractionConfidence;
-  source: ExtractionSource;
-};
-
-export type PgroExtractedRisk = {
-  tempId: string;
-  name: string;
-  category: OccupationalRiskCategory;
-  exposure: string | null;
-  source: string | null;
-  possibleDamage: string | null;
-  riskLevel: string | null;
-  functionNames: string[];
-  rawText: string;
-  included: boolean;
-  confidence: ExtractionConfidence;
-  extractionSource: ExtractionSource;
-  gheName: string | null;
-};
-
-export type PgroExtractedEpiNeed = {
-  tempId: string;
-  extractedText: string;
-  suggestedName: string;
-  matchedEpiNeedId: string | null;
-  matchedEpiNeedName: string | null;
-  createNew: boolean;
-  functionNames: string[];
-  riskNames: string[];
-  included: boolean;
-  confidence: ExtractionConfidence;
-  extractionSource: ExtractionSource;
-  gheName: string | null;
 };
 
 export type PgroCoverageStats = {
