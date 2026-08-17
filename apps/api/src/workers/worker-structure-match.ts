@@ -76,6 +76,17 @@ export function expandRhAbbreviations(value: string): string {
   return out.replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Chave de irmandade RH↔PGR: "MONTADOR JUNIOR" e "Montador Júnior"
+ * (e "OPERADOR MAQ. PLENO" vs "Operador De Máquina Pleno") caem no mesmo grupo.
+ */
+export function siblingGroupKey(value: string): string {
+  return expandRhAbbreviations(value)
+    .split(/\s+/)
+    .filter((t) => t.length > 1 && !STOP_WORDS.has(t))
+    .join('');
+}
+
 function tokensOf(value: string): string[] {
   return expandRhAbbreviations(value)
     .split(/\s+/)

@@ -5,6 +5,7 @@ import {
   findBestJobMatch,
   findBestSectorMatch,
   scoreStructureNameMatch,
+  siblingGroupKey,
 } from './worker-structure-match';
 
 assert.equal(compactMatchKey('A C M'), 'acm');
@@ -154,6 +155,23 @@ assert.equal(
   findBestJobMatch('PINTOR PLEN', [{ name: 'Pintor Júnior' }], (j) => j.name)?.item
     .name,
   'Pintor Júnior',
+);
+
+assert.equal(
+  siblingGroupKey('MONTADOR JUNIOR'),
+  siblingGroupKey('Montador Júnior'),
+);
+assert.equal(
+  siblingGroupKey('OPERADOR MAQ. PLENO'),
+  siblingGroupKey('Operador De Máquina Pleno'),
+);
+assert.equal(
+  siblingGroupKey('SOLDADOR PLEN'),
+  siblingGroupKey('Soldador Pleno'),
+);
+assert.notEqual(
+  siblingGroupKey('MONTADOR JUNIOR'),
+  siblingGroupKey('Soldador Júnior'),
 );
 
 console.log('worker-structure-match.selftest: ok');

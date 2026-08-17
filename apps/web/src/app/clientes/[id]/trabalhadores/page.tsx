@@ -347,15 +347,16 @@ export default function ClienteTrabalhadoresPage() {
   }
 
   async function onEnrichStructure() {
-    if (!clientId || !importPreview?.structureGaps || !importCsvPayload) return;
-    const gaps = importPreview.structureGaps;
+    if (!clientId || !importCsvPayload) return;
+    const gaps = importPreview?.structureGaps;
     setImportBusy(true);
     setError(null);
     setImportMessage(null);
     try {
-      const createSectors = gaps.missingSectors.map((name) => ({ name }));
-      // Sempre cria no setor da planilha; nunca move funcao de outro setor.
-      const createJobs = gaps.missingJobs.map((job) => ({
+      const createSectors = (gaps?.missingSectors ?? []).map((name) => ({
+        name,
+      }));
+      const createJobs = (gaps?.missingJobs ?? []).map((job) => ({
         name: job.jobName,
         sectorName: job.sectorName,
       }));
@@ -748,6 +749,31 @@ export default function ClienteTrabalhadoresPage() {
                       {importBusy
                         ? 'Aplicando...'
                         : 'Criar faltantes + sincronizar riscos/EPIs'}
+                    </button>
+                  </div>
+                </section>
+              ) : importPreview.structureGaps ? (
+                <section
+                  className="surface"
+                  style={{ marginTop: '1rem', marginBottom: '1rem' }}
+                  aria-label="Sincronizar cobertura"
+                >
+                  <p className="page-kicker">Cobertura de EPI</p>
+                  <p className="page-lead">
+                    Estrutura ja casada com a planilha. Se alguma funcao nova
+                    ficou sem EPI, sincronize de novo: copia riscos/EPIs das
+                    funcoes irmas do PGR (mesmo cargo em outro setor).
+                  </p>
+                  <div className="btn-row">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={importBusy}
+                      onClick={() => void onEnrichStructure()}
+                    >
+                      {importBusy
+                        ? 'Sincronizando...'
+                        : 'Sincronizar riscos/EPIs das irmas'}
                     </button>
                   </div>
                 </section>

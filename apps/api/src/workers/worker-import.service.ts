@@ -28,6 +28,7 @@ import {
 import {
   findBestJobMatch,
   findBestSectorMatch,
+  siblingGroupKey,
 } from './worker-structure-match';
 
 type StructureContext = {
@@ -536,13 +537,19 @@ export class WorkerImportService {
         if (j.sectorId === sectorId) return false;
         return Boolean(findBestJobMatch(jobName, [j], (x) => x.name));
       });
+      const canonicalHit = findBestJobMatch(
+        jobName,
+        allJobs.filter((j) => j.sectorId !== sectorId),
+        (j) => j.name,
+      );
+      const storedName = canonicalHit?.item.name ?? jobName;
       if (siblingsElsewhere.length > 0) {
         const places = siblingsElsewhere
           .map((j) => j.sector.name)
           .sort((a, b) => a.localeCompare(b, 'pt-BR'))
           .join(', ');
         result.warnings.push(
-          `Funcao "${jobName}" tambem existe em: ${places}. Criando copia neste setor (sem desvincular).`,
+          `Funcao "${jobName}" tambem existe em: ${places}. Criando copia neste setor como "${storedName}" (sem desvincular).`,
         );
       }
 
@@ -551,12 +558,12 @@ export class WorkerImportService {
           organizationId,
           servedClientId,
           sectorId,
-          name: jobName,
+          name: storedName,
         },
       });
       allJobs.push({
         id: created.id,
-        name: jobName,
+        name: storedName,
         sectorId,
         sector: { name: sectorName },
       });
@@ -689,7 +696,8 @@ export class WorkerImportService {
 
     const byName = new Map<string, typeof jobs>();
     for (const job of jobs) {
-      const key = normalizeMatchName(job.name);
+      const key = siblingGroupKey(job.name);
+      if (!key) continue;
       const list = byName.get(key) ?? [];
       list.push(job);
       byName.set(key, list);
