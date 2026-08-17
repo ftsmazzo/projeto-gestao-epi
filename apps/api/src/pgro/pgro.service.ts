@@ -20,6 +20,11 @@ import {
   inferOsRiskContext,
   isGenericRiskSource,
 } from '../client-structure/risk-context';
+import {
+  canonicalizeEpiNeedLabel,
+  epiNeedsAreSame,
+  findMatchingEpiNeed,
+} from '../epi-needs/epi-need-canonical';
 import { resolveEpiNeedSeedByName } from '../epi-needs/epi-need-suggest';
 import { ServedClientsService } from '../served-clients/served-clients.service';
 import type { ConfirmPgroImportDto } from './dto/pgro-import.dto';
@@ -80,10 +85,12 @@ export class PgroService {
       this.assertManagementRole(membershipRole);
     }
     if (!file?.buffer?.length) {
-      throw new BadRequestException('Envie um arquivo Word (.docx) ou PDF.');
+      throw new BadRequestException(
+        'Envie um arquivo Word (.doc ou .docx) ou PDF.',
+      );
     }
 
-    let documentKind: 'PDF' | 'DOCX';
+    let documentKind: 'PDF' | 'DOCX' | 'DOC';
     let documentText: string;
     try {
       const extracted = await extractPgroDocumentText(file);
@@ -93,7 +100,7 @@ export class PgroService {
       throw new BadRequestException(
         err instanceof Error
           ? err.message
-          : 'Formato nao suportado. Envie .docx ou PDF.',
+          : 'Formato nao suportado. Envie .doc, .docx ou PDF.',
       );
     }
 
@@ -143,7 +150,7 @@ export class PgroService {
             });
             parseResult.warnings.push(
               preferLlmStructure
-                ? `IA substituiu estrutura duvidosa do ${documentKind === 'DOCX' ? 'Word' : 'PDF'}. Revise setores e funcoes.`
+                ? `IA substituiu estrutura duvidosa do ${documentKind === 'PDF' ? 'PDF' : 'Word'}. Revise setores e funcoes.`
                 : `IA apenas complementou buracos (estrutura heuristica preservada — PGR grande). Revise setores e funcoes.`,
             );
           } else if (llmPart) {
@@ -165,6 +172,10 @@ export class PgroService {
         parseResult.warnings.unshift(
           'Texto extraido do Word (.docx) — formato preferencial para PGR.',
         );
+      } else if (documentKind === 'DOC') {
+        parseResult.warnings.unshift(
+          'Arquivo .doc (Word antigo) aceito. Tabelas saem menos estruturadas que no .docx: revise setores, funcoes e EPIs.',
+        );
       }
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
@@ -182,7 +193,7 @@ export class PgroService {
               : 'Falha ao ler o documento.',
           createdByUserId: userId,
           warnings: [
-            'Nao foi possivel processar o arquivo. Prefira o .docx original do Word ou um PDF com texto selecionavel.',
+            'Nao foi possivel processar o arquivo. Prefira o .docx do Word; .doc e PDF com texto selecionavel tambem sao aceitos.',
           ],
           parseMeta: {
             layout: 'UNKNOWN',
@@ -242,7 +253,13 @@ export class PgroService {
         organizationId,
         servedClientId: servedClientId || null,
         status,
-        fileName: file.originalname || (documentKind === 'DOCX' ? 'pgro.docx' : 'pgro.pdf'),
+        fileName:
+          file.originalname ||
+          (documentKind === 'DOCX'
+            ? 'pgro.docx'
+            : documentKind === 'DOC'
+              ? 'pgro.doc'
+              : 'pgro.pdf'),
         startedAt,
         finishedAt: status === PgroImportStatus.FAILED ? new Date() : null,
         companyData: parseResult.company as Prisma.InputJsonValue,
@@ -759,6 +776,10 @@ export class PgroService {
         }
       }
 
+      const catalogNeeds = await tx.epiNeed.findMany({
+        where: { organizationId },
+        select: { id: true, name: true, isActive: true },
+      });
       const epiNeedIdByName = new Map<string, string>();
       const jobIds = allJobIds();
       const existingReqRows =
@@ -793,17 +814,30 @@ export class PgroService {
       }> = [];
 
       for (const epi of dto.epiNeeds.filter((e) => e.included)) {
+        const label = canonicalizeEpiNeedLabel(epi.suggestedName);
+        if (!label) {
+          warnings.push(
+            `Ignorado (nao parece EPI de catalogo): ${epi.suggestedName}`,
+          );
+          continue;
+        }
+
         let needId = epi.matchedEpiNeedId?.trim() || null;
         if (needId) {
-          const existingNeed = await tx.epiNeed.findFirst({
-            where: { id: needId, organizationId },
-          });
+          const existingNeed = catalogNeeds.find((row) => row.id === needId);
           if (!existingNeed) {
             warnings.push(
-              `Necessidade informada nao encontrada; sera criada: ${epi.suggestedName}`,
+              `Necessidade informada nao encontrada; sera criada: ${label}`,
             );
             needId = null;
           } else {
+            if (!existingNeed.isActive) {
+              await tx.epiNeed.update({
+                where: { id: existingNeed.id },
+                data: { isActive: true },
+              });
+              existingNeed.isActive = true;
+            }
             epiNeedIdByName.set(
               normalizeTextKey(existingNeed.name),
               existingNeed.id,
@@ -813,23 +847,24 @@ export class PgroService {
         }
 
         if (!needId) {
-          const name = epi.suggestedName.trim();
-          const existing = await tx.epiNeed.findFirst({
-            where: {
-              organizationId,
-              name: { equals: name, mode: 'insensitive' },
-            },
-          });
+          const existing = findMatchingEpiNeed(label, catalogNeeds);
           if (existing) {
             needId = existing.id;
-            epiNeedIdByName.set(normalizeTextKey(name), existing.id);
+            if (!existing.isActive) {
+              await tx.epiNeed.update({
+                where: { id: existing.id },
+                data: { isActive: true },
+              });
+              existing.isActive = true;
+            }
+            epiNeedIdByName.set(normalizeTextKey(existing.name), existing.id);
             summary.epiNeedsExisting += 1;
           } else if (epi.createNew !== false) {
-            const seed = resolveEpiNeedSeedByName(name);
+            const seed = resolveEpiNeedSeedByName(label);
             const created = await tx.epiNeed.create({
               data: {
                 organizationId,
-                name,
+                name: label,
                 category: seed?.category ?? null,
                 description:
                   seed?.description ??
@@ -839,11 +874,16 @@ export class PgroService {
               },
             });
             needId = created.id;
-            epiNeedIdByName.set(normalizeTextKey(name), created.id);
+            catalogNeeds.push({
+              id: created.id,
+              name: created.name,
+              isActive: true,
+            });
+            epiNeedIdByName.set(normalizeTextKey(label), created.id);
             summary.epiNeedsCreated += 1;
-            warnings.push(`EPI necessario sem correspondencia previa: ${name}`);
+            warnings.push(`EPI necessario sem correspondencia previa: ${label}`);
           } else {
-            warnings.push(`EPI necessario ignorado (sem criacao): ${name}`);
+            warnings.push(`EPI necessario ignorado (sem criacao): ${label}`);
             continue;
           }
         }
@@ -1388,7 +1428,7 @@ export class PgroService {
 
     if (!run?.sourceText?.trim()) {
       result.warnings.push(
-        'Sem texto de PGR guardado para este cliente. Reimporte o .docx/.pdf uma vez para habilitar a validacao reversa de riscos/EPIs.',
+        'Sem texto de PGR guardado para este cliente. Reimporte o Word (.doc/.docx) ou PDF uma vez para habilitar a validacao reversa de riscos/EPIs.',
       );
       return result;
     }
@@ -1601,20 +1641,28 @@ export class PgroService {
       select: { id: true, name: true, aliases: true },
     });
 
-    return items.map((item) => {
-      const suggestedKey = normalizeTextKey(item.suggestedName);
-      const match = needs.find((need) => {
-        const nameKey = normalizeTextKey(need.name);
-        if (nameKey === suggestedKey || nameKey.includes(suggestedKey)) {
-          return true;
-        }
-        const aliases = Array.isArray(need.aliases)
-          ? need.aliases.filter((a): a is string => typeof a === 'string')
-          : [];
-        return aliases.some(
-          (alias) => normalizeTextKey(alias) === suggestedKey,
-        );
-      });
+    const collapsed: PgroExtractedEpiNeed[] = [];
+    for (const item of items) {
+      const label = canonicalizeEpiNeedLabel(item.suggestedName);
+      if (!label) continue;
+      const previous = collapsed.find((row) =>
+        epiNeedsAreSame(row.suggestedName, label),
+      );
+      if (previous) {
+        previous.functionNames = [
+          ...new Set([...previous.functionNames, ...item.functionNames]),
+        ];
+        previous.riskNames = [
+          ...new Set([...(previous.riskNames ?? []), ...(item.riskNames ?? [])]),
+        ];
+        if (previous.functionNames.length > 0) previous.included = true;
+        continue;
+      }
+      collapsed.push({ ...item, suggestedName: label });
+    }
+
+    return collapsed.map((item) => {
+      const match = findMatchingEpiNeed(item.suggestedName, needs);
       if (!match) {
         return {
           ...item,

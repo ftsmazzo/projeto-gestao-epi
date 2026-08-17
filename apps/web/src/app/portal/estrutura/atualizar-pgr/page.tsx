@@ -221,15 +221,15 @@ function PortalAtualizarPgrContent({ user }: { user: ClientPortalUser }) {
         <>
           <section className="dash-panel" style={{ minHeight: 0 }}>
             <div className="dash-panel__head">
-              <h2>1. Enviar PDF</h2>
-              <p>Arquivo do PGR desta empresa.</p>
+              <h2>1. Enviar PGR</h2>
+              <p>Word (.doc, .docx) ou PDF desta empresa.</p>
             </div>
             <div className="form-grid" style={{ padding: '1rem' }}>
               <label className="field">
-                <span>PDF</span>
+                <span>Arquivo</span>
                 <input
                   type="file"
-                  accept="application/pdf,.pdf"
+                  accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,.pdf"
                   onChange={(event) => {
                     setFile(event.target.files?.[0] ?? null);
                     setPreview(null);
@@ -244,7 +244,7 @@ function PortalAtualizarPgrContent({ user }: { user: ClientPortalUser }) {
                   disabled={!file || uploading}
                   onClick={() => void onPreview()}
                 >
-                  {uploading ? 'Lendo PDF...' : 'Conferir diferencas'}
+                  {uploading ? 'Lendo arquivo...' : 'Conferir diferencas'}
                 </button>
               </div>
             </div>
@@ -271,7 +271,7 @@ function PortalAtualizarPgrContent({ user }: { user: ClientPortalUser }) {
                         </td>
                       </tr>
                       <tr>
-                        <th scope="row">No PDF</th>
+                        <th scope="row">No arquivo</th>
                         <td>
                           {preview.company.parsedLegalName || '—'}
                           <br />

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import WordExtractor from 'word-extractor';
 import {
   detectPgroDocumentKind,
   htmlToStructuredText,
@@ -36,13 +37,11 @@ assert.equal(
   'PDF',
 );
 
-let threw = false;
-try {
-  detectPgroDocumentKind(fakeFile('PGR.doc', 'application/msword'));
-} catch {
-  threw = true;
-}
-assert.equal(threw, true);
+assert.equal(
+  detectPgroDocumentKind(fakeFile('PGR.doc', 'application/msword')),
+  'DOC',
+);
+assert.equal(typeof WordExtractor, 'function');
 
 const structured = htmlToStructuredText(`
 <p>Caracterização do GHE 01 – Soldador</p>

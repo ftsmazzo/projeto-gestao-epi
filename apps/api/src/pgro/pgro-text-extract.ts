@@ -1,7 +1,8 @@
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
+import WordExtractor from 'word-extractor';
 
-export type PgroDocumentKind = 'PDF' | 'DOCX';
+export type PgroDocumentKind = 'PDF' | 'DOCX' | 'DOC';
 
 export type PgroTextExtractResult = {
   kind: PgroDocumentKind;
@@ -18,18 +19,35 @@ function mimeOf(file: Express.Multer.File): string {
   return (file.mimetype || '').toLowerCase();
 }
 
-/** Detecta PDF / DOCX. .doc legado e rejeitado com mensagem clara. */
+function isZipBuffer(buffer: Buffer): boolean {
+  return (
+    buffer.length >= 4 &&
+    buffer[0] === 0x50 &&
+    buffer[1] === 0x4b &&
+    (buffer[2] === 0x03 || buffer[2] === 0x05 || buffer[2] === 0x07)
+  );
+}
+
+function isOleBuffer(buffer: Buffer): boolean {
+  return (
+    buffer.length >= 8 &&
+    buffer[0] === 0xd0 &&
+    buffer[1] === 0xcf &&
+    buffer[2] === 0x11 &&
+    buffer[3] === 0xe0
+  );
+}
+
+function isLegacyDocName(name: string): boolean {
+  return name.endsWith('.doc') && !name.endsWith('.docx');
+}
+
+/** Detecta PDF, DOCX e Word antigo (.doc). */
 export function detectPgroDocumentKind(
   file: Express.Multer.File,
 ): PgroDocumentKind {
   const name = fileNameOf(file);
   const mime = mimeOf(file);
-
-  if (name.endsWith('.doc') && !name.endsWith('.docx')) {
-    throw new Error(
-      'Arquivo .doc (Word antigo) nao e suportado. Abra no Word e salve como .docx, ou envie o PDF.',
-    );
-  }
 
   const isDocx =
     name.endsWith('.docx') ||
@@ -40,12 +58,38 @@ export function detectPgroDocumentKind(
 
   if (isDocx) return 'DOCX';
 
+  const isDoc =
+    isLegacyDocName(name) ||
+    mime === 'application/msword' ||
+    mime.includes('application/msword');
+  if (isDoc) return 'DOC';
+
   const isPdf = name.endsWith('.pdf') || mime.includes('pdf');
   if (isPdf) return 'PDF';
 
   throw new Error(
-    'Formato nao suportado. Envie o PGR em Word (.docx) — preferencial — ou PDF.',
+    'Formato nao suportado. Envie o PGR em Word (.doc ou .docx) ou PDF.',
   );
+}
+
+async function extractLegacyDocText(buffer: Buffer): Promise<string> {
+  try {
+    const extractor = new WordExtractor();
+    const document = await extractor.extract(buffer);
+    const body = document.getBody({ filterUnicode: false })?.trim() ?? '';
+    const headers = document.getHeaders({ includeFooters: true })?.trim() ?? '';
+    const textboxes = document.getTextboxes({ filterUnicode: false })?.trim() ?? '';
+    const text = [headers, body, textboxes].filter(Boolean).join('\n');
+    if (!text) {
+      throw new Error('Arquivo .doc sem texto extraivel.');
+    }
+    return text;
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Nao foi possivel ler o Word antigo (.doc). Se falhar, salve como .docx. Detalhe: ${detail}`,
+    );
+  }
 }
 
 function decodeHtmlEntities(value: string): string {
@@ -147,7 +191,7 @@ export async function extractDocxDocument(buffer: Buffer): Promise<{
 
   if (!fromHtml && !fromRaw) {
     throw new Error(
-      'Nao foi possivel extrair texto do Word (.docx). Verifique se o arquivo nao esta vazio ou protegido.',
+      'Nao foi possivel extrair texto do Word. Verifique se o arquivo nao esta vazio ou protegido.',
     );
   }
 
@@ -170,12 +214,23 @@ export async function extractPgroDocumentText(
   file: Express.Multer.File,
 ): Promise<PgroTextExtractResult> {
   const kind = detectPgroDocumentKind(file);
+  const buffer = file.buffer;
 
-  if (kind === 'DOCX') {
-    const { text, html } = await extractDocxDocument(file.buffer);
-    return { kind, text, sourceHtml: html };
+  if (kind === 'DOCX' || (kind === 'DOC' && isZipBuffer(buffer))) {
+    const { text, html } = await extractDocxDocument(buffer);
+    return { kind: 'DOCX', text, sourceHtml: html };
   }
 
-  const parsed = await pdfParse(file.buffer);
+  if (kind === 'DOC') {
+    if (!isOleBuffer(buffer) && !isZipBuffer(buffer)) {
+      throw new Error(
+        'Este .doc nao parece um arquivo Word valido. Tente salvar como .docx ou envie o PDF.',
+      );
+    }
+    const text = await extractLegacyDocText(buffer);
+    return { kind: 'DOC', text, sourceHtml: null };
+  }
+
+  const parsed = await pdfParse(buffer);
   return { kind: 'PDF', text: parsed.text ?? '', sourceHtml: null };
 }

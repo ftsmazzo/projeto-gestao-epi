@@ -37,7 +37,8 @@ export type ClientInitialAccessPayload = {
   managerName: string;
   managerEmail: string;
   managerPhone: string | null;
-  temporaryPassword: string;
+  temporaryPassword: string | null;
+  reusedExistingUser?: boolean;
   accessUrl: string;
   accessStatus: ClientUserAccessStatus;
   warning: string;
@@ -353,8 +354,33 @@ export class ServedClientsService {
       );
     }
 
-    const temporaryPassword = this.generateTemporaryPassword();
-    const passwordHash = await bcrypt.hash(temporaryPassword, 12);
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email },
+      include: { _count: { select: { memberships: true } } },
+    });
+    if (existingUser && existingUser._count.memberships > 0) {
+      throw new ConflictException(
+        'Este e-mail ja pertence a um usuario da consultoria. Use outro e-mail para o gestor do cliente.',
+      );
+    }
+
+    const reusedExistingUser = Boolean(existingUser);
+    const priorMembership = reusedExistingUser
+      ? await this.prisma.clientUserMembership.findFirst({
+          where: {
+            email,
+            NOT: { servedClientId },
+          },
+          orderBy: { createdAt: 'asc' },
+          select: { mustChangePassword: true },
+        })
+      : null;
+    const temporaryPassword = reusedExistingUser
+      ? null
+      : this.generateTemporaryPassword();
+    const passwordHash = temporaryPassword
+      ? await bcrypt.hash(temporaryPassword, 12)
+      : null;
     const user = await this.ensureUserForClientAccess({
       email,
       name,
@@ -371,9 +397,13 @@ export class ServedClientsService {
         phone: input.phone,
         role: ClientUserRole.CLIENT_MANAGER,
         isActive: true,
-        accessStatus: ClientUserAccessStatus.INVITED,
-        mustChangePassword: true,
-        temporaryPasswordCreatedAt: new Date(),
+        accessStatus: reusedExistingUser
+          ? ClientUserAccessStatus.ACTIVE
+          : ClientUserAccessStatus.INVITED,
+        mustChangePassword: reusedExistingUser
+          ? (priorMembership?.mustChangePassword ?? false)
+          : true,
+        temporaryPasswordCreatedAt: reusedExistingUser ? null : new Date(),
       },
     });
 
@@ -388,10 +418,18 @@ export class ServedClientsService {
         email,
         role: membership.role,
         accessStatus: membership.accessStatus,
+        reusedExistingUser,
       },
     });
 
-    const payload = this.toInitialAccessPayload(membership, temporaryPassword);
+    const payload = this.toInitialAccessPayload(
+      membership,
+      temporaryPassword,
+      reusedExistingUser,
+    );
+    if (!temporaryPassword) {
+      return payload;
+    }
     const delivery = await this.communications.enqueueClientAccessInvite({
       organizationId,
       recipientName: membership.name,
@@ -407,7 +445,7 @@ export class ServedClientsService {
   private async ensureUserForClientAccess(input: {
     email: string;
     name: string;
-    passwordHash: string;
+    passwordHash: string | null;
   }) {
     const existing = await this.prisma.user.findUnique({
       where: { email: input.email },
@@ -422,10 +460,15 @@ export class ServedClientsService {
       return this.prisma.user.update({
         where: { id: existing.id },
         data: {
-          name: input.name,
-          passwordHash: input.passwordHash,
+          name: input.name || existing.name,
+          ...(input.passwordHash ? { passwordHash: input.passwordHash } : {}),
         },
       });
+    }
+    if (!input.passwordHash) {
+      throw new BadRequestException(
+        'Nao foi possivel criar o usuario do portal sem senha.',
+      );
     }
     return this.prisma.user.create({
       data: {
@@ -467,7 +510,8 @@ export class ServedClientsService {
       phone: string | null;
       accessStatus: ClientUserAccessStatus;
     },
-    temporaryPassword: string,
+    temporaryPassword: string | null,
+    reusedExistingUser = false,
   ): ClientInitialAccessPayload {
     return {
       membershipId: membership.id,
@@ -475,10 +519,12 @@ export class ServedClientsService {
       managerEmail: membership.email,
       managerPhone: membership.phone,
       temporaryPassword,
+      reusedExistingUser,
       accessUrl: this.resolveAccessUrl(),
       accessStatus: membership.accessStatus,
-      warning:
-        'A senha temporaria sera exibida apenas agora. Use o portal do cliente (/portal/login).',
+      warning: reusedExistingUser
+        ? 'Este gestor ja possuia acesso. Nao geramos nova senha — ele entra com a senha atual e troca de empresa no portal.'
+        : 'A senha temporaria sera exibida apenas agora. Use o portal do cliente (/portal/login).',
       delivery: {
         enabled: this.communications.isEnabled(),
         email: 'NOT_REQUESTED',

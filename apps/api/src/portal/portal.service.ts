@@ -73,6 +73,10 @@ import {
 } from './facial-evidence.storage';
 import { resolveUsefulLife } from '../epi-needs/epi-useful-life.defaults';
 import {
+  findMatchingEpiNeed,
+  needNameMatchesEquipment,
+} from '../epi-needs/epi-need-canonical';
+import {
   calendarDaysRemaining,
   computeNextReplacementAt,
   formatRemainingDays,
@@ -1431,6 +1435,31 @@ export class PortalService {
         organizationId,
         item,
       );
+      const epiRow = await this.prisma.epiItem.findFirst({
+        where: { id: resolved.epiItemId, organizationId },
+        select: {
+          name: true,
+          caNumber: true,
+          description: true,
+          approvedFor: true,
+          reference: true,
+        },
+      });
+      const linkedNeedNames = await this.autoLinkCaItemToClientNeeds(
+        organizationId,
+        servedClientId,
+        resolved.epiItemId,
+        {
+          equipmentName: epiRow?.name ?? null,
+          extraText: [
+            epiRow?.description,
+            epiRow?.approvedFor,
+            epiRow?.reference,
+          ]
+            .filter(Boolean)
+            .join(' '),
+        },
+      );
       const result = await this.stock.createMovement(organizationId, userId, {
         type: EpiStockMovementType.ENTRADA,
         stockLocationId: location.id,
@@ -1445,6 +1474,7 @@ export class PortalService {
       results.push({
         epiItemId: resolved.epiItemId,
         epiNeedId: item.epiNeedId ?? null,
+        linkedNeedNames,
         quantity: item.quantity,
         unitCostCents: item.unitCostCents ?? null,
         totalCostCents:
@@ -2129,6 +2159,99 @@ export class PortalService {
     return rows.map((row) => row.epiNeedId);
   }
 
+  private async autoLinkCaItemToClientNeeds(
+    organizationId: string,
+    servedClientId: string,
+    epiItemId: string,
+    hints: { equipmentName: string | null; extraText?: string | null },
+  ): Promise<string[]> {
+    const clientNeedIds = await this.listClientActiveNeedIds(
+      organizationId,
+      servedClientId,
+    );
+    if (clientNeedIds.length === 0) return [];
+
+    const needs = await this.prisma.epiNeed.findMany({
+      where: { organizationId, isActive: true, id: { in: clientNeedIds } },
+      select: { id: true, name: true },
+    });
+    if (needs.length === 0) return [];
+
+    const matched = needs.filter((need) =>
+      needNameMatchesEquipment(
+        need.name,
+        hints.equipmentName,
+        hints.extraText,
+      ),
+    );
+    if (matched.length === 0 && hints.equipmentName) {
+      const hit = findMatchingEpiNeed(hints.equipmentName, needs);
+      if (
+        hit &&
+        assessNeedEquipmentCompatibility(hit.name, hints.equipmentName)
+          .compatible
+      ) {
+        matched.push(hit);
+      }
+    }
+
+    const unique = [
+      ...new Map(matched.map((need) => [need.id, need])).values(),
+    ];
+    const linked: string[] = [];
+    for (const need of unique) {
+      await this.ensureNeedItemLink(organizationId, need.id, epiItemId);
+      linked.push(need.name);
+    }
+    return linked;
+  }
+
+  /** Religa estoque ja existente (entrada por CA sem vinculo) as necessidades do PGR. */
+  private async healUnlinkedStockedItems(
+    organizationId: string,
+    servedClientId: string,
+  ) {
+    const rows = await this.prisma.epiStockBalance.findMany({
+      where: {
+        organizationId,
+        quantity: { gt: 0 },
+        stockLocation: { servedClientId, isActive: true },
+        epiItem: { isActive: true },
+      },
+      select: {
+        epiItem: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            approvedFor: true,
+            reference: true,
+          },
+        },
+      },
+    });
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (seen.has(row.epiItem.id)) continue;
+      seen.add(row.epiItem.id);
+      await this.autoLinkCaItemToClientNeeds(
+        organizationId,
+        servedClientId,
+        row.epiItem.id,
+        {
+          equipmentName: row.epiItem.name,
+          extraText: [
+            row.epiItem.description,
+            row.epiItem.approvedFor,
+            row.epiItem.reference,
+          ]
+            .filter(Boolean)
+            .join(' '),
+        },
+      );
+    }
+  }
+
   /** EPIs que ja tiveram saldo neste cliente (entrada/estoque local). */
   private async listClientStockedEpiItemIds(
     organizationId: string,
@@ -2626,6 +2749,7 @@ export class PortalService {
     workerId: string,
   ) {
     await this.requireClient(organizationId, servedClientId);
+    await this.healUnlinkedStockedItems(organizationId, servedClientId);
 
     const worker = await this.prisma.worker.findFirst({
       where: { id: workerId, organizationId, servedClientId },

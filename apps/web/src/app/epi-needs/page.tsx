@@ -6,10 +6,11 @@ import type {
   EpiNeed,
   EpiNeedDetail,
 } from '@gestao-epi/shared';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RequireAuth } from '../../components/RequireAuth';
 import { ClientScopeNotice } from '../../components/ClientScopeNotice';
 import {
+  consolidateEpiNeedDuplicates,
   createEpiNeed,
   getEpiNeed,
   linkEpiToNeed,
@@ -71,6 +72,7 @@ function EpiNeedsContent() {
   const [mode, setMode] = useState<Mode>('list');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [needs, setNeeds] = useState<EpiNeed[]>([]);
   const [detail, setDetail] = useState<EpiNeedDetail | null>(null);
   const [epis, setEpis] = useState<EpiItem[]>([]);
@@ -91,11 +93,34 @@ function EpiNeedsContent() {
 
   const [linkEpiId, setLinkEpiId] = useState('');
   const [linkError, setLinkError] = useState<string | null>(null);
+  const didConsolidate = useRef(false);
 
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
+      if (!didConsolidate.current) {
+        didConsolidate.current = true;
+        try {
+          const result = await consolidateEpiNeedDuplicates();
+          if (result.mergedCount > 0 || result.inactivatedJunk > 0) {
+            const parts = [];
+            if (result.mergedCount > 0) {
+              parts.push(
+                `${result.mergedCount} repeticao(oes) do PGR unificada(s)`,
+              );
+            }
+            if (result.inactivatedJunk > 0) {
+              parts.push(
+                `${result.inactivatedJunk} texto(s) que nao sao EPI inativado(s)`,
+              );
+            }
+            setInfo(`${parts.join(' e ')}.`);
+          }
+        } catch {
+          // API antiga ou falha pontual: a lista ainda precisa carregar.
+        }
+      }
       const [list, epiList] = await Promise.all([
         listEpiNeeds({
           q: q || undefined,
@@ -322,6 +347,11 @@ function EpiNeedsContent() {
       {error ? (
         <p className="error" role="alert">
           {error}
+        </p>
+      ) : null}
+      {info ? (
+        <p className="notice notice--ok" role="status">
+          {info}
         </p>
       ) : null}
 

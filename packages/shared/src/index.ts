@@ -545,7 +545,8 @@ export interface ClientInitialAccess {
   managerName: string;
   managerEmail: string;
   managerPhone: string | null;
-  temporaryPassword: string;
+  temporaryPassword: string | null;
+  reusedExistingUser?: boolean;
   accessUrl: string;
   accessStatus: ClientUserAccessStatus;
   warning: string;
@@ -1157,6 +1158,11 @@ export interface EpiNeedDefaultsResult {
   created: EpiNeed[];
 }
 
+export interface EpiNeedConsolidateResult {
+  mergedCount: number;
+  inactivatedJunk: number;
+}
+
 export interface EpiNeedMatchResult {
   suggestions: Array<{
     id: string;
@@ -1390,8 +1396,8 @@ export interface PgroImportRun {
     parseMethod?: string;
     structureWeak?: boolean;
     textLength?: number;
-    /** PDF ou DOCX — origem do texto extraido. */
-    sourceFormat?: 'PDF' | 'DOCX' | string;
+    /** PDF, DOCX ou DOC (Word antigo) — origem do texto extraido. */
+    sourceFormat?: 'PDF' | 'DOCX' | 'DOC' | string;
     gheHeaderCount?: number;
     ghesWithFunctions?: number | null;
     functionsWithSector?: number | null;
@@ -1809,6 +1815,7 @@ export interface PortalStockEntradasResult {
     newQuantity: number;
     movementId: string;
     createdEpiItem: boolean;
+    linkedNeedNames?: string[];
   }>;
 }
 

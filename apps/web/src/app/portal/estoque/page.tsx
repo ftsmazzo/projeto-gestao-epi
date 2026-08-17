@@ -530,7 +530,13 @@ function PortalEstoqueContent() {
       );
       setSuccess(
         `${result.created} entrada(s) registrada(s)` +
-          (invoiceDocumentId ? ' com nota.' : ' sem nota.'),
+          (invoiceDocumentId ? ' com nota.' : ' sem nota.') +
+          (() => {
+            const linked = result.items
+              .flatMap((row) => row.linkedNeedNames ?? [])
+              .filter((name, index, all) => all.indexOf(name) === index);
+            return linked.length > 0 ? ` Vinculado a: ${linked.join(', ')}.` : '';
+          })(),
       );
       setBatchInvoiceFile(null);
       await reload();
@@ -587,7 +593,7 @@ function PortalEstoqueContent() {
           setFreeQty(matched.quantity);
         }
       }
-      await createPortalStockEntradas([
+      const result = await createPortalStockEntradas([
         {
           caNumber,
           quantity: qty,
@@ -595,9 +601,15 @@ function PortalEstoqueContent() {
           ...(invoiceDocumentId ? { invoiceDocumentId } : {}),
         },
       ]);
+      const linked = result.items
+        .flatMap((row) => row.linkedNeedNames ?? [])
+        .filter((name, index, all) => all.indexOf(name) === index);
       setSuccess(
         `Entrada de ${qty} un. (CA ${caNumber}) registrada` +
-          (invoiceDocumentId ? ' com nota.' : ' sem nota.'),
+          (invoiceDocumentId ? ' com nota' : '') +
+          (linked.length > 0
+            ? ` e vinculada a: ${linked.join(', ')}.`
+            : '. Confira se a necessidade do PGR combina com este CA.'),
       );
       setPicked(null);
       setQuery('');

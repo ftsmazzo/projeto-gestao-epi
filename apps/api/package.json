@@ -18,6 +18,7 @@
     "test:pgro-parser": "npx --yes tsx src/pgro/pgro-parser.selftest.ts",
     "test:worker-match": "npx --yes tsx src/workers/worker-structure-match.selftest.ts",
     "test:pgr-rh-gap": "npx --yes tsx src/communications/pgr-rh-gap.selftest.ts",
+    "test:epi-canonical": "npx --yes tsx src/epi-needs/epi-need-canonical.selftest.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
@@ -50,7 +51,8 @@
     "prisma": "^6.5.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "svg-to-pdfkit": "^0.1.8"
+    "svg-to-pdfkit": "^0.1.8",
+    "word-extractor": "^1.0.4"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.5",

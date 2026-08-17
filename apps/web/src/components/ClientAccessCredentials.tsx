@@ -57,7 +57,9 @@ export function ClientAccessCredentials({
     <div className="access-credentials" role="region" aria-label={title}>
       <p className="page-kicker">{title}</p>
       <p className="page-lead access-credentials__warning">
-        Copie estes dados agora. A senha temporaria nao sera exibida novamente.
+        {access.reusedExistingUser || !access.temporaryPassword
+          ? 'Este gestor ja possuia acesso. Nao geramos nova senha — use a senha atual no portal e troque de empresa no seletor.'
+          : 'Copie estes dados agora. A senha temporaria nao sera exibida novamente.'}
       </p>
       <div className="notice notice--warn" role="status">
         <p>
@@ -80,12 +82,19 @@ export function ClientAccessCredentials({
             <dd className="mono">{access.managerPhone}</dd>
           </div>
         ) : null}
-        <div>
-          <dt>Senha temporaria</dt>
-          <dd className="mono access-credentials__password">
-            {access.temporaryPassword}
-          </dd>
-        </div>
+        {access.temporaryPassword ? (
+          <div>
+            <dt>Senha temporaria</dt>
+            <dd className="mono access-credentials__password">
+              {access.temporaryPassword}
+            </dd>
+          </div>
+        ) : (
+          <div>
+            <dt>Senha</dt>
+            <dd>Mantida — gestor ja tinha cadastro</dd>
+          </div>
+        )}
       </dl>
 
       {delivery ? (

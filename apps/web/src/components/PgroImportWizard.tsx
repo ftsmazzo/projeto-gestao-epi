@@ -311,7 +311,7 @@ export function PgroImportWizard({
     if (run.status === 'FAILED') {
       setError(
         run.errorMessage ??
-          'Este arquivo parece nao ter texto extraivel. Prefira o .docx original do Word ou um PDF com texto selecionavel.',
+          'Este arquivo parece nao ter texto extraivel. Prefira o .docx do Word; .doc antigo e PDF com texto selecionavel tambem sao aceitos.',
       );
       setStep('upload');
       return;
@@ -328,14 +328,7 @@ export function PgroImportWizard({
     const input = form.elements.namedItem('pgroFile') as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) {
-      setError('Selecione um arquivo Word (.docx) ou PDF.');
-      return;
-    }
-    const name = (file.name || '').toLowerCase();
-    if (name.endsWith('.doc') && !name.endsWith('.docx')) {
-      setError(
-        'Arquivo .doc (Word antigo) nao e suportado. Salve como .docx ou envie o PDF.',
-      );
+      setError('Selecione um arquivo Word (.doc ou .docx) ou PDF.');
       return;
     }
     setUploading(true);
@@ -488,8 +481,8 @@ export function PgroImportWizard({
           </h1>
           <p className="page-lead">
             {isUpdateMode
-              ? 'Envie o Word (.docx) — preferencial — ou PDF neste ambiente do cliente, revise e confirme. Setores e funcoes que sumirem do PGR saem das telas operacionais, mas o historico permanece.'
-              : 'Envie o Word (.docx) — preferencial — ou PDF, revise os dados extraidos e confirme. Nada e gravado apenas pelo upload.'}
+              ? 'Envie o Word (.doc ou .docx) ou PDF neste ambiente do cliente, revise e confirme. Setores e funcoes que sumirem do PGR saem das telas operacionais, mas o historico permanece.'
+              : 'Envie o Word (.doc ou .docx) ou PDF, revise os dados extraidos e confirme. Nada e gravado apenas pelo upload.'}
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
@@ -618,8 +611,8 @@ export function PgroImportWizard({
             Upload do PGR
           </h2>
           <p className="page-lead">
-            Preferencial: arquivo Word original (.docx). PDF continua aceito
-            quando tiver texto selecionavel (nao escaneado sem OCR).
+            Preferencial: Word .docx (tabelas mais fiéis). Tambem aceita .doc
+            antigo e PDF com texto selecionavel (nao escaneado sem OCR).
           </p>
           {lockedClientId ? (
             <p className="field-hint">
@@ -628,12 +621,12 @@ export function PgroImportWizard({
           ) : null}
           <form className="form" onSubmit={onUpload}>
             <div className="field">
-              <label htmlFor="pgroFile">Arquivo Word (.docx) ou PDF</label>
+              <label htmlFor="pgroFile">Arquivo Word (.doc, .docx) ou PDF</label>
               <input
                 id="pgroFile"
                 name="pgroFile"
                 type="file"
-                accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,.pdf"
+                accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,.pdf"
                 required
               />
             </div>

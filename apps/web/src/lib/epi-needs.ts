@@ -2,6 +2,7 @@ import type {
   EpiCategory,
   EpiItemNeedLink,
   EpiNeed,
+  EpiNeedConsolidateResult,
   EpiNeedDefaultsResult,
   EpiNeedDetail,
   EpiNeedMatchResult,
@@ -57,6 +58,13 @@ export function updateEpiNeedStatus(id: string, isActive: boolean) {
 
 export function suggestEpiNeedDefaults() {
   return apiFetch<EpiNeedDefaultsResult>('/epi-needs/suggest-defaults', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
+}
+
+export function consolidateEpiNeedDuplicates() {
+  return apiFetch<EpiNeedConsolidateResult>('/epi-needs/consolidate-duplicates', {
     method: 'POST',
     body: JSON.stringify({}),
   });

@@ -48,6 +48,11 @@ export class EpiNeedsController {
     return this.epiNeeds.suggestDefaults(user.organizationId, user.sub);
   }
 
+  @Post('consolidate-duplicates')
+  consolidateDuplicates(@CurrentUser() user: JwtPayload) {
+    return this.epiNeeds.consolidateDuplicates(user.organizationId, user.sub);
+  }
+
   @Post('match')
   match(@CurrentUser() user: JwtPayload, @Body() dto: MatchEpiNeedsDto) {
     return this.epiNeeds.matchSuggestions(user.organizationId, dto);

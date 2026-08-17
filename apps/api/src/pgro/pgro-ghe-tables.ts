@@ -1,5 +1,12 @@
 import { randomUUID } from 'crypto';
 import { OccupationalRiskCategory } from '@prisma/client';
+import {
+  canonicalizeEpiNeedLabel,
+  canonicalEpiNeedKey,
+  epiNeedsAreSame,
+  isJunkEpiNeedName,
+  splitGluedEpiPhrases,
+} from '../epi-needs/epi-need-canonical';
 import type {
   PgroExtractedEpiNeed,
   PgroExtractedFunction,
@@ -166,14 +173,11 @@ function mapCategory(raw: string): OccupationalRiskCategory | null {
 }
 
 function splitEpiTexts(raw: string): string[] {
-  const cleaned = cleanCell(raw);
-  if (!cleaned) return [];
-  const parts = cleaned
-    .split(/\n|;|,(?=\s*[A-ZÀ-Ú])|(?=\b(?:Botina|Capacete|Oculos|Óculos|Luva|Protetor|Respirador|Mascara|Máscara|Avental|Viseira|Creme|Uniforme)\b)/i)
-    .map((p) => cleanCell(p))
-    .filter((p) => p.length >= 3)
-    .filter((p) => !ADMIN_EPI_RE.test(p))
-    .filter((p) => !/^(epi|epc|medidas\s+administrativas)$/i.test(p));
+  const parts = splitGluedEpiPhrases(cleanCell(raw))
+    .filter((part) => part.length >= 3)
+    .filter((part) => !ADMIN_EPI_RE.test(part))
+    .filter((part) => !isJunkEpiNeedName(part))
+    .filter((part) => !/^(epi|epc|medidas\s+administrativas)$/i.test(part));
   return [...new Set(parts)];
 }
 
@@ -399,14 +403,24 @@ export function gheTableBlocksToExtracted(blocks: ParsedGheTableBlock[]): {
       }
 
       for (const epi of row.epiTexts) {
+        const label = canonicalizeEpiNeedLabel(epi);
+        if (!label) continue;
         epiItemCount += 1;
-        const epiKey = normalizeTextKey(epi);
-        const prev = epiMap.get(epiKey);
+        const epiKey = canonicalEpiNeedKey(label);
+        let prev = epiMap.get(epiKey);
+        if (!prev) {
+          for (const item of epiMap.values()) {
+            if (epiNeedsAreSame(item.suggestedName, label)) {
+              prev = item;
+              break;
+            }
+          }
+        }
         if (!prev) {
           epiMap.set(epiKey, {
             tempId: randomUUID(),
             extractedText: epi,
-            suggestedName: epi,
+            suggestedName: label,
             matchedEpiNeedId: null,
             matchedEpiNeedName: null,
             createNew: true,

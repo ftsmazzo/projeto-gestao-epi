@@ -171,10 +171,16 @@ export function formatAccessCredentialsCopy(access: ClientInitialAccess) {
   if (access.managerPhone) {
     lines.push(`WhatsApp: ${access.managerPhone}`);
   }
+  if (access.temporaryPassword) {
+    lines.push(`Senha temporaria: ${access.temporaryPassword}`);
+  } else {
+    lines.push('Senha: mantida (gestor ja tinha cadastro).');
+  }
   lines.push(
-    `Senha temporaria: ${access.temporaryPassword}`,
     '',
-    'Copie estes dados agora. A senha temporaria nao sera exibida novamente.',
+    access.reusedExistingUser || !access.temporaryPassword
+      ? 'Nao geramos nova senha. O gestor entra com a senha atual e troca de empresa no portal.'
+      : 'Copie estes dados agora. A senha temporaria nao sera exibida novamente.',
     'ATENCAO: use apenas o portal do cliente. Nao use o login da Consultoria.',
   );
   if (access.delivery) {

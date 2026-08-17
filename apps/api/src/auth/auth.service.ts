@@ -377,10 +377,7 @@ export class AuthService {
     });
 
     await this.prisma.clientUserMembership.updateMany({
-      where: {
-        userId: user.id,
-        servedClientId: payload.servedClientId,
-      },
+      where: { userId: user.id },
       data: {
         mustChangePassword: false,
         accessStatus: ClientUserAccessStatus.ACTIVE,
