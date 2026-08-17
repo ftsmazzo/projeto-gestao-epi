@@ -1161,6 +1161,7 @@ export interface EpiNeedDefaultsResult {
 export interface EpiNeedConsolidateResult {
   mergedCount: number;
   inactivatedJunk: number;
+  splitGlued?: number;
 }
 
 export interface EpiNeedMatchResult {

@@ -43,8 +43,8 @@ function categoryLabel(value: EpiCategory | null | undefined) {
 
 function stockStatusLabel(status?: EpiNeed['stockStatus']) {
   if (status === 'UNLINKED') return 'Sem EPI real vinculado';
-  if (status === 'WITH_STOCK') return 'Com estoque disponivel';
-  if (status === 'NO_STOCK') return 'Sem saldo';
+  if (status === 'WITH_STOCK') return 'Com estoque da consultoria';
+  if (status === 'NO_STOCK') return 'Sem saldo na consultoria';
   return '—';
 }
 
@@ -79,7 +79,7 @@ function EpiNeedsContent() {
 
   const [q, setQ] = useState('');
   const [category, setCategory] = useState<EpiCategory | ''>('');
-  const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('active');
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -103,22 +103,32 @@ function EpiNeedsContent() {
         didConsolidate.current = true;
         try {
           const result = await consolidateEpiNeedDuplicates();
-          if (result.mergedCount > 0 || result.inactivatedJunk > 0) {
-            const parts = [];
-            if (result.mergedCount > 0) {
-              parts.push(
-                `${result.mergedCount} repeticao(oes) do PGR unificada(s)`,
-              );
-            }
-            if (result.inactivatedJunk > 0) {
-              parts.push(
-                `${result.inactivatedJunk} texto(s) que nao sao EPI inativado(s)`,
-              );
-            }
+          const parts = [];
+          if (result.mergedCount > 0) {
+            parts.push(
+              `${result.mergedCount} repeticao(oes) unificada(s)`,
+            );
+          }
+          if (result.splitGlued) {
+            parts.push(
+              `${result.splitGlued} nome(s) colado(s) separado(s)`,
+            );
+          }
+          if (result.inactivatedJunk > 0) {
+            parts.push(
+              `${result.inactivatedJunk} texto(s) que nao sao EPI inativado(s)`,
+            );
+          }
+          if (parts.length > 0) {
             setInfo(`${parts.join(' e ')}.`);
           }
-        } catch {
-          // API antiga ou falha pontual: a lista ainda precisa carregar.
+        } catch (err) {
+          didConsolidate.current = false;
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Nao foi possivel unificar necessidades repetidas.',
+          );
         }
       }
       const [list, epiList] = await Promise.all([
@@ -236,6 +246,39 @@ function EpiNeedsContent() {
     }
   }
 
+  async function onConsolidate() {
+    setError(null);
+    setInfo(null);
+    try {
+      const result = await consolidateEpiNeedDuplicates();
+      didConsolidate.current = true;
+      const parts = [];
+      if (result.mergedCount > 0) {
+        parts.push(`${result.mergedCount} repeticao(oes) unificada(s)`);
+      }
+      if (result.splitGlued) {
+        parts.push(`${result.splitGlued} nome(s) colado(s) separado(s)`);
+      }
+      if (result.inactivatedJunk > 0) {
+        parts.push(
+          `${result.inactivatedJunk} texto(s) que nao sao EPI inativado(s)`,
+        );
+      }
+      setInfo(
+        parts.length > 0
+          ? `${parts.join(' e ')}.`
+          : 'Nenhuma repeticao encontrada para unificar.',
+      );
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel unificar necessidades repetidas.',
+      );
+    }
+  }
+
   async function onSuggestDefaults() {
     setError(null);
     try {
@@ -314,12 +357,19 @@ function EpiNeedsContent() {
           <p className="page-kicker">Catalogo operacional</p>
           <h1 className="page-title">Necessidades de EPI</h1>
           <p className="page-lead">
-            Defina o que o trabalhador precisa usar, a vida util padrao em dias
-            corridos e vincule o EPI real (CA). O CAEPI nao traz vida util do
-            produto — so a validade do certificado.
+            Defina o que o trabalhador precisa usar, a vida util padrao e
+            vincule o EPI real (CA). O saldo desta tela e so o almoxarifado
+            da consultoria — estoque dos clientes fica no painel deles.
           </p>
         </div>
         <div className="header-actions header-actions--wrap">
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => void onConsolidate()}
+          >
+            Unificar repeticoes
+          </button>
           <button
             type="button"
             className="btn btn-secondary"
@@ -477,7 +527,7 @@ function EpiNeedsContent() {
                 <span className={stockStatusClass(detail.stockStatus)}>
                   {stockStatusLabel(detail.stockStatus)}
                 </span>{' '}
-                · Saldo total: {detail.totalStockQuantity ?? 0}
+                · Saldo da consultoria: {detail.totalStockQuantity ?? 0}
               </p>
             </div>
             <div className="btn-row">
@@ -670,7 +720,7 @@ function EpiNeedsContent() {
                     <th scope="col">Categoria</th>
                     <th scope="col">Vida util</th>
                     <th scope="col">EPIs</th>
-                    <th scope="col">Saldo</th>
+                    <th scope="col">Saldo consultoria</th>
                     <th scope="col">Situacao</th>
                     <th scope="col">Status</th>
                     <th scope="col">Acoes</th>

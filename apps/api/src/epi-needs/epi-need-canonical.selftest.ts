@@ -3,6 +3,7 @@ import {
   canonicalizeEpiNeedLabel,
   collapseExtractedEpiLabels,
   epiNeedsAreSame,
+  isGluedEpiNeedName,
   isJunkEpiNeedName,
   needNameMatchesEquipment,
   splitGluedEpiPhrases,
@@ -48,6 +49,12 @@ const USER_CATALOG = [
   'Respirador Semifacial P2 – Vapores Orgânicos',
   'Talabarte Duplo (Y) com ABS',
   'Touca Tipo Árabe',
+  'Luva de Segurança Nitrilica',
+  'Luva de Segurança Vaqueta',
+  'Óculos de Segurança com Lente Escura Tonalidade',
+  'Definição de Tempo de Espera Seguro Antes de Tocar nas Peças ou na Área de Corte',
+  'Respirador Valvulado PFF2 para Fumos Metálicos e Poeiras',
+  'Protetor Auricular Plug',
 ];
 
 assert.equal(isJunkEpiNeedName('(Poeira e Fumos Metálicos),'), true);
@@ -67,6 +74,23 @@ assert.equal(
 assert.equal(epiNeedsAreSame('Luva De Vaqueta', 'Luva Vaqueta'), true);
 assert.equal(
   epiNeedsAreSame('Avental de Raspa', 'Avental de Raspa de Couro'),
+  true,
+);
+assert.equal(
+  isJunkEpiNeedName(
+    'Definição de Tempo de Espera Seguro Antes de Tocar nas Peças ou na Área de Corte',
+  ),
+  true,
+);
+assert.equal(
+  epiNeedsAreSame('Luva de Segurança Nitrilica', 'Luva Nitrílica'),
+  true,
+);
+assert.equal(
+  epiNeedsAreSame(
+    'Óculos de Segurança com Lente Escura Tonalidade',
+    'Óculos de Segurança de Policarbonato',
+  ),
   true,
 );
 assert.equal(
@@ -99,10 +123,13 @@ assert.ok(
   glued.some((part) => /cinto/i.test(part)),
   `split cinto: ${glued.join(' | ')}`,
 );
-assert.ok(
-  glued.some((part) => /talabarte/i.test(part)),
-  `split talabarte: ${glued.join(' | ')}`,
+assert.equal(
+  isGluedEpiNeedName(
+    'Capacete de Segurança com Jugular Cinto de Segurança Modelo Paraquedista Talabarte Duplo (Y) com ABS',
+  ),
+  true,
 );
+assert.equal(isGluedEpiNeedName('Luva Nitrílica'), false);
 
 assert.equal(
   canonicalizeEpiNeedLabel('Luva Nitrílica'),

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { EpiCategory, EpiUsefulLifeUnit, Prisma } from '@prisma/client';
@@ -19,10 +20,13 @@ import {
   suggestNeedNamesFromText,
 } from './epi-need-suggest';
 import {
+  canonicalizeEpiNeedLabel,
   epiNeedsAreSame,
   findMatchingEpiNeed,
+  isGluedEpiNeedName,
   isJunkEpiNeedName,
   resolveEpiNeedSeedForIdentity,
+  splitGluedEpiPhrases,
 } from './epi-need-canonical';
 import { resolveUsefulLife } from './epi-useful-life.defaults';
 
@@ -36,6 +40,8 @@ function parseAliases(value: Prisma.JsonValue | null | undefined): string[] {
 
 @Injectable()
 export class EpiNeedsService {
+  private readonly logger = new Logger(EpiNeedsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -142,7 +148,11 @@ export class EpiNeedsService {
     const itemIds = need.itemLinks.map((link) => link.epiItemId);
     const totals = await this.prisma.epiStockBalance.groupBy({
       by: ['epiItemId'],
-      where: { organizationId, epiItemId: { in: itemIds } },
+      where: {
+        organizationId,
+        epiItemId: { in: itemIds },
+        stockLocation: { servedClientId: null },
+      },
       _sum: { quantity: true },
     });
     const qtyByItem = new Map(
@@ -680,7 +690,11 @@ export class EpiNeedsService {
         ? []
         : await this.prisma.epiStockBalance.groupBy({
             by: ['epiItemId'],
-            where: { organizationId, epiItemId: { in: itemIds } },
+            where: {
+              organizationId,
+              epiItemId: { in: itemIds },
+              stockLocation: { servedClientId: null },
+            },
             _sum: { quantity: true },
           });
     const qtyByItem = new Map(
@@ -702,75 +716,93 @@ export class EpiNeedsService {
   }
 
   async consolidateDuplicates(organizationId: string, userId: string) {
-    const needs = await this.prisma.epiNeed.findMany({
-      where: { organizationId, isActive: true },
-      include: {
-        _count: {
-          select: {
-            itemLinks: true,
-            jobRequirements: true,
-            deliveryItems: true,
-          },
-        },
-      },
-    });
-
     let inactivatedJunk = 0;
     let mergedCount = 0;
+    let splitGlued = 0;
 
-    await this.prisma.$transaction(async (tx) => {
-      for (const need of needs) {
-        if (!isJunkEpiNeedName(need.name)) continue;
-        await tx.jobFunctionEpiRequirement.updateMany({
-          where: { epiNeedId: need.id, isActive: true },
-          data: { isActive: false },
-        });
-        await tx.epiNeed.update({
-          where: { id: need.id },
-          data: { isActive: false },
-        });
+    const junk = await this.prisma.epiNeed.findMany({
+      where: { organizationId, isActive: true },
+      select: { id: true, name: true },
+    });
+    for (const need of junk) {
+      if (!isJunkEpiNeedName(need.name)) continue;
+      try {
+        await this.inactivateNeedRecord(need.id);
         inactivatedJunk += 1;
+      } catch (err) {
+        this.logger.warn(
+          `Falha ao inativar texto que nao e EPI '${need.name}': ${String(err)}`,
+        );
       }
+    }
 
-      const keep = needs.filter((need) => !isJunkEpiNeedName(need.name));
-      const parent = keep.map((_, index) => index);
-      const find = (index: number): number => {
-        if (parent[index] !== index) parent[index] = find(parent[index]);
-        return parent[index];
-      };
-      for (let i = 0; i < keep.length; i += 1) {
-        for (let j = i + 1; j < keep.length; j += 1) {
-          if (epiNeedsAreSame(keep[i].name, keep[j].name)) {
-            const a = find(i);
-            const b = find(j);
-            if (a !== b) parent[b] = a;
-          }
+    const afterJunk = await this.prisma.epiNeed.findMany({
+      where: { organizationId, isActive: true },
+      select: { id: true, name: true },
+    });
+    for (const need of afterJunk) {
+      if (!isGluedEpiNeedName(need.name)) continue;
+      try {
+        const didSplit = await this.splitGluedNeed(organizationId, need);
+        if (didSplit) splitGlued += 1;
+      } catch (err) {
+        this.logger.warn(
+          `Falha ao separar necessidade colada '${need.name}': ${String(err)}`,
+        );
+      }
+    }
+
+    const keep = await this.loadActiveNeedsForMerge(organizationId);
+    const parent = keep.map((_, index) => index);
+    const find = (index: number): number => {
+      if (parent[index] !== index) parent[index] = find(parent[index]);
+      return parent[index];
+    };
+    for (let i = 0; i < keep.length; i += 1) {
+      for (let j = i + 1; j < keep.length; j += 1) {
+        if (epiNeedsAreSame(keep[i].name, keep[j].name)) {
+          const a = find(i);
+          const b = find(j);
+          if (a !== b) parent[b] = a;
         }
       }
-      const groups = new Map<number, typeof keep>();
-      keep.forEach((need, index) => {
-        const root = find(index);
-        const list = groups.get(root) ?? [];
-        list.push(need);
-        groups.set(root, list);
+    }
+    const groups = new Map<number, typeof keep>();
+    keep.forEach((need, index) => {
+      const root = find(index);
+      const list = groups.get(root) ?? [];
+      list.push(need);
+      groups.set(root, list);
+    });
+
+    for (const group of groups.values()) {
+      if (group.length < 2) continue;
+      const ranked = [...group].sort((left, right) => {
+        const leftScore = this.duplicateWinnerScore(left);
+        const rightScore = this.duplicateWinnerScore(right);
+        if (leftScore !== rightScore) return rightScore - leftScore;
+        return left.createdAt.getTime() - right.createdAt.getTime();
       });
-
-      for (const group of groups.values()) {
-        if (group.length < 2) continue;
-        const ranked = [...group].sort((left, right) => {
-          const leftScore = this.duplicateWinnerScore(left);
-          const rightScore = this.duplicateWinnerScore(right);
-          if (leftScore !== rightScore) return rightScore - leftScore;
-          return left.createdAt.getTime() - right.createdAt.getTime();
-        });
-        const winner = ranked[0];
-        for (const loser of ranked.slice(1)) {
-          await this.mergeNeedInto(tx, organizationId, loser.id, winner.id);
+      const winner = ranked[0];
+      for (const loser of ranked.slice(1)) {
+        try {
+          await this.prisma.$transaction(
+            async (tx) => {
+              await this.mergeNeedInto(tx, organizationId, loser.id, winner.id);
+            },
+            { timeout: 60_000 },
+          );
           mergedCount += 1;
+        } catch (err) {
+          this.logger.warn(
+            `Falha ao unificar '${loser.name}' em '${winner.name}': ${String(err)}`,
+          );
         }
-        const seed = resolveEpiNeedSeedForIdentity(winner.name);
-        if (!seed) continue;
-        const clash = await tx.epiNeed.findFirst({
+      }
+      const seed = resolveEpiNeedSeedForIdentity(winner.name);
+      if (!seed) continue;
+      try {
+        const clash = await this.prisma.epiNeed.findFirst({
           where: {
             organizationId,
             id: { not: winner.id },
@@ -779,8 +811,17 @@ export class EpiNeedsService {
           },
           select: { id: true },
         });
-        if (clash) continue;
-        await tx.epiNeed.update({
+        if (clash) {
+          await this.prisma.$transaction(
+            async (tx) => {
+              await this.mergeNeedInto(tx, organizationId, winner.id, clash.id);
+            },
+            { timeout: 60_000 },
+          );
+          mergedCount += 1;
+          continue;
+        }
+        await this.prisma.epiNeed.update({
           where: { id: winner.id },
           data: {
             name: seed.name,
@@ -793,8 +834,12 @@ export class EpiNeedsService {
                 }),
           },
         });
+      } catch (err) {
+        this.logger.warn(
+          `Falha ao normalizar nome de '${winner.name}': ${String(err)}`,
+        );
       }
-    });
+    }
 
     await this.audit.log({
       action: 'epi_need.consolidated',
@@ -802,10 +847,123 @@ export class EpiNeedsService {
       userId,
       entityType: 'EpiNeed',
       entityId: organizationId,
-      metadata: { mergedCount, inactivatedJunk },
+      metadata: { mergedCount, inactivatedJunk, splitGlued },
     });
 
-    return { mergedCount, inactivatedJunk };
+    return { mergedCount, inactivatedJunk, splitGlued };
+  }
+
+  private async loadActiveNeedsForMerge(organizationId: string) {
+    return this.prisma.epiNeed.findMany({
+      where: { organizationId, isActive: true },
+      include: {
+        _count: {
+          select: {
+            itemLinks: true,
+            jobRequirements: true,
+            deliveryItems: true,
+          },
+        },
+      },
+    });
+  }
+
+  private async inactivateNeedRecord(needId: string) {
+    await this.prisma.jobFunctionEpiRequirement.updateMany({
+      where: { epiNeedId: needId, isActive: true },
+      data: { isActive: false },
+    });
+    await this.prisma.epiNeed.update({
+      where: { id: needId },
+      data: { isActive: false },
+    });
+  }
+
+  private async splitGluedNeed(
+    organizationId: string,
+    need: { id: string; name: string },
+  ): Promise<boolean> {
+    const parts = splitGluedEpiPhrases(need.name).filter(
+      (part) => !isJunkEpiNeedName(part),
+    );
+    if (parts.length < 2) return false;
+
+    const catalog = await this.prisma.epiNeed.findMany({
+      where: { organizationId, isActive: true },
+      select: { id: true, name: true },
+    });
+    const targetIds: string[] = [];
+    for (const part of parts) {
+      const label = canonicalizeEpiNeedLabel(part);
+      if (!label) continue;
+      const existing = findMatchingEpiNeed(label, catalog);
+      if (existing) {
+        if (!targetIds.includes(existing.id) && existing.id !== need.id) {
+          targetIds.push(existing.id);
+        }
+        continue;
+      }
+      const seed = resolveEpiNeedSeedForIdentity(label);
+      const created = await this.prisma.epiNeed.create({
+        data: {
+          organizationId,
+          name: seed?.name ?? label,
+          category: seed?.category ?? null,
+          description:
+            seed?.description ??
+            'Criada ao separar necessidade colada do PGR',
+          usefulLifeValue: seed?.usefulLifeValue ?? null,
+          usefulLifeUnit: seed?.usefulLifeUnit ?? null,
+        },
+      });
+      catalog.push({ id: created.id, name: created.name });
+      targetIds.push(created.id);
+    }
+    if (targetIds.length === 0) return false;
+
+    await this.prisma.$transaction(
+      async (tx) => {
+        const reqs = await tx.jobFunctionEpiRequirement.findMany({
+          where: { epiNeedId: need.id },
+        });
+        for (const req of reqs) {
+          for (const targetId of targetIds) {
+            const exists = await tx.jobFunctionEpiRequirement.findFirst({
+              where: {
+                organizationId,
+                jobFunctionId: req.jobFunctionId,
+                epiNeedId: targetId,
+                riskId: req.riskId,
+              },
+              select: { id: true },
+            });
+            if (exists) continue;
+            await tx.jobFunctionEpiRequirement.create({
+              data: {
+                organizationId: req.organizationId,
+                jobFunctionId: req.jobFunctionId,
+                riskId: req.riskId,
+                epiNeedId: targetId,
+                isRequired: req.isRequired,
+                quantity: req.quantity,
+                replacementIntervalDays: req.replacementIntervalDays,
+                notes: req.notes,
+                source: req.source,
+                isActive: req.isActive,
+              },
+            });
+          }
+          await tx.jobFunctionEpiRequirement.update({
+            where: { id: req.id },
+            data: { isActive: false },
+          });
+        }
+
+        await this.mergeNeedInto(tx, organizationId, need.id, targetIds[0]);
+      },
+      { timeout: 60_000 },
+    );
+    return true;
   }
 
   private duplicateWinnerScore(need: {

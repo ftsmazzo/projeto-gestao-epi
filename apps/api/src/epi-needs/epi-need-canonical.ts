@@ -49,6 +49,8 @@ const APPLICATION_FILLER = new Set([
   'subir',
   'carroceria',
   'rotina',
+  'protecao',
+  '3x1',
 ]);
 
 const DISTINGUISHER_TOKENS = new Set([
@@ -97,7 +99,7 @@ const FAMILY_SPLIT_RE =
   /(?=\b(?:Botinas?|Botas?|Capacete|Oculos|Óculos|Luvas?|Protetor|Respirador|Mascara|Máscara|Avental|Viseira|Creme|Uniforme|Cinto|Talabarte|Mangote|Macac[aã]o|Touca|Perneira|Cal[cç]ado)\b)/i;
 
 const JUNK_EPI_NAME_RE =
-  /^(?:realizar|efetuar|executar|manter|garantir|promover|adotar)\b|exame\s+de\s+audiometria|manuten[cç][aã]o\s+de\s+rotina|gin[aá]stica\s+laboral|plano\s+de\s+a[cç][aã]o|medidas?\s+administrativas?|^\(?\s*(?:poeira|fumos|ru[ií]do|calor)\b/i;
+  /^(?:realizar|efetuar|executar|manter|garantir|promover|adotar|defini[cç][aã]o)\b|exame\s+de\s+audiometria|manuten[cç][aã]o\s+de\s+rotina|tempo\s+de\s+espera|antes\s+de\s+tocar|gin[aá]stica\s+laboral|plano\s+de\s+a[cç][aã]o|medidas?\s+administrativas?|^\(?\s*(?:poeira|fumos|ru[ií]do|calor)\b/i;
 
 function foldText(value: string): string {
   return value
@@ -112,6 +114,8 @@ function applySynonyms(token: string): string {
   if (token === 'tyvec' || token === 'tyvek') return 'tyvek';
   if (token === 'plugue') return 'plug';
   if (token === 'semifacial') return 'semi';
+  if (token === 'mangote') return 'manga';
+  if (token === 'protecao') return 'protetor';
   return token;
 }
 
@@ -155,6 +159,8 @@ export function isJunkEpiNeedName(name: string): boolean {
   if (!key) return true;
   const tokens = key.split(' ');
   if (tokens.length === 1 && tokens[0].length < 6) return true;
+  const hasFamily = tokens.some((token) => FAMILY_HEADS.has(token));
+  if (!hasFamily && tokens.length >= 6) return true;
   return false;
 }
 
@@ -192,14 +198,11 @@ function identityKey(name: string): string {
     .join(' ');
 }
 
-export function epiNeedsAreSame(left: string, right: string): boolean {
-  if (isJunkEpiNeedName(left) || isJunkEpiNeedName(right)) return false;
-  const a = identityKey(left);
-  const b = identityKey(right);
-  if (!a || !b) return false;
-  if (a === b) return true;
-  if (tokenListsCompatible(a.split(' '), b.split(' '))) return true;
-  return isSameFamilySubset(a, b);
+function identityKeysMatch(left: string, right: string): boolean {
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (tokenListsCompatible(left.split(' '), right.split(' '))) return true;
+  return isSameFamilySubset(left, right);
 }
 
 export function splitGluedEpiPhrases(raw: string): string[] {
@@ -213,6 +216,15 @@ export function splitGluedEpiPhrases(raw: string): string[] {
   return [...new Set(parts)];
 }
 
+export function isGluedEpiNeedName(name: string): boolean {
+  const parts = splitGluedEpiPhrases(name).filter(
+    (part) => !isJunkEpiNeedName(part),
+  );
+  if (parts.length < 2) return false;
+  const fullKey = identityKey(name);
+  return parts.some((part) => identityKey(part) !== fullKey);
+}
+
 export function resolveEpiNeedSeedForIdentity(
   name: string,
 ): DefaultEpiNeedSeed | null {
@@ -222,33 +234,27 @@ export function resolveEpiNeedSeedForIdentity(
 
   for (const seed of DEFAULT_EPI_NEED_SEEDS) {
     const seedKey = identityKey(seed.name);
-    if (seedKey && (seedKey === key || epiNeedsAreSame(name, seed.name))) {
+    if (seedKey && identityKeysMatch(key, seedKey)) {
       return seed;
     }
     for (const alias of seed.aliases) {
       const aliasKey = identityKey(alias);
       if (aliasKey.split(' ').length < 2) continue;
-      if (aliasKey === key || epiNeedsAreSame(name, alias)) {
+      if (identityKeysMatch(key, aliasKey)) {
         return seed;
       }
     }
   }
 
-  let best: DefaultEpiNeedSeed | null = null;
-  let bestScore = 0;
-  for (const seed of DEFAULT_EPI_NEED_SEEDS) {
-    const seedKey = identityKey(seed.name);
-    if (!seedKey || seedKey.split(' ').length < 2) continue;
-    if (!isSameFamilySubset(key, seedKey) && !epiNeedsAreSame(name, seed.name)) {
-      continue;
-    }
-    const score = seedKey.split(' ').length * 10 + seedKey.length;
-    if (score > bestScore) {
-      bestScore = score;
-      best = seed;
-    }
-  }
-  return best;
+  return null;
+}
+
+export function epiNeedsAreSame(left: string, right: string): boolean {
+  if (isJunkEpiNeedName(left) || isJunkEpiNeedName(right)) return false;
+  if (identityKeysMatch(identityKey(left), identityKey(right))) return true;
+  const seedLeft = resolveEpiNeedSeedForIdentity(left);
+  const seedRight = resolveEpiNeedSeedForIdentity(right);
+  return Boolean(seedLeft && seedRight && seedLeft.name === seedRight.name);
 }
 
 export function canonicalizeEpiNeedLabel(name: string): string | null {
