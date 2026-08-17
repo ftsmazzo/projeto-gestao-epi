@@ -20,6 +20,7 @@ import { CommunicationsModule } from './communications/communications.module';
 import { PlatformModule } from './platform/platform.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { SstDocumentsModule } from './sst-documents/sst-documents.module';
+import { ClientGroupsModule } from './client-groups/client-groups.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { SstDocumentsModule } from './sst-documents/sst-documents.module';
     CommunicationsModule,
     SubscriptionsModule,
     SstDocumentsModule,
+    ClientGroupsModule,
     PlatformModule,
     HealthModule,
   ],

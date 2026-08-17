@@ -3,8 +3,9 @@
 import type { ClientPortalUser } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ReactNode, useEffect, useId, useState } from 'react';
+import { ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { isPortalNavActive, PORTAL_NAV } from '../lib/nav';
+import { formatCnpj } from '../lib/cnpj';
 import { PoweredBy } from './PoweredBy';
 import {
   IconBuilding,
@@ -24,6 +25,7 @@ type Props = {
   children: ReactNode;
   user?: ClientPortalUser | null;
   onLogout?: () => void;
+  onSwitchCompany?: (servedClientId: string) => void | Promise<void>;
 };
 
 const BOTTOM_PRIMARY = [
@@ -64,12 +66,29 @@ function currentPortalLabel(pathname: string) {
   return match?.label ?? 'Painel';
 }
 
-export function PortalShell({ children, user, onLogout }: Props) {
+export function PortalShell({ children, user, onLogout, onSwitchCompany }: Props) {
   const pathname = usePathname();
   const drawerId = useId();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
   const clientName =
     user?.servedClient.tradeName || user?.servedClient.legalName || null;
+  const accessible = user?.accessibleClients ?? [];
+  const canSwitch = accessible.length > 1 && Boolean(onSwitchCompany);
+  const groupedOptions = useMemo(() => {
+    const buckets = new Map<string, typeof accessible>();
+    for (const item of accessible) {
+      const key = item.group?.name ?? '';
+      const list = buckets.get(key) ?? [];
+      list.push(item);
+      buckets.set(key, list);
+    }
+    return [...buckets.entries()].sort(([a], [b]) => {
+      if (!a) return 1;
+      if (!b) return -1;
+      return a.localeCompare(b, 'pt-BR');
+    });
+  }, [accessible]);
 
   const primaryItems = PORTAL_NAV.filter((item) =>
     (BOTTOM_PRIMARY as readonly string[]).includes(item.href),
@@ -128,6 +147,11 @@ export function PortalShell({ children, user, onLogout }: Props) {
               <strong className="portal-brand-name">
                 {clientName ?? 'Painel do cliente'}
               </strong>
+              {user?.accessibleClients?.some((c) => c.id === user.servedClient.id && c.group) ? (
+                <span className="portal-brand-group">
+                  {user.accessibleClients.find((c) => c.id === user.servedClient.id)?.group?.name}
+                </span>
+              ) : null}
             </Link>
           </div>
           <p className="ops-nav-label">Operacao</p>
@@ -151,6 +175,43 @@ export function PortalShell({ children, user, onLogout }: Props) {
             )}
           </div>
           <div className="portal-topbar-right">
+            {canSwitch ? (
+              <label className="portal-company-switch">
+                <span className="portal-company-switch__label">Empresa</span>
+                <select
+                  value={user!.servedClient.id}
+                  disabled={switching}
+                  aria-label="Trocar CNPJ do grupo"
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setSwitching(true);
+                    void Promise.resolve(onSwitchCompany?.(next)).finally(
+                      () => setSwitching(false),
+                    );
+                  }}
+                >
+                  {groupedOptions.map(([groupName, items]) =>
+                    groupName ? (
+                      <optgroup key={groupName} label={groupName}>
+                        {items.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.tradeName || item.legalName} ·{' '}
+                            {formatCnpj(item.cnpj)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : (
+                      items.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.tradeName || item.legalName} ·{' '}
+                          {formatCnpj(item.cnpj)}
+                        </option>
+                      ))
+                    ),
+                  )}
+                </select>
+              </label>
+            ) : null}
             {user ? (
               <div className="portal-user">
                 <span className="portal-user-name">{user.name}</span>

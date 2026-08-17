@@ -102,6 +102,8 @@ model Organization {
 
   memberships       Membership[]
   clientUserMemberships ClientUserMembership[]
+  clientGroups      ClientGroup[]
+  clientGroupMembers ClientGroupMember[]
   contacts          OrganizationContact[]
   communicationOutbox CommunicationOutbox[]
   auditLogs         AuditLog[]
@@ -282,6 +284,7 @@ model ServedClient {
   sstProfile       SstClientProfile?
   sstDocuments     SstDocument[]
   sstDocumentLinks SstDocumentLink[]
+  groupMember      ClientGroupMember?
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -343,6 +346,37 @@ model ClientSubscription {
 
   @@index([organizationId])
   @@index([organizationId, status])
+}
+
+/// Grupo empresarial (varios CNPJs). PGR, estoque, custo e entrega continuam por CNPJ.
+model ClientGroup {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members      ClientGroupMember[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model ClientGroupMember {
+  id             String   @id @default(cuid())
+  organizationId String
+  groupId        String
+  servedClientId String   @unique
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  group        ClientGroup  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  servedClient ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([groupId])
 }
 
 /// Usuario operacional da empresa cliente (gestor / estoque). Nao consome vidas.

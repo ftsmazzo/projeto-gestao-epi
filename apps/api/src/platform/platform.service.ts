@@ -646,6 +646,8 @@ export class PlatformService {
         await tx.clientUserMembership.deleteMany({
           where: { organizationId },
         });
+        await tx.clientGroupMember.deleteMany({ where: { organizationId } });
+        await tx.clientGroup.deleteMany({ where: { organizationId } });
         await tx.communicationOutbox.deleteMany({ where: { organizationId } });
         await tx.worker.deleteMany({ where: { organizationId } });
         await tx.clientJobFunction.deleteMany({ where: { organizationId } });

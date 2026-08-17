@@ -7,6 +7,7 @@ import {
   clearClientAccessToken,
   fetchClientMe,
   getClientAccessToken,
+  switchPortalCompany,
 } from '../lib/client-auth';
 import { PortalShell } from './PortalShell';
 
@@ -53,6 +54,12 @@ export function RequireClientAuth({
     router.push('/portal/login');
   }
 
+  async function switchCompany(servedClientId: string) {
+    if (servedClientId === user?.servedClient.id) return;
+    await switchPortalCompany(servedClientId);
+    window.location.reload();
+  }
+
   if (loading || !user) {
     return (
       <PortalShell>
@@ -72,7 +79,7 @@ export function RequireClientAuth({
   }
 
   return (
-    <PortalShell user={user} onLogout={logout}>
+    <PortalShell user={user} onLogout={logout} onSwitchCompany={switchCompany}>
       {children(user)}
     </PortalShell>
   );

@@ -1958,6 +1958,32 @@ a.btn-danger:hover {
   letter-spacing: -0.01em;
 }
 
+.portal-brand-group {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.portal-company-switch {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 12rem;
+}
+
+.portal-company-switch__label {
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.portal-company-switch select {
+  max-width: 18rem;
+  font-size: 0.85rem;
+}
+
 .portal-nav {
   display: flex;
   flex-wrap: wrap;
@@ -4085,6 +4111,15 @@ a.btn-danger:hover {
 
   .portal-brand-kicker {
     font-size: 0.65rem;
+  }
+
+  .portal-company-switch {
+    min-width: 0;
+    max-width: 42vw;
+  }
+
+  .portal-company-switch select {
+    max-width: 42vw;
   }
 
   .portal-brand-name {

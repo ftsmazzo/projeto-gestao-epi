@@ -286,6 +286,7 @@ function ClientesContent() {
         client.tradeName ?? '',
         client.cnpj,
         formatCnpj(client.cnpj),
+        client.group?.name ?? '',
       ]
         .join(' ')
         .toLowerCase();
@@ -298,16 +299,21 @@ function ClientesContent() {
       <PageHeader
         kicker="Cadastros"
         title="Clientes atendidos"
-        lead="Implante um CNPJ: cadastre os dados ou importe o PGR. Depois abra o workspace para estrutura, vidas e acesso ao portal."
+        lead="Implante um CNPJ: cadastre os dados ou importe o PGR. Use Grupos para holdings e fazendas com varios CNPJs."
         actions={
           listTab === 'clients' ? (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={openCreateTab}
-            >
-              Novo cliente
-            </button>
+            <div className="btn-row">
+              <Link className="btn btn-secondary" href="/clientes/grupos">
+                Grupos
+              </Link>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={openCreateTab}
+              >
+                Novo cliente
+              </button>
+            </div>
           ) : (
             <button
               type="button"
@@ -596,6 +602,11 @@ function ClientesContent() {
                         <p className="stack-card__meta mono">
                           {formatCnpj(client.cnpj)}
                         </p>
+                        {client.group ? (
+                          <p className="stack-card__meta">
+                            Grupo {client.group.name}
+                          </p>
+                        ) : null}
                         <p className="stack-card__meta">
                           Alocadas {client.allocatedLifeQuota} · Utilizadas{' '}
                           {client.usedLives ?? 0}

@@ -5,6 +5,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { SwitchClientCompanyDto } from './dto/switch-client-company.dto';
 import {
   ClientJwtAuthGuard,
   JwtAuthGuard,
@@ -55,6 +56,15 @@ export class AuthController {
   @Get('client/me')
   clientMe(@CurrentUser() user: ClientJwtPayload) {
     return this.authService.clientMe(user);
+  }
+
+  @UseGuards(ClientJwtAuthGuard)
+  @Post('client/switch-company')
+  clientSwitchCompany(
+    @CurrentUser() user: ClientJwtPayload,
+    @Body() dto: SwitchClientCompanyDto,
+  ) {
+    return this.authService.clientSwitchCompany(user, dto.servedClientId);
   }
 
   @UseGuards(ClientJwtAuthGuard)

@@ -69,11 +69,13 @@ export class ServedClientsService {
             workers: { where: { status: WorkerStatus.ACTIVE } },
           },
         },
+        groupMember: { select: { group: { select: { id: true, name: true } } } },
       },
     });
-    return rows.map(({ _count, ...client }) => ({
+    return rows.map(({ _count, groupMember, ...client }) => ({
       ...client,
       usedLives: _count.workers,
+      group: groupMember?.group ?? null,
     }));
   }
 

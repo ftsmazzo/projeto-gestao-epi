@@ -320,12 +320,32 @@ export class AuthService {
     return this.finalizeClientLogin(user, membership);
   }
 
+  async clientSwitchCompany(payload: ClientJwtPayload, servedClientId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+    });
+    if (!user) {
+      throw new UnauthorizedException('Sessao invalida');
+    }
+    const membership = await this.findClientMembershipForUser(
+      user.id,
+      user.email,
+      servedClientId,
+    );
+    if (!membership) {
+      throw new ForbiddenException(
+        'Sem acesso a este CNPJ. A consultoria precisa liberar sua responsabilidade neste cliente.',
+      );
+    }
+    return this.finalizeClientLogin(user, membership);
+  }
+
   async clientMe(payload: ClientJwtPayload) {
     const membership = await this.getActiveClientMembership(
       payload.sub,
       payload.servedClientId,
     );
-    return this.toClientPortalUser(membership);
+    return await this.toClientPortalUser(membership);
   }
 
   async clientChangePassword(
@@ -380,7 +400,7 @@ export class AuthService {
       payload.sub,
       payload.servedClientId,
     );
-    return this.toClientPortalUser(membership);
+    return await this.toClientPortalUser(membership);
   }
 
   private async finalizeClientLogin(
@@ -442,11 +462,107 @@ export class AuthService {
 
     return {
       accessToken,
-      user: this.toClientPortalUser({
+      user: await this.toClientPortalUser({
         ...updated,
         mustChangePassword: membership.mustChangePassword,
       }),
     };
+  }
+
+  private async findClientMembershipForUser(
+    userId: string,
+    email: string,
+    servedClientId: string,
+  ) {
+    return this.prisma.clientUserMembership.findFirst({
+      where: {
+        servedClientId,
+        isActive: true,
+        role: {
+          in: [ClientUserRole.CLIENT_MANAGER, ClientUserRole.STOCK_OPERATOR],
+        },
+        accessStatus: {
+          in: [
+            ClientUserAccessStatus.INVITED,
+            ClientUserAccessStatus.ACTIVE,
+            ClientUserAccessStatus.PREPARED,
+          ],
+        },
+        servedClient: { status: ServedClientStatus.ACTIVE },
+        OR: [{ userId }, { email: email.trim().toLowerCase() }],
+      },
+      include: {
+        servedClient: true,
+        organization: { select: { id: true, name: true, status: true } },
+      },
+    });
+  }
+
+  private async listAccessibleClients(input: {
+    userId: string;
+    email: string;
+    organizationId: string;
+  }) {
+    const rows = await this.prisma.clientUserMembership.findMany({
+      where: {
+        organizationId: input.organizationId,
+        isActive: true,
+        role: {
+          in: [ClientUserRole.CLIENT_MANAGER, ClientUserRole.STOCK_OPERATOR],
+        },
+        accessStatus: {
+          in: [
+            ClientUserAccessStatus.INVITED,
+            ClientUserAccessStatus.ACTIVE,
+            ClientUserAccessStatus.PREPARED,
+          ],
+        },
+        servedClient: { status: ServedClientStatus.ACTIVE },
+        OR: [
+          { userId: input.userId },
+          { email: input.email.trim().toLowerCase() },
+        ],
+      },
+      include: {
+        servedClient: {
+          include: {
+            groupMember: {
+              select: { group: { select: { id: true, name: true } } },
+            },
+          },
+        },
+      },
+      orderBy: [{ servedClient: { tradeName: 'asc' } }, { createdAt: 'asc' }],
+    });
+    const seen = new Set<string>();
+    const list: Array<{
+      id: string;
+      legalName: string;
+      tradeName: string | null;
+      cnpj: string;
+      role: ClientUserRole;
+      group: { id: string; name: string } | null;
+    }> = [];
+    for (const row of rows) {
+      if (seen.has(row.servedClientId)) continue;
+      seen.add(row.servedClientId);
+      list.push({
+        id: row.servedClient.id,
+        legalName: row.servedClient.legalName,
+        tradeName: row.servedClient.tradeName,
+        cnpj: row.servedClient.cnpj,
+        role: row.role,
+        group: row.servedClient.groupMember?.group ?? null,
+      });
+    }
+    return list.sort((a, b) => {
+      const groupA = a.group?.name ?? '';
+      const groupB = b.group?.name ?? '';
+      if (groupA !== groupB) return groupA.localeCompare(groupB, 'pt-BR');
+      const nameA = a.tradeName || a.legalName;
+      const nameB = b.tradeName || b.legalName;
+      return nameA.localeCompare(nameB, 'pt-BR');
+    });
   }
 
   private async getActiveClientMembership(
@@ -484,7 +600,7 @@ export class AuthService {
     return membership;
   }
 
-  private toClientPortalUser(membership: {
+  private async toClientPortalUser(membership: {
     userId: string | null;
     email: string;
     name: string;
@@ -505,9 +621,10 @@ export class AuthService {
     if (!id) {
       throw new UnauthorizedException('Sessao invalida');
     }
+    const email = membership.user?.email ?? membership.email;
     return {
       id,
-      email: membership.user?.email ?? membership.email,
+      email,
       name: membership.user?.name ?? membership.name,
       role: membership.role,
       mustChangePassword: membership.mustChangePassword,
@@ -520,6 +637,11 @@ export class AuthService {
         cnpj: membership.servedClient.cnpj,
         status: membership.servedClient.status,
       },
+      accessibleClients: await this.listAccessibleClients({
+        userId: id,
+        email,
+        organizationId: membership.organization.id,
+      }),
     };
   }
 

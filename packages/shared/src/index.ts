@@ -191,6 +191,46 @@ export interface ServedClient {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  group?: { id: string; name: string } | null;
+}
+
+export interface ClientGroupClient {
+  id: string;
+  legalName: string;
+  tradeName: string | null;
+  cnpj: string;
+  status: ServedClientStatus;
+}
+
+export interface ClientGroupPersonAccess {
+  email: string;
+  name: string;
+  role: ClientUserRole;
+  isActive: boolean;
+  clients: Array<{
+    id: string;
+    legalName: string;
+    tradeName: string | null;
+    cnpj: string;
+  }>;
+}
+
+export interface ClientGroup {
+  id: string;
+  organizationId: string;
+  name: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  clients: ClientGroupClient[];
+  people?: ClientGroupPersonAccess[];
+}
+
+export interface ClientGroupAccessResult {
+  created: number;
+  alreadyHadAccess: number;
+  invited: boolean;
+  initialAccess: ClientInitialAccess | null;
 }
 
 export type OrganizationContactRole =
@@ -438,6 +478,15 @@ export type ClientUserAccessStatus =
   | 'ACTIVE'
   | 'DISABLED';
 
+export interface ClientPortalAccessibleClient {
+  id: string;
+  legalName: string;
+  tradeName: string | null;
+  cnpj: string;
+  role: ClientUserRole;
+  group: { id: string; name: string } | null;
+}
+
 export interface ClientPortalClient {
   id: string;
   legalName: string;
@@ -458,6 +507,8 @@ export interface ClientPortalUser {
     name: string;
   };
   servedClient: ClientPortalClient;
+  /** CNPJs que este usuario pode operar. Entrega/estoque/custo seguem o CNPJ atual. */
+  accessibleClients: ClientPortalAccessibleClient[];
 }
 
 export interface ClientAuthResponse {

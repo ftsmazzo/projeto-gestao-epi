@@ -159,6 +159,18 @@ export async function fetchClientMe() {
   return clientApiFetch<ClientPortalUser>('/auth/client/me');
 }
 
+export async function switchPortalCompany(servedClientId: string) {
+  const data = await clientApiFetch<ClientAuthResponse>(
+    '/auth/client/switch-company',
+    {
+      method: 'POST',
+      body: JSON.stringify({ servedClientId }),
+    },
+  );
+  setClientAccessToken(data.accessToken);
+  return data;
+}
+
 export async function changeClientPassword(input: {
   currentPassword: string;
   newPassword: string;
