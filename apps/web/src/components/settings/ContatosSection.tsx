@@ -141,7 +141,9 @@ export function ContatosSection() {
         <p className="page-lead">
           Identidade nas mensagens aos clientes (e-mail e WhatsApp): suporte,
           comercial, cobranca e operacao. Marque um como primario para uso
-          padrao.
+          padrao. Depois da implantacao das vidas, o WhatsApp de Operacao (ou
+          do contato primario) recebe aviso se a lista de RH tiver cargos que o
+          PGR nao cobriu.
         </p>
       </header>
 

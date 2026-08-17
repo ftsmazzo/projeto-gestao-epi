@@ -411,6 +411,12 @@ export interface WorkerImportConfirmResponse {
   skipped: number;
   errors: Array<{ rowNumber: number; message: string }>;
   lifeSummary: ClientLifeSummary;
+  /** Defasagem PGR × lista de RH apos a implantacao das vidas. */
+  pgrRhGap?: {
+    jobsWithoutEpi: number;
+    workersWithoutEpi: number;
+    notifiedConsultoria: boolean;
+  } | null;
 }
 
 export interface ClientLifeSummary {

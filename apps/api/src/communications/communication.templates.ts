@@ -223,3 +223,32 @@ export function buildSstDocumentSignedWhatsapp(input: {
     'Guarde este comprovante. O RH da empresa tambem recebe o arquivo no ProntEPI.',
   ].join('\n');
 }
+
+export const COMM_TEMPLATE_PGR_RH_GAP = 'pgr_rh_structure_gap';
+
+export type PgrRhGapAlertInput = {
+  consultantName: string;
+  clientName: string;
+  jobsWithoutEpi: number;
+  workersWithoutEpi: number;
+  sampleLines: string[];
+};
+
+export function buildPgrRhGapAlertWhatsapp(input: PgrRhGapAlertInput) {
+  const samples =
+    input.sampleLines.length > 0
+      ? input.sampleLines.slice(0, 8).map((line) => `• ${line}`)
+      : [];
+  return [
+    `*ProntEPI* — defasagem PGR × lista de RH`,
+    `Ola, ${input.consultantName}.`,
+    `Cliente: ${input.clientName}`,
+    '',
+    'A implantacao das vidas foi concluida. A lista de RH tem cargos que o PGR da consultoria nao descreveu (sem EPI ligado no ProntEPI).',
+    `${input.jobsWithoutEpi} cargo(s) da lista sem cobertura no PGR · ${input.workersWithoutEpi} trabalhador(es) nesses cargos.`,
+    ...(samples.length > 0 ? ['', ...samples] : []),
+    '',
+    'A empresa muitas vezes nao avisa mudanca de organograma. Vale pedir o PGR atualizado ou validar esses cargos com o tecnico de SST.',
+  ].join('\n');
+}
+

@@ -18,11 +18,13 @@ import {
   buildFacialEnrollmentInviteWhatsapp,
   buildSstDocumentInviteWhatsapp,
   buildSstDocumentSignedWhatsapp,
+  buildPgrRhGapAlertWhatsapp,
   COMM_TEMPLATE_CLIENT_ACCESS_INVITE,
   COMM_TEMPLATE_CONSULTORIA_ACCESS_INVITE,
   COMM_TEMPLATE_FACIAL_ENROLLMENT_INVITE,
   COMM_TEMPLATE_SST_DOCUMENT_INVITE,
   COMM_TEMPLATE_SST_DOCUMENT_SIGNED,
+  COMM_TEMPLATE_PGR_RH_GAP,
   type ClientAccessInviteInput,
   type ConsultoriaAccessInviteInput,
   type FacialEnrollmentInviteInput,
@@ -450,6 +452,83 @@ export class CommunicationsService {
       void this.deliver(row.id);
     }
     return { id: row.id, created: true };
+  }
+
+  /**
+   * Aviso pos-implantacao: lista de RH trouxe cargos que o PGR nao cobriu com EPI.
+   * Destino: WhatsApp dos contatos da consultoria (operacao / principal).
+   */
+  async enqueuePgrRhGapAlert(input: {
+    organizationId: string;
+    servedClientId: string;
+    clientName: string;
+    jobsWithoutEpi: number;
+    workersWithoutEpi: number;
+    sampleLines: string[];
+  }): Promise<{ queued: number; notified: boolean; skippedReason?: string }> {
+    if (input.jobsWithoutEpi <= 0 && input.workersWithoutEpi <= 0) {
+      return { queued: 0, notified: false, skippedReason: 'no_gap' };
+    }
+
+    const contacts = await this.prisma.organizationContact.findMany({
+      where: {
+        organizationId: input.organizationId,
+        isActive: true,
+        phone: { not: null },
+      },
+      select: {
+        name: true,
+        phone: true,
+        role: true,
+        isPrimary: true,
+      },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+    });
+
+    const ops = contacts.filter(
+      (c) => c.role === 'OPERATIONS' || c.isPrimary,
+    );
+    const recipients = (ops.length > 0 ? ops : contacts).filter(
+      (c) => Boolean(c.phone?.trim()),
+    );
+    if (recipients.length === 0) {
+      this.logger.warn(
+        `Defasagem PGR×RH no cliente ${input.servedClientId}: sem WhatsApp de contato da consultoria.`,
+      );
+      return { queued: 0, notified: false, skippedReason: 'no_recipients' };
+    }
+
+    let queued = 0;
+    for (const recipient of recipients) {
+      const bodyText = buildPgrRhGapAlertWhatsapp({
+        consultantName: recipient.name,
+        clientName: input.clientName,
+        jobsWithoutEpi: input.jobsWithoutEpi,
+        workersWithoutEpi: input.workersWithoutEpi,
+        sampleLines: input.sampleLines,
+      });
+      const result = await this.enqueueMessage({
+        organizationId: input.organizationId,
+        channel: CommunicationChannel.WHATSAPP,
+        templateKey: COMM_TEMPLATE_PGR_RH_GAP,
+        toAddress: recipient.phone!.trim(),
+        bodyText,
+        payload: {
+          kind: 'pgr_rh_gap',
+          clientId: input.servedClientId,
+          jobsWithoutEpi: input.jobsWithoutEpi,
+          workersWithoutEpi: input.workersWithoutEpi,
+        } satisfies Record<string, unknown>,
+        relatedType: 'ServedClient',
+        relatedId: input.servedClientId,
+        dedupePerDay: true,
+      });
+      if (result) queued += 1;
+    }
+    return {
+      queued,
+      notified: this.isEnabled() && queued > 0,
+    };
   }
 
   resolvePortalUrl() {

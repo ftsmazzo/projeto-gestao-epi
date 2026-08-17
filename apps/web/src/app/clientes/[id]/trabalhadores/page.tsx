@@ -412,7 +412,13 @@ export default function ClienteTrabalhadoresPage() {
       const result = await confirmWorkerCsvImport(clientId, rows);
       setImportMessage(
         `Importacao concluida: ${result.created} criado(s), ${result.updated} atualizado(s)` +
-          (result.skipped ? `, ${result.skipped} ignorado(s).` : '.'),
+          (result.skipped ? `, ${result.skipped} ignorado(s)` : '') +
+          (result.pgrRhGap && result.pgrRhGap.workersWithoutEpi > 0
+            ? `. Defasagem PGR: ${result.pgrRhGap.jobsWithoutEpi} funcao(oes) / ${result.pgrRhGap.workersWithoutEpi} trabalhador(es) sem EPI` +
+              (result.pgrRhGap.notifiedConsultoria
+                ? ' — consultoria avisada no WhatsApp.'
+                : ' — cadastre WhatsApp em Contatos da consultoria para avisar o tecnico.')
+            : '.'),
       );
       setImportPreview(null);
       setImportFileName(null);

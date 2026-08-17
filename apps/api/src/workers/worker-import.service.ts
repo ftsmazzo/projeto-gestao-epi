@@ -15,6 +15,7 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { resolveCsvImportInput } from '../common/csv-text-encoding';
 import { cpfAuditMeta, isValidCpf, stripCpf } from '../common/cpf';
+import { CommunicationsService } from '../communications/communications.service';
 import { PgroService } from '../pgro/pgro.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -65,6 +66,7 @@ export class WorkerImportService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly pgro: PgroService,
+    private readonly communications: CommunicationsService,
   ) {}
 
   async preview(
@@ -1101,6 +1103,11 @@ export class WorkerImportService {
       where: { organizationId, servedClientId },
     });
 
+    const pgrRhGap = await this.notifyPgrRhGapAfterImplant(
+      organizationId,
+      servedClientId,
+    );
+
     return {
       created,
       updated,
@@ -1113,6 +1120,7 @@ export class WorkerImportService {
         activeWorkers: lifeSummary.used,
         totalWorkers,
       },
+      pgrRhGap,
     };
   }
 
@@ -1290,6 +1298,102 @@ export class WorkerImportService {
       used,
       available: Math.max(0, client.allocatedLifeQuota - used),
     };
+  }
+
+  /**
+   * Depois da implantacao das vidas: funcoes sem EPI = lista de RH fora do PGR.
+   * Avisa a consultoria por WhatsApp (contato operacional).
+   */
+  private async notifyPgrRhGapAfterImplant(
+    organizationId: string,
+    servedClientId: string,
+  ): Promise<{
+    jobsWithoutEpi: number;
+    workersWithoutEpi: number;
+    notifiedConsultoria: boolean;
+  } | null> {
+    const jobs = await this.prisma.clientJobFunction.findMany({
+      where: { organizationId, servedClientId, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        sector: { select: { name: true } },
+        epiRequirements: {
+          where: { isActive: true },
+          select: { id: true },
+          take: 1,
+        },
+        _count: {
+          select: {
+            workers: { where: { status: WorkerStatus.ACTIVE } },
+          },
+        },
+      },
+    });
+
+    const gaps = jobs.filter(
+      (job) =>
+        job.epiRequirements.length === 0 && job._count.workers > 0,
+    );
+    if (gaps.length === 0) {
+      return {
+        jobsWithoutEpi: 0,
+        workersWithoutEpi: 0,
+        notifiedConsultoria: false,
+      };
+    }
+
+    const workersWithoutEpi = gaps.reduce(
+      (sum, job) => sum + job._count.workers,
+      0,
+    );
+    const sampleLines = gaps
+      .sort((a, b) => b._count.workers - a._count.workers)
+      .slice(0, 8)
+      .map(
+        (job) =>
+          `${job.sector.name} / ${job.name} (${job._count.workers} vida(s))`,
+      );
+
+    const client = await this.prisma.servedClient.findFirst({
+      where: { id: servedClientId, organizationId },
+      select: { legalName: true, tradeName: true },
+    });
+    const clientName =
+      client?.tradeName?.trim() || client?.legalName?.trim() || 'Cliente';
+
+    try {
+      const sent = await this.communications.enqueuePgrRhGapAlert({
+        organizationId,
+        servedClientId,
+        clientName,
+        jobsWithoutEpi: gaps.length,
+        workersWithoutEpi,
+        sampleLines,
+      });
+      return {
+        jobsWithoutEpi: gaps.length,
+        workersWithoutEpi,
+        notifiedConsultoria: sent.notified,
+      };
+    } catch (err) {
+      await this.audit.log({
+        action: 'worker.pgr_rh_gap_notify_failed',
+        organizationId,
+        entityType: 'ServedClient',
+        entityId: servedClientId,
+        metadata: {
+          jobsWithoutEpi: gaps.length,
+          workersWithoutEpi,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+      return {
+        jobsWithoutEpi: gaps.length,
+        workersWithoutEpi,
+        notifiedConsultoria: false,
+      };
+    }
   }
 
   private async assertClient(organizationId: string, servedClientId: string) {
