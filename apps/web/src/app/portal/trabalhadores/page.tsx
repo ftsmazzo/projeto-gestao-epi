@@ -4,6 +4,7 @@ import type {
   PortalEstruturaResponse,
   PortalTrabalhadorReplacementDue,
   PortalTrabalhadoresResponse,
+  SstDocumentListItem,
   WorkerImportPreviewResponse,
 } from '@gestao-epi/shared';
 import Link from 'next/link';
@@ -22,7 +23,9 @@ import {
   confirmPortalWorkerCsvImport,
   createPortalWorker,
   downloadCsvText,
+  openPortalSstDocumentPdf,
   fetchPortalEstrutura,
+  fetchPortalSstDocuments,
   fetchPortalTrabalhadores,
   generatePortalWorkerFacialEnrollmentLink,
   getPortalWorkerCsvTemplate,
@@ -114,7 +117,28 @@ function bioLabel(worker: PortalWorkerRow) {
   }
 }
 
-function PortalTrabalhadoresContent() {
+type WorkerSstButtons = {
+  integracao: SstDocumentListItem | null;
+  os: SstDocumentListItem | null;
+};
+
+function latestSstByWorker(docs: SstDocumentListItem[]) {
+  const map = new Map<string, WorkerSstButtons>();
+  for (const doc of docs) {
+    if (doc.status === 'CANCELLED') continue;
+    const slot = map.get(doc.workerId) ?? { integracao: null, os: null };
+    if (doc.type === 'INTEGRACAO' && !slot.integracao) slot.integracao = doc;
+    if (doc.type === 'ORDEM_SERVICO' && !slot.os) slot.os = doc;
+    map.set(doc.workerId, slot);
+  }
+  return map;
+}
+
+function PortalTrabalhadoresContent({
+  sstEnabled,
+}: {
+  sstEnabled: boolean;
+}) {
   const searchParams = useSearchParams();
   const filtro = searchParams.get('filtro');
   const onlyDue = filtro === 'trocas';
@@ -150,17 +174,27 @@ function PortalTrabalhadoresContent() {
     useState<WorkerImportPreviewResponse | null>(null);
   const [importBusy, setImportBusy] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [sstByWorker, setSstByWorker] = useState<
+    Map<string, WorkerSstButtons>
+  >(new Map());
+  const [sstBusyId, setSstBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     setLoading(true);
     try {
-      const [workersRes, estruturaRes] = await Promise.all([
+      const [workersRes, estruturaRes, sstRes] = await Promise.all([
         fetchPortalTrabalhadores(),
         fetchPortalEstrutura().catch(() => null),
+        sstEnabled
+          ? fetchPortalSstDocuments().catch(() => null)
+          : Promise.resolve(null),
       ]);
       setData(workersRes);
       setEstrutura(estruturaRes);
+      setSstByWorker(
+        sstRes ? latestSstByWorker(sstRes.documents) : new Map(),
+      );
       if (onlyDue) {
         const firstDue = workersRes.workers.find((w) => w.replacementDue);
         if (firstDue) setExpandedId(firstDue.id);
@@ -174,7 +208,7 @@ function PortalTrabalhadoresContent() {
     } finally {
       setLoading(false);
     }
-  }, [onlyDue]);
+  }, [onlyDue, sstEnabled]);
 
   useEffect(() => {
     void load();
@@ -265,6 +299,24 @@ function PortalTrabalhadoresContent() {
     setImportBusy(false);
     setImportPreview(null);
     setImportFileName(null);
+  }
+
+  async function openSstDocument(doc: SstDocumentListItem) {
+    const popup = window.open('about:blank', '_blank');
+    setSstBusyId(doc.id);
+    setError(null);
+    try {
+      await openPortalSstDocumentPdf(doc.id, popup);
+    } catch (err) {
+      popup?.close();
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel abrir o documento SST.',
+      );
+    } finally {
+      setSstBusyId(null);
+    }
   }
 
   async function onDownloadTemplate() {
@@ -1082,6 +1134,7 @@ function PortalTrabalhadoresContent() {
                 const expanded = expandedId === worker.id;
                 const urgentCount = due ? due.overdue + due.critical : 0;
                 const bio = bioLabel(worker);
+                const sst = sstByWorker.get(worker.id);
 
                 return (
                   <article
@@ -1208,6 +1261,30 @@ function PortalTrabalhadoresContent() {
                       >
                         Ficha de EPI
                       </Link>
+                      {sst?.integracao ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={sstBusyId != null}
+                          onClick={() => void openSstDocument(sst.integracao!)}
+                        >
+                          {sstBusyId === sst.integracao.id
+                            ? 'Abrindo...'
+                            : 'Integracao SST'}
+                        </button>
+                      ) : null}
+                      {sst?.os ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={sstBusyId != null}
+                          onClick={() => void openSstDocument(sst.os!)}
+                        >
+                          {sstBusyId === sst.os.id
+                            ? 'Abrindo...'
+                            : 'Ordem de Servico SST'}
+                        </button>
+                      ) : null}
                     </div>
 
                     {due && expanded ? (
@@ -1238,11 +1315,13 @@ function PortalTrabalhadoresContent() {
 export default function PortalTrabalhadoresPage() {
   return (
     <RequireClientAuth>
-      {() => (
+      {(user) => (
         <Suspense
           fallback={<p className="page-lead">Carregando trabalhadores...</p>}
         >
-          <PortalTrabalhadoresContent />
+          <PortalTrabalhadoresContent
+            sstEnabled={user.servedClient.sstDocumentsEnabled}
+          />
         </Suspense>
       )}
     </RequireClientAuth>

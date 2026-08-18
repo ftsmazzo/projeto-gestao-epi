@@ -389,6 +389,24 @@ export async function downloadPortalSstDocumentPdf(id: string) {
   triggerBrowserDownload(blob, `sst-${id.slice(-6)}.pdf`);
 }
 
+export async function openPortalSstDocumentPdf(
+  id: string,
+  existingWindow?: Window | null,
+) {
+  const blob = await clientApiFetchBlob(`/portal/sst-documents/${id}/pdf`);
+  const url = URL.createObjectURL(blob);
+  if (existingWindow && !existingWindow.closed) {
+    existingWindow.location.replace(url);
+    existingWindow.focus();
+    return;
+  }
+  const opened = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!opened) {
+    URL.revokeObjectURL(url);
+    triggerBrowserDownload(blob, `sst-${id.slice(-6)}.pdf`);
+  }
+}
+
 export async function uploadPortalSstCompanyLogo(file: File) {
   const token = getClientAccessToken();
   const body = new FormData();

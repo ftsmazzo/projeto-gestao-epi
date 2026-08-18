@@ -524,10 +524,10 @@ export class SstDocumentsService {
       whatsappError: whatsapp.error ?? null,
       notice:
         whatsapp.status === 'SENT'
-          ? 'WhatsApp enviado com o link de ciencia facial.'
+          ? 'Ciencia facial aberta nesta maquina. WhatsApp enviado ao trabalhador.'
           : whatsapp.status === 'NO_PHONE'
-            ? 'Trabalhador sem telefone. Copie o link e envie manualmente.'
-            : 'Link gerado. Se o WhatsApp falhar, copie e envie manualmente.',
+            ? 'Ciencia facial aberta nesta maquina. Trabalhador sem telefone para WhatsApp.'
+            : 'Ciencia facial aberta nesta maquina. WhatsApp nao enviado.',
     };
   }
 

@@ -140,34 +140,52 @@ function PortalSstContent() {
     setSaving(true);
     setError(null);
     setNotice(null);
+    const facialWindow = window.open('about:blank', '_blank');
     try {
       const result = await createPortalSstDocument({
         workerId,
         type,
         documentDate: documentDate || undefined,
       });
-      applySend(result);
+      applySend(result, facialWindow);
       await load();
     } catch (err) {
+      facialWindow?.close();
       setError(err instanceof Error ? err.message : 'Falha ao gerar.');
     } finally {
       setSaving(false);
     }
   }
 
-  function applySend(result: SstDocumentSendResult) {
+  function applySend(
+    result: SstDocumentSendResult,
+    facialWindow?: Window | null,
+  ) {
     setLastUrl(result.url);
     setNotice(result.notice);
+    if (facialWindow && !facialWindow.closed) {
+      facialWindow.location.replace(result.url);
+      facialWindow.focus();
+      return;
+    }
+    const opened = window.open(result.url, '_blank');
+    if (!opened) {
+      setNotice(
+        `${result.notice} O navegador bloqueou a janela. Use Abrir ciencia facial.`,
+      );
+    }
   }
 
   async function onResend(id: string) {
     setSaving(true);
     setError(null);
+    const facialWindow = window.open('about:blank', '_blank');
     try {
       const result = await resendPortalSstDocumentLink(id);
-      applySend(result);
+      applySend(result, facialWindow);
       await load();
     } catch (err) {
+      facialWindow?.close();
       setError(err instanceof Error ? err.message : 'Falha ao reenviar.');
     } finally {
       setSaving(false);
@@ -236,8 +254,8 @@ function PortalSstContent() {
           <p className="page-kicker">Painel do Cliente</p>
           <h1 className="page-title">Documentos SST</h1>
           <p className="page-lead">
-            Gera Integracao e Ordem de Servico com os dados do PGR, envia o
-            link no WhatsApp e o trabalhador confirma com a face.
+            Gera Integracao e Ordem de Servico com os dados do PGR, abre a
+            ciencia facial nesta maquina e envia o mesmo convite no WhatsApp.
           </p>
         </div>
       </header>
@@ -255,10 +273,12 @@ function PortalSstContent() {
               {' '}
               <button
                 type="button"
-                className="btn btn-ghost"
-                onClick={() => void navigator.clipboard.writeText(lastUrl)}
+                className="btn btn-primary"
+                onClick={() =>
+                  window.open(lastUrl, '_blank', 'noopener,noreferrer')
+                }
               >
-                Copiar link
+                Abrir ciencia facial
               </button>
             </>
           ) : null}
@@ -327,7 +347,7 @@ function PortalSstContent() {
             </p>
           </div>
           <button className="btn btn-primary" type="submit" disabled={saving}>
-            {saving ? 'Gerando...' : 'Gerar e enviar link'}
+            {saving ? 'Gerando...' : 'Gerar e abrir ciencia facial'}
           </button>
         </form>
       </section>
@@ -383,7 +403,7 @@ function PortalSstContent() {
                         disabled={saving}
                         onClick={() => void onResend(row.id)}
                       >
-                        Reenviar link
+                        Reenviar / abrir facial
                       </button>
                     ) : null}
                   </div>
