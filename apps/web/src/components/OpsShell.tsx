@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import { OPS_NAV } from '../lib/nav';
 import { PoweredBy } from './PoweredBy';
+import { InstallAppBanner } from './InstallAppBanner';
 import { TenantBrand } from './TenantBrand';
 import {
   IconBuilding,
@@ -160,6 +161,7 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
         </header>
 
         <main id="conteudo" className="ops-main ux-enter">
+          <InstallAppBanner audience="consultoria" />
           {children}
         </main>
       </div>

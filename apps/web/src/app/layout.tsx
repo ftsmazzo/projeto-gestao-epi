@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
+import { PwaManifestSwitch } from '../components/PwaManifestSwitch';
 import { ServiceWorkerRegister } from '../components/ServiceWorkerRegister';
 import './globals.css';
 import './adminlte-skin.css';
@@ -56,6 +57,7 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body>
         {children}
+        <PwaManifestSwitch />
         <ServiceWorkerRegister />
       </body>
     </html>

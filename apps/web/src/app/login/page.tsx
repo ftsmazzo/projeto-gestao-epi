@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AuthLayout } from '../../components/AuthLayout';
+import { InstallAppBanner } from '../../components/InstallAppBanner';
 import { loginAccount } from '../../lib/auth';
 
 export default function LoginPage() {
@@ -43,6 +44,7 @@ export default function LoginPage() {
         </>
       }
     >
+      <InstallAppBanner audience="consultoria" />
       <p className="page-kicker">Acesso da gestao</p>
       <h1 id="login-title" className="page-title">
         Entrar

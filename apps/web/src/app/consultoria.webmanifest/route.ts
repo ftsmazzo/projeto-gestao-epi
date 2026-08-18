@@ -1,18 +1,17 @@
-import type { MetadataRoute } from 'next';
 import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
 
-export default function manifest(): MetadataRoute.Manifest {
-  return {
-    id: '/portal',
-    name: `${APP_NAME} — Painel do Cliente`,
-    short_name: APP_NAME,
+export function GET() {
+  const body = {
+    id: '/consultoria',
+    name: `${APP_NAME} — Consultoria`,
+    short_name: `${APP_NAME} Gestao`,
     description: `${APP_TAGLINE}. ${APP_PITCH}`,
-    start_url: '/portal/login',
-    scope: '/portal',
+    start_url: '/login',
+    scope: '/',
     display: 'standalone',
     orientation: 'portrait-primary',
     background_color: '#e9eef3',
-    theme_color: '#0f766e',
+    theme_color: '#343a40',
     lang: 'pt-BR',
     categories: ['business', 'productivity'],
     icons: [
@@ -36,4 +35,11 @@ export default function manifest(): MetadataRoute.Manifest {
       },
     ],
   };
+
+  return new Response(JSON.stringify(body), {
+    headers: {
+      'Content-Type': 'application/manifest+json; charset=utf-8',
+      'Cache-Control': 'public, max-age=3600',
+    },
+  });
 }

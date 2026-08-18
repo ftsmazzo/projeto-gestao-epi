@@ -2092,13 +2092,14 @@ a.btn-danger:hover {
   min-height: 44px;
 }
 
+.ops-main > .pwa-install-banner {
+  width: 100%;
+  margin: 0 0 1rem;
+}
+
 @media (display-mode: standalone) {
   body {
     padding-top: env(safe-area-inset-top);
-  }
-
-  .pwa-install-banner {
-    display: none !important;
   }
 
   .portal-shell--authed {

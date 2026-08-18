@@ -1,8 +1,12 @@
-/* ProntEPI — service worker minimo (instalabilidade PWA).
+/* ProntEPI — service worker minimo (instalabilidade PWA + notificacoes).
  * Nao faz cache de API, auth nem assets dinamicos de biometria.
  */
-const CACHE_NAME = 'prontepi-shell-v1';
-const PRECACHE = ['/portal/login', '/brand/prontepi-icon-192.png'];
+const CACHE_NAME = 'prontepi-shell-v2';
+const PRECACHE = [
+  '/portal/login',
+  '/login',
+  '/brand/prontepi-icon-192.png',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -36,7 +40,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Nunca interceptar API / uploads / streams.
+  // Nao interceptar API / uploads / streams.
   if (
     url.pathname.startsWith('/api') ||
     url.pathname.includes('/vendor/') ||
@@ -45,13 +49,56 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Network-first para navegacao; fallback so do shell de login.
+  // Network-first para navegacao; fallback do shell de login.
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req).catch(async () => {
-        const cached = await caches.match('/portal/login');
+        const isPortal = url.pathname.startsWith('/portal');
+        const cached = await caches.match(
+          isPortal ? '/portal/login' : '/login',
+        );
         return cached || Response.error();
       }),
     );
   }
+});
+
+self.addEventListener('push', (event) => {
+  let title = 'ProntEPI';
+  let body = 'Ha uma atualizacao no painel.';
+  let url = '/dashboard';
+  try {
+    const data = event.data ? event.data.json() : {};
+    if (typeof data.title === 'string') title = data.title;
+    if (typeof data.body === 'string') body = data.body;
+    if (typeof data.url === 'string') url = data.url;
+  } catch {
+    const text = event.data ? event.data.text() : '';
+    if (text) body = text;
+  }
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: '/brand/prontepi-icon-192.png',
+      badge: '/brand/prontepi-icon-192.png',
+      data: { url },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target =
+    (event.notification.data && event.notification.data.url) || '/dashboard';
+  event.waitUntil(
+    self.clients
+      .matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clients) => {
+        for (const client of clients) {
+          if ('focus' in client) return client.focus();
+        }
+        if (self.clients.openWindow) return self.clients.openWindow(target);
+        return undefined;
+      }),
+  );
 });
