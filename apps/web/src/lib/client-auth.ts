@@ -369,6 +369,7 @@ export async function savePortalSstProfile(input: Partial<SstClientProfile>) {
 export async function createPortalSstDocument(input: {
   workerId: string;
   type: SstDocumentType;
+  documentDate?: string;
 }) {
   return clientApiFetch<SstDocumentSendResult>('/portal/sst-documents', {
     method: 'POST',

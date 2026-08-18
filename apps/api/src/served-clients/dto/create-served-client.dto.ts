@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsInt,
@@ -49,6 +50,10 @@ export class CreateServedClientDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  sstDocumentsEnabled?: boolean;
 
   /** Se informado junto com e-mail, cria gestor inicial com senha temporaria. */
   @IsOptional()

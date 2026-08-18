@@ -23,6 +23,7 @@ import {
   getServedClientOverview,
   listClientUsers,
   resetClientUserAccess,
+  updateClientUser,
   updateClientUserStatus,
 } from '../../../../lib/served-clients';
 
@@ -43,6 +44,9 @@ export default function ClienteUsuariosPage() {
   );
   const [oneTimeAccess, setOneTimeAccess] =
     useState<ClientInitialAccess | null>(null);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
 
   const load = useCallback(async () => {
     if (!clientId) return;
@@ -164,6 +168,33 @@ export default function ClienteUsuariosPage() {
     }
   }
 
+  function startEditUser(user: ClientUserMembership) {
+    setEditingUserId(user.id);
+    setEditName(user.name);
+    setEditPhone(user.phone ?? '');
+    setUserError(null);
+  }
+
+  async function onSaveUserEdit(user: ClientUserMembership) {
+    if (!clientId || !canOperate) return;
+    setUserError(null);
+    setSaving(true);
+    try {
+      await updateClientUser(clientId, user.id, {
+        name: editName.trim(),
+        phone: editPhone.trim() || null,
+      });
+      setEditingUserId(null);
+      await load();
+    } catch (err) {
+      setUserError(
+        err instanceof Error ? err.message : 'Falha ao atualizar usuario.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading && !overview) {
     return <p className="page-lead">Carregando usuarios...</p>;
   }
@@ -259,7 +290,7 @@ export default function ClienteUsuariosPage() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="user-phone">WhatsApp (para enviar login)</label>
+                <label htmlFor="user-phone">Telefone / WhatsApp</label>
                 <input
                   id="user-phone"
                   value={phone}
@@ -337,13 +368,43 @@ export default function ClienteUsuariosPage() {
               <article key={user.id} role="listitem" className="stack-card">
                 <div className="stack-card__body stack-card__body--stack">
                   <div className="stack-card__main">
-                    <strong className="stack-card__title">{user.name}</strong>
-                    <p className="stack-card__meta mono">{user.email}</p>
-                    <p className="stack-card__meta">
-                      {clientUserRoleLabel(user.role)}
-                      {' · '}
-                      {clientUserAccessLabel(user.accessStatus)}
-                    </p>
+                    {editingUserId === user.id ? (
+                      <div className="form-grid">
+                        <div className="field">
+                          <label htmlFor={`edit-user-name-${user.id}`}>Nome</label>
+                          <input
+                            id={`edit-user-name-${user.id}`}
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            minLength={2}
+                          />
+                        </div>
+                        <div className="field">
+                          <label htmlFor={`edit-user-phone-${user.id}`}>
+                            Telefone / WhatsApp
+                          </label>
+                          <input
+                            id={`edit-user-phone-${user.id}`}
+                            value={editPhone}
+                            onChange={(e) => setEditPhone(e.target.value)}
+                            placeholder="11999998888"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <strong className="stack-card__title">{user.name}</strong>
+                        <p className="stack-card__meta mono">{user.email}</p>
+                        <p className="stack-card__meta">
+                          Telefone: {user.phone?.trim() || 'nao informado'}
+                        </p>
+                        <p className="stack-card__meta">
+                          {clientUserRoleLabel(user.role)}
+                          {' · '}
+                          {clientUserAccessLabel(user.accessStatus)}
+                        </p>
+                      </>
+                    )}
                     <span
                       className={`status-pill status-pill--${user.isActive ? 'active' : 'inactive'}`}
                       style={{ marginTop: '0.45rem' }}
@@ -352,6 +413,35 @@ export default function ClienteUsuariosPage() {
                     </span>
                   </div>
                   <div className="stack-card__actions">
+                    {editingUserId === user.id ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          disabled={saving || !canOperate}
+                          onClick={() => void onSaveUserEdit(user)}
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={saving}
+                          onClick={() => setEditingUserId(null)}
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={saving || !canOperate}
+                        onClick={() => startEditUser(user)}
+                      >
+                        Editar telefone
+                      </button>
+                    )}
                     {user.role !== 'WORKER' && user.isActive ? (
                       <button
                         type="button"

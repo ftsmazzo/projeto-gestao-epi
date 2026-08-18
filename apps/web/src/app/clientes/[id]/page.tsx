@@ -30,6 +30,8 @@ export default function ClienteVisaoGeralPage() {
   const [quotaMessage, setQuotaMessage] = useState<string | null>(null);
   const [alertSending, setAlertSending] = useState(false);
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [savingSst, setSavingSst] = useState(false);
+  const [sstMessage, setSstMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!clientId) return;
@@ -105,6 +107,30 @@ export default function ClienteVisaoGeralPage() {
       );
     } finally {
       setAlertSending(false);
+    }
+  }
+
+  async function onToggleSstModule(next: boolean) {
+    if (!clientId) return;
+    setSavingSst(true);
+    setSstMessage(null);
+    setError(null);
+    try {
+      await updateServedClient(clientId, { sstDocumentsEnabled: next });
+      setSstMessage(
+        next
+          ? 'Documentos SST liberado no menu do portal.'
+          : 'Documentos SST removido do menu do portal.',
+      );
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel atualizar o modulo SST.',
+      );
+    } finally {
+      setSavingSst(false);
     }
   }
 
@@ -198,6 +224,36 @@ export default function ClienteVisaoGeralPage() {
             {counts.users.stockOperators.limit}
           </p>
         </Link>
+      </section>
+
+      <section className="surface" aria-labelledby="sst-module-title">
+        <div className="form-section-header">
+          <div>
+            <p className="page-kicker">Modulos</p>
+            <h2 id="sst-module-title" className="page-title page-title--sm">
+              Documentos SST
+            </h2>
+            <p className="page-lead">
+              Modulo pago. Com a chave ligada, o gestor da empresa ve Documentos
+              SST no menu do portal.
+            </p>
+          </div>
+        </div>
+        {sstMessage ? (
+          <p className="notice notice--info" role="status">
+            {sstMessage}
+          </p>
+        ) : null}
+        <label htmlFor="sst-module-toggle">
+          <input
+            id="sst-module-toggle"
+            type="checkbox"
+            checked={overview.client.sstDocumentsEnabled}
+            disabled={savingSst || !operational}
+            onChange={(e) => void onToggleSstModule(e.target.checked)}
+          />{' '}
+          Liberar Documentos SST no portal deste cliente
+        </label>
       </section>
 
       <section className="surface" aria-labelledby="overview-title">

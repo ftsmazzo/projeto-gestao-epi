@@ -611,6 +611,7 @@ export class AuthService {
       tradeName: string | null;
       cnpj: string;
       status: ServedClientStatus;
+      sstDocumentsEnabled: boolean;
     };
     user?: { id: string; email: string; name: string } | null;
   }) {
@@ -633,6 +634,7 @@ export class AuthService {
         tradeName: membership.servedClient.tradeName,
         cnpj: membership.servedClient.cnpj,
         status: membership.servedClient.status,
+        sstDocumentsEnabled: membership.servedClient.sstDocumentsEnabled,
       },
       accessibleClients: await this.listAccessibleClients({
         userId: id,

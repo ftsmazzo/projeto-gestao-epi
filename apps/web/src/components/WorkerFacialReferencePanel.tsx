@@ -492,6 +492,7 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
       const link = await generateWorkerFacialEnrollmentLink(workerId);
       setGeneratedLink(link);
       setDetectStatus(link.whatsappNotice || 'Link de cadastro facial gerado.');
+      window.open(link.url, '_blank', 'noopener,noreferrer');
       await reload();
     } catch (err) {
       setError(
@@ -685,6 +686,15 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
                 <button
                   type="button"
                   className="btn btn-primary"
+                  onClick={() =>
+                    window.open(generatedLink.url, '_blank', 'noopener,noreferrer')
+                  }
+                >
+                  Abrir cadastro facial
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
                   onClick={() => void copyEnrollmentLink()}
                 >
                   {linkCopied ? 'Copiado' : 'Copiar link'}
@@ -730,8 +740,8 @@ export function WorkerFacialReferencePanel({ workerId, workerName }: Props) {
                 : enrollmentStatus?.status === 'PENDING' ||
                     enrollmentStatus?.status === 'EXPIRED' ||
                     enrollmentStatus?.status === 'REVOKED'
-                  ? 'Gerar novo link'
-                  : 'Gerar link de cadastro facial'}
+                  ? 'Abrir novo cadastro facial'
+                  : 'Abrir cadastro facial'}
             </button>
             {canRevokeFacial ? (
               <button

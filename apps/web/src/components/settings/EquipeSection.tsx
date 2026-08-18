@@ -14,6 +14,7 @@ import {
   removeOrganizationMember,
   resetOrganizationMemberPassword,
   transferOrganizationOwnership,
+  updateOrganizationMember,
   updateOrganizationMemberRole,
 } from '../../lib/organization';
 
@@ -39,6 +40,7 @@ export function EquipeSection({
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [role, setRole] = useState<Exclude<MembershipRole, 'OWNER'>>('ADMIN');
+  const [phoneDrafts, setPhoneDrafts] = useState<Record<string, string>>({});
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -46,6 +48,11 @@ export function EquipeSection({
     try {
       const rows = await listOrganizationMembers();
       setMembers(rows);
+      setPhoneDrafts(
+        Object.fromEntries(
+          rows.map((row) => [row.id, row.user.phone ?? '']),
+        ),
+      );
     } catch (err) {
       setError(
         err instanceof Error
@@ -106,6 +113,25 @@ export function EquipeSection({
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao alterar papel.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onSavePhone(member: OrganizationMember) {
+    if (!canManage) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await updateOrganizationMember(member.id, {
+        phone: (phoneDrafts[member.id] ?? '').trim() || null,
+      });
+      setNotice(`Telefone de ${member.user.name} atualizado.`);
+      await reload();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Falha ao salvar telefone.',
+      );
     } finally {
       setSaving(false);
     }
@@ -315,7 +341,7 @@ export function EquipeSection({
               />
             </div>
             <div className="field">
-              <label htmlFor="team-phone">WhatsApp (opcional)</label>
+              <label htmlFor="team-phone">Telefone / WhatsApp</label>
               <input
                 id="team-phone"
                 value={phone}
@@ -363,6 +389,7 @@ export function EquipeSection({
                 <tr>
                   <th scope="col">Nome</th>
                   <th scope="col">E-mail</th>
+                  <th scope="col">Telefone</th>
                   <th scope="col">Papel</th>
                   <th scope="col">Acoes</th>
                 </tr>
@@ -379,6 +406,33 @@ export function EquipeSection({
                         ) : null}
                       </td>
                       <td className="mono">{member.user.email}</td>
+                      <td>
+                        {canManage ? (
+                          <div className="btn-row">
+                            <input
+                              aria-label={`Telefone de ${member.user.name}`}
+                              value={phoneDrafts[member.id] ?? ''}
+                              onChange={(e) =>
+                                setPhoneDrafts((prev) => ({
+                                  ...prev,
+                                  [member.id]: e.target.value,
+                                }))
+                              }
+                              placeholder="11999998888"
+                            />
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-compact"
+                              disabled={saving}
+                              onClick={() => void onSavePhone(member)}
+                            >
+                              Salvar
+                            </button>
+                          </div>
+                        ) : (
+                          member.user.phone || '—'
+                        )}
+                      </td>
                       <td>
                         {member.role === 'OWNER' ? (
                           membershipRoleLabel(member.role)

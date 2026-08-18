@@ -88,6 +88,16 @@ export function createOrganizationMember(input: {
   });
 }
 
+export function updateOrganizationMember(
+  membershipId: string,
+  input: { phone?: string | null },
+) {
+  return apiFetch<OrganizationMember>(`/organization/members/${membershipId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
 export function updateOrganizationMemberRole(
   membershipId: string,
   role: Exclude<MembershipRole, 'OWNER'>,

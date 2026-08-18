@@ -93,6 +93,7 @@ type WorkerFormState = {
   clientSectorId: string;
   clientJobFunctionId: string;
   admissionDate: string;
+  phone: string;
   notes: string;
 };
 
@@ -104,6 +105,7 @@ const emptyForm: WorkerFormState = {
   clientSectorId: '',
   clientJobFunctionId: '',
   admissionDate: '',
+  phone: '',
   notes: '',
 };
 
@@ -270,6 +272,7 @@ export default function ClienteTrabalhadoresPage() {
       clientSectorId: worker.clientSectorId ?? '',
       clientJobFunctionId: worker.clientJobFunctionId ?? '',
       admissionDate: toDateInput(worker.admissionDate),
+      phone: worker.phone ?? '',
       notes: worker.notes ?? '',
     });
     setFormError(null);
@@ -460,6 +463,7 @@ export default function ClienteTrabalhadoresPage() {
       clientSectorId: form.clientSectorId || null,
       clientJobFunctionId: form.clientJobFunctionId || null,
       admissionDate: form.admissionDate || null,
+      phone: form.phone.trim() || null,
       notes: form.notes.trim() || null,
     };
     try {
@@ -472,6 +476,7 @@ export default function ClienteTrabalhadoresPage() {
           clientSectorId: payload.clientSectorId ?? undefined,
           clientJobFunctionId: payload.clientJobFunctionId ?? undefined,
           admissionDate: payload.admissionDate ?? undefined,
+          phone: payload.phone ?? undefined,
           notes: payload.notes ?? undefined,
         });
         setCreatedEnrollmentLink(created.facialEnrollmentLink);
@@ -509,6 +514,7 @@ export default function ClienteTrabalhadoresPage() {
       }
       const link = await generateWorkerFacialEnrollmentLink(worker.id);
       setCreatedEnrollmentLink(link);
+      window.open(link.url, '_blank', 'noopener,noreferrer');
     } catch (err) {
       setError(
         err instanceof Error
@@ -929,6 +935,17 @@ export default function ClienteTrabalhadoresPage() {
                 />
               </div>
               <div className="field">
+                <label htmlFor="worker-phone">Telefone / WhatsApp</label>
+                <input
+                  id="worker-phone"
+                  value={form.phone}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, phone: e.target.value }))
+                  }
+                  placeholder="11999998888"
+                />
+              </div>
+              <div className="field">
                 <label htmlFor="worker-registration">Matricula</label>
                 <input
                   id="worker-registration"
@@ -1125,8 +1142,8 @@ export default function ClienteTrabalhadoresPage() {
           role="status"
         >
           <p>
-            <strong>Link de cadastro facial gerado</strong> (valido 24h). O
-            trabalhador usara os 4 ultimos digitos do CPF.
+            <strong>Cadastro facial aberto nesta maquina</strong> (link valido
+            24h). O trabalhador usa os 4 ultimos digitos do CPF.
           </p>
           <div className="field">
             <label htmlFor="created-enroll-link">Copie e envie ao trabalhador</label>
@@ -1141,6 +1158,19 @@ export default function ClienteTrabalhadoresPage() {
             <button
               type="button"
               className="btn btn-primary"
+              onClick={() =>
+                window.open(
+                  createdEnrollmentLink.url,
+                  '_blank',
+                  'noopener,noreferrer',
+                )
+              }
+            >
+              Abrir cadastro facial
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
               onClick={() => {
                 void navigator.clipboard
                   .writeText(createdEnrollmentLink.url)
@@ -1366,14 +1396,14 @@ export default function ClienteTrabalhadoresPage() {
                         title={
                           worker.hasValidBiometrics
                             ? 'Biometria ja cadastrada. Revogue antes de gerar novo link.'
-                            : 'Gera link de 24h para o trabalhador cadastrar no celular'
+                            : 'Gera o link e abre a pagina de cadastro facial nesta maquina'
                         }
                       >
                         {worker.hasValidBiometrics
                           ? 'Biometria valida'
                           : generatingLinkFor === worker.id
                             ? 'Gerando link...'
-                            : 'Gerar link facial'}
+                            : 'Cadastrar facial'}
                       </button>
                       <button
                         type="button"

@@ -16,7 +16,15 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { SstDocumentType } from '@prisma/client';
 import type { Response } from 'express';
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Max,
+  Min,
+} from 'class-validator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ClientJwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { ClientJwtPayload } from '../auth/types/jwt-payload';
@@ -28,6 +36,13 @@ class CreateSstDocumentDto {
 
   @IsEnum(SstDocumentType)
   type!: SstDocumentType;
+
+  /** Data em que o documento SST foi feito. Vazio = data/hora atuais. */
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'Data do documento deve estar no formato AAAA-MM-DD.',
+  })
+  documentDate?: string;
 }
 
 class UpsertSstProfileDto {

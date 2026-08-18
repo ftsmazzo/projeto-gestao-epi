@@ -25,6 +25,7 @@ import {
 import {
   CreateOrganizationMemberDto,
   TransferOrganizationOwnershipDto,
+  UpdateOrganizationMemberDto,
   UpdateOrganizationMemberRoleDto,
 } from './dto/organization-member.dto';
 import { OrganizationService } from './organization.service';
@@ -59,6 +60,21 @@ export class OrganizationController {
     @Body() dto: UpdateOrganizationMemberRoleDto,
   ) {
     return this.organization.updateMemberRole(
+      user.organizationId,
+      user.sub,
+      user.membershipRole,
+      id,
+      dto,
+    );
+  }
+
+  @Patch('members/:id')
+  updateMember(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateOrganizationMemberDto,
+  ) {
+    return this.organization.updateMember(
       user.organizationId,
       user.sub,
       user.membershipRole,

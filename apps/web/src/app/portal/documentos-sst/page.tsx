@@ -1,11 +1,13 @@
 'use client';
 
 import type {
+  ClientPortalUser,
   SstClientProfile,
   SstDocumentListItem,
   SstDocumentSendResult,
   SstDocumentType,
 } from '@gestao-epi/shared';
+import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
 import {
@@ -20,16 +22,26 @@ import {
   savePortalSstProfile,
   uploadPortalSstCompanyLogo,
 } from '../../../lib/client-auth';
+import { formatCpf, stripCpf } from '../../../lib/cpf';
 
 function formatDate(iso: string | null) {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString('pt-BR', {
+    return new Date(iso).toLocaleDateString('pt-BR', {
       timeZone: 'America/Sao_Paulo',
     });
   } catch {
     return iso;
   }
+}
+
+function matchesIssuedFilter(row: SstDocumentListItem, query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  if (row.workerName.toLowerCase().includes(needle)) return true;
+  const digits = stripCpf(needle);
+  const cpf = stripCpf(row.workerCpf ?? '');
+  return Boolean(digits && cpf.includes(digits));
 }
 
 function PortalSstContent() {
@@ -46,6 +58,8 @@ function PortalSstContent() {
   const [profile, setProfile] = useState<SstClientProfile | null>(null);
   const [workerId, setWorkerId] = useState('');
   const [type, setType] = useState<SstDocumentType>('INTEGRACAO');
+  const [documentDate, setDocumentDate] = useState('');
+  const [issuedFilter, setIssuedFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +126,11 @@ function PortalSstContent() {
     [workers, workerId],
   );
 
+  const issuedDocs = useMemo(
+    () => docs.filter((row) => matchesIssuedFilter(row, issuedFilter)),
+    [docs, issuedFilter],
+  );
+
   async function onCreate(event: FormEvent) {
     event.preventDefault();
     if (!workerId) {
@@ -122,7 +141,11 @@ function PortalSstContent() {
     setError(null);
     setNotice(null);
     try {
-      const result = await createPortalSstDocument({ workerId, type });
+      const result = await createPortalSstDocument({
+        workerId,
+        type,
+        documentDate: documentDate || undefined,
+      });
       applySend(result);
       await load();
     } catch (err) {
@@ -288,6 +311,21 @@ function PortalSstContent() {
               EPIs do PGR.
             </p>
           ) : null}
+          <div className="field">
+            <label htmlFor="sst-document-date">
+              Data em que o documento SST foi feito
+            </label>
+            <input
+              id="sst-document-date"
+              type="date"
+              value={documentDate}
+              onChange={(e) => setDocumentDate(e.target.value)}
+            />
+            <p className="field-hint">
+              Se preencher, esta data entra no documento. Se deixar vazio, usa
+              a data automatica do sistema.
+            </p>
+          </div>
           <button className="btn btn-primary" type="submit" disabled={saving}>
             {saving ? 'Gerando...' : 'Gerar e enviar link'}
           </button>
@@ -295,6 +333,15 @@ function PortalSstContent() {
       </section>
 
       <section className="surface" aria-labelledby="sst-list-title">
+        <div className="field">
+          <label htmlFor="sst-issued-filter">Filtrar por CPF ou nome</label>
+          <input
+            id="sst-issued-filter"
+            value={issuedFilter}
+            onChange={(e) => setIssuedFilter(e.target.value)}
+            placeholder="Nome ou CPF do trabalhador"
+          />
+        </div>
         <h2 id="sst-list-title" className="page-title page-title--sm">
           Emitidos
         </h2>
@@ -302,16 +349,23 @@ function PortalSstContent() {
           <p className="page-lead">Carregando...</p>
         ) : docs.length === 0 ? (
           <p className="page-lead">Nenhum documento ainda.</p>
+        ) : issuedDocs.length === 0 ? (
+          <p className="page-lead">Nenhum documento com esse filtro.</p>
         ) : (
           <div className="stack-list" role="list">
-            {docs.map((row) => (
+            {issuedDocs.map((row) => (
               <article key={row.id} className="stack-card" role="listitem">
                 <div className="stack-card__body stack-card__body--stack">
                   <div className="stack-card__main">
                     <strong className="stack-card__title">{row.title}</strong>
-                    <p className="stack-card__meta">{row.workerName}</p>
                     <p className="stack-card__meta">
-                      {row.statusLabel} · {formatDate(row.createdAt)}
+                      {row.workerName}
+                      {row.workerCpf
+                        ? ` · ${formatCpf(row.workerCpf)}`
+                        : ''}
+                    </p>
+                    <p className="stack-card__meta">
+                      {row.statusLabel} · {formatDate(row.generatedAt)}
                     </p>
                   </div>
                   <div className="stack-card__actions">
@@ -464,7 +518,34 @@ function PortalSstContent() {
 export default function PortalDocumentosSstPage() {
   return (
     <RequireClientAuth>
-      {() => <PortalSstContent />}
+      {(user) =>
+        user.servedClient.sstDocumentsEnabled ? (
+          <PortalSstContent />
+        ) : (
+          <SstModuleLocked user={user} />
+        )
+      }
     </RequireClientAuth>
+  );
+}
+
+function SstModuleLocked({ user }: { user: ClientPortalUser }) {
+  return (
+    <div className="module-page">
+      <header className="module-header">
+        <div>
+          <p className="page-kicker">Painel do Cliente</p>
+          <h1 className="page-title">Documentos SST</h1>
+          <p className="page-lead">
+            Este modulo nao esta liberado para{' '}
+            {user.servedClient.tradeName || user.servedClient.legalName}. A
+            consultoria precisa ativar a chave no cadastro do cliente.
+          </p>
+        </div>
+      </header>
+      <Link className="btn btn-secondary" href="/portal">
+        Voltar ao painel
+      </Link>
+    </div>
   );
 }

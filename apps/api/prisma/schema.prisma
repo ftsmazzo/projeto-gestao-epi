@@ -208,6 +208,8 @@ model User {
   id              String   @id @default(cuid())
   email           String   @unique
   name            String
+  /// WhatsApp/telefone para convites da equipe da consultoria.
+  phone           String?
   passwordHash    String
   /// Admin da plataforma ProntEPI (Painel SaaS). Distinto do Membership da consultoria.
   isPlatformAdmin Boolean  @default(false)
@@ -263,6 +265,8 @@ model ServedClient {
   contactEmail       String?
   contactPhone       String?
   notes              String?
+  /// Modulo pago: Documentos SST no menu do portal do cliente.
+  sstDocumentsEnabled Boolean @default(false)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 

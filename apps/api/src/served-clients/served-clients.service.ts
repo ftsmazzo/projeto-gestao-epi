@@ -181,6 +181,7 @@ export class ServedClientsService {
           contactEmail: dto.contactEmail?.trim().toLowerCase() || null,
           contactPhone: dto.contactPhone?.trim() || null,
           notes: dto.notes?.trim() || null,
+          sstDocumentsEnabled: dto.sstDocumentsEnabled === true,
         },
       });
 
@@ -653,6 +654,7 @@ export class ServedClientsService {
               : dto.contactPhone?.trim() || null,
           notes:
             dto.notes === undefined ? undefined : dto.notes?.trim() || null,
+          sstDocumentsEnabled: dto.sstDocumentsEnabled,
         },
       });
 

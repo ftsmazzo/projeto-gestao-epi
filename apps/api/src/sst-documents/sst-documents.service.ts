@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -62,6 +63,36 @@ function buildSignUrl(token: string) {
 function formatDay(value: Date | null | undefined): string | null {
   if (!value) return null;
   return value.toISOString().slice(0, 10);
+}
+
+function parseDocumentDate(value?: string | null): Date | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    throw new BadRequestException(
+      'Data do documento invalida. Use o formato AAAA-MM-DD.',
+    );
+  }
+  const date = new Date(`${raw}T12:00:00.000-03:00`);
+  if (Number.isNaN(date.getTime())) {
+    throw new BadRequestException('Data do documento invalida.');
+  }
+  return date;
+}
+
+function generatedAtFromPayload(
+  payload: unknown,
+  fallback: Date,
+): string {
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    !Array.isArray(payload) &&
+    typeof (payload as { generatedAt?: unknown }).generatedAt === 'string'
+  ) {
+    return (payload as { generatedAt: string }).generatedAt;
+  }
+  return fallback.toISOString();
 }
 
 @Injectable()
@@ -267,7 +298,7 @@ export class SstDocumentsService {
       take: 200,
       include: {
         worker: {
-          select: { id: true, name: true, registration: true },
+          select: { id: true, name: true, cpf: true, registration: true },
         },
         links: {
           orderBy: { createdAt: 'desc' },
@@ -290,8 +321,9 @@ export class SstDocumentsService {
     organizationId: string,
     servedClientId: string,
     userId: string,
-    dto: { workerId: string; type: SstDocumentType },
+    dto: { workerId: string; type: SstDocumentType; documentDate?: string },
   ) {
+    await this.requireClient(organizationId, servedClientId);
     const worker = await this.requireWorker(
       organizationId,
       servedClientId,
@@ -326,6 +358,7 @@ export class SstDocumentsService {
       servedClientId,
       worker,
       dto.type,
+      parseDocumentDate(dto.documentDate),
     );
     const title =
       dto.type === SstDocumentType.ORDEM_SERVICO
@@ -370,6 +403,7 @@ export class SstDocumentsService {
     userId: string,
     documentId: string,
   ) {
+    await this.requireClient(organizationId, servedClientId);
     const document = await this.requireDocument(
       organizationId,
       servedClientId,
@@ -389,6 +423,7 @@ export class SstDocumentsService {
     servedClientId: string,
     documentId: string,
   ) {
+    await this.requireClient(organizationId, servedClientId);
     const document = await this.prisma.sstDocument.findFirst({
       where: { id: documentId, organizationId, servedClientId },
       include: { evidence: true },
@@ -501,6 +536,7 @@ export class SstDocumentsService {
     servedClientId: string,
     worker: Awaited<ReturnType<SstDocumentsService['requireWorker']>>,
     type: SstDocumentType,
+    documentDate: Date | null,
   ): Promise<SstDocumentPayload> {
     const [client, profile] = await Promise.all([
       this.prisma.servedClient.findFirstOrThrow({
@@ -543,7 +579,7 @@ export class SstDocumentsService {
       integration: null,
       os: null,
       termText: '',
-      generatedAt: new Date().toISOString(),
+      generatedAt: (documentDate ?? new Date()).toISOString(),
     };
 
     if (type === SstDocumentType.INTEGRACAO) {
@@ -611,9 +647,15 @@ export class SstDocumentsService {
     type: SstDocumentType;
     status: SstDocumentStatus;
     title: string;
+    payload: unknown;
     signedAt: Date | null;
     createdAt: Date;
-    worker: { id: string; name: string; registration: string | null };
+    worker: {
+      id: string;
+      name: string;
+      cpf: string | null;
+      registration: string | null;
+    };
     links: Array<{
       expiresAt: Date;
       consumedAt: Date | null;
@@ -638,8 +680,10 @@ export class SstDocumentsService {
       title: row.title,
       workerId: row.worker.id,
       workerName: row.worker.name,
+      workerCpf: row.worker.cpf,
       workerRegistration: row.worker.registration,
       signedAt: row.signedAt?.toISOString() ?? null,
+      generatedAt: generatedAtFromPayload(row.payload, row.createdAt),
       createdAt: row.createdAt.toISOString(),
       linkExpiresAt: link?.expiresAt.toISOString() ?? null,
       linkConsumed: Boolean(link?.consumedAt),
@@ -677,9 +721,14 @@ export class SstDocumentsService {
   private async requireClient(organizationId: string, servedClientId: string) {
     const client = await this.prisma.servedClient.findFirst({
       where: { id: servedClientId, organizationId },
-      select: { id: true },
+      select: { id: true, sstDocumentsEnabled: true },
     });
     if (!client) throw new NotFoundException('Cliente nao encontrado.');
+    if (!client.sstDocumentsEnabled) {
+      throw new ForbiddenException(
+        'Documentos SST nao esta liberado para este cliente.',
+      );
+    }
   }
 
   private async requireDocument(

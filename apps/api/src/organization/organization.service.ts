@@ -23,6 +23,7 @@ import type {
 } from './dto/organization-contact.dto';
 import type {
   CreateOrganizationMemberDto,
+  UpdateOrganizationMemberDto,
   UpdateOrganizationMemberRoleDto,
 } from './dto/organization-member.dto';
 import {
@@ -206,6 +207,7 @@ export class OrganizationService {
             id: true,
             name: true,
             email: true,
+            phone: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -247,6 +249,7 @@ export class OrganizationService {
 
     const email = dto.email.trim().toLowerCase();
     const name = dto.name.trim();
+    const phone = dto.phone?.trim() || null;
     if (!email || !name) {
       throw new BadRequestException('Informe nome e e-mail.');
     }
@@ -279,6 +282,7 @@ export class OrganizationService {
             name: name || user.name,
             passwordHash,
             mustChangePassword: true,
+            ...(phone ? { phone } : {}),
           },
         });
       } else {
@@ -286,6 +290,7 @@ export class OrganizationService {
           data: {
             email,
             name,
+            phone,
             passwordHash,
             mustChangePassword: true,
           },
@@ -305,6 +310,7 @@ export class OrganizationService {
               id: true,
               name: true,
               email: true,
+              phone: true,
               createdAt: true,
               updatedAt: true,
             },
@@ -333,7 +339,7 @@ export class OrganizationService {
       organizationId,
       recipientName: result.membership.user.name,
       recipientEmail: result.membership.user.email,
-      recipientPhone: dto.phone?.trim() || null,
+      recipientPhone: dto.phone?.trim() || result.membership.user.phone,
       temporaryPassword,
       accessUrl,
       membershipId: result.membership.id,
@@ -369,6 +375,7 @@ export class OrganizationService {
             id: true,
             name: true,
             email: true,
+            phone: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -413,6 +420,7 @@ export class OrganizationService {
             id: true,
             name: true,
             email: true,
+            phone: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -434,6 +442,70 @@ export class OrganizationService {
     });
 
     return this.mapMember(updated);
+  }
+
+  async updateMember(
+    organizationId: string,
+    actorUserId: string,
+    actorRole: string,
+    membershipId: string,
+    dto: UpdateOrganizationMemberDto,
+  ) {
+    this.assertCanManageMembers(actorRole);
+
+    const membership = await this.prisma.membership.findFirst({
+      where: { id: membershipId, organizationId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+    if (!membership) {
+      throw new NotFoundException('Usuario da consultoria nao encontrado.');
+    }
+
+    const phone =
+      dto.phone === undefined ? undefined : dto.phone?.trim() || null;
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: membership.userId },
+      data: {
+        ...(phone !== undefined ? { phone } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    await this.audit.log({
+      action: 'organization_member.updated',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'Membership',
+      entityId: membership.id,
+      metadata: {
+        email: membership.user.email,
+        phoneChanged: phone !== undefined,
+      },
+    });
+
+    return this.mapMember({
+      ...membership,
+      user: updatedUser,
+    });
   }
 
   /**
@@ -473,6 +545,7 @@ export class OrganizationService {
             id: true,
             name: true,
             email: true,
+            phone: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -529,6 +602,7 @@ export class OrganizationService {
             id: true,
             name: true,
             email: true,
+            phone: true,
             createdAt: true,
             updatedAt: true,
           },
@@ -569,7 +643,7 @@ export class OrganizationService {
       organizationId,
       recipientName: membership.user.name,
       recipientEmail: membership.user.email,
-      recipientPhone: null,
+      recipientPhone: membership.user.phone,
       temporaryPassword,
       accessUrl,
       membershipId: membership.id,
@@ -598,7 +672,7 @@ export class OrganizationService {
     const membership = await this.prisma.membership.findFirst({
       where: { id: membershipId, organizationId },
       include: {
-        user: { select: { id: true, email: true, name: true } },
+        user: { select: { id: true, email: true, name: true, phone: true } },
       },
     });
     if (!membership) {
@@ -791,6 +865,7 @@ export class OrganizationService {
       id: string;
       name: string;
       email: string;
+      phone: string | null;
       createdAt: Date;
       updatedAt: Date;
     };
@@ -805,6 +880,7 @@ export class OrganizationService {
         id: row.user.id,
         name: row.user.name,
         email: row.user.email,
+        phone: row.user.phone,
         createdAt: row.user.createdAt.toISOString(),
         updatedAt: row.user.updatedAt.toISOString(),
       },

@@ -152,6 +152,7 @@ export interface OrganizationMember {
     id: string;
     name: string;
     email: string;
+    phone: string | null;
     createdAt: string;
     updatedAt: string;
   };
@@ -189,6 +190,8 @@ export interface ServedClient {
   contactEmail: string | null;
   contactPhone: string | null;
   notes: string | null;
+  /** Quando false, Documentos SST some do menu do portal. */
+  sstDocumentsEnabled: boolean;
   createdAt: string;
   updatedAt: string;
   group?: { id: string; name: string } | null;
@@ -493,6 +496,7 @@ export interface ClientPortalClient {
   tradeName: string | null;
   cnpj: string;
   status: ServedClientStatus;
+  sstDocumentsEnabled: boolean;
 }
 
 export interface ClientPortalUser {
@@ -2873,8 +2877,10 @@ export interface SstDocumentListItem {
   title: string;
   workerId: string;
   workerName: string;
+  workerCpf: string | null;
   workerRegistration: string | null;
   signedAt: string | null;
+  generatedAt: string;
   createdAt: string;
   linkExpiresAt: string | null;
   linkConsumed: boolean;

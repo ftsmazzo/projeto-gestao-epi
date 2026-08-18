@@ -29,6 +29,13 @@ export class CreateOrganizationMemberDto {
   role!: MembershipRole;
 }
 
+export class UpdateOrganizationMemberDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  phone?: string | null;
+}
+
 export class UpdateOrganizationMemberRoleDto {
   @IsEnum(MembershipRole)
   role!: MembershipRole;

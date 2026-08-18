@@ -20,6 +20,7 @@ export type ServedClientInput = {
   contactEmail?: string;
   contactPhone?: string;
   notes?: string;
+  sstDocumentsEnabled?: boolean;
   initialManagerName?: string;
   initialManagerEmail?: string;
   initialManagerPhone?: string;
@@ -29,7 +30,7 @@ export type ClientUserInput = {
   name: string;
   email: string;
   role: Exclude<ClientUserRole, 'WORKER'>;
-  phone?: string;
+  phone?: string | null;
 };
 
 export type InitialManagerInput = {
@@ -131,6 +132,7 @@ export type ServedClientUpdateInput = {
   contactEmail?: string | null;
   contactPhone?: string | null;
   notes?: string | null;
+  sstDocumentsEnabled?: boolean;
 };
 
 export function updateServedClient(id: string, input: ServedClientUpdateInput) {

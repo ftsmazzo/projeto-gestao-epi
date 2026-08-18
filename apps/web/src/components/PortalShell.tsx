@@ -90,10 +90,20 @@ export function PortalShell({ children, user, onLogout, onSwitchCompany }: Props
     });
   }, [accessible]);
 
-  const primaryItems = PORTAL_NAV.filter((item) =>
+  const portalNav = useMemo(
+    () =>
+      PORTAL_NAV.filter(
+        (item) =>
+          item.href !== '/portal/documentos-sst' ||
+          user?.servedClient.sstDocumentsEnabled === true,
+      ),
+    [user?.servedClient.sstDocumentsEnabled],
+  );
+
+  const primaryItems = portalNav.filter((item) =>
     (BOTTOM_PRIMARY as readonly string[]).includes(item.href),
   );
-  const moreItems = PORTAL_NAV.filter(
+  const moreItems = portalNav.filter(
     (item) => !(BOTTOM_PRIMARY as readonly string[]).includes(item.href),
   );
   const moreActive = moreItems.some((item) =>
@@ -115,7 +125,7 @@ export function PortalShell({ children, user, onLogout, onSwitchCompany }: Props
 
   const navLinks = (
     <>
-      {PORTAL_NAV.map((item) => (
+      {portalNav.map((item) => (
         <Link
           key={item.href}
           href={item.href}
@@ -265,7 +275,7 @@ export function PortalShell({ children, user, onLogout, onSwitchCompany }: Props
           >
             <p className="portal-drawer__title">Navegacao</p>
             <nav className="portal-drawer__nav">
-              {PORTAL_NAV.map((item) => (
+              {portalNav.map((item) => (
                 <Link
                   key={item.href}
                   href={item.href}

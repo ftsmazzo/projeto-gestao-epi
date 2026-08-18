@@ -44,6 +44,7 @@ type WorkerFormState = {
   clientSectorId: string;
   clientJobFunctionId: string;
   admissionDate: string;
+  phone: string;
   notes: string;
 };
 
@@ -55,6 +56,7 @@ const emptyForm: WorkerFormState = {
   clientSectorId: '',
   clientJobFunctionId: '',
   admissionDate: '',
+  phone: '',
   notes: '',
 };
 
@@ -232,6 +234,7 @@ function PortalTrabalhadoresContent() {
       clientSectorId: worker.clientSectorId ?? '',
       clientJobFunctionId: worker.clientJobFunctionId ?? '',
       admissionDate: toDateInput(worker.admissionDate),
+      phone: worker.phone ?? '',
       notes: worker.notes ?? '',
     });
     setFormError(null);
@@ -360,6 +363,7 @@ function PortalTrabalhadoresContent() {
       clientSectorId: form.clientSectorId || null,
       clientJobFunctionId: form.clientJobFunctionId || null,
       admissionDate: form.admissionDate || null,
+      phone: form.phone.trim() || null,
       notes: form.notes.trim() || null,
     };
 
@@ -373,6 +377,7 @@ function PortalTrabalhadoresContent() {
           clientSectorId: payload.clientSectorId ?? undefined,
           clientJobFunctionId: payload.clientJobFunctionId ?? undefined,
           admissionDate: payload.admissionDate ?? undefined,
+          phone: payload.phone ?? undefined,
           notes: payload.notes ?? undefined,
         });
       } else if (mode === 'edit' && editingId) {
@@ -430,6 +435,7 @@ function PortalTrabalhadoresContent() {
       setEnrollmentWorkerId(worker.id);
       setEnrollmentWhatsappNotice(link.whatsappNotice);
       setEnrollmentWhatsappOk(link.whatsapp === 'SENT');
+      window.open(link.url, '_blank', 'noopener,noreferrer');
     } catch (err) {
       setError(
         err instanceof Error
@@ -511,7 +517,7 @@ function PortalTrabalhadoresContent() {
           className={`notice ${enrollmentWhatsappOk ? 'notice--ok' : 'notice--warn'} enroll-link-banner`}
           role="status"
         >
-          <p>Link de cadastro facial gerado (valido por 24h).</p>
+          <p>Link de cadastro facial gerado (valido por 24h). A pagina de registro abriu nesta maquina.</p>
           {enrollmentWhatsappNotice ? (
             <p className="table-sub">{enrollmentWhatsappNotice}</p>
           ) : null}
@@ -522,6 +528,13 @@ function PortalTrabalhadoresContent() {
               value={enrollmentUrl}
               style={{ flex: 1, minWidth: 0 }}
             />
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => window.open(enrollmentUrl, '_blank', 'noopener,noreferrer')}
+            >
+              Abrir cadastro facial
+            </button>
             <button
               type="button"
               className="btn btn-secondary"
@@ -815,6 +828,17 @@ function PortalTrabalhadoresContent() {
                       cpf: formatCpfInput(e.target.value),
                     }))
                   }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="portal-worker-phone">Telefone / WhatsApp</label>
+                <input
+                  id="portal-worker-phone"
+                  value={form.phone}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, phone: e.target.value }))
+                  }
+                  placeholder="11999998888"
                 />
               </div>
               <div className="field">
@@ -1161,7 +1185,7 @@ function PortalTrabalhadoresContent() {
                         >
                           {enrollmentBusyFor === worker.id
                             ? 'Gerando...'
-                            : 'Link facial'}
+                            : 'Cadastrar facial'}
                         </button>
                       ) : null}
                       <button

@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsEmail,
   IsEnum,
   IsInt,
@@ -53,4 +54,8 @@ export class UpdateServedClientDto {
   @IsString()
   @MaxLength(1000)
   notes?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  sstDocumentsEnabled?: boolean;
 }

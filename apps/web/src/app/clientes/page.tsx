@@ -37,6 +37,7 @@ type ClientFormState = {
   initialManagerName: string;
   initialManagerEmail: string;
   initialManagerPhone: string;
+  sstDocumentsEnabled: boolean;
 };
 
 const emptyForm: ClientFormState = {
@@ -50,6 +51,7 @@ const emptyForm: ClientFormState = {
   initialManagerName: '',
   initialManagerEmail: '',
   initialManagerPhone: '',
+  sstDocumentsEnabled: false,
 };
 
 function statusLabel(status: ServedClient['status']) {
@@ -166,6 +168,7 @@ function ClientesContent() {
       initialManagerName: '',
       initialManagerEmail: '',
       initialManagerPhone: '',
+      sstDocumentsEnabled: client.sstDocumentsEnabled,
     });
     setFormError(null);
   }
@@ -208,6 +211,7 @@ function ClientesContent() {
       contactEmail: form.contactEmail.trim() || undefined,
       contactPhone: form.contactPhone.trim() || undefined,
       notes: form.notes.trim() || undefined,
+      sstDocumentsEnabled: form.sstDocumentsEnabled,
       ...(listTab === 'create' && managerName && managerEmail
         ? {
             initialManagerName: managerName,
@@ -237,6 +241,7 @@ function ClientesContent() {
           contactEmail: form.contactEmail.trim() || null,
           contactPhone: form.contactPhone.trim() || null,
           notes: payload.notes ?? null,
+          sstDocumentsEnabled: form.sstDocumentsEnabled,
         });
         closeEditForm();
         await load();
@@ -772,6 +777,26 @@ function ClientFormFields({
                 setForm((prev) => ({ ...prev, notes: e.target.value }))
               }
             />
+          </div>
+          <div className="field field--span-2">
+            <label htmlFor="sstDocumentsEnabled">
+              <input
+                id="sstDocumentsEnabled"
+                type="checkbox"
+                checked={form.sstDocumentsEnabled}
+                onChange={(e) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    sstDocumentsEnabled: e.target.checked,
+                  }))
+                }
+              />{' '}
+              Liberar Documentos SST no menu do portal
+            </label>
+            <p className="field-hint">
+              Modulo pago. Sem esta chave, o gestor da empresa nao ve Documentos
+              SST.
+            </p>
           </div>
         </div>
       </fieldset>
