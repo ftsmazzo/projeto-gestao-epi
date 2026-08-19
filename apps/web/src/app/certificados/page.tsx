@@ -24,10 +24,10 @@ type Mode = 'list' | 'create' | 'edit';
 
 const ASSET_LABELS: Array<{ kind: TrainingAssetKind; label: string; hint: string }> =
   [
-    { kind: 'HEADER', label: 'Titulo / faixa', hint: 'Arte central do diploma' },
-    { kind: 'LEFT_LOGO', label: 'Logo esquerda', hint: 'Consultoria ou selo' },
-    { kind: 'RIGHT_LOGO', label: 'Logo direita', hint: 'Empresa ou marca' },
-    { kind: 'SEAL', label: 'Selo', hint: 'Opcional, centro do diploma' },
+    { kind: 'HEADER', label: 'Logo INSEG', hint: 'Topo direito do diploma' },
+    { kind: 'LEFT_LOGO', label: 'Logo do curso', hint: 'Integração ou selo NR-35' },
+    { kind: 'RIGHT_LOGO', label: 'Arte do verso', hint: 'Ex.: INTEGRAR É PRECISO' },
+    { kind: 'SEAL', label: 'Marca NR (opcional)', hint: 'NR-35 no rodapé direito' },
   ];
 
 const emptyForm = {

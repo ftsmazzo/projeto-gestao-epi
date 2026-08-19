@@ -3,7 +3,10 @@ import { join } from 'path';
 
 export function bundledAssetPath(fileName: string): string | null {
   const names = [fileName.replace(/\\/g, '/')];
-  const roots = [join(__dirname, 'bundled'), join(__dirname, '..', 'src', 'training', 'bundled')];
+  const roots = [
+    join(__dirname, 'bundled'),
+    join(__dirname, '..', 'src', 'training', 'bundled'),
+  ];
   for (const root of roots) {
     for (const name of names) {
       const absolute = join(root, name);
@@ -16,18 +19,20 @@ export function bundledAssetPath(fileName: string): string | null {
 export function bundledAssetsForNr(nrLabel: string): Record<string, string> {
   const nr = (nrLabel || '').toUpperCase();
   const map: Record<string, string> = {};
+  const inseg = bundledAssetPath('inseg-header.png');
   const footer = bundledAssetPath('inseg-footer.png');
-  const header = bundledAssetPath('inseg-header.png');
+  if (inseg) map.HEADER = inseg;
   if (footer) map.FOOTER = footer;
-  if (header) map.BANNER = header;
   if (nr.includes('35')) {
-    const logo = bundledAssetPath('nr35-logo.png');
     const badge = bundledAssetPath('nr35-badge.png');
-    if (logo) map.LEFT_LOGO = logo;
-    if (badge) map.SEAL = badge;
+    const logo = bundledAssetPath('nr35-logo.png');
+    if (badge) map.LEFT_LOGO = badge;
+    if (logo) map.SEAL = logo;
   } else {
     const logo = bundledAssetPath('integracao-logo.png');
+    const back = bundledAssetPath('integrar-preciso.png');
     if (logo) map.LEFT_LOGO = logo;
+    if (back) map.RIGHT_LOGO = back;
   }
   return map;
 }

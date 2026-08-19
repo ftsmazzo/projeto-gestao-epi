@@ -19,6 +19,7 @@ import {
   UpsertTrainingTemplateDto,
 } from './dto/training.dto';
 import { TrainingPdfService } from './training-pdf.service';
+import { resolveClientLogoAbsolutePath } from '../sst-documents/sst-client-logo.storage';
 import {
   deleteTrainingAssetFile,
   resolveTrainingAssetAbsolutePath,
@@ -338,6 +339,7 @@ export class TrainingService {
       const absolute = resolveTrainingAssetAbsolutePath(asset.relativePath);
       if (absolute) assets[asset.kind] = absolute;
     }
+    const clientLogoPath = await this.resolveClientLogo(client.id);
 
     const buffer = await this.pdf.build({
       includeCertificate: template.includeCertificate,
@@ -366,6 +368,7 @@ export class TrainingService {
         jobFunction: worker.clientJobFunction?.name || worker.role || '—',
       })),
       assets,
+      clientLogoPath,
     });
 
     await this.audit.log({
@@ -414,6 +417,7 @@ export class TrainingService {
       const absolute = resolveTrainingAssetAbsolutePath(asset.relativePath);
       if (absolute) assets[asset.kind] = absolute;
     }
+    const clientLogoPath = await this.resolveClientLogo(issuance.servedClientId);
     const buffer = await this.pdf.build({
       includeCertificate: issuance.template.includeCertificate,
       includeRegister: issuance.template.includeRegister,
@@ -441,6 +445,7 @@ export class TrainingService {
         jobFunction: worker.clientJobFunction?.name || worker.role || '—',
       })),
       assets,
+      clientLogoPath,
     });
     return {
       buffer,
@@ -473,22 +478,69 @@ export class TrainingService {
     const existing = await this.prisma.trainingTemplate.count({
       where: { organizationId },
     });
-    if (existing > 0) return 0;
-    await this.prisma.trainingTemplate.createMany({
-      data: TRAINING_DEFAULT_SEEDS.map((seed) => ({
+    if (existing === 0) {
+      await this.prisma.trainingTemplate.createMany({
+        data: TRAINING_DEFAULT_SEEDS.map((seed) => ({
+          organizationId,
+          name: seed.name,
+          courseTitle: seed.courseTitle,
+          nrLabel: seed.nrLabel,
+          defaultHours: seed.defaultHours,
+          defaultLocation: seed.defaultLocation,
+          certificateCourseClause: seed.certificateCourseClause,
+          topics: seed.topics,
+          registerSummary: seed.registerSummary,
+          instructorRole: seed.instructorRole,
+        })),
+      });
+      return TRAINING_DEFAULT_SEEDS.length;
+    }
+    await this.refreshAsciiSeedCopy(organizationId);
+    return 0;
+  }
+
+  private async refreshAsciiSeedCopy(organizationId: string) {
+    const nr01 = TRAINING_DEFAULT_SEEDS[0];
+    const nr35 = TRAINING_DEFAULT_SEEDS[1];
+    await this.prisma.trainingTemplate.updateMany({
+      where: {
         organizationId,
-        name: seed.name,
-        courseTitle: seed.courseTitle,
-        nrLabel: seed.nrLabel,
-        defaultHours: seed.defaultHours,
-        defaultLocation: seed.defaultLocation,
-        certificateCourseClause: seed.certificateCourseClause,
-        topics: seed.topics,
-        registerSummary: seed.registerSummary,
-        instructorRole: seed.instructorRole,
-      })),
+        nrLabel: nr01.nrLabel,
+        certificateCourseClause: { contains: 'Integracao de Seguranca' },
+      },
+      data: {
+        name: nr01.name,
+        courseTitle: nr01.courseTitle,
+        certificateCourseClause: nr01.certificateCourseClause,
+        topics: { set: nr01.topics },
+        registerSummary: nr01.registerSummary,
+        instructorRole: nr01.instructorRole,
+      },
     });
-    return TRAINING_DEFAULT_SEEDS.length;
+    await this.prisma.trainingTemplate.updateMany({
+      where: {
+        organizationId,
+        nrLabel: nr35.nrLabel,
+        certificateCourseClause: { contains: 'Capacitacao de Trabalho' },
+      },
+      data: {
+        name: nr35.name,
+        courseTitle: nr35.courseTitle,
+        certificateCourseClause: nr35.certificateCourseClause,
+        topics: { set: nr35.topics },
+        registerSummary: nr35.registerSummary,
+        instructorRole: nr35.instructorRole,
+      },
+    });
+  }
+
+  private async resolveClientLogo(servedClientId: string) {
+    const profile = await this.prisma.sstClientProfile.findUnique({
+      where: { servedClientId },
+      select: { logoPath: true },
+    });
+    if (!profile?.logoPath) return null;
+    return resolveClientLogoAbsolutePath(profile.logoPath);
   }
 
   private templateData(
