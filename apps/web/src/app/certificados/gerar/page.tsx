@@ -37,6 +37,11 @@ function GerarContent() {
   const [templateId, setTemplateId] = useState(preset ?? '');
   const [clientId, setClientId] = useState('');
   const [query, setQuery] = useState('');
+  const [unitFilter, setUnitFilter] = useState('');
+  const [sectorFilter, setSectorFilter] = useState('');
+  const [jobFilter, setJobFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
   const [selected, setSelected] = useState<string[]>([]);
   const [heldOn, setHeldOn] = useState(todayIso);
   const [hours, setHours] = useState('8');
@@ -64,12 +69,53 @@ function GerarContent() {
     const digits = stripCpf(needle);
     return workers.filter((worker) => {
       if (worker.status !== 'ACTIVE') return false;
+      if (unitFilter && worker.unitName !== unitFilter) return false;
+      if (sectorFilter && worker.sectorName !== sectorFilter) return false;
+      if (
+        jobFilter &&
+        (worker.jobFunctionName || worker.role || '') !== jobFilter
+      ) {
+        return false;
+      }
       if (!needle) return true;
       if (worker.name.toLowerCase().includes(needle)) return true;
       const cpf = stripCpf(worker.cpf ?? '');
       return Boolean(digits && cpf.includes(digits));
     });
-  }, [workers, query]);
+  }, [workers, query, unitFilter, sectorFilter, jobFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredWorkers.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pagedWorkers = filteredWorkers.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
+  const unitOptions = useMemo(
+    () =>
+      [...new Set(workers.map((w) => w.unitName).filter(Boolean))].sort((a, b) =>
+        (a ?? '').localeCompare(b ?? '', 'pt-BR'),
+      ) as string[],
+    [workers],
+  );
+  const sectorOptions = useMemo(
+    () =>
+      [...new Set(workers.map((w) => w.sectorName).filter(Boolean))].sort(
+        (a, b) => (a ?? '').localeCompare(b ?? '', 'pt-BR'),
+      ) as string[],
+    [workers],
+  );
+  const jobOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          workers
+            .map((w) => w.jobFunctionName || w.role)
+            .filter((value): value is string => Boolean(value?.trim())),
+        ),
+      ].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [workers],
+  );
 
   const loadBase = useCallback(async () => {
     setLoading(true);
@@ -124,6 +170,11 @@ function GerarContent() {
         setAddress(defaults.address);
         if (defaults.location) setLocation(defaults.location);
         setSelected([]);
+        setQuery('');
+        setUnitFilter('');
+        setSectorFilter('');
+        setJobFilter('');
+        setPage(1);
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -143,7 +194,17 @@ function GerarContent() {
     );
   }
 
-  function toggleAllVisible() {
+  function togglePage() {
+    const ids = pagedWorkers.map((row) => row.id);
+    const allOn = ids.every((id) => selected.includes(id));
+    setSelected((prev) =>
+      allOn
+        ? prev.filter((id) => !ids.includes(id))
+        : [...new Set([...prev, ...ids])],
+    );
+  }
+
+  function toggleFiltered() {
     const ids = filteredWorkers.map((row) => row.id);
     const allOn = ids.every((id) => selected.includes(id));
     setSelected((prev) =>
@@ -361,25 +422,88 @@ function GerarContent() {
                 <input
                   id="gen-q"
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setPage(1);
+                  }}
                   placeholder="Nome ou CPF"
                 />
               </div>
+              <div className="field">
+                <label htmlFor="gen-unit">Unidade</label>
+                <select
+                  id="gen-unit"
+                  value={unitFilter}
+                  onChange={(e) => {
+                    setUnitFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Todas</option>
+                  {unitOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="gen-sector">Setor</label>
+                <select
+                  id="gen-sector"
+                  value={sectorFilter}
+                  onChange={(e) => {
+                    setSectorFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Todos</option>
+                  {sectorOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="gen-job">Funcao</label>
+                <select
+                  id="gen-job"
+                  value={jobFilter}
+                  onChange={(e) => {
+                    setJobFilter(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">Todas</option>
+                  {jobOptions.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="btn-row">
+                <button type="button" className="btn btn-secondary" onClick={togglePage}>
+                  Marcar esta pagina
+                </button>
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  onClick={toggleAllVisible}
+                  onClick={toggleFiltered}
                 >
-                  Marcar visiveis
+                  Marcar filtrados
                 </button>
-                <span className="field-hint">{selected.length} selecionado(s)</span>
+                <span className="field-hint">
+                  {selected.length} selecionado(s) · {filteredWorkers.length} no
+                  filtro · pagina {currentPage}/{pageCount}
+                </span>
               </div>
               <div className="stack-list">
-                {filteredWorkers.length === 0 ? (
+                {pagedWorkers.length === 0 ? (
                   <p className="page-lead">Nenhum trabalhador ativo neste filtro.</p>
                 ) : (
-                  filteredWorkers.map((worker) => (
+                  pagedWorkers.map((worker) => (
                     <label key={worker.id} className="stack-card">
                       <div className="stack-card__body">
                         <input
@@ -391,6 +515,8 @@ function GerarContent() {
                           <strong>{worker.name}</strong>
                           <p className="stack-card__meta">
                             {worker.jobFunctionName || worker.role || 'Sem funcao'}
+                            {worker.sectorName ? ` · ${worker.sectorName}` : ''}
+                            {worker.unitName ? ` · ${worker.unitName}` : ''}
                             {worker.cpf
                               ? ` · ${formatCpfInput(worker.cpf)}`
                               : ' · sem CPF'}
@@ -401,6 +527,31 @@ function GerarContent() {
                   ))
                 )}
               </div>
+              {pageCount > 1 ? (
+                <div className="btn-row" style={{ marginTop: '0.75rem' }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    Anterior
+                  </button>
+                  <span className="field-hint">
+                    {(currentPage - 1) * PAGE_SIZE + 1}-
+                    {Math.min(currentPage * PAGE_SIZE, filteredWorkers.length)} de{' '}
+                    {filteredWorkers.length}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={currentPage >= pageCount}
+                    onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                  >
+                    Proxima
+                  </button>
+                </div>
+              ) : null}
             </>
           )}
         </section>

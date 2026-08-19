@@ -4,6 +4,7 @@ import { readFile } from 'fs/promises';
 import PDFDocument from 'pdfkit';
 import { TrainingDeliveryKind } from '@prisma/client';
 import { formatCnpj } from '../sst-documents/sst-document-content';
+import { bundledAssetsForNr } from './bundled-assets';
 
 export type TrainingPdfWorker = {
   name: string;
@@ -11,9 +12,7 @@ export type TrainingPdfWorker = {
   jobFunction: string;
 };
 
-export type TrainingPdfAssetMap = Partial<
-  Record<'HEADER' | 'LEFT_LOGO' | 'RIGHT_LOGO' | 'SEAL' | string, string>
->;
+export type TrainingPdfAssetMap = Partial<Record<string, string>>;
 
 export type TrainingPdfInput = {
   includeCertificate: boolean;
@@ -40,11 +39,9 @@ export type TrainingPdfInput = {
   assets: TrainingPdfAssetMap;
 };
 
-const GOLD = '#b8860b';
-const NAVY = '#1e3a5f';
-const TEAL = '#0f766e';
-const INK = '#1f2937';
-const MUTED = '#475569';
+const NAVY = '#12345A';
+const GREEN = '#6BB12A';
+const INK = '#000000';
 const MONTHS = [
   'Janeiro',
   'Fevereiro',
@@ -176,10 +173,8 @@ async function drawImage(
   }
 }
 
-function companyShortName(legalName: string, tradeName: string | null) {
-  const trade = tradeName?.trim();
-  if (trade) return trade;
-  return legalName.length > 42 ? `${legalName.slice(0, 40)}…` : legalName;
+function mergeAssets(nrLabel: string, uploaded: TrainingPdfAssetMap) {
+  return { ...bundledAssetsForNr(nrLabel), ...uploaded };
 }
 
 function bufferFromPdf(
@@ -190,9 +185,9 @@ function bufferFromPdf(
     const doc = new PDFDocument({
       size: 'A4',
       layout,
-      margins: { top: 28, bottom: 28, left: 28, right: 28 },
+      margins: { top: 18, bottom: 18, left: 22, right: 22 },
       bufferPages: true,
-      info: { Title: 'ProntEPI — Certificado / Registro', Author: 'ProntEPI' },
+      info: { Title: 'Certificado / Registro de Treinamento', Author: 'INSEG' },
     });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -207,38 +202,36 @@ function bufferFromPdf(
 @Injectable()
 export class TrainingPdfService {
   async build(input: TrainingPdfInput): Promise<Buffer> {
+    const assets = mergeAssets(input.nrLabel, input.assets);
+    const payload = { ...input, assets };
     const firstLayout =
-      input.includeCertificate && input.workers.length > 0
+      payload.includeCertificate && payload.workers.length > 0
         ? 'landscape'
         : 'portrait';
     return bufferFromPdf(firstLayout, async (doc) => {
       let started = false;
-      if (input.includeCertificate) {
-        for (const worker of input.workers) {
+      if (payload.includeCertificate) {
+        for (const worker of payload.workers) {
           if (started) doc.addPage({ size: 'A4', layout: 'landscape' });
           started = true;
-          await this.drawCertificateFront(doc, input, worker);
+          await this.drawCertificateFront(doc, payload, worker);
           doc.addPage({ size: 'A4', layout: 'landscape' });
-          await this.drawCertificateBack(doc, input);
+          await this.drawCertificateBack(doc, payload);
         }
       }
-      if (input.includeRegister) {
-        const pages = this.chunkWorkers(input.workers, 22);
-        for (let i = 0; i < pages.length; i += 1) {
+      if (payload.includeRegister) {
+        const pages = this.chunkWorkers(payload.workers, 22);
+        const list = pages.length ? pages : [[]];
+        for (let i = 0; i < list.length; i += 1) {
           if (started) doc.addPage({ size: 'A4', layout: 'portrait' });
           started = true;
-          await this.drawRegister(doc, input, pages[i], i, pages.length);
-        }
-        if (pages.length === 0) {
-          if (started) doc.addPage({ size: 'A4', layout: 'portrait' });
-          await this.drawRegister(doc, input, [], 0, 1);
+          await this.drawRegister(doc, payload, list[i], i, list.length);
         }
       }
     });
   }
 
   private chunkWorkers(workers: TrainingPdfWorker[], size: number) {
-    if (workers.length === 0) return [] as TrainingPdfWorker[][];
     const pages: TrainingPdfWorker[][] = [];
     for (let i = 0; i < workers.length; i += size) {
       pages.push(workers.slice(i, i + size));
@@ -254,110 +247,94 @@ export class TrainingPdfService {
     const w = doc.page.width;
     const h = doc.page.height;
     doc.save();
-    doc.rect(0, 0, w, h).fill('#fbf8f1');
+    doc.rect(0, 0, w, h).fill('#ffffff');
     doc.restore();
-
-    const m = 18;
     doc.save();
-    doc.rect(m, m, w - 2 * m, h - 2 * m).lineWidth(3).strokeColor(GOLD).stroke();
-    doc
-      .rect(m + 8, m + 8, w - 2 * m - 16, h - 2 * m - 16)
-      .lineWidth(1.2)
-      .strokeColor(NAVY)
-      .stroke();
+    doc.rect(0, 0, 10, h).fill(GREEN);
     doc.restore();
 
-    doc.save();
-    doc.rect(m, m, 14, h - 2 * m).fill(NAVY);
-    doc.restore();
-
-    await drawImage(doc, input.assets.LEFT_LOGO, 48, 36, 150, 72);
-    await drawImage(doc, input.assets.HEADER, w / 2 - 130, 32, 260, 58);
-    await drawImage(doc, input.assets.RIGHT_LOGO, w - 198, 36, 140, 72);
-
+    await drawImage(doc, input.assets.LEFT_LOGO, 24, 16, 150, 78);
+    await drawImage(doc, input.assets.HEADER, w / 2 - 120, 14, 240, 52);
     if (!input.assets.HEADER) {
       doc
         .font('Times-Bold')
-        .fontSize(28)
+        .fontSize(36)
         .fillColor(NAVY)
-        .text('CERTIFICADO', 80, 48, {
-          width: w - 160,
-          align: 'center',
-        });
+        .text('CERTIFICADO', 180, 22, { width: w - 360, align: 'center' });
     }
+    await drawImage(doc, input.assets.SEAL, w - 118, 12, 92, 92);
+    await drawImage(doc, input.assets.RIGHT_LOGO, w - 210, 18, 88, 56);
 
     const body = `Certificamos que o Senhor ${worker.name}, ${input.certificateCourseClause}, Realizado no Periodo de ${formatDateExtenso(input.heldOn)}, Cumprindo a Carga Horaria de ${padHours(input.hours)} Horas.`;
+    doc
+      .font('Times-Roman')
+      .fontSize(25)
+      .fillColor(INK)
+      .text(body, 48, 118, {
+        width: w - 96,
+        align: 'center',
+        lineGap: 3,
+      });
 
     doc
       .font('Times-Roman')
-      .fontSize(14)
+      .fontSize(12)
       .fillColor(INK)
-      .text(body, 72, 150, {
-        width: w - 130,
-        align: 'center',
-        lineGap: 6,
+      .text(`Endereco do Curso Realizado:\n${input.address || '—'}`, w / 2 + 20, 318, {
+        width: w / 2 - 50,
+        align: 'left',
       });
 
-    const afterBody = Math.max(doc.y + 12, 250);
-    doc
-      .font('Times-Italic')
-      .fontSize(10)
-      .fillColor(MUTED)
-      .text(`Endereco do Curso Realizado: ${input.address || '—'}`, 72, afterBody, {
-        width: w - 130,
-        align: 'center',
-      });
-
-    await drawImage(doc, input.assets.SEAL, w / 2 - 42, afterBody + 28, 84, 84);
-
-    const sigY = h - 148;
-    const colW = (w - 120) / 3;
+    const sigY = 390;
+    const colW = (w - 80) / 3;
     const cols = [
       {
-        x: 48,
+        x: 28,
         lines: [
           input.instructorName || '_____________________________',
           input.instructorRole,
           input.instructorRegistry ? `MTB. ${input.instructorRegistry}` : '',
-          'Instrutor / Responsavel Tecnico',
+          'Instrutor/Responsavel Tecnico',
         ],
       },
       {
-        x: 48 + colW,
+        x: 28 + colW,
         lines: [
-          companyShortName(input.companyLegalName, input.companyTradeName),
+          input.legalRepName ||
+            input.companyTradeName ||
+            input.companyLegalName,
           `CNPJ: ${formatCnpj(input.companyCnpj)}`,
-          input.legalRepName || '_____________________________',
           'Representante Legal',
         ],
       },
       {
-        x: 48 + colW * 2,
+        x: 28 + colW * 2,
         lines: [
           worker.name,
-          `RG/CPF: ${formatCpf(worker.cpf)}`,
-          '_____________________________',
           'Treinando',
+          `RG/CPF: ${formatCpf(worker.cpf)}`,
         ],
       },
     ];
     for (const col of cols) {
       doc
-        .moveTo(col.x + 12, sigY)
-        .lineTo(col.x + colW - 16, sigY)
-        .strokeColor(NAVY)
-        .lineWidth(0.8)
+        .moveTo(col.x + 16, sigY)
+        .lineTo(col.x + colW - 20, sigY)
+        .strokeColor(INK)
+        .lineWidth(0.7)
         .stroke();
       doc
         .font('Times-Roman')
-        .fontSize(8.5)
+        .fontSize(15)
         .fillColor(INK)
-        .text(col.lines.filter(Boolean).join('\n'), col.x + 8, sigY + 8, {
-          width: colW - 20,
+        .text(col.lines.filter(Boolean).join('\n'), col.x + 10, sigY + 8, {
+          width: colW - 24,
           align: 'center',
-          lineGap: 2,
+          lineGap: 1,
         });
     }
+
+    await drawImage(doc, input.assets.FOOTER, 22, h - 72, w - 44, 56);
   }
 
   private async drawCertificateBack(
@@ -367,47 +344,31 @@ export class TrainingPdfService {
     const w = doc.page.width;
     const h = doc.page.height;
     doc.save();
-    doc.rect(0, 0, w, h).fill('#fbf8f1');
+    doc.rect(0, 0, w, h).fill('#ffffff');
     doc.restore();
-    const m = 18;
     doc.save();
-    doc.rect(m, m, w - 2 * m, h - 2 * m).lineWidth(3).strokeColor(GOLD).stroke();
-    doc
-      .rect(m + 8, m + 8, w - 2 * m - 16, h - 2 * m - 16)
-      .lineWidth(1.2)
-      .strokeColor(NAVY)
-      .stroke();
+    doc.rect(0, 0, 10, h).fill(GREEN);
     doc.restore();
-
-    await drawImage(doc, input.assets.HEADER, w / 2 - 130, 32, 260, 50);
+    await drawImage(doc, input.assets.LEFT_LOGO, 24, 16, 140, 70);
     doc
       .font('Times-Bold')
-      .fontSize(16)
+      .fontSize(22)
       .fillColor(NAVY)
-      .text('Conteudo Programatico', 60, 96, {
-        width: w - 120,
-        align: 'center',
-      });
-
+      .text('Conteudo Programatico:', 48, 100, { width: w - 96 });
     const topics = input.topics.length
       ? input.topics
       : ['Conteudo definido no modelo do curso.'];
-    const colCount = topics.length > 8 ? 2 : 1;
-    const colW = (w - 120) / colCount;
-    const perCol = Math.ceil(topics.length / colCount);
-    for (let c = 0; c < colCount; c += 1) {
-      const slice = topics.slice(c * perCol, (c + 1) * perCol);
-      doc
-        .font('Times-Roman')
-        .fontSize(11)
-        .fillColor(INK)
-        .text(
-          slice.map((t) => `•  ${t}`).join('\n'),
-          60 + c * colW,
-          130,
-          { width: colW - 16, lineGap: 6 },
-        );
-    }
+    doc
+      .font('Times-Roman')
+      .fontSize(14)
+      .fillColor(INK)
+      .text(
+        topics.map((item) => `${item};`).join('\n'),
+        48,
+        136,
+        { width: w - 96, lineGap: 4 },
+      );
+    await drawImage(doc, input.assets.FOOTER, 22, h - 72, w - 44, 56);
   }
 
   private async drawRegister(
@@ -419,100 +380,112 @@ export class TrainingPdfService {
   ) {
     const w = doc.page.width;
     const marks = deliveryMarks(input.deliveryKind);
-    doc.save();
-    doc.rect(28, 28, w - 56, 56).fill(TEAL);
-    doc.restore();
-    await drawImage(doc, input.assets.LEFT_LOGO, 36, 34, 70, 44);
+    await drawImage(doc, input.assets.BANNER, 28, 24, 170, 40);
     doc
       .font('Helvetica-Bold')
       .fontSize(13)
-      .fillColor('#fff')
-      .text('REGISTRO DE TREINAMENTO', 112, 38, {
-        width: w - 230,
+      .fillColor(NAVY)
+      .text('REGISTRO DE TREINAMENTO', 210, 28, {
+        width: w - 250,
         align: 'center',
       });
     doc
-      .font('Helvetica')
-      .fontSize(9)
-      .fillColor('#ecfeff')
-      .text('CAPACITACAO EM SST', 112, 58, {
-        width: w - 230,
+      .font('Helvetica-Bold')
+      .fontSize(10)
+      .fillColor(GREEN)
+      .text('CAPACITACAO EM SST', 210, 46, {
+        width: w - 250,
         align: 'center',
       });
-    await drawImage(doc, input.assets.RIGHT_LOGO, w - 110, 34, 70, 44);
 
-    let y = 98;
-    const label = (text: string, x: number, yy: number, width: number) => {
-      doc.font('Helvetica-Bold').fontSize(8).fillColor(MUTED).text(text, x, yy, {
-        width,
-      });
+    const box = (x: number, y: number, bw: number, bh: number) => {
+      doc.save();
+      doc.rect(x, y, bw, bh).strokeColor('#111111').lineWidth(0.6).stroke();
+      doc.restore();
     };
-    const value = (text: string, x: number, yy: number, width: number) => {
-      doc.font('Helvetica').fontSize(9).fillColor(INK).text(text, x, yy, {
-        width,
-      });
-    };
-
-    label('Treinamento', 36, y, 360);
-    value(input.courseTitle, 36, y + 11, 360);
-    value(
+    let y = 78;
+    box(28, y, w - 56, 22);
+    doc.font('Helvetica-Bold').fontSize(8).fillColor(INK).text('Treinamento:', 32, y + 6);
+    doc.font('Helvetica').fontSize(8).text(input.courseTitle, 100, y + 6, {
+      width: 300,
+    });
+    doc.font('Helvetica').fontSize(8).text(
       `Interno (${marks.interno})     T.L.T. (${marks.tlt})     Externo (${marks.externo})`,
-      410,
-      y + 11,
-      160,
+      w - 250,
+      y + 6,
+      { width: 214 },
     );
-    y += 34;
-    label('N. Controle', 36, y, 90);
-    value(input.controlNumber || '—', 36, y + 11, 90);
-    label('Local', 136, y, 150);
-    value(input.location || '—', 136, y + 11, 150);
-    label('Carga horaria', 296, y, 90);
-    value(`${padHours(input.hours)} horas`, 296, y + 11, 90);
-    label('Data da Realizacao', 396, y, 160);
-    value(formatDateBr(input.heldOn), 396, y + 11, 160);
-    y += 34;
-    label('Empresa', 36, y, 520);
-    value(
-      `${input.companyLegalName}  ·  CNPJ ${formatCnpj(input.companyCnpj)}`,
-      36,
-      y + 11,
-      520,
-    );
-    y += 32;
-    label('Endereco', 36, y, 520);
-    value(input.address || '—', 36, y + 11, 520);
-    y += 32;
-    label('Conteudo resumido do curso', 36, y, 520);
-    value(input.registerSummary || '—', 36, y + 11, 520);
-    y = Math.max(doc.y + 14, y + 56);
+    y += 22;
+    const metaH = 36;
+    box(28, y, w - 56, metaH);
+    const cells = [
+      ['N. Controle:', input.controlNumber || '—'],
+      ['Local:', input.location || '—'],
+      ['Carga horaria:', `${padHours(input.hours)} horas`],
+      ['Data da Realizacao:', formatDateBr(input.heldOn)],
+    ];
+    cells.forEach((pair, idx) => {
+      const x = 32 + idx * 135;
+      doc.font('Helvetica-Bold').fontSize(7).fillColor(INK).text(pair[0], x, y + 5);
+      doc.font('Helvetica').fontSize(8).text(pair[1], x, y + 16, { width: 128 });
+    });
+    y += metaH;
+    box(28, y, w - 56, 28);
+    doc.font('Helvetica-Bold').fontSize(7).text('Empresa:', 32, y + 4);
+    doc
+      .font('Helvetica')
+      .fontSize(8)
+      .text(
+        `${input.companyLegalName}   CNPJ: ${formatCnpj(input.companyCnpj)}`,
+        32,
+        y + 14,
+        { width: w - 72 },
+      );
+    y += 28;
+    box(28, y, w - 56, 28);
+    doc.font('Helvetica-Bold').fontSize(7).text('Endereco:', 32, y + 4);
+    doc.font('Helvetica').fontSize(8).text(input.address || '—', 32, y + 14, {
+      width: w - 72,
+    });
+    y += 28;
+    const summaryH = 70;
+    box(28, y, w - 56, summaryH);
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(7)
+      .text('Conteudo resumido do curso (utilizar maximo 10 linhas):', 32, y + 4);
+    doc
+      .font('Helvetica')
+      .fontSize(8)
+      .text(input.registerSummary || '—', 32, y + 16, {
+        width: w - 72,
+        height: summaryH - 22,
+      });
+    y += summaryH + 8;
 
     const cols = [
       { title: 'N.', width: 28 },
       { title: 'Nome Completo', width: 175 },
-      { title: 'Funcao', width: 130 },
+      { title: 'Funcao', width: 128 },
       { title: 'RG/CPF', width: 95 },
-      { title: 'Presenca (Visto)', width: 110 },
+      { title: 'Presenca (Visto)', width: 112 },
     ];
-    const tableX = 36;
-    const rowH = 18;
-    const drawRow = (
-      cells: string[],
-      yy: number,
-      header: boolean,
-    ) => {
-      let x = tableX;
+    const tableW = cols.reduce((sum, col) => sum + col.width, 0);
+    const rowH = 16;
+    const drawRow = (cellsText: string[], yy: number, header: boolean) => {
+      let x = 28;
       doc.save();
-      doc.rect(tableX, yy, 538, rowH).fill(header ? TEAL : '#fff');
+      doc.rect(28, yy, tableW, rowH).fill(header ? NAVY : '#ffffff');
       doc.restore();
       doc.save();
-      doc.rect(tableX, yy, 538, rowH).strokeColor('#94a3b8').lineWidth(0.4).stroke();
+      doc.rect(28, yy, tableW, rowH).strokeColor('#111111').lineWidth(0.45).stroke();
       doc.restore();
       for (let i = 0; i < cols.length; i += 1) {
         doc
           .font(header ? 'Helvetica-Bold' : 'Helvetica')
-          .fontSize(header ? 7.5 : 7.5)
-          .fillColor(header ? '#fff' : INK)
-          .text(cells[i] ?? '', x + 3, yy + 5, {
+          .fontSize(7)
+          .fillColor(header ? '#ffffff' : INK)
+          .text(cellsText[i] ?? '', x + 3, yy + 4, {
             width: cols[i].width - 6,
             ellipsis: true,
             lineBreak: false,
@@ -520,15 +493,14 @@ export class TrainingPdfService {
         x += cols[i].width;
       }
     };
-
     drawRow(
-      cols.map((c) => c.title),
+      ['N.', 'Nome Completo', 'Funcao', 'RG/CPF', 'Presenca (Visto)'],
       y,
       true,
     );
     y += rowH;
     const startN = pageIndex * 22 + 1;
-    const emptyRows = Math.max(0, 22 - workers.length);
+    const empty = Math.max(0, 22 - workers.length);
     const rows = [
       ...workers.map((worker, idx) => [
         String(startN + idx).padStart(2, '0'),
@@ -537,19 +509,19 @@ export class TrainingPdfService {
         formatCpf(worker.cpf),
         '',
       ]),
-      ...Array.from({ length: emptyRows }, () => ['', '', '', '', '']),
+      ...Array.from({ length: empty }, () => ['', '', '', '', '']),
     ];
     for (const row of rows) {
       drawRow(row, y, false);
       y += rowH;
     }
 
-    y += 18;
+    y += 16;
     doc
-      .moveTo(36, y)
+      .moveTo(28, y)
       .lineTo(220, y)
-      .strokeColor(TEAL)
-      .lineWidth(0.8)
+      .strokeColor(INK)
+      .lineWidth(0.7)
       .stroke();
     doc
       .font('Helvetica')
@@ -563,7 +535,7 @@ export class TrainingPdfService {
         ]
           .filter(Boolean)
           .join('\n'),
-        36,
+        28,
         y + 6,
         { width: 240 },
       );
@@ -571,9 +543,9 @@ export class TrainingPdfService {
       doc
         .font('Helvetica')
         .fontSize(8)
-        .fillColor(MUTED)
-        .text(`Pagina ${pageIndex + 1} de ${pageCount}`, 36, 770, {
-          width: w - 72,
+        .fillColor('#444444')
+        .text(`Pagina ${pageIndex + 1} de ${pageCount}`, 28, 770, {
+          width: w - 56,
           align: 'center',
         });
     }

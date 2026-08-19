@@ -47,6 +47,7 @@ COPY --from=build /app/packages/shared/dist packages/shared/dist
 COPY --from=build /app/packages/shared/package.json packages/shared/package.json
 COPY --from=build /app/apps/api/dist apps/api/dist
 COPY --from=build /app/apps/api/prisma apps/api/prisma
+COPY apps/api/src/training/bundled apps/api/dist/training/bundled
 COPY --from=build /app/apps/api/package.json apps/api/package.json
 # Prisma Client gerado no build (postinstall/scripts foram ignorados no npm ci)
 COPY --from=build /app/node_modules/.prisma node_modules/.prisma
