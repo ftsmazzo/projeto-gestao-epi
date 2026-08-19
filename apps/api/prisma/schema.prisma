@@ -135,6 +135,9 @@ model Organization {
   sstClientProfiles SstClientProfile[]
   sstDocuments      SstDocument[]
   sstDocumentLinks  SstDocumentLink[]
+  trainingTemplates TrainingTemplate[]
+  trainingTemplateAssets TrainingTemplateAsset[]
+  trainingIssuances TrainingIssuance[]
 }
 
 /// Contato oficial da consultoria usado nas comunicacoes com clientes
@@ -288,6 +291,7 @@ model ServedClient {
   sstProfile       SstClientProfile?
   sstDocuments     SstDocument[]
   sstDocumentLinks SstDocumentLink[]
+  trainingIssuances TrainingIssuance[]
   groupMember      ClientGroupMember?
 
   @@unique([organizationId, cnpj])
@@ -1506,6 +1510,95 @@ model SstDocumentLink {
   @@index([documentId])
   @@index([workerId])
   @@index([expiresAt])
+}
+
+enum TrainingDeliveryKind {
+  INTERNO
+  TLT
+  EXTERNO
+}
+
+enum TrainingAssetKind {
+  HEADER
+  LEFT_LOGO
+  RIGHT_LOGO
+  SEAL
+}
+
+/// Modelo de certificado e/ou registro de treinamento da consultoria.
+model TrainingTemplate {
+  id                       String   @id @default(cuid())
+  organizationId           String
+  name                     String
+  courseTitle              String
+  nrLabel                  String   @default("")
+  defaultHours             Int      @default(8)
+  defaultLocation          String   @default("Sala de Treinamento")
+  /// Trecho do diploma: o sistema envolve com nome, data e carga.
+  certificateCourseClause  String
+  topics                   String[]
+  registerSummary          String   @default("")
+  instructorName           String   @default("")
+  instructorRole           String   @default("Tecnico em Seguranca do Trabalho")
+  instructorRegistry       String   @default("")
+  includeCertificate       Boolean  @default(true)
+  includeRegister          Boolean  @default(true)
+  isActive                 Boolean  @default(true)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assets       TrainingTemplateAsset[]
+  issuances    TrainingIssuance[]
+
+  @@index([organizationId])
+  @@index([organizationId, isActive])
+}
+
+model TrainingTemplateAsset {
+  id             String            @id @default(cuid())
+  organizationId String
+  templateId     String
+  kind           TrainingAssetKind
+  relativePath   String
+  mimeType       String
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     TrainingTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, kind])
+  @@index([organizationId])
+}
+
+/// Emissao para reimpressao: turma + dados da sessao.
+model TrainingIssuance {
+  id                   String               @id @default(cuid())
+  organizationId       String
+  templateId           String
+  servedClientId       String
+  createdByUserId      String?
+  heldOn               DateTime
+  hours                Int
+  location             String
+  address              String
+  instructorName       String
+  instructorRole       String
+  instructorRegistry   String
+  legalRepName         String
+  deliveryKind         TrainingDeliveryKind @default(INTERNO)
+  controlNumber        String?
+  workerIds            Json
+  createdAt            DateTime             @default(now())
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     TrainingTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  servedClient ServedClient     @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([createdAt])
 }
 
 model SstDocumentEvidence {

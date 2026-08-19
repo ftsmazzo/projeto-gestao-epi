@@ -110,6 +110,16 @@ export function IconShield(props: IconProps) {
   );
 }
 
+export function IconCertificate(props: IconProps) {
+  return (
+    <IconBase {...props}>
+      <rect x="4" y="3" width="16" height="13" rx="1.5" />
+      <path d="M8 7h8M8 10h5" />
+      <path d="M9 16v5l3-1.5L15 21v-5" />
+    </IconBase>
+  );
+}
+
 export function IconWallet(props: IconProps) {
   return (
     <IconBase {...props}>

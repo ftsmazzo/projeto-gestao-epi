@@ -10,6 +10,7 @@ import { InstallAppBanner } from './InstallAppBanner';
 import { TenantBrand } from './TenantBrand';
 import {
   IconBuilding,
+  IconCertificate,
   IconHome,
   IconMenu,
   IconPackage,
@@ -29,6 +30,8 @@ function navIcon(href: string) {
       return <IconHome />;
     case '/clientes':
       return <IconBuilding />;
+    case '/certificados':
+      return <IconCertificate />;
     case '/configuracoes':
       return <IconSettings />;
     case '/epi-needs':

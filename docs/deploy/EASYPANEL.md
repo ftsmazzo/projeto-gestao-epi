@@ -97,6 +97,7 @@ O Dockerfile ja inclui `HEALTHCHECK` em `/health`. No EasyPanel, configure tambe
 | `CORS_ORIGIN` | Sim em producao | URL publica do Web, ex. `https://app.seudominio.com`. Varias origens: separar por virgula. `*` apenas para debug. |
 | `PUBLIC_WEB_URL` | Recomendado | Base dos links de autoenrollment facial (`/enroll/facial/...`). Se omitido, usa o primeiro `CORS_ORIGIN`. |
 | `DELIVERY_EVIDENCE_DIR` | Recomendado em producao | Diretorio persistente das evidencias faciais de entrega. Ex.: `/app/files/delivery-evidence`. Monte um **volume** EasyPanel nesse path. Sem a env, usa `{cwd}/files/delivery-evidence` (perdido no redeploy). |
+| `TRAINING_ASSETS_DIR` | Recomendado em producao | Imagens dos modelos de certificado/registro. Ex.: `/app/files/training-assets`. Volume sugerido: `training-assets -> /app/files/training-assets`. |
 | `WORKER_FACE_REFERENCE_DIR` | Recomendado em producao | Diretorio persistente das referencias faciais dos trabalhadores. Ex.: `/app/files/worker-face-references`. Volume sugerido: `worker-face-references -> /app/files/worker-face-references`. Sem a env, usa `{cwd}/files/worker-face-references`. |
 | `FACE_MATCH_THRESHOLD` | Nao | Distancia euclidiana maxima para match biometrico (padrao `0.55`). Menor = mais rigoroso. |
 | `BIOMETRIC_RETENTION_ENABLED` | Nao | Se `true`, agenda exclusao fisica de biometria (`PENDING`/`FAILED` e vencidos). Padrao: desligado. |

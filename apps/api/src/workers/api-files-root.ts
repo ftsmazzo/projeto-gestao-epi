@@ -7,7 +7,8 @@ export type ApiFilesSubdir =
   | 'invoice-documents'
   | 'org-logos'
   | 'client-logos'
-  | 'sst-evidence';
+  | 'sst-evidence'
+  | 'training-assets';
 
 /**
  * Sobe diretorios a partir deste modulo ate achar o package @gestao-epi/api.

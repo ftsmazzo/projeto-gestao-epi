@@ -2953,4 +2953,97 @@ export interface PublicSstUnlockResponse {
   };
 }
 
+export type TrainingAssetKind = 'HEADER' | 'LEFT_LOGO' | 'RIGHT_LOGO' | 'SEAL';
+export type TrainingDeliveryKind = 'INTERNO' | 'TLT' | 'EXTERNO';
+
+export interface TrainingTemplateAssetRef {
+  kind: TrainingAssetKind;
+  present: boolean;
+}
+
+export interface TrainingTemplate {
+  id: string;
+  name: string;
+  courseTitle: string;
+  nrLabel: string;
+  defaultHours: number;
+  defaultLocation: string;
+  certificateCourseClause: string;
+  topics: string[];
+  registerSummary: string;
+  instructorName: string;
+  instructorRole: string;
+  instructorRegistry: string;
+  includeCertificate: boolean;
+  includeRegister: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  assets: TrainingTemplateAssetRef[];
+}
+
+export interface TrainingTemplateListResponse {
+  templates: TrainingTemplate[];
+}
+
+export interface TrainingIssuanceListItem {
+  id: string;
+  templateId: string;
+  templateName: string;
+  courseTitle: string;
+  servedClientId: string;
+  clientName: string;
+  heldOn: string;
+  hours: number;
+  controlNumber: string | null;
+  workerCount: number;
+  createdAt: string;
+}
+
+export interface TrainingIssuanceListResponse {
+  issuances: TrainingIssuanceListItem[];
+}
+
+export interface TrainingGenerationDefaults {
+  servedClientId: string;
+  legalName: string;
+  tradeName: string | null;
+  cnpj: string;
+  cnpjFormatted: string;
+  address: string;
+  location: string;
+}
+
+export type TrainingTemplateInput = {
+  name: string;
+  courseTitle: string;
+  nrLabel?: string;
+  defaultHours?: number;
+  defaultLocation?: string;
+  certificateCourseClause: string;
+  topics?: string[];
+  registerSummary?: string;
+  instructorName?: string;
+  instructorRole?: string;
+  instructorRegistry?: string;
+  includeCertificate?: boolean;
+  includeRegister?: boolean;
+  isActive?: boolean;
+};
+
+export type TrainingGenerateInput = {
+  servedClientId: string;
+  workerIds: string[];
+  heldOn: string;
+  hours: number;
+  location?: string;
+  address?: string;
+  instructorName?: string;
+  instructorRole?: string;
+  instructorRegistry?: string;
+  legalRepName?: string;
+  deliveryKind?: TrainingDeliveryKind;
+  controlNumber?: string;
+};
+
 

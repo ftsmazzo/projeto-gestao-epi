@@ -25,6 +25,12 @@ export const OPS_NAV: OpsNavItem[] = [
     description: 'Painel operacional por CNPJ, estrutura, PGR e usuarios.',
   },
   {
+    href: '/certificados',
+    label: 'Certificados',
+    status: 'ready',
+    description: 'Modelos de certificado e registro, geracao A4 por turma.',
+  },
+  {
     href: '/configuracoes',
     label: 'Configuracoes',
     status: 'ready',
