@@ -326,10 +326,11 @@ export class TrainingService {
       dto.controlNumber?.trim() ||
       (await this.nextControlNumber(organizationId, year));
     const defaults = await this.generationDefaults(organizationId, client.id);
-    const address = dto.address?.trim() || defaults.address;
+    // Endereço do curso = sempre o da empresa (unidade operacional)
+    const address = defaults.address;
     if (!address) {
       throw new BadRequestException(
-        'Informe o endereco do curso (verso e registro).',
+        'Cadastre o endereco da unidade operacional deste cliente.',
       );
     }
 
@@ -347,7 +348,7 @@ export class TrainingService {
         instructorRole: dto.instructorRole?.trim() || template.instructorRole,
         instructorRegistry:
           dto.instructorRegistry?.trim() || template.instructorRegistry,
-        legalRepName: dto.legalRepName?.trim() || '',
+        legalRepName: client.legalName,
         deliveryKind: dto.deliveryKind ?? TrainingDeliveryKind.INTERNO,
         controlNumber,
         workerIds: uniqueIds,
@@ -379,7 +380,7 @@ export class TrainingService {
       instructorName: issuance.instructorName,
       instructorRole: issuance.instructorRole,
       instructorRegistry: issuance.instructorRegistry,
-      legalRepName: issuance.legalRepName,
+      legalRepName: client.legalName,
       deliveryKind: issuance.deliveryKind,
       controlNumber,
       workers: ordered.map((worker) => ({

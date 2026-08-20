@@ -77,6 +77,49 @@ export function formatCpf(cpf: string | null | undefined) {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
+const NAME_PARTICLES = new Set([
+  'da',
+  'das',
+  'de',
+  'do',
+  'dos',
+  'e',
+  'di',
+  'du',
+]);
+
+/** Nome pessoal: primeira letra maiúscula, restante minúsculo (partículas curtas ficam minúsculas). */
+export function toPersonNameCase(value: string) {
+  const parts = value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  return parts
+    .map((part, idx) => {
+      if (idx > 0 && NAME_PARTICLES.has(part)) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join(' ');
+}
+
+function wrapWords(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  width: number,
+) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const trial = current ? `${current} ${word}` : word;
+    if (doc.widthOfString(trial) <= width) {
+      current = trial;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 function deliveryMarks(kind: TrainingDeliveryKind) {
   return {
     interno: kind === 'INTERNO' ? 'X' : ' ',
@@ -205,41 +248,89 @@ function drawCertificateBody(
   bodyY: number,
   pageW: number,
 ) {
-  const bodyX = 64;
-  const bodyW = pageW - 128;
-  const fontSize = 23;
-  const lineGap = 14.5;
-  const full = `Certificamos que o Senhor ${worker.name}, ${input.certificateCourseClause}, Realizado no Período de ${formatDateExtenso(input.heldOn)}, Cumprindo a Carga Horária de ${padHours(input.hours)} Horas.`;
-  doc.font('Times-Roman').fontSize(fontSize).fillColor(INK);
-  const words = full.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = '';
-  for (const word of words) {
-    const trial = current ? `${current} ${word}` : word;
-    if (doc.widthOfString(trial) <= bodyW) {
-      current = trial;
+  // margem interna à moldura/faixa verde (~58pt) e à moldura direita (~790)
+  const bodyX = 72;
+  const bodyW = pageW - 160;
+  const fontSize = 19;
+  const lineGap = 11;
+  const personName = toPersonNameCase(worker.name);
+  const prefix = 'Certificamos que o Senhor';
+  const suffix = `${input.certificateCourseClause}, Realizado no Período de ${formatDateExtenso(input.heldOn)}, Cumprindo a Carga Horária de ${padHours(input.hours)} Horas.`;
+  const nameWords = personName.split(/\s+/).filter(Boolean);
+  const prefixWords = prefix.split(/\s+/).filter(Boolean);
+  const suffixWords = suffix.split(/\s+/).filter(Boolean);
+  type Word = { text: string; name?: boolean; noSpaceBefore?: boolean };
+  const allWords: Word[] = [
+    ...prefixWords.map((text) => ({ text })),
+    ...nameWords.map((text) => ({ text, name: true as const })),
+    { text: ',', noSpaceBefore: true },
+    ...suffixWords.map((text) => ({ text })),
+  ];
+
+  const measure = (word: Word) => {
+    doc.font(word.name ? 'Times-Bold' : 'Times-Roman').fontSize(fontSize);
+    return doc.widthOfString(word.text);
+  };
+  const spaceW = (() => {
+    doc.font('Times-Roman').fontSize(fontSize);
+    return doc.widthOfString(' ');
+  })();
+
+  const lines: Word[][] = [];
+  let current: Word[] = [];
+  let currentW = 0;
+  for (const word of allWords) {
+    const w = measure(word);
+    const pad = current.length === 0 || word.noSpaceBefore ? 0 : spaceW;
+    const next = current.length === 0 ? w : currentW + pad + w;
+    if (next > bodyW && current.length > 0) {
+      lines.push(current);
+      current = [word.noSpaceBefore ? { ...word, noSpaceBefore: false } : word];
+      currentW = w;
     } else {
-      if (current) lines.push(current);
-      current = word;
+      current.push(word);
+      currentW = next;
     }
   }
-  if (current) lines.push(current);
+  if (current.length) lines.push(current);
 
   let y = bodyY;
   const step = fontSize + lineGap;
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
-    const parts = line.split(' ');
     const isLast = i === lines.length - 1;
-    if (isLast || parts.length < 2) {
-      doc.text(line, bodyX, y, { lineBreak: false });
-    } else {
-      const textW = parts.reduce((sum, part) => sum + doc.widthOfString(part), 0);
-      const gap = (bodyW - textW) / (parts.length - 1);
-      let x = bodyX;
-      for (const part of parts) {
-        doc.text(part, x, y, { lineBreak: false });
-        x += doc.widthOfString(part) + gap;
+    const wordsW = line.reduce((sum, word) => sum + measure(word), 0);
+    const spaceSlots = line.reduce((count, word, idx) => {
+      if (idx === 0 || word.noSpaceBefore) return count;
+      return count + 1;
+    }, 0);
+    const gap =
+      !isLast && spaceSlots > 0 ? (bodyW - wordsW) / spaceSlots : spaceW;
+    let x = bodyX;
+    for (let j = 0; j < line.length; j += 1) {
+      const word = line[j];
+      doc
+        .font(word.name ? 'Times-Bold' : 'Times-Roman')
+        .fontSize(fontSize)
+        .fillColor(INK);
+      const w = doc.widthOfString(word.text);
+      doc.text(word.text, x, y, {
+        lineBreak: false,
+        width: Math.max(w, 1),
+        height: fontSize + 2,
+      });
+      if (word.name) {
+        doc
+          .moveTo(x, y + fontSize + 1)
+          .lineTo(x + w, y + fontSize + 1)
+          .lineWidth(0.7)
+          .strokeColor(INK)
+          .stroke();
+      }
+      x += w;
+      if (j < line.length - 1) {
+        const nextWord = line[j + 1];
+        x += nextWord.noSpaceBefore ? 0 : gap;
       }
     }
     y += step;
@@ -252,10 +343,12 @@ function drawSignatureColumns(
   worker: TrainingPdfWorker,
   sigY: number,
 ) {
+  const personName = toPersonNameCase(worker.name);
+  const companyName = input.companyLegalName;
   const cols: Array<{ x: number; width: number; lines: string[] }> = [
     {
-      x: 64,
-      width: 232,
+      x: 68,
+      width: 224,
       lines: [
         input.instructorName || '_____________________________',
         input.instructorRole,
@@ -265,19 +358,17 @@ function drawSignatureColumns(
     },
     {
       x: 312,
-      width: 242,
+      width: 236,
       lines: [
-        input.legalRepName ||
-          input.companyTradeName ||
-          input.companyLegalName,
+        companyName,
         `CNPJ: ${formatCnpj(input.companyCnpj)}`,
         'Representante Legal',
       ],
     },
     {
       x: 568,
-      width: 214,
-      lines: [worker.name, 'Treinando', `RG/CPF: ${formatCpf(worker.cpf)}`],
+      width: 206,
+      lines: [personName, 'Treinando', `RG/CPF: ${formatCpf(worker.cpf)}`],
     },
   ];
   for (const col of cols) {
@@ -290,16 +381,21 @@ function drawSignatureColumns(
       .strokeColor(INK)
       .stroke();
     doc.restore();
-    doc
-      .font('Times-Roman')
-      .fontSize(15)
-      .fillColor(INK)
-      .text(col.lines.filter(Boolean).join('\n'), col.x, sigY, {
-        width: col.width,
-        align: 'center',
-        lineGap: 2.2,
-        height: 90,
-      });
+    const lines = col.lines.filter(Boolean);
+    let y = sigY;
+    for (const line of lines) {
+      doc
+        .font('Times-Roman')
+        .fontSize(11)
+        .fillColor(INK)
+        .text(line, col.x, y, {
+          width: col.width,
+          align: 'center',
+          lineBreak: false,
+          ellipsis: true,
+        });
+      y += 13.5;
+    }
   }
 }
 
@@ -322,15 +418,15 @@ const FRONT_LAYOUT: Record<
 
 const BACK_LAYOUT: Record<
   'nr01' | 'nr35',
-  { addressCover: Rect; addressTextY: number }
+  { addressBox: Rect; addressTextY: number }
 > = {
   nr01: {
-    // só as linhas do endereço, bem dentro da caixa (não toca a borda)
-    addressCover: [456, 509, 328, 28],
+    // valor dentro do quadro (abaixo do título, acima da moldura ~547)
+    addressBox: [454, 508, 330, 30],
     addressTextY: 510,
   },
   nr35: {
-    addressCover: [162, 471, 322, 28],
+    addressBox: [84, 470, 310, 28],
     addressTextY: 472,
   },
 };
@@ -491,18 +587,29 @@ export class TrainingPdfService {
     if (template) {
       await drawImage(doc, template, 0, 0, w, h, { stretch: true });
       const layout = BACK_LAYOUT[key];
-      // área do endereço já vem em branco no PNG do molde — só escreve o valor
-      const [ax, , aw] = layout.addressCover;
-      doc
-        .font('Times-Roman')
-        .fontSize(12)
-        .fillColor(INK)
-        .text(input.address?.trim() || '—', ax + 2, layout.addressTextY, {
-          width: aw - 4,
+      const [ax, , aw, ah] = layout.addressBox;
+      const address = input.address?.trim() || '—';
+      // evita o PDFKit criar página extra quando o fluxo de texto estoura
+      const pageRef = doc.bufferedPageRange().start + doc.bufferedPageRange().count - 1;
+      doc.font('Times-Roman').fontSize(8).fillColor(INK);
+      // força quebra com folga — endereço longo não pode colar na borda do quadro
+      const wrapW = Math.max(120, aw - 48);
+      const lines = wrapWords(doc, address, wrapW);
+      const lineH = 10;
+      const maxLines = Math.min(2, Math.max(1, Math.floor(ah / lineH)));
+      let y = layout.addressTextY;
+      for (const line of lines.slice(0, maxLines)) {
+        doc.switchToPage(pageRef);
+        doc.text(line, ax + 8, y, {
+          width: aw - 16,
           align: 'center',
-          lineGap: 1.0,
-          height: 28,
+          lineBreak: false,
+          height: lineH,
+          ellipsis: true,
         });
+        y += lineH;
+      }
+      doc.switchToPage(pageRef);
       return;
     }
 
@@ -705,38 +812,53 @@ export class TrainingPdfService {
         .fillColor(INK)
         .text(`Empresa: ${input.companyLegalName}`, left + 4, y + 5, {
           width: boxW - 8,
+          lineBreak: false,
+          ellipsis: true,
         });
     });
-    row(20, () => {
+    const addressText = `Endereço: ${input.address || '—'}`;
+    doc.font('Times-Roman').fontSize(10);
+    const addressLines = Math.max(
+      1,
+      Math.min(3, wrapWords(doc, addressText, boxW - 8).length),
+    );
+    const addressH = 8 + addressLines * 12;
+    row(addressH, () => {
       doc
         .font('Times-Roman')
-        .fontSize(11)
+        .fontSize(10)
         .fillColor(INK)
-        .text(`Endereço: ${input.address || '—'}`, left + 4, y + 5, {
+        .text(addressText, left + 4, y + 4, {
           width: boxW - 8,
+          align: 'left',
+          height: addressH - 6,
         });
     });
     const summaryH = 76;
-    row(summaryH, () => {
-      doc
-        .font('Times-Bold')
-        .fontSize(11)
-        .fillColor(INK)
-        .text(
-          'Conteúdo resumido do curso (utilizar máximo 10 linhas):',
-          left + 4,
-          y + 4,
-          { width: boxW - 8, align: 'center' },
-        );
-      doc
-        .font('Times-Roman')
-        .fontSize(10.5)
-        .text(input.registerSummary || '—', left + 36, y + 20, {
-          width: boxW - 72,
-          height: summaryH - 24,
-          align: 'center',
-        });
-    }, false);
+    row(
+      summaryH,
+      () => {
+        doc
+          .font('Times-Bold')
+          .fontSize(10)
+          .fillColor(INK)
+          .text(
+            'Conteúdo resumido do curso (utilizar máximo 10 linhas):',
+            left + 4,
+            y + 4,
+            { width: boxW - 8, align: 'left' },
+          );
+        doc
+          .font('Times-Roman')
+          .fontSize(10)
+          .text(input.registerSummary || '—', left + 6, y + 18, {
+            width: boxW - 12,
+            height: summaryH - 22,
+            align: 'justify',
+          });
+      },
+      false,
+    );
     doc.save();
     doc.rect(left, metaTop, boxW, y - metaTop).lineWidth(0.6).strokeColor(INK).stroke();
     doc.restore();
@@ -795,7 +917,7 @@ export class TrainingPdfService {
     const rows = [
       ...workers.map((worker, idx) => [
         String(startN + idx).padStart(2, '0'),
-        worker.name,
+        toPersonNameCase(worker.name),
         worker.jobFunction || '—',
         formatCpf(worker.cpf),
         '',

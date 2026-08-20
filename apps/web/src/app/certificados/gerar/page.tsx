@@ -168,6 +168,7 @@ function GerarContent() {
         if (cancelled) return;
         setWorkers(list);
         setAddress(defaults.address);
+        setLegalRepName(defaults.legalName);
         if (defaults.location) setLocation(defaults.location);
         setSelected([]);
         setQuery('');
@@ -347,13 +348,12 @@ function GerarContent() {
             />
           </div>
           <div className="field">
-            <label htmlFor="gen-address">Endereco do curso</label>
+            <label htmlFor="gen-address">Endereco da empresa (automatico)</label>
             <input
               id="gen-address"
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Obrigatorio no verso e no registro"
-              required
+              readOnly
+              placeholder="Cadastrado na unidade operacional do cliente"
             />
           </div>
           <div className="field">
@@ -395,11 +395,12 @@ function GerarContent() {
             />
           </div>
           <div className="field">
-            <label htmlFor="gen-legal">Representante legal da empresa</label>
+            <label htmlFor="gen-legal">Representante legal (razao social)</label>
             <input
               id="gen-legal"
               value={legalRepName}
-              onChange={(e) => setLegalRepName(e.target.value)}
+              readOnly
+              placeholder="Razao social do cliente"
             />
           </div>
           <div className="field">
