@@ -139,6 +139,7 @@ async function drawImage(
   y: number,
   w: number,
   h: number,
+  opts?: { stretch?: boolean },
 ) {
   if (!filePath || !existsSync(filePath)) return false;
   try {
@@ -162,11 +163,16 @@ async function drawImage(
       });
       return true;
     }
-    doc.image(filePath, x, y, {
-      fit: [w, h],
-      align: 'center',
-      valign: 'center',
-    });
+    if (opts?.stretch) {
+      // molde Word: estica na página inteira para as coordenadas baterem
+      doc.image(filePath, x, y, { width: w, height: h });
+    } else {
+      doc.image(filePath, x, y, {
+        fit: [w, h],
+        align: 'center',
+        valign: 'center',
+      });
+    }
     return true;
   } catch {
     return false;
@@ -201,17 +207,43 @@ function drawCertificateBody(
 ) {
   const bodyX = 64;
   const bodyW = pageW - 128;
+  const fontSize = 23;
+  const lineGap = 14.5;
   const full = `Certificamos que o Senhor ${worker.name}, ${input.certificateCourseClause}, Realizado no Período de ${formatDateExtenso(input.heldOn)}, Cumprindo a Carga Horária de ${padHours(input.hours)} Horas.`;
-  doc
-    .font('Times-Roman')
-    .fontSize(24)
-    .fillColor(INK)
-    .text(full, bodyX, bodyY, {
-      width: bodyW,
-      align: 'justify',
-      lineGap: 14.5,
-      height: 168,
-    });
+  doc.font('Times-Roman').fontSize(fontSize).fillColor(INK);
+  const words = full.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const trial = current ? `${current} ${word}` : word;
+    if (doc.widthOfString(trial) <= bodyW) {
+      current = trial;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+
+  let y = bodyY;
+  const step = fontSize + lineGap;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const parts = line.split(' ');
+    const isLast = i === lines.length - 1;
+    if (isLast || parts.length < 2) {
+      doc.text(line, bodyX, y, { lineBreak: false });
+    } else {
+      const textW = parts.reduce((sum, part) => sum + doc.widthOfString(part), 0);
+      const gap = (bodyW - textW) / (parts.length - 1);
+      let x = bodyX;
+      for (const part of parts) {
+        doc.text(part, x, y, { lineBreak: false });
+        x += doc.widthOfString(part) + gap;
+      }
+    }
+    y += step;
+  }
 }
 
 function drawSignatureColumns(
@@ -278,22 +310,13 @@ const FRONT_LAYOUT: Record<
   nr01: {
     bodyY: 197,
     sigY: 478,
-    covers: [
-      [64, 195, 728, 168],
-      [72, 388, 230, 160],
-      [300, 410, 255, 130],
-      [555, 448, 245, 95],
-    ],
+    // áreas variáveis já estão em branco no PNG do molde
+    covers: [],
   },
   nr35: {
     bodyY: 197,
     sigY: 462,
-    covers: [
-      [58, 186, 726, 220],
-      [72, 370, 230, 160],
-      [300, 400, 250, 130],
-      [555, 430, 245, 100],
-    ],
+    covers: [],
   },
 };
 
@@ -302,13 +325,13 @@ const BACK_LAYOUT: Record<
   { addressCover: Rect; addressTextY: number }
 > = {
   nr01: {
-    // só o interior da caixa — moldura e lista ficam do molde Word
-    addressCover: [468, 507, 310, 34],
-    addressTextY: 509,
+    // só as linhas do endereço, bem dentro da caixa (não toca a borda)
+    addressCover: [456, 509, 328, 28],
+    addressTextY: 510,
   },
   nr35: {
-    addressCover: [164, 470, 318, 34],
-    addressTextY: 471,
+    addressCover: [162, 471, 322, 28],
+    addressTextY: 472,
   },
 };
 
@@ -427,7 +450,7 @@ export class TrainingPdfService {
     const key = isNr35(input.nrLabel) ? 'nr35' : 'nr01';
     const template = bundledTemplatePage(input.nrLabel, 1);
     if (template) {
-      await drawImage(doc, template, 0, 0, w, h);
+      await drawImage(doc, template, 0, 0, w, h, { stretch: true });
       const layout = FRONT_LAYOUT[key];
       for (const rect of layout.covers) coverWhite(doc, rect);
       drawCertificateBody(doc, input, worker, layout.bodyY, w);
@@ -466,19 +489,19 @@ export class TrainingPdfService {
       : ['Conteúdo definido no modelo do curso'];
     const template = bundledTemplatePage(input.nrLabel, 2);
     if (template) {
-      await drawImage(doc, template, 0, 0, w, h);
+      await drawImage(doc, template, 0, 0, w, h, { stretch: true });
       const layout = BACK_LAYOUT[key];
-      coverWhite(doc, layout.addressCover);
+      // área do endereço já vem em branco no PNG do molde — só escreve o valor
       const [ax, , aw] = layout.addressCover;
       doc
         .font('Times-Roman')
         .fontSize(12)
         .fillColor(INK)
-        .text(input.address?.trim() || '—', ax, layout.addressTextY, {
-          width: aw,
+        .text(input.address?.trim() || '—', ax + 2, layout.addressTextY, {
+          width: aw - 4,
           align: 'center',
-          lineGap: 1.2,
-          height: 32,
+          lineGap: 1.0,
+          height: 28,
         });
       return;
     }
