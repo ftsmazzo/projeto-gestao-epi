@@ -192,29 +192,6 @@ function coverWhite(
   doc.restore();
 }
 
-function wrapCenteredLines(
-  doc: PDFKit.PDFDocument,
-  text: string,
-  width: number,
-  fontSize: number,
-) {
-  doc.font('Times-Roman').fontSize(fontSize);
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = '';
-  for (const word of words) {
-    const trial = current ? `${current} ${word}` : word;
-    if (doc.widthOfString(trial) <= width) {
-      current = trial;
-    } else {
-      if (current) lines.push(current);
-      current = word;
-    }
-  }
-  if (current) lines.push(current);
-  return lines;
-}
-
 function drawCertificateBody(
   doc: PDFKit.PDFDocument,
   input: TrainingPdfInput,
@@ -222,24 +199,19 @@ function drawCertificateBody(
   bodyY: number,
   pageW: number,
 ) {
-  const bodyX = 72;
-  const bodyW = pageW - 144;
-  const fontSize = 26;
+  const bodyX = 64;
+  const bodyW = pageW - 128;
   const full = `Certificamos que o Senhor ${worker.name}, ${input.certificateCourseClause}, Realizado no Período de ${formatDateExtenso(input.heldOn)}, Cumprindo a Carga Horária de ${padHours(input.hours)} Horas.`;
-  const lines = wrapCenteredLines(doc, full, bodyW * 0.86, fontSize);
-  let y = bodyY;
-  for (const line of lines) {
-    doc
-      .font('Times-Roman')
-      .fontSize(fontSize)
-      .fillColor(INK)
-      .text(line, bodyX, y, {
-        width: bodyW,
-        align: 'center',
-        lineBreak: false,
-      });
-    y += fontSize + 18;
-  }
+  doc
+    .font('Times-Roman')
+    .fontSize(24)
+    .fillColor(INK)
+    .text(full, bodyX, bodyY, {
+      width: bodyW,
+      align: 'justify',
+      lineGap: 14.5,
+      height: 168,
+    });
 }
 
 function drawSignatureColumns(
@@ -288,13 +260,13 @@ function drawSignatureColumns(
     doc.restore();
     doc
       .font('Times-Roman')
-      .fontSize(16)
+      .fontSize(15)
       .fillColor(INK)
       .text(col.lines.filter(Boolean).join('\n'), col.x, sigY, {
         width: col.width,
         align: 'center',
-        lineGap: 1.4,
-        height: 82,
+        lineGap: 2.2,
+        height: 90,
       });
   }
 }
@@ -304,18 +276,17 @@ const FRONT_LAYOUT: Record<
   { bodyY: number; sigY: number; covers: Rect[] }
 > = {
   nr01: {
-    bodyY: 188,
-    sigY: 468,
+    bodyY: 197,
+    sigY: 478,
     covers: [
-      [58, 175, 726, 220],
-      // apaga assinaturas de caneta + texto do molde Word
+      [64, 195, 728, 168],
       [72, 388, 230, 160],
       [300, 410, 255, 130],
       [555, 448, 245, 95],
     ],
   },
   nr35: {
-    bodyY: 193,
+    bodyY: 197,
     sigY: 462,
     covers: [
       [58, 186, 726, 220],
@@ -328,27 +299,15 @@ const FRONT_LAYOUT: Record<
 
 const BACK_LAYOUT: Record<
   'nr01' | 'nr35',
-  {
-    topicCovers: Rect[];
-    addressCover: Rect;
-    addressTextY: number;
-  }
+  { addressCover: Rect; addressTextY: number }
 > = {
   nr01: {
-    topicCovers: [
-      [64, 94, 510, 368],
-      [64, 460, 452, 28],
-      [64, 496, 385, 30],
-    ],
-    addressCover: [462, 506, 322, 42],
+    // só o interior da caixa — moldura e lista ficam do molde Word
+    addressCover: [468, 507, 310, 34],
     addressTextY: 509,
   },
   nr35: {
-    topicCovers: [
-      [58, 98, 560, 340],
-      [58, 438, 90, 40],
-    ],
-    addressCover: [164, 470, 318, 36],
+    addressCover: [164, 470, 318, 34],
     addressTextY: 471,
   },
 };
@@ -393,21 +352,14 @@ function drawDoubleRule(doc: PDFKit.PDFDocument, x: number, y: number, w: number
   doc.restore();
 }
 
-function drawTopicMarker(doc: PDFKit.PDFDocument, x: number, y: number) {
-  const cx = x + 5;
-  const cy = y + 8;
+function drawDiamond(doc: PDFKit.PDFDocument, x: number, y: number, size = 3.1) {
   doc.save();
   doc
-    .polygon(
-      [cx, cy - 4.1],
-      [cx + 1.45, cy - 1.45],
-      [cx + 4.1, cy],
-      [cx + 1.45, cy + 1.45],
-      [cx, cy + 4.1],
-      [cx - 1.45, cy + 1.45],
-      [cx - 4.1, cy],
-      [cx - 1.45, cy - 1.45],
-    )
+    .moveTo(x, y - size)
+    .lineTo(x + size, y)
+    .lineTo(x, y + size)
+    .lineTo(x - size, y)
+    .closePath()
     .fill(INK);
   doc.restore();
 }
@@ -495,8 +447,8 @@ export class TrainingPdfService {
       await drawImage(doc, input.assets.LEFT_LOGO, 22, 32, 148, 76);
     }
     await drawImage(doc, input.assets.HEADER, w - 268, 26, 246, 78);
-    drawCertificateBody(doc, input, worker, 193, w);
-    drawSignatureColumns(doc, input, worker, 456);
+    drawCertificateBody(doc, input, worker, 197, w);
+    drawSignatureColumns(doc, input, worker, 478);
     if (nr35) {
       await drawImage(doc, input.assets.SEAL, 592, 508, 168, 68);
     }
@@ -516,45 +468,7 @@ export class TrainingPdfService {
     if (template) {
       await drawImage(doc, template, 0, 0, w, h);
       const layout = BACK_LAYOUT[key];
-      for (const rect of layout.topicCovers) coverWhite(doc, rect);
       coverWhite(doc, layout.addressCover);
-      if (key === 'nr01') {
-        doc
-          .font('Times-BoldItalic')
-          .fontSize(16)
-          .fillColor(INK)
-          .text(`${topics[0]};`, 71, 97, { width: w - 300, height: 22 });
-        let y = 123;
-        topics.slice(1).forEach((item, idx) => {
-          const nearAddress = idx >= 10;
-          drawTopicMarker(doc, 70, y);
-          doc
-            .font('Times-Roman')
-            .fontSize(16)
-            .fillColor(INK)
-            .text(`${item};`, 90, y, {
-              width: nearAddress ? 348 : w - 300,
-              height: nearAddress ? 32 : 30,
-            });
-          y += 34.5;
-        });
-      } else {
-        doc
-          .font('Times-BoldItalic')
-          .fontSize(16)
-          .fillColor(INK)
-          .text(`${topics[0]};`, 71, 103, { width: w - 120, height: 22 });
-        let y = 135;
-        for (const item of topics.slice(1)) {
-          drawTopicMarker(doc, 60, y);
-          doc
-            .font('Times-Roman')
-            .fontSize(item.length > 90 ? 15 : 16)
-            .fillColor(INK)
-            .text(`${item};`, 80, y, { width: w - 140, height: 40 });
-          y += 43;
-        }
-      }
       const [ax, , aw] = layout.addressCover;
       doc
         .font('Times-Roman')
@@ -564,7 +478,7 @@ export class TrainingPdfService {
           width: aw,
           align: 'center',
           lineGap: 1.2,
-          height: 36,
+          height: 32,
         });
       return;
     }
@@ -577,7 +491,7 @@ export class TrainingPdfService {
       await drawImage(doc, input.assets.RIGHT_LOGO, w - 276, 36, 220, 92);
       doc
         .font('Times-Bold')
-        .fontSize(16)
+        .fontSize(15)
         .fillColor(INK)
         .text('Conteúdo Programático:', 71, 71.5, {
           width: 360,
@@ -587,14 +501,14 @@ export class TrainingPdfService {
         });
       doc
         .font('Times-BoldItalic')
-        .fontSize(16)
+        .fontSize(15)
         .text(`${topics[0]};`, 71, 97, { width: w - 360, height: 22 });
       let y = 123;
       for (const item of topics.slice(1)) {
-        drawTopicMarker(doc, 70, y);
+        drawDiamond(doc, 78, y + 7);
         doc
           .font('Times-Roman')
-          .fontSize(16)
+          .fontSize(15)
           .fillColor(INK)
           .text(`${item};`, 90, y, { width: w - 380, height: 32 });
         y += 34.5;
@@ -603,15 +517,15 @@ export class TrainingPdfService {
     } else {
       doc
         .font('Times-BoldItalic')
-        .fontSize(16)
+        .fontSize(15)
         .fillColor(INK)
         .text(`${topics[0]};`, 71, 71.5, { width: w - 120, height: 22 });
       let y = 103;
       for (const item of topics) {
-        drawTopicMarker(doc, 60, y);
+        drawDiamond(doc, 68, y + 7);
         doc
           .font('Times-Roman')
-          .fontSize(item.length > 90 ? 15 : 16)
+          .fontSize(item.length > 90 ? 14 : 15)
           .fillColor(INK)
           .text(`${item};`, 80, y, { width: w - 140, height: 40 });
         y += 43;
