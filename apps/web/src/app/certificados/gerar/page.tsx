@@ -352,6 +352,8 @@ function GerarContent() {
               id="gen-address"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
+              placeholder="Obrigatorio no verso e no registro"
+              required
             />
           </div>
           <div className="field">

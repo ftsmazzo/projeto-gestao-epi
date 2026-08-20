@@ -130,13 +130,27 @@ export class TrainingService {
       throw new BadRequestException('Informe o cliente.');
     }
     const client = await this.requireClient(organizationId, servedClientId);
-    const unit = await this.prisma.operationalUnit.findFirst({
-      where: { organizationId, servedClientId, status: 'ACTIVE' },
+    const unitWithAddress = await this.prisma.operationalUnit.findFirst({
+      where: {
+        organizationId,
+        servedClientId,
+        status: 'ACTIVE',
+        addressLine: { not: null },
+        NOT: { addressLine: '' },
+      },
       orderBy: { createdAt: 'asc' },
     });
-    const address = [unit?.addressLine, unit?.city, unit?.state]
-      .filter((part) => part?.trim())
-      .join(', ');
+    const unit =
+      unitWithAddress ??
+      (await this.prisma.operationalUnit.findFirst({
+        where: { organizationId, servedClientId, status: 'ACTIVE' },
+        orderBy: { createdAt: 'asc' },
+      }));
+    const addressParts = [
+      unit?.addressLine?.trim(),
+      [unit?.city?.trim(), unit?.state?.trim()].filter(Boolean).join(' - '),
+    ].filter(Boolean);
+    const address = addressParts.join(', ');
     return {
       servedClientId: client.id,
       legalName: client.legalName,
@@ -312,6 +326,12 @@ export class TrainingService {
       dto.controlNumber?.trim() ||
       (await this.nextControlNumber(organizationId, year));
     const defaults = await this.generationDefaults(organizationId, client.id);
+    const address = dto.address?.trim() || defaults.address;
+    if (!address) {
+      throw new BadRequestException(
+        'Informe o endereco do curso (verso e registro).',
+      );
+    }
 
     const issuance = await this.prisma.trainingIssuance.create({
       data: {
@@ -322,7 +342,7 @@ export class TrainingService {
         heldOn,
         hours: dto.hours,
         location: dto.location?.trim() || template.defaultLocation,
-        address: dto.address?.trim() || defaults.address,
+        address,
         instructorName: dto.instructorName?.trim() || template.instructorName,
         instructorRole: dto.instructorRole?.trim() || template.instructorRole,
         instructorRegistry:

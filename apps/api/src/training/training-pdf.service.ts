@@ -248,6 +248,15 @@ function drawSignatureColumns(
     },
   ];
   for (const col of cols) {
+    const lineY = sigY - 16;
+    doc.save();
+    doc
+      .moveTo(col.x + 8, lineY)
+      .lineTo(col.x + col.width - 8, lineY)
+      .lineWidth(0.8)
+      .strokeColor(INK)
+      .stroke();
+    doc.restore();
     doc
       .font('Times-Roman')
       .fontSize(15)
@@ -267,39 +276,54 @@ const FRONT_LAYOUT: Record<
 > = {
   nr01: {
     bodyY: 182,
-    sigY: 474,
+    sigY: 478,
     covers: [
       [58, 175, 726, 220],
-      [72, 472, 230, 70],
-      [305, 472, 260, 55],
-      [562, 472, 230, 55],
+      // apaga assinaturas de caneta + texto do molde Word
+      [72, 388, 230, 160],
+      [300, 410, 255, 130],
+      [555, 448, 245, 95],
     ],
   },
   nr35: {
     bodyY: 193,
-    sigY: 458,
+    sigY: 462,
     covers: [
       [58, 186, 726, 220],
-      [72, 456, 230, 75],
-      [305, 456, 260, 60],
-      [562, 456, 230, 65],
+      [72, 370, 230, 160],
+      [300, 400, 250, 130],
+      [555, 430, 245, 100],
     ],
   },
 };
 
 const BACK_LAYOUT: Record<
   'nr01' | 'nr35',
-  { topicsCover: Rect; addressCover: Rect; addressTextY: number }
+  {
+    topicCovers: Rect[];
+    addressCover: Rect;
+    addressTextY: number;
+    redrawAddressBox: true;
+  }
 > = {
   nr01: {
-    topicsCover: [64, 94, 385, 430],
-    addressCover: [456, 508, 336, 32],
-    addressTextY: 509,
+    topicCovers: [
+      [64, 94, 540, 360],
+      // inclui o fim das linhas longas + descida do último tópico do molde
+      [64, 450, 540, 80],
+    ],
+    addressCover: [456, 487, 336, 72],
+    addressTextY: 517,
+    redrawAddressBox: true as const,
   },
   nr35: {
-    topicsCover: [58, 98, 520, 360],
-    addressCover: [152, 468, 346, 38],
-    addressTextY: 471,
+    topicCovers: [
+      [58, 98, 560, 340],
+      [58, 438, 90, 40],
+    ],
+    addressCover: [152, 450, 346, 78],
+    addressTextY: 480,
+    redrawAddressBox: true as const,
   },
 };
 
@@ -459,27 +483,35 @@ export class TrainingPdfService {
     if (template) {
       await drawImage(doc, template, 0, 0, w, h);
       const layout = BACK_LAYOUT[key];
-      coverWhite(doc, layout.topicsCover);
+      for (const rect of layout.topicCovers) coverWhite(doc, rect);
       coverWhite(doc, layout.addressCover);
       if (key === 'nr01') {
         doc
           .font('Times-BoldItalic')
           .fontSize(15)
-          .text(`${topics[0]};`, 71, 97, { width: w - 360, height: 22 });
+          .fillColor(INK)
+          .text(`${topics[0]};`, 71, 97, { width: w - 280, height: 22 });
         let y = 123;
-        for (const item of topics.slice(1)) {
+        topics.slice(1).forEach((item, idx) => {
+          const nearAddress = idx >= 10;
           drawDiamond(doc, 78, y + 7);
           doc
             .font('Times-Roman')
-            .fontSize(15)
+            .fontSize(nearAddress && item.length > 55 ? 13 : 15)
             .fillColor(INK)
-            .text(`${item};`, 90, y, { width: w - 380, height: 32 });
+            .text(`${item};`, 90, y, {
+              width: nearAddress ? 350 : w - 300,
+              height: 30,
+              lineBreak: false,
+              ellipsis: true,
+            });
           y += 34.5;
-        }
+        });
       } else {
         doc
           .font('Times-BoldItalic')
           .fontSize(15)
+          .fillColor(INK)
           .text(`${topics[0]};`, 71, 103, { width: w - 120, height: 22 });
         let y = 135;
         for (const item of topics.slice(1)) {
@@ -492,16 +524,22 @@ export class TrainingPdfService {
           y += 43;
         }
       }
-      const [ax, , aw] = layout.addressCover;
-      doc
-        .font('Times-Roman')
-        .fontSize(12)
-        .fillColor(INK)
-        .text(input.address || '—', ax + 10, layout.addressTextY, {
-          width: aw - 20,
-          align: 'center',
-          lineGap: 1.5,
-        });
+      coverWhite(doc, layout.addressCover);
+      const [ax, ay, aw, ah] = layout.addressCover;
+      if (layout.redrawAddressBox) {
+        this.drawAddressBox(doc, ax, ay, aw, ah, input.address?.trim() || '—');
+      } else {
+        doc
+          .font('Times-Roman')
+          .fontSize(12)
+          .fillColor(INK)
+          .text(input.address?.trim() || '—', ax + 10, layout.addressTextY, {
+            width: aw - 20,
+            align: 'center',
+            lineGap: 1.2,
+            height: 44,
+          });
+      }
       return;
     }
 
@@ -695,7 +733,7 @@ export class TrainingPdfService {
           width: boxW - 8,
         });
     });
-    const summaryH = 52;
+    const summaryH = 72;
     row(summaryH, () => {
       doc
         .font('Times-Bold')
@@ -706,7 +744,7 @@ export class TrainingPdfService {
         });
       doc
         .font('Times-Roman')
-        .fontSize(10)
+        .fontSize(9.5)
         .text(input.registerSummary || '—', left + 4, y + 16, {
           width: boxW - 8,
           height: summaryH - 20,
@@ -721,23 +759,29 @@ export class TrainingPdfService {
       { title: 'Presença (Visto)', width: boxW - 28 - 168 - 118 - 92 },
     ];
     const tableW = cols.reduce((sum, col) => sum + col.width, 0);
-    const headerH = 16;
+    const headerH = 22;
+    const leftHeaderW = 28 + 168 + 118 + 92;
     doc.save();
-    doc.rect(left, y, 28 + 168 + 118 + 92, headerH).fill(GREEN);
-    doc.rect(left + 28 + 168 + 118 + 92, y, cols[4].width, headerH).fill(GREEN);
+    doc.rect(left, y, leftHeaderW, headerH).fill(GREEN);
+    doc.rect(left + leftHeaderW, y, cols[4].width, headerH).fill(GREEN);
     doc.restore();
     doc
       .font('Times-Bold')
       .fontSize(9)
-      .fillColor(INK)
-      .text('PARTICIPANTES', left, y + 4, {
-        width: 28 + 168 + 118 + 92,
+      .fillColor('#ffffff')
+      .text('PARTICIPANTES', left, y + 6, {
+        width: leftHeaderW,
         align: 'center',
       });
-    doc.text('ASSINATURA DOS PARTICIPANTES', left + 28 + 168 + 118 + 92, y + 4, {
-      width: cols[4].width,
-      align: 'center',
-    });
+    doc
+      .font('Times-Bold')
+      .fontSize(7.5)
+      .fillColor('#ffffff')
+      .text('ASSINATURA DOS\nPARTICIPANTES', left + leftHeaderW, y + 2, {
+        width: cols[4].width,
+        align: 'center',
+        lineGap: 0.5,
+      });
     y += headerH;
 
     const subH = 14;
