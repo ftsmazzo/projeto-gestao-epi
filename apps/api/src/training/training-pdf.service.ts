@@ -985,13 +985,18 @@ export class TrainingPdfService {
       y += rowH;
     }
 
-    y += 14;
-    const sigBoxH = 52;
-    const sigBoxW = Math.min(280, boxW * 0.48);
-    const sigBoxX = left + (boxW - sigBoxW) / 2;
+    // linha contínua da tabela: assinatura do instrutor (sem borda superior = cola na última linha)
+    const sigRowH = 48;
     doc.save();
-    doc.rect(sigBoxX, y, sigBoxW, sigBoxH).fill('#E8E8E8');
-    doc.rect(sigBoxX, y, sigBoxW, sigBoxH).lineWidth(0.55).strokeColor(INK).stroke();
+    doc.rect(left, y, tableW, sigRowH).fill('#E8E8E8');
+    doc
+      .moveTo(left, y)
+      .lineTo(left, y + sigRowH)
+      .lineTo(left + tableW, y + sigRowH)
+      .lineTo(left + tableW, y)
+      .lineWidth(0.4)
+      .strokeColor('#111111')
+      .stroke();
     doc.restore();
     doc
       .font('Times-Roman')
@@ -1007,9 +1012,9 @@ export class TrainingPdfService {
         ]
           .filter(Boolean)
           .join('\n'),
-        sigBoxX + 6,
-        y + 8,
-        { width: sigBoxW - 12, align: 'center', lineGap: 1.5 },
+        left + 6,
+        y + 7,
+        { width: tableW - 12, align: 'center', lineGap: 1.5 },
       );
     if (pageCount > 1) {
       doc
