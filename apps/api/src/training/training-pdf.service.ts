@@ -182,7 +182,7 @@ async function drawImage(
   y: number,
   w: number,
   h: number,
-  opts?: { stretch?: boolean; align?: 'left' | 'center' | 'right'; valign?: 'top' | 'center' | 'bottom' },
+  opts?: { stretch?: boolean },
 ) {
   if (!filePath || !existsSync(filePath)) return false;
   try {
@@ -192,8 +192,8 @@ async function drawImage(
       if (embedded) {
         doc.image(embedded, x, y, {
           fit: [w, h],
-          align: opts?.align ?? 'center',
-          valign: opts?.valign ?? 'center',
+          align: 'center',
+          valign: 'center',
         });
         return true;
       }
@@ -212,8 +212,8 @@ async function drawImage(
     } else {
       doc.image(filePath, x, y, {
         fit: [w, h],
-        align: opts?.align ?? 'center',
-        valign: opts?.valign ?? 'center',
+        align: 'center',
+        valign: 'center',
       });
     }
     return true;
