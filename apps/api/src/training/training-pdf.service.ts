@@ -404,30 +404,28 @@ const FRONT_LAYOUT: Record<
   { bodyY: number; sigY: number; covers: Rect[] }
 > = {
   nr01: {
-    bodyY: 197,
-    sigY: 478,
+    bodyY: 202,
+    sigY: 486,
     // áreas variáveis já estão em branco no PNG do molde
     covers: [],
   },
   nr35: {
-    bodyY: 197,
-    sigY: 462,
+    bodyY: 202,
+    sigY: 470,
     covers: [],
   },
 };
 
 const BACK_LAYOUT: Record<
   'nr01' | 'nr35',
-  { addressBox: Rect; addressTextY: number }
+  { addressBox: Rect }
 > = {
+  // ambos à direita e um pouco mais baixos, para não cobrir o fim da lista
   nr01: {
-    // valor dentro do quadro (abaixo do título, acima da moldura ~547)
-    addressBox: [454, 508, 330, 30],
-    addressTextY: 510,
+    addressBox: [458, 498, 318, 46],
   },
   nr35: {
-    addressBox: [84, 470, 310, 28],
-    addressTextY: 472,
+    addressBox: [458, 498, 318, 46],
   },
 };
 
@@ -587,27 +585,41 @@ export class TrainingPdfService {
     if (template) {
       await drawImage(doc, template, 0, 0, w, h, { stretch: true });
       const layout = BACK_LAYOUT[key];
-      const [ax, , aw, ah] = layout.addressBox;
+      const [ax, ay, aw, ah] = layout.addressBox;
       const address = input.address?.trim() || '—';
-      // evita o PDFKit criar página extra quando o fluxo de texto estoura
-      const pageRef = doc.bufferedPageRange().start + doc.bufferedPageRange().count - 1;
+      const pageRef =
+        doc.bufferedPageRange().start + doc.bufferedPageRange().count - 1;
+      doc.switchToPage(pageRef);
+      // quadro redesenhado à direita (NR35 saiu da esquerda) e um pouco mais baixo
+      doc.save();
+      doc.rect(ax, ay, aw, ah).fill('#ffffff');
+      doc.restore();
+      doubleBox(doc, ax, ay, aw, ah);
+      doc
+        .font('Times-Bold')
+        .fontSize(10)
+        .fillColor(INK)
+        .text('Endereço do Curso Realizado:', ax + 8, ay + 6, {
+          width: aw - 16,
+          align: 'center',
+          underline: true,
+          lineBreak: false,
+          height: 14,
+        });
       doc.font('Times-Roman').fontSize(8).fillColor(INK);
-      // força quebra com folga — endereço longo não pode colar na borda do quadro
-      const wrapW = Math.max(120, aw - 48);
-      const lines = wrapWords(doc, address, wrapW);
-      const lineH = 10;
-      const maxLines = Math.min(2, Math.max(1, Math.floor(ah / lineH)));
-      let y = layout.addressTextY;
-      for (const line of lines.slice(0, maxLines)) {
+      const wrapW = Math.max(120, aw - 28);
+      const lines = wrapWords(doc, address, wrapW).slice(0, 2);
+      let ty = ay + 22;
+      for (const line of lines) {
         doc.switchToPage(pageRef);
-        doc.text(line, ax + 8, y, {
+        doc.text(line, ax + 8, ty, {
           width: aw - 16,
           align: 'center',
           lineBreak: false,
-          height: lineH,
+          height: 10,
           ellipsis: true,
         });
-        y += lineH;
+        ty += 10;
       }
       doc.switchToPage(pageRef);
       return;
@@ -779,7 +791,7 @@ export class TrainingPdfService {
         ['Carga horária:', `${padHours(input.hours)} horas`],
         ['Data da Realização:', formatDateBr(input.heldOn)],
       ];
-          const weights = [0.2, 0.24, 0.2, 0.36];
+      const weights = [0.3, 0.22, 0.2, 0.28];
       let x = left;
       cells.forEach((pair, idx) => {
         const colW = boxW * weights[idx];
@@ -793,15 +805,16 @@ export class TrainingPdfService {
             .stroke();
           doc.restore();
         }
-        doc
-          .font('Times-Roman')
-          .fontSize(10)
-          .fillColor(INK)
-          .text(`${pair[0]} ${pair[1]}`, x + 4, y + 6, {
-            width: colW - 8,
-            lineBreak: false,
-            ellipsis: true,
-          });
+        doc.font('Times-Roman').fontSize(8.5).fillColor(INK);
+        const label = `${pair[0]} `;
+        const labelW = doc.widthOfString(label);
+        doc.text(label, x + 3, y + 7, { lineBreak: false, height: 10 });
+        doc.text(pair[1], x + 3 + labelW, y + 7, {
+          width: Math.max(20, colW - 6 - labelW),
+          height: 10,
+          lineBreak: false,
+          ellipsis: true,
+        });
         x += colW;
       });
     });
