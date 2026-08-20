@@ -182,7 +182,7 @@ async function drawImage(
   y: number,
   w: number,
   h: number,
-  opts?: { stretch?: boolean },
+  opts?: { stretch?: boolean; align?: 'left' | 'center' | 'right'; valign?: 'top' | 'center' | 'bottom' },
 ) {
   if (!filePath || !existsSync(filePath)) return false;
   try {
@@ -192,8 +192,8 @@ async function drawImage(
       if (embedded) {
         doc.image(embedded, x, y, {
           fit: [w, h],
-          align: 'center',
-          valign: 'center',
+          align: opts?.align ?? 'center',
+          valign: opts?.valign ?? 'center',
         });
         return true;
       }
@@ -212,10 +212,30 @@ async function drawImage(
     } else {
       doc.image(filePath, x, y, {
         fit: [w, h],
-        align: 'center',
-        valign: 'center',
+        align: opts?.align ?? 'center',
+        valign: opts?.valign ?? 'center',
       });
     }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Logo do curso alinhada na base com a faixa da INSEG (~y=170). */
+async function drawCourseLogoWithInsegBase(
+  doc: PDFKit.PDFDocument,
+  filePath: string | null | undefined,
+  nr35: boolean,
+) {
+  if (!filePath || !existsSync(filePath)) return false;
+  try {
+    // Base visual da INSEG no molde (linha sob o subtítulo)
+    const insegBottom = 172.2;
+    const targetH = nr35 ? 96 : 90;
+    const x = nr35 ? 100 : 76;
+    const y = insegBottom - targetH;
+    doc.image(filePath, x, y, { height: targetH });
     return true;
   } catch {
     return false;
@@ -539,6 +559,11 @@ export class TrainingPdfService {
       await drawImage(doc, template, 0, 0, w, h, { stretch: true });
       const layout = FRONT_LAYOUT[key];
       for (const rect of layout.covers) coverWhite(doc, rect);
+      await drawCourseLogoWithInsegBase(
+        doc,
+        input.assets.LEFT_LOGO,
+        key === 'nr35',
+      );
       drawCertificateBody(doc, input, worker, layout.bodyY, w);
       drawSignatureColumns(doc, input, worker, layout.sigY);
       return;
