@@ -88,7 +88,7 @@ const NAME_PARTICLES = new Set([
   'du',
 ]);
 
-/** Nome pessoal: primeira letra maiúscula, restante minúsculo (partículas curtas ficam minúsculas). */
+/** Nome/função: primeira letra maiúscula, restante minúsculo (partículas curtas ficam minúsculas). */
 export function toPersonNameCase(value: string) {
   const parts = value.trim().toLowerCase().split(/\s+/).filter(Boolean);
   return parts
@@ -97,6 +97,65 @@ export function toPersonNameCase(value: string) {
       return part.charAt(0).toUpperCase() + part.slice(1);
     })
     .join(' ');
+}
+
+/** Alias semântico para cargos/funções (mesma regra do nome). */
+export function toTitleCase(value: string) {
+  return toPersonNameCase(value);
+}
+
+/** Índice da página atual (bufferPages). Nunca “pin” na última após overflow. */
+function currentPageIndex(doc: PDFKit.PDFDocument) {
+  const range = doc.bufferedPageRange();
+  return range.start + Math.max(0, range.count - 1);
+}
+
+function stayOnPage(doc: PDFKit.PDFDocument, pageIndex: number) {
+  const range = doc.bufferedPageRange();
+  const last = range.start + range.count - 1;
+  if (pageIndex >= range.start && pageIndex <= last) {
+    doc.switchToPage(pageIndex);
+  }
+  // Evita o PDFKit achar que o cursor passou do rodapé e criar página fantasma.
+  doc.x = 0;
+  doc.y = 0;
+}
+
+/** Texto em uma linha sem permitir quebra/página extra do PDFKit. */
+function drawSingleLine(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  opts?: {
+    align?: 'left' | 'center' | 'right';
+    fontSize?: number;
+    pageIndex?: number;
+  },
+) {
+  if (opts?.pageIndex != null) stayOnPage(doc, opts.pageIndex);
+  const fontSize = opts?.fontSize ?? 11;
+  doc.fontSize(fontSize);
+  let value = text || '';
+  if (doc.widthOfString(value) > width) {
+    while (value.length > 1 && doc.widthOfString(`${value}…`) > width) {
+      value = value.slice(0, -1);
+    }
+    value = `${value}…`;
+  }
+  doc.text(value, x, y, {
+    width,
+    height: fontSize + 2,
+    lineBreak: false,
+    ellipsis: true,
+    align: opts?.align ?? 'left',
+  });
+  if (opts?.pageIndex != null) stayOnPage(doc, opts.pageIndex);
+  else {
+    doc.x = 0;
+    doc.y = 0;
+  }
 }
 
 function wrapWords(
@@ -270,6 +329,7 @@ function drawCertificateBody(
   worker: TrainingPdfWorker,
   bodyY: number,
   pageW: number,
+  pageIndex: number,
 ) {
   // margem interna à moldura/faixa verde (~58pt) e à moldura direita (~790)
   const bodyX = 72;
@@ -317,11 +377,16 @@ function drawCertificateBody(
   }
   if (current.length) lines.push(current);
 
+  // Não deixa o corpo invadir a faixa de assinaturas (evita overflow → páginas fantasma).
+  const maxLines = Math.max(1, Math.floor((Math.min(bodyY + 250, 450) - bodyY) / (fontSize + lineGap)));
+  const fitLines = lines.slice(0, maxLines);
+
   let y = bodyY;
   const step = fontSize + lineGap;
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    const isLast = i === lines.length - 1;
+  for (let i = 0; i < fitLines.length; i += 1) {
+    stayOnPage(doc, pageIndex);
+    const line = fitLines[i];
+    const isLast = i === fitLines.length - 1;
     const wordsW = line.reduce((sum, word) => sum + measure(word), 0);
     const spaceSlots = line.reduce((count, word, idx) => {
       if (idx === 0 || word.noSpaceBefore) return count;
@@ -337,6 +402,7 @@ function drawCertificateBody(
         .fontSize(fontSize)
         .fillColor(INK);
       const w = doc.widthOfString(word.text);
+      stayOnPage(doc, pageIndex);
       doc.text(word.text, x, y, {
         lineBreak: false,
         width: Math.max(w, 1),
@@ -350,6 +416,7 @@ function drawCertificateBody(
     }
     y += step;
   }
+  stayOnPage(doc, pageIndex);
 }
 
 function drawSignatureColumns(
@@ -357,16 +424,24 @@ function drawSignatureColumns(
   input: TrainingPdfInput,
   worker: TrainingPdfWorker,
   sigY: number,
+  pageIndex: number,
 ) {
+  stayOnPage(doc, pageIndex);
   const personName = toPersonNameCase(worker.name);
   const companyName = input.companyLegalName;
+  const instructorName = toPersonNameCase(
+    input.instructorName || '_____________________________',
+  );
+  const instructorRole = input.instructorRole
+    ? toTitleCase(input.instructorRole)
+    : '';
   const cols: Array<{ x: number; width: number; lines: string[] }> = [
     {
       x: 68,
       width: 224,
       lines: [
-        input.instructorName || '_____________________________',
-        input.instructorRole,
+        instructorName,
+        instructorRole,
         input.instructorRegistry ? `MTB. ${input.instructorRegistry}` : '',
         'Instrutor/Responsável Técnico',
       ],
@@ -386,8 +461,11 @@ function drawSignatureColumns(
       lines: [personName, 'Treinando', `RG/CPF: ${formatCpf(worker.cpf)}`],
     },
   ];
+  const pageH = doc.page.height;
+  const safeSigY = Math.min(sigY, pageH - 58);
   for (const col of cols) {
-    const lineY = sigY - 16;
+    stayOnPage(doc, pageIndex);
+    const lineY = safeSigY - 16;
     doc.save();
     doc
       .moveTo(col.x + 8, lineY)
@@ -397,21 +475,19 @@ function drawSignatureColumns(
       .stroke();
     doc.restore();
     const lines = col.lines.filter(Boolean);
-    let y = sigY;
+    let y = safeSigY;
     for (const line of lines) {
-      doc
-        .font('Times-Roman')
-        .fontSize(11)
-        .fillColor(INK)
-        .text(line, col.x, y, {
-          width: col.width,
-          align: 'center',
-          lineBreak: false,
-          ellipsis: true,
-        });
+      if (y + 14 > pageH - 4) break;
+      doc.font('Times-Roman').fillColor(INK);
+      drawSingleLine(doc, line, col.x, y, col.width, {
+        align: 'center',
+        fontSize: 11,
+        pageIndex,
+      });
       y += 13.5;
     }
   }
+  stayOnPage(doc, pageIndex);
 }
 
 const FRONT_LAYOUT: Record<
@@ -554,12 +630,14 @@ export class TrainingPdfService {
     input: TrainingPdfInput,
     worker: TrainingPdfWorker,
   ) {
+    const pageIndex = currentPageIndex(doc);
     const w = doc.page.width;
     const h = doc.page.height;
     const key = isNr35(input.nrLabel) ? 'nr35' : 'nr01';
     const template = bundledTemplatePage(input.nrLabel, 1);
     if (template) {
       await drawImage(doc, template, 0, 0, w, h, { stretch: true });
+      stayOnPage(doc, pageIndex);
       const layout = FRONT_LAYOUT[key];
       for (const rect of layout.covers) coverWhite(doc, rect);
       await drawCourseLogoWithInsegBase(
@@ -567,11 +645,14 @@ export class TrainingPdfService {
         input.assets.LEFT_LOGO,
         key === 'nr35',
       );
-      drawCertificateBody(doc, input, worker, layout.bodyY, w);
-      drawSignatureColumns(doc, input, worker, layout.sigY);
+      stayOnPage(doc, pageIndex);
+      drawCertificateBody(doc, input, worker, layout.bodyY, w, pageIndex);
+      drawSignatureColumns(doc, input, worker, layout.sigY, pageIndex);
+      stayOnPage(doc, pageIndex);
       return;
     }
 
+    stayOnPage(doc, pageIndex);
     doc.save();
     doc.rect(0, 0, w, doc.page.height).fill('#ffffff');
     doc.restore();
@@ -584,17 +665,20 @@ export class TrainingPdfService {
       await drawImage(doc, input.assets.LEFT_LOGO, 22, 32, 148, 76);
     }
     await drawImage(doc, input.assets.HEADER, w - 268, 26, 246, 78);
-    drawCertificateBody(doc, input, worker, 197, w);
-    drawSignatureColumns(doc, input, worker, 478);
+    stayOnPage(doc, pageIndex);
+    drawCertificateBody(doc, input, worker, 197, w, pageIndex);
+    drawSignatureColumns(doc, input, worker, 478, pageIndex);
     if (nr35) {
       await drawImage(doc, input.assets.SEAL, 592, 508, 168, 68);
     }
+    stayOnPage(doc, pageIndex);
   }
 
   private async drawCertificateBack(
     doc: PDFKit.PDFDocument,
     input: TrainingPdfInput,
   ) {
+    const pageIndex = currentPageIndex(doc);
     const w = doc.page.width;
     const h = doc.page.height;
     const key = isNr35(input.nrLabel) ? 'nr35' : 'nr01';
@@ -607,93 +691,101 @@ export class TrainingPdfService {
       const layout = BACK_LAYOUT[key];
       const [ax, ay, aw, ah] = layout.addressBox;
       const address = input.address?.trim() || '—';
-      const pageRef =
-        doc.bufferedPageRange().start + doc.bufferedPageRange().count - 1;
-      doc.switchToPage(pageRef);
+      stayOnPage(doc, pageIndex);
       // quadro redesenhado à direita (NR35 saiu da esquerda) e um pouco mais baixo
       doc.save();
       doc.rect(ax, ay, aw, ah).fill('#ffffff');
       doc.restore();
       doubleBox(doc, ax, ay, aw, ah);
+      doc.font('Times-Bold').fillColor(INK);
+      drawSingleLine(
+        doc,
+        'Endereço do Curso Realizado:',
+        ax + 8,
+        ay + 6,
+        aw - 16,
+        { align: 'center', fontSize: 10, pageIndex },
+      );
+      // underline do título
+      doc.save();
+      doc.font('Times-Bold').fontSize(10);
+      const titleW = Math.min(aw - 16, doc.widthOfString('Endereço do Curso Realizado:'));
+      const titleX = ax + 8 + (aw - 16 - titleW) / 2;
       doc
-        .font('Times-Bold')
-        .fontSize(10)
-        .fillColor(INK)
-        .text('Endereço do Curso Realizado:', ax + 8, ay + 6, {
-          width: aw - 16,
-          align: 'center',
-          underline: true,
-          lineBreak: false,
-          height: 14,
-        });
+        .moveTo(titleX, ay + 17)
+        .lineTo(titleX + titleW, ay + 17)
+        .lineWidth(0.7)
+        .strokeColor(INK)
+        .stroke();
+      doc.restore();
       doc.font('Times-Roman').fontSize(8).fillColor(INK);
       const wrapW = Math.max(120, aw - 28);
       const lines = wrapWords(doc, address, wrapW).slice(0, 2);
       let ty = ay + 22;
       for (const line of lines) {
-        doc.switchToPage(pageRef);
-        doc.text(line, ax + 8, ty, {
-          width: aw - 16,
+        drawSingleLine(doc, line, ax + 8, ty, aw - 16, {
           align: 'center',
-          lineBreak: false,
-          height: 10,
-          ellipsis: true,
+          fontSize: 8,
+          pageIndex,
         });
         ty += 10;
       }
-      doc.switchToPage(pageRef);
+      stayOnPage(doc, pageIndex);
       return;
     }
 
+    stayOnPage(doc, pageIndex);
     doc.save();
     doc.rect(0, 0, w, h).fill('#ffffff');
     doc.restore();
     const nr35 = key === 'nr35';
     if (!nr35) {
       await drawImage(doc, input.assets.RIGHT_LOGO, w - 276, 36, 220, 92);
-      doc
-        .font('Times-Bold')
-        .fontSize(15)
-        .fillColor(INK)
-        .text('Conteúdo Programático:', 71, 71.5, {
-          width: 360,
-          underline: true,
-          height: 20,
-          lineBreak: false,
-        });
-      doc
-        .font('Times-BoldItalic')
-        .fontSize(15)
-        .text(`${topics[0]};`, 71, 97, { width: w - 360, height: 22 });
+      stayOnPage(doc, pageIndex);
+      drawSingleLine(doc, 'Conteúdo Programático:', 71, 71.5, 360, {
+        fontSize: 15,
+        pageIndex,
+      });
+      doc.font('Times-BoldItalic').fillColor(INK);
+      drawSingleLine(doc, `${topics[0]};`, 71, 97, w - 360, {
+        fontSize: 15,
+        pageIndex,
+      });
       let y = 123;
       for (const item of topics.slice(1)) {
+        if (y + 34 > h - 120) break;
+        stayOnPage(doc, pageIndex);
         drawDiamond(doc, 78, y + 7);
-        doc
-          .font('Times-Roman')
-          .fontSize(15)
-          .fillColor(INK)
-          .text(`${item};`, 90, y, { width: w - 380, height: 32 });
+        doc.font('Times-Roman').fillColor(INK);
+        drawSingleLine(doc, `${item};`, 90, y, w - 380, {
+          fontSize: 15,
+          pageIndex,
+        });
         y += 34.5;
       }
       this.drawAddressBox(doc, 458, h - 108, 332, 78, input.address);
     } else {
-      doc
-        .font('Times-BoldItalic')
-        .fontSize(15)
-        .fillColor(INK)
-        .text(`${topics[0]};`, 71, 71.5, { width: w - 120, height: 22 });
+      stayOnPage(doc, pageIndex);
+      doc.font('Times-BoldItalic').fillColor(INK);
+      drawSingleLine(doc, `${topics[0]};`, 71, 71.5, w - 120, {
+        fontSize: 15,
+        pageIndex,
+      });
       let y = 103;
       for (const item of topics) {
+        if (y + 43 > h - 120) break;
+        stayOnPage(doc, pageIndex);
         drawDiamond(doc, 68, y + 7);
-        doc
-          .font('Times-Roman')
-          .fontSize(item.length > 90 ? 14 : 15)
-          .fillColor(INK)
-          .text(`${item};`, 80, y, { width: w - 140, height: 40 });
+        doc.font('Times-Roman').fillColor(INK);
+        drawSingleLine(doc, `${item};`, 80, y, w - 140, {
+          fontSize: item.length > 90 ? 14 : 15,
+          pageIndex,
+        });
         y += 43;
       }
       this.drawAddressBox(doc, 72, Math.min(y + 18, h - 120), 332, 78, input.address);
     }
+    stayOnPage(doc, pageIndex);
   }
 
   private drawAddressText(
@@ -704,25 +796,27 @@ export class TrainingPdfService {
     h: number,
     address: string,
   ) {
-    doc
-      .font('Times-Bold')
-      .fontSize(12)
-      .fillColor(INK)
-      .text('Endereço do Curso Realizado:', x + 8, y + 10, {
-        width: w - 16,
+    const pageIndex = currentPageIndex(doc);
+    stayOnPage(doc, pageIndex);
+    doc.font('Times-Bold').fillColor(INK);
+    drawSingleLine(doc, 'Endereço do Curso Realizado:', x + 8, y + 10, w - 16, {
+      align: 'center',
+      fontSize: 12,
+      pageIndex,
+    });
+    doc.font('Times-Roman').fontSize(12);
+    const lines = wrapWords(doc, address || '—', w - 20).slice(0, 3);
+    let ty = y + 30;
+    for (const line of lines) {
+      if (ty + 14 > y + h - 4) break;
+      drawSingleLine(doc, line, x + 10, ty, w - 20, {
         align: 'center',
-        underline: true,
-        height: 16,
+        fontSize: 12,
+        pageIndex,
       });
-    doc
-      .font('Times-Roman')
-      .fontSize(12)
-      .text(address || '—', x + 10, y + 30, {
-        width: w - 20,
-        align: 'center',
-        lineGap: 1.5,
-        height: h - 40,
-      });
+      ty += 14;
+    }
+    stayOnPage(doc, pageIndex);
   }
 
   private drawAddressBox(
@@ -744,41 +838,44 @@ export class TrainingPdfService {
     pageIndex: number,
     pageCount: number,
   ) {
+    const pageRef = currentPageIndex(doc);
     const w = doc.page.width;
+    const pageH = doc.page.height;
     const marks = deliveryMarks(input.deliveryKind);
     const left = 20;
     const right = w - 20;
     const boxW = right - left;
 
+    stayOnPage(doc, pageRef);
     doubleBox(doc, left, 16, boxW, 48);
     doc.save();
     doc.moveTo(190, 16).lineTo(190, 64).lineWidth(0.6).strokeColor(INK).stroke();
     doc.moveTo(422, 16).lineTo(422, 64).lineWidth(0.6).strokeColor(INK).stroke();
     doc.restore();
     await drawImage(doc, input.assets.HEADER, left + 6, 20, 160, 40);
-    doc
-      .font('Times-Bold')
-      .fontSize(14)
-      .fillColor(INK)
-      .text('REGISTRO DE TREINAMENTO', 190, 22, {
-        width: 232,
-        align: 'center',
-      });
-    doc
-      .font('Times-Bold')
-      .fontSize(14)
-      .text('CAPACITAÇÃO EM SST', 190, 40, {
-        width: 232,
-        align: 'center',
-      });
+    stayOnPage(doc, pageRef);
+    doc.font('Times-Bold').fillColor(INK);
+    drawSingleLine(doc, 'REGISTRO DE TREINAMENTO', 190, 22, 232, {
+      align: 'center',
+      fontSize: 14,
+      pageIndex: pageRef,
+    });
+    drawSingleLine(doc, 'CAPACITAÇÃO EM SST', 190, 40, 232, {
+      align: 'center',
+      fontSize: 14,
+      pageIndex: pageRef,
+    });
     await drawImage(doc, input.clientLogoPath, 428, 20, 164, 40);
+    stayOnPage(doc, pageRef);
 
     let y = 64;
     const metaTop = y;
     const row = (height: number, draw: () => void, withRule = true) => {
+      stayOnPage(doc, pageRef);
       draw();
       y += height;
       if (!withRule) return;
+      stayOnPage(doc, pageRef);
       doc.save();
       doc
         .moveTo(left, y)
@@ -790,18 +887,22 @@ export class TrainingPdfService {
     };
 
     row(20, () => {
-      doc
-        .font('Times-Roman')
-        .fontSize(11)
-        .fillColor(INK)
-        .text(`Treinamento: ${input.courseTitle}`, left + 4, y + 5, {
-          width: boxW - 210,
-        });
-      doc.text(
+      doc.font('Times-Roman').fillColor(INK);
+      drawSingleLine(
+        doc,
+        `Treinamento: ${input.courseTitle}`,
+        left + 4,
+        y + 5,
+        boxW - 210,
+        { fontSize: 11, pageIndex: pageRef },
+      );
+      drawSingleLine(
+        doc,
         `Interno (${marks.interno})     T.L.T. (${marks.tlt})     Externo (${marks.externo})`,
         right - 200,
         y + 5,
-        { width: 196 },
+        196,
+        { fontSize: 11, pageIndex: pageRef },
       );
     });
     row(22, () => {
@@ -825,108 +926,115 @@ export class TrainingPdfService {
             .stroke();
           doc.restore();
         }
-        doc.font('Times-Roman').fontSize(8.5).fillColor(INK);
+        doc.font('Times-Roman').fillColor(INK);
         const label = `${pair[0]} `;
+        doc.fontSize(8.5);
         const labelW = doc.widthOfString(label);
-        doc.text(label, x + 3, y + 7, { lineBreak: false, height: 10 });
-        doc.text(pair[1], x + 3 + labelW, y + 7, {
-          width: Math.max(20, colW - 6 - labelW),
-          height: 10,
-          lineBreak: false,
-          ellipsis: true,
+        drawSingleLine(doc, label.trimEnd(), x + 3, y + 7, labelW + 2, {
+          fontSize: 8.5,
+          pageIndex: pageRef,
         });
+        drawSingleLine(
+          doc,
+          pair[1],
+          x + 3 + labelW,
+          y + 7,
+          Math.max(20, colW - 6 - labelW),
+          { fontSize: 8.5, pageIndex: pageRef },
+        );
         x += colW;
       });
     });
     row(20, () => {
-      doc
-        .font('Times-Roman')
-        .fontSize(11)
-        .fillColor(INK)
-        .text(`Empresa: ${input.companyLegalName}`, left + 4, y + 5, {
-          width: boxW - 8,
-          lineBreak: false,
-          ellipsis: true,
-        });
+      doc.font('Times-Roman').fillColor(INK);
+      drawSingleLine(
+        doc,
+        `Empresa: ${input.companyLegalName}`,
+        left + 4,
+        y + 5,
+        boxW - 8,
+        { fontSize: 11, pageIndex: pageRef },
+      );
     });
     const addressText = `Endereço: ${input.address || '—'}`;
     doc.font('Times-Roman').fontSize(10);
-    const addressLines = Math.max(
-      1,
-      Math.min(3, wrapWords(doc, addressText, boxW - 8).length),
-    );
-    const addressH = 8 + addressLines * 12;
+    const addressLines = wrapWords(doc, addressText, boxW - 8).slice(0, 3);
+    const addressH = 8 + addressLines.length * 12;
     row(addressH, () => {
-      doc
-        .font('Times-Roman')
-        .fontSize(10)
-        .fillColor(INK)
-        .text(addressText, left + 4, y + 4, {
-          width: boxW - 8,
-          align: 'left',
-          height: addressH - 6,
+      doc.font('Times-Roman').fillColor(INK);
+      let ty = y + 4;
+      for (const line of addressLines) {
+        drawSingleLine(doc, line, left + 4, ty, boxW - 8, {
+          fontSize: 10,
+          pageIndex: pageRef,
         });
+        ty += 12;
+      }
     });
     const summaryH = 76;
     row(
       summaryH,
       () => {
-        doc
-          .font('Times-Bold')
-          .fontSize(10)
-          .fillColor(INK)
-          .text(
-            'Conteúdo resumido do curso (utilizar máximo 10 linhas):',
-            left + 4,
-            y + 4,
-            { width: boxW - 8, align: 'left' },
-          );
-        doc
-          .font('Times-Roman')
-          .fontSize(10)
-          .text(input.registerSummary || '—', left + 6, y + 18, {
-            width: boxW - 12,
-            height: summaryH - 22,
-            align: 'justify',
+        doc.font('Times-Bold').fillColor(INK);
+        drawSingleLine(
+          doc,
+          'Conteúdo resumido do curso (utilizar máximo 10 linhas):',
+          left + 4,
+          y + 4,
+          boxW - 8,
+          { fontSize: 10, pageIndex: pageRef },
+        );
+        doc.font('Times-Roman').fontSize(10).fillColor(INK);
+        const summaryLines = wrapWords(
+          doc,
+          input.registerSummary || '—',
+          boxW - 12,
+        ).slice(0, 5);
+        let ty = y + 18;
+        for (const line of summaryLines) {
+          drawSingleLine(doc, line, left + 6, ty, boxW - 12, {
+            fontSize: 10,
+            pageIndex: pageRef,
           });
+          ty += 11;
+        }
       },
       false,
     );
+    stayOnPage(doc, pageRef);
     doc.save();
     doc.rect(left, metaTop, boxW, y - metaTop).lineWidth(0.6).strokeColor(INK).stroke();
     doc.restore();
 
+    // Função um pouco mais larga para caber cargos longos sem estourar.
     const cols = [
       { title: 'Nº.', width: 28 },
-      { title: 'Nome Completo', width: 168 },
-      { title: 'Função', width: 118 },
+      { title: 'Nome Completo', width: 160 },
+      { title: 'Função', width: 136 },
       { title: 'RG/CPF', width: 92 },
-      { title: 'Presença (Visto)', width: boxW - 28 - 168 - 118 - 92 },
+      { title: 'Presença (Visto)', width: boxW - 28 - 160 - 136 - 92 },
     ];
     const tableW = cols.reduce((sum, col) => sum + col.width, 0);
     const headerH = 22;
-    const leftHeaderW = 28 + 168 + 118 + 92;
+    const leftHeaderW = 28 + 160 + 136 + 92;
     doc.save();
     doc.rect(left, y, leftHeaderW, headerH).fill(GREEN);
     doc.rect(left + leftHeaderW, y, cols[4].width, headerH).fill(GREEN);
     doc.restore();
-    doc
-      .font('Times-Bold')
-      .fontSize(9)
-      .fillColor('#ffffff')
-      .text('PARTICIPANTES', left, y + 6, {
-        width: leftHeaderW,
-        align: 'center',
-      });
-    doc
-      .font('Times-Bold')
-      .fontSize(7.5)
-      .fillColor('#ffffff')
-      .text('ASSINATURA DOS\nPARTICIPANTES', left + leftHeaderW, y + 2, {
-        width: cols[4].width,
-        align: 'center',
-        lineGap: 0.5,
-      });
+    doc.font('Times-Bold').fillColor('#ffffff');
+    drawSingleLine(doc, 'PARTICIPANTES', left, y + 6, leftHeaderW, {
+      align: 'center',
+      fontSize: 9,
+      pageIndex: pageRef,
+    });
+    drawSingleLine(
+      doc,
+      'ASSINATURA DOS PARTICIPANTES',
+      left + leftHeaderW,
+      y + 7,
+      cols[4].width,
+      { align: 'center', fontSize: 7.5, pageIndex: pageRef },
+    );
     y += headerH;
 
     const subH = 14;
@@ -935,34 +1043,63 @@ export class TrainingPdfService {
     doc.restore();
     let x = left;
     for (const col of cols) {
-      doc
-        .font('Times-Roman')
-        .fontSize(9)
-        .fillColor(INK)
-        .text(col.title, x, y + 3, { width: col.width, align: 'center' });
+      doc.font('Times-Roman').fillColor(INK);
+      drawSingleLine(doc, col.title, x, y + 3, col.width, {
+        align: 'center',
+        fontSize: 9,
+        pageIndex: pageRef,
+      });
       x += col.width;
     }
     y += subH;
 
-    const rowH = 16;
     const startN = pageIndex * 24 + 1;
     const empty = Math.max(0, 24 - workers.length);
-    const rows = [
-      ...workers.map((worker, idx) => [
-        String(startN + idx).padStart(2, '0'),
-        toPersonNameCase(worker.name),
-        worker.jobFunction || '—',
-        formatCpf(worker.cpf),
-        '',
-      ]),
-      ...Array.from({ length: empty }, () => ['', '', '', '', '']),
+    const dataRows = [
+      ...workers.map((worker, idx) => ({
+        cells: [
+          String(startN + idx).padStart(2, '0'),
+          toPersonNameCase(worker.name),
+          worker.jobFunction ? toTitleCase(worker.jobFunction) : '—',
+          formatCpf(worker.cpf),
+          '',
+        ],
+        empty: false as const,
+      })),
+      ...Array.from({ length: empty }, () => ({
+        cells: ['', '', '', '', ''],
+        empty: true as const,
+      })),
     ];
-    for (const cells of rows) {
+
+    const lineH = 10;
+    const padY = 3;
+    const maxCellLines = 2;
+    const sigRowH = 48;
+    const footerReserve = pageCount > 1 ? 36 : 20;
+
+    for (const rowData of dataRows) {
+      stayOnPage(doc, pageRef);
+      doc.font('Times-Roman').fontSize(9);
+      const wrapped = rowData.cells.map((text, i) => {
+        if (!text) return [''];
+        // Nº e CPF em uma linha; nome/função até 2 linhas.
+        if (i === 0 || i === 3 || i === 4) return [text];
+        return wrapWords(doc, text, cols[i].width - 4).slice(0, maxCellLines);
+      });
+      const linesUsed = Math.max(1, ...wrapped.map((ls) => ls.length));
+      const rowH = Math.max(16, padY * 2 + linesUsed * lineH);
+
+      if (y + rowH + sigRowH + footerReserve > pageH) {
+        // Não cria página fantasma: para de preencher linhas vazias.
+        break;
+      }
+
       doc.save();
       doc.rect(left, y, tableW, rowH).lineWidth(0.4).strokeColor('#111111').stroke();
       doc.restore();
       let cx = left;
-      cells.forEach((text, i) => {
+      rowData.cells.forEach((_text, i) => {
         if (i > 0) {
           doc.save();
           doc
@@ -973,23 +1110,27 @@ export class TrainingPdfService {
             .stroke();
           doc.restore();
         }
-        doc
-          .font('Times-Roman')
-          .fontSize(9)
-          .fillColor(INK)
-          .text(text, cx + 2, y + 4, {
-            width: cols[i].width - 4,
-            ellipsis: true,
-            lineBreak: false,
+        doc.font('Times-Roman').fillColor(INK);
+        const lines = wrapped[i];
+        let ty = y + padY;
+        for (const line of lines) {
+          if (!line) continue;
+          drawSingleLine(doc, line, cx + 2, ty, cols[i].width - 4, {
             align: i === 0 || i === 3 ? 'center' : 'left',
+            fontSize: 9,
+            pageIndex: pageRef,
           });
+          ty += lineH;
+        }
         cx += cols[i].width;
       });
       y += rowH;
     }
 
-    // linha contínua da tabela: assinatura do instrutor (sem borda superior = cola na última linha)
-    const sigRowH = 48;
+    stayOnPage(doc, pageRef);
+    if (y + sigRowH > pageH - 8) {
+      y = Math.max(metaTop + 40, pageH - sigRowH - 12);
+    }
     doc.save();
     doc.rect(left, y, tableW, sigRowH).fill('#E8E8E8');
     doc
@@ -1001,33 +1142,34 @@ export class TrainingPdfService {
       .strokeColor('#111111')
       .stroke();
     doc.restore();
-    doc
-      .font('Times-Roman')
-      .fontSize(10)
-      .fillColor(INK)
-      .text(
-        [
-          input.instructorName || 'Instrutor',
-          input.instructorRole
-            ? `Instrutor – ${input.instructorRole}`
-            : 'Instrutor',
-          input.instructorRegistry ? `MTB/${input.instructorRegistry}` : '',
-        ]
-          .filter(Boolean)
-          .join('\n'),
-        left + 6,
-        y + 7,
-        { width: tableW - 12, align: 'center', lineGap: 1.5 },
-      );
-    if (pageCount > 1) {
-      doc
-        .font('Times-Roman')
-        .fontSize(8)
-        .fillColor('#444444')
-        .text(`Página ${pageIndex + 1} de ${pageCount}`, left, 772, {
-          width: boxW,
-          align: 'center',
-        });
+    const sigLines = [
+      toPersonNameCase(input.instructorName || 'Instrutor'),
+      input.instructorRole
+        ? `Instrutor – ${toTitleCase(input.instructorRole)}`
+        : 'Instrutor',
+      input.instructorRegistry ? `MTB/${input.instructorRegistry}` : '',
+    ].filter(Boolean);
+    let sigTextY = y + 7;
+    for (const line of sigLines) {
+      doc.font('Times-Roman').fillColor(INK);
+      drawSingleLine(doc, line, left + 6, sigTextY, tableW - 12, {
+        align: 'center',
+        fontSize: 10,
+        pageIndex: pageRef,
+      });
+      sigTextY += 12;
     }
+    if (pageCount > 1) {
+      doc.font('Times-Roman').fillColor('#444444');
+      drawSingleLine(
+        doc,
+        `Página ${pageIndex + 1} de ${pageCount}`,
+        left,
+        Math.min(772, pageH - 16),
+        boxW,
+        { align: 'center', fontSize: 8, pageIndex: pageRef },
+      );
+    }
+    stayOnPage(doc, pageRef);
   }
 }
