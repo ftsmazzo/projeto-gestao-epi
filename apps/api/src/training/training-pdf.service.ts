@@ -222,7 +222,7 @@ async function drawImage(
   }
 }
 
-/** Logo do curso alinhada na base com a faixa da INSEG (~y=170). */
+/** Logo do curso alinhada na base com a INSEG, sem invadir a moldura/topo. */
 async function drawCourseLogoWithInsegBase(
   doc: PDFKit.PDFDocument,
   filePath: string | null | undefined,
@@ -230,11 +230,14 @@ async function drawCourseLogoWithInsegBase(
 ) {
   if (!filePath || !existsSync(filePath)) return false;
   try {
-    // Base visual da INSEG no molde (linha sob o subtítulo)
+    // linhas horizontais do molde ~71–77; base visual da INSEG ~172
+    const topSafe = 80;
     const insegBottom = 172.2;
-    const targetH = nr35 ? 96 : 90;
-    const x = nr35 ? 100 : 76;
-    const y = insegBottom - targetH;
+    const maxH = insegBottom - topSafe;
+    const preferredH = nr35 ? 88 : 84;
+    const targetH = Math.min(preferredH, maxH);
+    const x = nr35 ? 102 : 78;
+    const y = insegBottom - targetH; // base alinhada; topo >= topSafe
     doc.image(filePath, x, y, { height: targetH });
     return true;
   } catch {
