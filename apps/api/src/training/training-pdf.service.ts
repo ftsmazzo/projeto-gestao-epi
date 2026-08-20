@@ -4,7 +4,7 @@ import { readFile } from 'fs/promises';
 import PDFDocument from 'pdfkit';
 import { TrainingDeliveryKind } from '@prisma/client';
 import { formatCnpj } from '../sst-documents/sst-document-content';
-import { bundledAssetsForNr } from './bundled-assets';
+import { bundledAssetsForNr, bundledTemplatePage } from './bundled-assets';
 
 export type TrainingPdfWorker = {
   name: string;
@@ -181,6 +181,128 @@ function isNr35(nrLabel: string) {
   return (nrLabel || '').toUpperCase().includes('35');
 }
 
+type Rect = [number, number, number, number];
+
+function coverWhite(
+  doc: PDFKit.PDFDocument,
+  [x, y, w, h]: Rect,
+) {
+  doc.save();
+  doc.rect(x, y, w, h).fill('#ffffff');
+  doc.restore();
+}
+
+function drawCertificateBody(
+  doc: PDFKit.PDFDocument,
+  input: TrainingPdfInput,
+  worker: TrainingPdfWorker,
+  bodyY: number,
+  pageW: number,
+) {
+  const bodyX = 64;
+  const bodyW = pageW - 128;
+  const full = `Certificamos que o Senhor ${worker.name}, ${input.certificateCourseClause}, Realizado no Período de ${formatDateExtenso(input.heldOn)}, Cumprindo a Carga Horária de ${padHours(input.hours)} Horas.`;
+  doc
+    .font('Times-Roman')
+    .fontSize(25)
+    .fillColor(INK)
+    .text(full, bodyX, bodyY, {
+      width: bodyW,
+      align: 'center',
+      lineGap: 14.5,
+    });
+}
+
+function drawSignatureColumns(
+  doc: PDFKit.PDFDocument,
+  input: TrainingPdfInput,
+  worker: TrainingPdfWorker,
+  sigY: number,
+) {
+  const cols: Array<{ x: number; width: number; lines: string[] }> = [
+    {
+      x: 64,
+      width: 232,
+      lines: [
+        input.instructorName || '_____________________________',
+        input.instructorRole,
+        input.instructorRegistry ? `MTB. ${input.instructorRegistry}` : '',
+        'Instrutor/Responsável Técnico',
+      ],
+    },
+    {
+      x: 312,
+      width: 242,
+      lines: [
+        input.legalRepName ||
+          input.companyTradeName ||
+          input.companyLegalName,
+        `CNPJ: ${formatCnpj(input.companyCnpj)}`,
+        'Representante Legal',
+      ],
+    },
+    {
+      x: 568,
+      width: 214,
+      lines: [worker.name, 'Treinando', `RG/CPF: ${formatCpf(worker.cpf)}`],
+    },
+  ];
+  for (const col of cols) {
+    doc
+      .font('Times-Roman')
+      .fontSize(15)
+      .fillColor(INK)
+      .text(col.lines.filter(Boolean).join('\n'), col.x, sigY, {
+        width: col.width,
+        align: 'center',
+        lineGap: 2.2,
+        height: 90,
+      });
+  }
+}
+
+const FRONT_LAYOUT: Record<
+  'nr01' | 'nr35',
+  { bodyY: number; sigY: number; covers: Rect[] }
+> = {
+  nr01: {
+    bodyY: 182,
+    sigY: 474,
+    covers: [
+      [58, 175, 726, 220],
+      [72, 472, 230, 70],
+      [305, 472, 260, 55],
+      [562, 472, 230, 55],
+    ],
+  },
+  nr35: {
+    bodyY: 193,
+    sigY: 458,
+    covers: [
+      [58, 186, 726, 220],
+      [72, 456, 230, 75],
+      [305, 456, 260, 60],
+      [562, 456, 230, 65],
+    ],
+  },
+};
+
+const BACK_LAYOUT: Record<
+  'nr01' | 'nr35',
+  { topicsCover: Rect; addressCover: Rect; addressTextY: number }
+> = {
+  nr01: {
+    topicsCover: [64, 94, 385, 430],
+    addressCover: [456, 508, 336, 32],
+    addressTextY: 509,
+  },
+  nr35: {
+    topicsCover: [58, 98, 520, 360],
+    addressCover: [152, 468, 346, 38],
+    addressTextY: 471,
+  },
+};
+
 function bufferFromPdf(
   layout: 'landscape' | 'portrait',
   build: (doc: PDFKit.PDFDocument) => void | Promise<void>,
@@ -292,83 +414,32 @@ export class TrainingPdfService {
     worker: TrainingPdfWorker,
   ) {
     const w = doc.page.width;
+    const h = doc.page.height;
+    const key = isNr35(input.nrLabel) ? 'nr35' : 'nr01';
+    const template = bundledTemplatePage(input.nrLabel, 1);
+    if (template) {
+      await drawImage(doc, template, 0, 0, w, h);
+      const layout = FRONT_LAYOUT[key];
+      for (const rect of layout.covers) coverWhite(doc, rect);
+      drawCertificateBody(doc, input, worker, layout.bodyY, w);
+      drawSignatureColumns(doc, input, worker, layout.sigY);
+      return;
+    }
+
     doc.save();
     doc.rect(0, 0, w, doc.page.height).fill('#ffffff');
     doc.restore();
     drawGreenBar(doc);
     drawDoubleRule(doc, 14, 16, w - 22);
-
-    const nr35 = isNr35(input.nrLabel);
+    const nr35 = key === 'nr35';
     if (nr35) {
       await drawImage(doc, input.assets.LEFT_LOGO, 22, 28, 96, 96);
     } else {
       await drawImage(doc, input.assets.LEFT_LOGO, 22, 32, 148, 76);
     }
     await drawImage(doc, input.assets.HEADER, w - 268, 26, 246, 78);
-
-    const body = `Certificamos que o Senhor ${worker.name}, ${input.certificateCourseClause}, Realizado no Período de ${formatDateExtenso(input.heldOn)}, Cumprindo a Carga Horária de ${padHours(input.hours)} Horas.`;
-    doc
-      .font('Times-Roman')
-      .fontSize(25)
-      .fillColor(INK)
-      .text(body, 64, 193, {
-        width: w - 128,
-        align: 'center',
-        lineGap: 14.5,
-        height: 240,
-      });
-
-    const sigY = 456;
-    const cols: Array<{ x: number; width: number; lines: string[] }> = [
-      {
-        x: 64,
-        width: 232,
-        lines: [
-          input.instructorName || '_____________________________',
-          input.instructorRole,
-          input.instructorRegistry ? `MTB. ${input.instructorRegistry}` : '',
-          'Instrutor/Responsável Técnico',
-        ],
-      },
-      {
-        x: 312,
-        width: 242,
-        lines: [
-          input.legalRepName ||
-            input.companyTradeName ||
-            input.companyLegalName,
-          `CNPJ: ${formatCnpj(input.companyCnpj)}`,
-          'Representante Legal',
-        ],
-      },
-      {
-        x: 568,
-        width: 214,
-        lines: [
-          worker.name,
-          'Treinando',
-          `RG/CPF: ${formatCpf(worker.cpf)}`,
-        ],
-      },
-    ];
-    for (const col of cols) {
-      doc
-        .moveTo(col.x + 8, sigY)
-        .lineTo(col.x + col.width - 8, sigY)
-        .strokeColor(INK)
-        .lineWidth(0.7)
-        .stroke();
-      doc
-        .font('Times-Roman')
-        .fontSize(15)
-        .fillColor(INK)
-        .text(col.lines.filter(Boolean).join('\n'), col.x, sigY + 8, {
-          width: col.width,
-          align: 'center',
-          lineGap: 2.2,
-          height: 90,
-        });
-    }
+    drawCertificateBody(doc, input, worker, 193, w);
+    drawSignatureColumns(doc, input, worker, 456);
     if (nr35) {
       await drawImage(doc, input.assets.SEAL, 592, 508, 168, 68);
     }
@@ -380,14 +451,64 @@ export class TrainingPdfService {
   ) {
     const w = doc.page.width;
     const h = doc.page.height;
-    doc.save();
-    doc.rect(0, 0, w, h).fill('#ffffff');
-    doc.restore();
-    const nr35 = isNr35(input.nrLabel);
+    const key = isNr35(input.nrLabel) ? 'nr35' : 'nr01';
     const topics = input.topics.length
       ? input.topics
       : ['Conteúdo definido no modelo do curso'];
+    const template = bundledTemplatePage(input.nrLabel, 2);
+    if (template) {
+      await drawImage(doc, template, 0, 0, w, h);
+      const layout = BACK_LAYOUT[key];
+      coverWhite(doc, layout.topicsCover);
+      coverWhite(doc, layout.addressCover);
+      if (key === 'nr01') {
+        doc
+          .font('Times-BoldItalic')
+          .fontSize(15)
+          .text(`${topics[0]};`, 71, 97, { width: w - 360, height: 22 });
+        let y = 123;
+        for (const item of topics.slice(1)) {
+          drawDiamond(doc, 78, y + 7);
+          doc
+            .font('Times-Roman')
+            .fontSize(15)
+            .fillColor(INK)
+            .text(`${item};`, 90, y, { width: w - 380, height: 32 });
+          y += 34.5;
+        }
+      } else {
+        doc
+          .font('Times-BoldItalic')
+          .fontSize(15)
+          .text(`${topics[0]};`, 71, 103, { width: w - 120, height: 22 });
+        let y = 135;
+        for (const item of topics.slice(1)) {
+          drawDiamond(doc, 68, y + 7);
+          doc
+            .font('Times-Roman')
+            .fontSize(item.length > 90 ? 14 : 15)
+            .fillColor(INK)
+            .text(`${item};`, 80, y, { width: w - 140, height: 40 });
+          y += 43;
+        }
+      }
+      const [ax, , aw] = layout.addressCover;
+      doc
+        .font('Times-Roman')
+        .fontSize(12)
+        .fillColor(INK)
+        .text(input.address || '—', ax + 10, layout.addressTextY, {
+          width: aw - 20,
+          align: 'center',
+          lineGap: 1.5,
+        });
+      return;
+    }
 
+    doc.save();
+    doc.rect(0, 0, w, h).fill('#ffffff');
+    doc.restore();
+    const nr35 = key === 'nr35';
     if (!nr35) {
       await drawImage(doc, input.assets.RIGHT_LOGO, w - 276, 36, 220, 92);
       doc
@@ -435,7 +556,7 @@ export class TrainingPdfService {
     }
   }
 
-  private drawAddressBox(
+  private drawAddressText(
     doc: PDFKit.PDFDocument,
     x: number,
     y: number,
@@ -443,7 +564,6 @@ export class TrainingPdfService {
     h: number,
     address: string,
   ) {
-    doubleBox(doc, x, y, w, h);
     doc
       .font('Times-Bold')
       .fontSize(12)
@@ -463,6 +583,18 @@ export class TrainingPdfService {
         lineGap: 1.5,
         height: h - 40,
       });
+  }
+
+  private drawAddressBox(
+    doc: PDFKit.PDFDocument,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    address: string,
+  ) {
+    doubleBox(doc, x, y, w, h);
+    this.drawAddressText(doc, x, y, w, h, address);
   }
 
   private async drawRegister(

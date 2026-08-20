@@ -491,6 +491,8 @@ export class TrainingService {
           topics: seed.topics,
           registerSummary: seed.registerSummary,
           instructorRole: seed.instructorRole,
+          instructorName: seed.instructorName,
+          instructorRegistry: seed.instructorRegistry,
         })),
       });
       return TRAINING_DEFAULT_SEEDS.length;
@@ -515,6 +517,8 @@ export class TrainingService {
         topics: { set: nr01.topics },
         registerSummary: nr01.registerSummary,
         instructorRole: nr01.instructorRole,
+        instructorName: nr01.instructorName,
+        instructorRegistry: nr01.instructorRegistry,
       },
     });
     await this.prisma.trainingTemplate.updateMany({
@@ -530,6 +534,15 @@ export class TrainingService {
         topics: { set: nr35.topics },
         registerSummary: nr35.registerSummary,
         instructorRole: nr35.instructorRole,
+        instructorName: nr35.instructorName,
+        instructorRegistry: nr35.instructorRegistry,
+      },
+    });
+    await this.prisma.trainingTemplate.updateMany({
+      where: { organizationId, instructorName: '' },
+      data: {
+        instructorName: nr01.instructorName,
+        instructorRegistry: nr01.instructorRegistry,
       },
     });
   }

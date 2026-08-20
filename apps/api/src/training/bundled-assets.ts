@@ -16,6 +16,14 @@ export function bundledAssetPath(fileName: string): string | null {
   return null;
 }
 
+export function bundledTemplatePage(
+  nrLabel: string,
+  page: 1 | 2,
+): string | null {
+  const key = (nrLabel || '').toUpperCase().includes('35') ? 'nr35' : 'nr01';
+  return bundledAssetPath(`templates/template-${key}-p${page}.png`);
+}
+
 export function bundledAssetsForNr(nrLabel: string): Record<string, string> {
   const nr = (nrLabel || '').toUpperCase();
   const map: Record<string, string> = {};

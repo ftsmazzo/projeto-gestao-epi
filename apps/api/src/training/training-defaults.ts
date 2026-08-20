@@ -8,6 +8,8 @@ export type TrainingDefaultSeed = {
   topics: string[];
   registerSummary: string;
   instructorRole: string;
+  instructorName: string;
+  instructorRegistry: string;
 };
 
 export const TRAINING_DEFAULT_SEEDS: TrainingDefaultSeed[] = [
@@ -37,6 +39,8 @@ export const TRAINING_DEFAULT_SEEDS: TrainingDefaultSeed[] = [
     registerSummary:
       'Objetivo é capacitar todos os funcionários que receberão orientações dos riscos existentes no ambiente de trabalho, noções básicas de Segurança do trabalho entre outras informações como conduta serão feitas, de modo a garantir que todos os novos funcionários estarão cientes de seus deveres e aptos a desenvolver suas atividades de forma a garantir permanentemente a segurança e a saúde.',
     instructorRole: 'Técnico em Segurança do Trabalho',
+    instructorName: 'Ageziandro Antonio Martins',
+    instructorRegistry: 'SP/015088.6',
   },
   {
     name: 'Trabalho em Altura NR-35',
@@ -58,5 +62,7 @@ export const TRAINING_DEFAULT_SEEDS: TrainingDefaultSeed[] = [
     registerSummary:
       'O curso tem como objetivo instruir sobre a norma NR 35 Trabalho em Altura, que estabelece os requisitos mínimos e as medidas de proteção para o Trabalho em Altura, envolvendo o planejamento, organização e execução, de forma a garantir a segurança e a saúde dos trabalhadores envolvidos direta ou indiretamente com esta atividade.',
     instructorRole: 'Técnico em Segurança do Trabalho',
+    instructorName: 'Ageziandro Antonio Martins',
+    instructorRegistry: 'SP/015088-6',
   },
 ];
