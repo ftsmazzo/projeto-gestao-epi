@@ -1478,6 +1478,9 @@ export interface ConfirmPgroImportPayload {
     allocatedLifeQuota?: number;
     contactEmail?: string | null;
     contactPhone?: string | null;
+    addressLine?: string | null;
+    city?: string | null;
+    state?: string | null;
   };
   /** Gestor do portal: recebe link e senha por e-mail/WhatsApp. */
   initialManager?: {

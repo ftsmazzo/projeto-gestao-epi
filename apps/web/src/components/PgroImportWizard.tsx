@@ -21,6 +21,7 @@ import { storeClientAccessOnce } from '../lib/client-access-session';
 import { formatCnpj, formatCnpjInput } from '../lib/cnpj';
 import { listEpiNeeds } from '../lib/epi-needs';
 import { confirmPgroImport, previewPgroImport } from '../lib/pgro';
+import { listOperationalUnits } from '../lib/operational-units';
 import { getServedClient } from '../lib/served-clients';
 import { WizardSteps } from './ui/WizardSteps';
 
@@ -272,11 +273,34 @@ export function PgroImportWizard({
     ]);
   }
 
-  function applyRun(run: PgroImportRun) {
+  async function applyRun(run: PgroImportRun) {
     setRunId(run.id);
     setFileName(run.fileName);
-    setServedClientId(run.servedClientId ?? lockedClientId ?? null);
-    setCompany(run.company ?? emptyCompany());
+    const clientId = run.servedClientId ?? lockedClientId ?? null;
+    setServedClientId(clientId);
+    let nextCompany = run.company ?? emptyCompany();
+    if (clientId) {
+      try {
+        const units = await listOperationalUnits(clientId);
+        const matriz =
+          units.find(
+            (unit) =>
+              unit.code?.toUpperCase() === 'MATRIZ' ||
+              unit.name.trim().toLowerCase() === 'matriz',
+          ) ?? units[0];
+        if (matriz) {
+          nextCompany = {
+            ...nextCompany,
+            addressLine: nextCompany.addressLine || matriz.addressLine,
+            city: nextCompany.city || matriz.city,
+            state: nextCompany.state || matriz.state,
+          };
+        }
+      } catch {
+        // revisao segue com o que veio do PGR
+      }
+    }
+    setCompany(nextCompany);
     setWarnings(run.warnings ?? []);
     setParseMeta(
       run.parseMeta ??
@@ -337,7 +361,7 @@ export function PgroImportWizard({
         file,
         servedClientId: lockedClientId,
       });
-      applyRun(run);
+      await applyRun(run);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'Falha ao processar o documento.',
@@ -385,6 +409,9 @@ export function PgroImportWizard({
           allocatedLifeQuota: Number(allocatedLifeQuota) || 0,
           contactEmail: contactEmail.trim() || null,
           contactPhone: contactPhone.trim() || null,
+          addressLine: company.addressLine?.trim() || null,
+          city: company.city?.trim() || null,
+          state: company.state?.trim().toUpperCase().slice(0, 2) || null,
         },
         ...(provisionManager
           ? {
@@ -686,6 +713,20 @@ export function PgroImportWizard({
                 }
               />
             </div>
+            <div className="field field--span-2">
+              <label htmlFor="addressLine">Endereco</label>
+              <input
+                id="addressLine"
+                value={company.addressLine ?? ''}
+                onChange={(e) =>
+                  setCompany((prev) => ({
+                    ...prev,
+                    addressLine: e.target.value || null,
+                  }))
+                }
+                placeholder="Rua, numero, bairro, CEP"
+              />
+            </div>
             <div className="field">
               <label htmlFor="city">Municipio</label>
               <input
@@ -703,11 +744,14 @@ export function PgroImportWizard({
               <label htmlFor="state">UF</label>
               <input
                 id="state"
+                maxLength={2}
                 value={company.state ?? ''}
                 onChange={(e) =>
                   setCompany((prev) => ({
                     ...prev,
-                    state: e.target.value || null,
+                    state: e.target.value
+                      ? e.target.value.toUpperCase().slice(0, 2)
+                      : null,
                   }))
                 }
               />
@@ -1313,6 +1357,14 @@ export function PgroImportWizard({
               <dt>CNPJ</dt>
               <dd className="mono">
                 {company.cnpj ? formatCnpj(company.cnpj) : '—'}
+              </dd>
+            </div>
+            <div>
+              <dt>Endereco</dt>
+              <dd>
+                {[company.addressLine, company.city, company.state]
+                  .filter(Boolean)
+                  .join(', ') || '—'}
               </dd>
             </div>
             <div>

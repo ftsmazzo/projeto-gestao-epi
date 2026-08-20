@@ -54,6 +54,21 @@ export class ConfirmPgroCompanyDto {
   @IsString()
   @MaxLength(40)
   contactPhone?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  addressLine?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  city?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2)
+  state?: string | null;
 }
 
 export class ConfirmPgroInitialManagerDto {

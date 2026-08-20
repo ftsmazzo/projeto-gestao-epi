@@ -38,8 +38,11 @@ const emptyForm: UnitFormState = {
 };
 
 function locationLabel(unit: OperationalUnit) {
-  const parts = [unit.city, unit.state].filter(Boolean);
-  return parts.length > 0 ? parts.join(' / ') : '—';
+  const parts = [
+    unit.addressLine,
+    [unit.city, unit.state].filter(Boolean).join(' - '),
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : '—';
 }
 
 export default function ClienteUnidadesPage() {
@@ -325,14 +328,11 @@ export default function ClienteUnidadesPage() {
                 <div className="stack-card__body stack-card__body--stack">
                   <div className="stack-card__main">
                     <strong className="stack-card__title">{unit.name}</strong>
-                    {unit.addressLine ? (
-                      <p className="stack-card__meta">{unit.addressLine}</p>
-                    ) : null}
+                    <p className="stack-card__meta">{locationLabel(unit)}</p>
                     <p className="stack-card__meta mono">
                       {unit.code || 'Sem codigo'}
                       {unit.cnpj ? ` · ${formatCnpj(unit.cnpj)}` : ''}
                     </p>
-                    <p className="stack-card__meta">{locationLabel(unit)}</p>
                     <span
                       className={`status-pill status-pill--${unit.status.toLowerCase()}`}
                       style={{ marginTop: '0.45rem' }}

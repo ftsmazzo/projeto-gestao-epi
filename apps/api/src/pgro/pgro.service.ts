@@ -481,6 +481,32 @@ export class PgroService {
         if (matriz.created) {
           warnings.push('Unidade Matriz criada automaticamente para o cliente.');
         }
+        const addressLine = dto.company.addressLine?.trim() || null;
+        const city = dto.company.city?.trim() || null;
+        const stateRaw = dto.company.state?.trim().toUpperCase() || null;
+        const state =
+          stateRaw && stateRaw.length === 2 ? stateRaw : null;
+        if (addressLine || city || state) {
+          const current = await tx.operationalUnit.findFirst({
+            where: { id: matriz.id, organizationId },
+            select: {
+              id: true,
+              addressLine: true,
+              city: true,
+              state: true,
+            },
+          });
+          if (current) {
+            await tx.operationalUnit.update({
+              where: { id: current.id },
+              data: {
+                ...(addressLine ? { addressLine } : {}),
+                ...(city ? { city } : {}),
+                ...(state ? { state } : {}),
+              },
+            });
+          }
+        }
       }
 
       const sectorIdByName = new Map<string, string>();
