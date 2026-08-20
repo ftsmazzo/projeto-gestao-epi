@@ -319,14 +319,6 @@ function drawCertificateBody(
         width: Math.max(w, 1),
         height: fontSize + 2,
       });
-      if (word.name) {
-        doc
-          .moveTo(x, y + fontSize + 1)
-          .lineTo(x + w, y + fontSize + 1)
-          .lineWidth(0.7)
-          .strokeColor(INK)
-          .stroke();
-      }
       x += w;
       if (j < line.length - 1) {
         const nextWord = line[j + 1];
@@ -410,7 +402,7 @@ const FRONT_LAYOUT: Record<
     covers: [],
   },
   nr35: {
-    bodyY: 202,
+    bodyY: 236,
     sigY: 470,
     covers: [],
   },
@@ -968,7 +960,14 @@ export class TrainingPdfService {
       y += rowH;
     }
 
-    y += 18;
+    y += 14;
+    const sigBoxH = 52;
+    const sigBoxW = Math.min(280, boxW * 0.48);
+    const sigBoxX = left + (boxW - sigBoxW) / 2;
+    doc.save();
+    doc.rect(sigBoxX, y, sigBoxW, sigBoxH).fill('#E8E8E8');
+    doc.rect(sigBoxX, y, sigBoxW, sigBoxH).lineWidth(0.55).strokeColor(INK).stroke();
+    doc.restore();
     doc
       .font('Times-Roman')
       .fontSize(10)
@@ -983,9 +982,9 @@ export class TrainingPdfService {
         ]
           .filter(Boolean)
           .join('\n'),
-        left,
-        y,
-        { width: boxW, align: 'center', lineGap: 1.5 },
+        sigBoxX + 6,
+        y + 8,
+        { width: sigBoxW - 12, align: 'center', lineGap: 1.5 },
       );
     if (pageCount > 1) {
       doc
