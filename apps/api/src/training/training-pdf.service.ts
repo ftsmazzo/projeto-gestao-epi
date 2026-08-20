@@ -192,6 +192,29 @@ function coverWhite(
   doc.restore();
 }
 
+function wrapCenteredLines(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  width: number,
+  fontSize: number,
+) {
+  doc.font('Times-Roman').fontSize(fontSize);
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const trial = current ? `${current} ${word}` : word;
+    if (doc.widthOfString(trial) <= width) {
+      current = trial;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 function drawCertificateBody(
   doc: PDFKit.PDFDocument,
   input: TrainingPdfInput,
@@ -199,18 +222,24 @@ function drawCertificateBody(
   bodyY: number,
   pageW: number,
 ) {
-  const bodyX = 64;
-  const bodyW = pageW - 128;
+  const bodyX = 72;
+  const bodyW = pageW - 144;
+  const fontSize = 26;
   const full = `Certificamos que o Senhor ${worker.name}, ${input.certificateCourseClause}, Realizado no Período de ${formatDateExtenso(input.heldOn)}, Cumprindo a Carga Horária de ${padHours(input.hours)} Horas.`;
-  doc
-    .font('Times-Roman')
-    .fontSize(25)
-    .fillColor(INK)
-    .text(full, bodyX, bodyY, {
-      width: bodyW,
-      align: 'center',
-      lineGap: 14.5,
-    });
+  const lines = wrapCenteredLines(doc, full, bodyW * 0.86, fontSize);
+  let y = bodyY;
+  for (const line of lines) {
+    doc
+      .font('Times-Roman')
+      .fontSize(fontSize)
+      .fillColor(INK)
+      .text(line, bodyX, y, {
+        width: bodyW,
+        align: 'center',
+        lineBreak: false,
+      });
+    y += fontSize + 18;
+  }
 }
 
 function drawSignatureColumns(
@@ -259,13 +288,13 @@ function drawSignatureColumns(
     doc.restore();
     doc
       .font('Times-Roman')
-      .fontSize(15)
+      .fontSize(16)
       .fillColor(INK)
       .text(col.lines.filter(Boolean).join('\n'), col.x, sigY, {
         width: col.width,
         align: 'center',
-        lineGap: 2.2,
-        height: 90,
+        lineGap: 1.4,
+        height: 82,
       });
   }
 }
@@ -275,8 +304,8 @@ const FRONT_LAYOUT: Record<
   { bodyY: number; sigY: number; covers: Rect[] }
 > = {
   nr01: {
-    bodyY: 182,
-    sigY: 478,
+    bodyY: 188,
+    sigY: 468,
     covers: [
       [58, 175, 726, 220],
       // apaga assinaturas de caneta + texto do molde Word
@@ -303,27 +332,24 @@ const BACK_LAYOUT: Record<
     topicCovers: Rect[];
     addressCover: Rect;
     addressTextY: number;
-    redrawAddressBox: true;
   }
 > = {
   nr01: {
     topicCovers: [
-      [64, 94, 540, 360],
-      // inclui o fim das linhas longas + descida do último tópico do molde
-      [64, 450, 540, 80],
+      [64, 94, 510, 368],
+      [64, 460, 452, 28],
+      [64, 496, 385, 30],
     ],
-    addressCover: [456, 487, 336, 72],
-    addressTextY: 517,
-    redrawAddressBox: true as const,
+    addressCover: [462, 506, 322, 42],
+    addressTextY: 509,
   },
   nr35: {
     topicCovers: [
       [58, 98, 560, 340],
       [58, 438, 90, 40],
     ],
-    addressCover: [152, 450, 346, 78],
-    addressTextY: 480,
-    redrawAddressBox: true as const,
+    addressCover: [164, 470, 318, 36],
+    addressTextY: 471,
   },
 };
 
@@ -367,14 +393,21 @@ function drawDoubleRule(doc: PDFKit.PDFDocument, x: number, y: number, w: number
   doc.restore();
 }
 
-function drawDiamond(doc: PDFKit.PDFDocument, x: number, y: number, size = 3.1) {
+function drawTopicMarker(doc: PDFKit.PDFDocument, x: number, y: number) {
+  const cx = x + 5;
+  const cy = y + 8;
   doc.save();
   doc
-    .moveTo(x, y - size)
-    .lineTo(x + size, y)
-    .lineTo(x, y + size)
-    .lineTo(x - size, y)
-    .closePath()
+    .polygon(
+      [cx, cy - 4.1],
+      [cx + 1.45, cy - 1.45],
+      [cx + 4.1, cy],
+      [cx + 1.45, cy + 1.45],
+      [cx, cy + 4.1],
+      [cx - 1.45, cy + 1.45],
+      [cx - 4.1, cy],
+      [cx - 1.45, cy - 1.45],
+    )
     .fill(INK);
   doc.restore();
 }
@@ -488,58 +521,51 @@ export class TrainingPdfService {
       if (key === 'nr01') {
         doc
           .font('Times-BoldItalic')
-          .fontSize(15)
+          .fontSize(16)
           .fillColor(INK)
-          .text(`${topics[0]};`, 71, 97, { width: w - 280, height: 22 });
+          .text(`${topics[0]};`, 71, 97, { width: w - 300, height: 22 });
         let y = 123;
         topics.slice(1).forEach((item, idx) => {
           const nearAddress = idx >= 10;
-          drawDiamond(doc, 78, y + 7);
+          drawTopicMarker(doc, 70, y);
           doc
             .font('Times-Roman')
-            .fontSize(nearAddress && item.length > 55 ? 13 : 15)
+            .fontSize(16)
             .fillColor(INK)
             .text(`${item};`, 90, y, {
-              width: nearAddress ? 350 : w - 300,
-              height: 30,
-              lineBreak: false,
-              ellipsis: true,
+              width: nearAddress ? 348 : w - 300,
+              height: nearAddress ? 32 : 30,
             });
           y += 34.5;
         });
       } else {
         doc
           .font('Times-BoldItalic')
-          .fontSize(15)
+          .fontSize(16)
           .fillColor(INK)
           .text(`${topics[0]};`, 71, 103, { width: w - 120, height: 22 });
         let y = 135;
         for (const item of topics.slice(1)) {
-          drawDiamond(doc, 68, y + 7);
+          drawTopicMarker(doc, 60, y);
           doc
             .font('Times-Roman')
-            .fontSize(item.length > 90 ? 14 : 15)
+            .fontSize(item.length > 90 ? 15 : 16)
             .fillColor(INK)
             .text(`${item};`, 80, y, { width: w - 140, height: 40 });
           y += 43;
         }
       }
-      coverWhite(doc, layout.addressCover);
-      const [ax, ay, aw, ah] = layout.addressCover;
-      if (layout.redrawAddressBox) {
-        this.drawAddressBox(doc, ax, ay, aw, ah, input.address?.trim() || '—');
-      } else {
-        doc
-          .font('Times-Roman')
-          .fontSize(12)
-          .fillColor(INK)
-          .text(input.address?.trim() || '—', ax + 10, layout.addressTextY, {
-            width: aw - 20,
-            align: 'center',
-            lineGap: 1.2,
-            height: 44,
-          });
-      }
+      const [ax, , aw] = layout.addressCover;
+      doc
+        .font('Times-Roman')
+        .fontSize(12)
+        .fillColor(INK)
+        .text(input.address?.trim() || '—', ax, layout.addressTextY, {
+          width: aw,
+          align: 'center',
+          lineGap: 1.2,
+          height: 36,
+        });
       return;
     }
 
@@ -551,7 +577,7 @@ export class TrainingPdfService {
       await drawImage(doc, input.assets.RIGHT_LOGO, w - 276, 36, 220, 92);
       doc
         .font('Times-Bold')
-        .fontSize(15)
+        .fontSize(16)
         .fillColor(INK)
         .text('Conteúdo Programático:', 71, 71.5, {
           width: 360,
@@ -561,14 +587,14 @@ export class TrainingPdfService {
         });
       doc
         .font('Times-BoldItalic')
-        .fontSize(15)
+        .fontSize(16)
         .text(`${topics[0]};`, 71, 97, { width: w - 360, height: 22 });
       let y = 123;
       for (const item of topics.slice(1)) {
-        drawDiamond(doc, 78, y + 7);
+        drawTopicMarker(doc, 70, y);
         doc
           .font('Times-Roman')
-          .fontSize(15)
+          .fontSize(16)
           .fillColor(INK)
           .text(`${item};`, 90, y, { width: w - 380, height: 32 });
         y += 34.5;
@@ -577,15 +603,15 @@ export class TrainingPdfService {
     } else {
       doc
         .font('Times-BoldItalic')
-        .fontSize(15)
+        .fontSize(16)
         .fillColor(INK)
         .text(`${topics[0]};`, 71, 71.5, { width: w - 120, height: 22 });
       let y = 103;
       for (const item of topics) {
-        drawDiamond(doc, 68, y + 7);
+        drawTopicMarker(doc, 60, y);
         doc
           .font('Times-Roman')
-          .fontSize(item.length > 90 ? 14 : 15)
+          .fontSize(item.length > 90 ? 15 : 16)
           .fillColor(INK)
           .text(`${item};`, 80, y, { width: w - 140, height: 40 });
         y += 43;
@@ -672,84 +698,111 @@ export class TrainingPdfService {
     await drawImage(doc, input.clientLogoPath, 428, 20, 164, 40);
 
     let y = 64;
-    const row = (height: number, draw: () => void) => {
-      doc.save();
-      doc.rect(left, y, boxW, height).lineWidth(0.6).strokeColor(INK).stroke();
-      doc.restore();
+    const metaTop = y;
+    const row = (height: number, draw: () => void, withRule = true) => {
       draw();
       y += height;
+      if (!withRule) return;
+      doc.save();
+      doc
+        .moveTo(left, y)
+        .lineTo(right, y)
+        .lineWidth(0.55)
+        .strokeColor(INK)
+        .stroke();
+      doc.restore();
     };
 
-    row(18, () => {
+    row(20, () => {
       doc
         .font('Times-Roman')
-        .fontSize(10)
+        .fontSize(11)
         .fillColor(INK)
-        .text(`Treinamento: ${input.courseTitle}`, left + 4, y + 4, {
-          width: 360,
+        .text(`Treinamento: ${input.courseTitle}`, left + 4, y + 5, {
+          width: boxW - 210,
         });
       doc.text(
         `Interno (${marks.interno})     T.L.T. (${marks.tlt})     Externo (${marks.externo})`,
-        right - 198,
-        y + 4,
-        { width: 194 },
+        right - 200,
+        y + 5,
+        { width: 196 },
       );
     });
-    row(18, () => {
+    row(22, () => {
       const cells = [
         ['Nº. Controle:', input.controlNumber || '—'],
         ['Local:', input.location || '—'],
         ['Carga horária:', `${padHours(input.hours)} horas`],
         ['Data da Realização:', formatDateBr(input.heldOn)],
       ];
+          const weights = [0.2, 0.24, 0.2, 0.36];
+      let x = left;
       cells.forEach((pair, idx) => {
+        const colW = boxW * weights[idx];
+        if (idx > 0) {
+          doc.save();
+          doc
+            .moveTo(x, y)
+            .lineTo(x, y + 22)
+            .lineWidth(0.5)
+            .strokeColor(INK)
+            .stroke();
+          doc.restore();
+        }
         doc
           .font('Times-Roman')
           .fontSize(10)
           .fillColor(INK)
-          .text(`${pair[0]} ${pair[1]}`, left + 4 + idx * 143, y + 4, {
-            width: 140,
+          .text(`${pair[0]} ${pair[1]}`, x + 4, y + 6, {
+            width: colW - 8,
+            lineBreak: false,
+            ellipsis: true,
           });
+        x += colW;
       });
     });
-    row(18, () => {
+    row(20, () => {
       doc
         .font('Times-Roman')
-        .fontSize(10)
+        .fontSize(11)
         .fillColor(INK)
-        .text(
-          `Empresa: ${input.companyLegalName}`,
-          left + 4,
-          y + 4,
-          { width: boxW - 8 },
-        );
-    });
-    row(18, () => {
-      doc
-        .font('Times-Roman')
-        .fontSize(10)
-        .fillColor(INK)
-        .text(`Endereço: ${input.address || '—'}`, left + 4, y + 4, {
+        .text(`Empresa: ${input.companyLegalName}`, left + 4, y + 5, {
           width: boxW - 8,
         });
     });
-    const summaryH = 72;
+    row(20, () => {
+      doc
+        .font('Times-Roman')
+        .fontSize(11)
+        .fillColor(INK)
+        .text(`Endereço: ${input.address || '—'}`, left + 4, y + 5, {
+          width: boxW - 8,
+        });
+    });
+    const summaryH = 76;
     row(summaryH, () => {
       doc
         .font('Times-Bold')
-        .fontSize(10)
+        .fontSize(11)
         .fillColor(INK)
-        .text('Conteúdo resumido do curso (utilizar máximo 10 linhas):', left + 4, y + 3, {
-          width: boxW - 8,
-        });
+        .text(
+          'Conteúdo resumido do curso (utilizar máximo 10 linhas):',
+          left + 4,
+          y + 4,
+          { width: boxW - 8, align: 'center' },
+        );
       doc
         .font('Times-Roman')
-        .fontSize(9.5)
-        .text(input.registerSummary || '—', left + 4, y + 16, {
-          width: boxW - 8,
-          height: summaryH - 20,
+        .fontSize(10.5)
+        .text(input.registerSummary || '—', left + 36, y + 20, {
+          width: boxW - 72,
+          height: summaryH - 24,
+          align: 'center',
         });
-    });
+    }, false);
+    doc.save();
+    doc.rect(left, metaTop, boxW, y - metaTop).lineWidth(0.6).strokeColor(INK).stroke();
+    doc.restore();
 
     const cols = [
       { title: 'Nº.', width: 28 },
@@ -818,14 +871,16 @@ export class TrainingPdfService {
       doc.restore();
       let cx = left;
       cells.forEach((text, i) => {
-        doc.save();
-        doc
-          .moveTo(cx, y)
-          .lineTo(cx, y + rowH)
-          .lineWidth(0.35)
-          .strokeColor('#111111')
-          .stroke();
-        doc.restore();
+        if (i > 0) {
+          doc.save();
+          doc
+            .moveTo(cx, y)
+            .lineTo(cx, y + rowH)
+            .lineWidth(0.35)
+            .strokeColor('#111111')
+            .stroke();
+          doc.restore();
+        }
         doc
           .font('Times-Roman')
           .fontSize(9)
