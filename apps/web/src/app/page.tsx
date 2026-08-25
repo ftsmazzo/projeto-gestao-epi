@@ -24,6 +24,9 @@ export default function HomePage() {
           <Link className="btn btn-ghost" href="/portal/login">
             Portal do cliente
           </Link>
+          <Link className="btn btn-ghost" href="/branding">
+            Marca
+          </Link>
           <Link className="btn btn-primary" href="/login">
             Entrar
           </Link>
