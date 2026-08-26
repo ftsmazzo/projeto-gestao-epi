@@ -419,7 +419,23 @@ function drawCertificateBody(
   stayOnPage(doc, pageIndex);
 }
 
-function drawSignatureColumns(
+async function drawInstructorSignatureImage(
+  doc: PDFKit.PDFDocument,
+  filePath: string | null | undefined,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  pageIndex: number,
+) {
+  if (!filePath) return false;
+  stayOnPage(doc, pageIndex);
+  const ok = await drawImage(doc, filePath, x, y, w, h);
+  stayOnPage(doc, pageIndex);
+  return ok;
+}
+
+async function drawSignatureColumns(
   doc: PDFKit.PDFDocument,
   input: TrainingPdfInput,
   worker: TrainingPdfWorker,
@@ -435,10 +451,12 @@ function drawSignatureColumns(
   const instructorRole = input.instructorRole
     ? toTitleCase(input.instructorRole)
     : '';
-  const cols: Array<{ x: number; width: number; lines: string[] }> = [
+  const instructorSig = input.assets.INSTRUCTOR_SIGNATURE;
+  const cols: Array<{ x: number; width: number; lines: string[]; signature?: boolean }> = [
     {
       x: 68,
       width: 224,
+      signature: true,
       lines: [
         instructorName,
         instructorRole,
@@ -474,6 +492,17 @@ function drawSignatureColumns(
       .strokeColor(INK)
       .stroke();
     doc.restore();
+    if (col.signature && instructorSig) {
+      await drawInstructorSignatureImage(
+        doc,
+        instructorSig,
+        col.x + 24,
+        lineY - 40,
+        col.width - 48,
+        34,
+        pageIndex,
+      );
+    }
     const lines = col.lines.filter(Boolean);
     let y = safeSigY;
     for (const line of lines) {
@@ -647,7 +676,7 @@ export class TrainingPdfService {
       );
       stayOnPage(doc, pageIndex);
       drawCertificateBody(doc, input, worker, layout.bodyY, w, pageIndex);
-      drawSignatureColumns(doc, input, worker, layout.sigY, pageIndex);
+      await drawSignatureColumns(doc, input, worker, layout.sigY, pageIndex);
       stayOnPage(doc, pageIndex);
       return;
     }
@@ -667,7 +696,7 @@ export class TrainingPdfService {
     await drawImage(doc, input.assets.HEADER, w - 268, 26, 246, 78);
     stayOnPage(doc, pageIndex);
     drawCertificateBody(doc, input, worker, 197, w, pageIndex);
-    drawSignatureColumns(doc, input, worker, 478, pageIndex);
+    await drawSignatureColumns(doc, input, worker, 478, pageIndex);
     if (nr35) {
       await drawImage(doc, input.assets.SEAL, 592, 508, 168, 68);
     }
@@ -1075,7 +1104,8 @@ export class TrainingPdfService {
     const lineH = 10;
     const padY = 3;
     const maxCellLines = 2;
-    const sigRowH = 48;
+    const instructorSig = input.assets.INSTRUCTOR_SIGNATURE;
+    const sigRowH = instructorSig ? 58 : 48;
     const footerReserve = pageCount > 1 ? 36 : 20;
 
     for (const rowData of dataRows) {
@@ -1149,11 +1179,24 @@ export class TrainingPdfService {
         : 'Instrutor',
       input.instructorRegistry ? `MTB/${input.instructorRegistry}` : '',
     ].filter(Boolean);
-    let sigTextY = y + 7;
+    if (instructorSig) {
+      await drawInstructorSignatureImage(
+        doc,
+        instructorSig,
+        left + 18,
+        y + 6,
+        150,
+        32,
+        pageRef,
+      );
+    }
+    let sigTextY = y + (instructorSig ? 10 : 7);
+    const textX = instructorSig ? left + 178 : left + 6;
+    const textW = instructorSig ? tableW - 184 : tableW - 12;
     for (const line of sigLines) {
       doc.font('Times-Roman').fillColor(INK);
-      drawSingleLine(doc, line, left + 6, sigTextY, tableW - 12, {
-        align: 'center',
+      drawSingleLine(doc, line, textX, sigTextY, textW, {
+        align: instructorSig ? 'left' : 'center',
         fontSize: 10,
         pageIndex: pageRef,
       });

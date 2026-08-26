@@ -42,5 +42,7 @@ export function bundledAssetsForNr(nrLabel: string): Record<string, string> {
     if (logo) map.LEFT_LOGO = logo;
     if (back) map.RIGHT_LOGO = back;
   }
+  const instructorSig = bundledAssetPath('instructor-signature.png');
+  if (instructorSig) map.INSTRUCTOR_SIGNATURE = instructorSig;
   return map;
 }

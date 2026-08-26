@@ -31,6 +31,7 @@ const ASSET_KINDS: TrainingAssetKind[] = [
   'LEFT_LOGO',
   'RIGHT_LOGO',
   'SEAL',
+  'INSTRUCTOR_SIGNATURE',
 ];
 
 @Injectable()

@@ -1523,6 +1523,7 @@ enum TrainingAssetKind {
   LEFT_LOGO
   RIGHT_LOGO
   SEAL
+  INSTRUCTOR_SIGNATURE
 }
 
 /// Modelo de certificado e/ou registro de treinamento da consultoria.

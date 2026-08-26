@@ -2956,7 +2956,12 @@ export interface PublicSstUnlockResponse {
   };
 }
 
-export type TrainingAssetKind = 'HEADER' | 'LEFT_LOGO' | 'RIGHT_LOGO' | 'SEAL';
+export type TrainingAssetKind =
+  | 'HEADER'
+  | 'LEFT_LOGO'
+  | 'RIGHT_LOGO'
+  | 'SEAL'
+  | 'INSTRUCTOR_SIGNATURE';
 export type TrainingDeliveryKind = 'INTERNO' | 'TLT' | 'EXTERNO';
 
 export interface TrainingTemplateAssetRef {

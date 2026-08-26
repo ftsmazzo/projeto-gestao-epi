@@ -28,6 +28,11 @@ const ASSET_LABELS: Array<{ kind: TrainingAssetKind; label: string; hint: string
     { kind: 'LEFT_LOGO', label: 'Logo do curso', hint: 'Integração ou selo NR-35' },
     { kind: 'RIGHT_LOGO', label: 'Arte do verso', hint: 'Ex.: INTEGRAR É PRECISO' },
     { kind: 'SEAL', label: 'Marca NR (opcional)', hint: 'NR-35 no rodapé direito' },
+    {
+      kind: 'INSTRUCTOR_SIGNATURE',
+      label: 'Assinatura do instrutor',
+      hint: 'Certificado (coluna esquerda) e registro de integração',
+    },
   ];
 
 const emptyForm = {
