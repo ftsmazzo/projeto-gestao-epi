@@ -31,6 +31,14 @@ function newManualId() {
     : `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const PGRO_MAX_NAME_LENGTH = 160;
+
+function clampPgroName(value: string, max = PGRO_MAX_NAME_LENGTH): string {
+  const cleaned = value.replace(/\s+/g, ' ').trim();
+  if (cleaned.length <= max) return cleaned;
+  return cleaned.slice(0, max).trimEnd();
+}
+
 type Step =
   | 'upload'
   | 'empresa'
@@ -441,7 +449,7 @@ export function PgroImportWizard({
         })),
         risks: risks.map((r) => ({
           tempId: r.tempId,
-          name: r.name,
+          name: clampPgroName(r.name),
           category: r.category,
           functionNames: r.functionNames,
           exposure: r.exposure,
@@ -451,11 +459,11 @@ export function PgroImportWizard({
         })),
         epiNeeds: epiNeeds.map((e) => ({
           tempId: e.tempId,
-          suggestedName: e.suggestedName,
+          suggestedName: clampPgroName(e.suggestedName),
           matchedEpiNeedId: e.matchedEpiNeedId,
           createNew: e.createNew,
           functionNames: e.functionNames,
-          riskNames: e.riskNames,
+          riskNames: e.riskNames?.map((name) => clampPgroName(name)),
           included: e.included,
         })),
       };

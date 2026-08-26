@@ -12,6 +12,7 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { OccupationalRiskCategory } from '@prisma/client';
+import { PGRO_MAX_NAME_LENGTH } from '../pgro-limits';
 
 /** Trunca textos longos do PGR antes do MaxLength. */
 function Truncate(max: number) {
@@ -72,9 +73,10 @@ export class ConfirmPgroCompanyDto {
 }
 
 export class ConfirmPgroInitialManagerDto {
+  @Truncate(PGRO_MAX_NAME_LENGTH)
   @IsString()
   @MinLength(2)
-  @MaxLength(160)
+  @MaxLength(PGRO_MAX_NAME_LENGTH)
   name!: string;
 
   @IsString()
@@ -92,9 +94,10 @@ export class ConfirmPgroSectorDto {
   @IsString()
   tempId!: string;
 
+  @Truncate(PGRO_MAX_NAME_LENGTH)
   @IsString()
   @MinLength(2)
-  @MaxLength(160)
+  @MaxLength(PGRO_MAX_NAME_LENGTH)
   name!: string;
 
   @IsBoolean()
@@ -105,14 +108,16 @@ export class ConfirmPgroFunctionDto {
   @IsString()
   tempId!: string;
 
+  @Truncate(PGRO_MAX_NAME_LENGTH)
   @IsString()
   @MinLength(2)
-  @MaxLength(160)
+  @MaxLength(PGRO_MAX_NAME_LENGTH)
   name!: string;
 
   @IsOptional()
+  @Truncate(PGRO_MAX_NAME_LENGTH)
   @IsString()
-  @MaxLength(160)
+  @MaxLength(PGRO_MAX_NAME_LENGTH)
   sectorName?: string | null;
 
   @IsOptional()
@@ -135,9 +140,10 @@ export class ConfirmPgroRiskDto {
   @IsString()
   tempId!: string;
 
+  @Truncate(PGRO_MAX_NAME_LENGTH)
   @IsString()
   @MinLength(2)
-  @MaxLength(160)
+  @MaxLength(PGRO_MAX_NAME_LENGTH)
   name!: string;
 
   @IsEnum(OccupationalRiskCategory)
@@ -171,9 +177,10 @@ export class ConfirmPgroEpiNeedDto {
   @IsString()
   tempId!: string;
 
+  @Truncate(PGRO_MAX_NAME_LENGTH)
   @IsString()
   @MinLength(2)
-  @MaxLength(160)
+  @MaxLength(PGRO_MAX_NAME_LENGTH)
   suggestedName!: string;
 
   @IsOptional()

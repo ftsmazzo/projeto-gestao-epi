@@ -35,6 +35,7 @@ import {
   type ExistingPgroSector,
 } from './pgro-diff';
 import { buildExtraAliasPack, learnFromConfirm } from './pgro-learn';
+import { clampPgroName } from './pgro-limits';
 import {
   extractPgroWithOpenAiText,
   mergePgroParseResults,
@@ -925,12 +926,20 @@ export class PgroService {
               ]
             : allJobIds();
         const riskNames = epi.riskNames ?? [];
+        const resolveRiskId = (riskName: string) => {
+          const trimmed = riskName.trim();
+          return (
+            riskIdByName.get(normalizeTextKey(trimmed)) ??
+            riskIdByName.get(normalizeTextKey(clampPgroName(trimmed))) ??
+            null
+          );
+        };
 
         for (const jobId of targetJobIds) {
           const riskIds: Array<string | null> =
             riskNames.length > 0
               ? riskNames
-                  .map((rn) => riskIdByName.get(normalizeTextKey(rn)) ?? null)
+                  .map((rn) => resolveRiskId(rn))
                   .filter((v, i, arr) => arr.indexOf(v) === i)
               : [null];
 

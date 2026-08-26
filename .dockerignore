@@ -24,6 +24,8 @@
 # Docs / misc not needed in image
 docs
 agent-transcripts
+tmp-cert-export
+apps/api/src/training/seed-images
 *.md
 !apps/**/README.md
 

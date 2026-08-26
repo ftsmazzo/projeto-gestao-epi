@@ -10,6 +10,7 @@ import {
   type PgroExtractedSector,
   type PgroParseResult,
 } from './pgro-parser';
+import { clampPgroName } from './pgro-limits';
 
 const RISK_CATEGORIES = new Set<string>(Object.values(OccupationalRiskCategory));
 
@@ -98,9 +99,11 @@ function llmToParseResult(
     .filter((fn) => fn.name.length >= 2);
 
   const risks: PgroExtractedRisk[] = (payload.risks ?? [])
-    .map((risk) => ({
+    .map((risk) => {
+      const name = clampPgroName((risk.name ?? '').trim());
+      return {
       tempId: randomUUID(),
-      name: (risk.name ?? '').trim(),
+      name,
       category: asCategory(risk.category),
       exposure: risk.exposure?.trim() || null,
       source: risk.source?.trim() || null,
@@ -114,7 +117,8 @@ function llmToParseResult(
       confidence: 'low' as const,
       extractionSource: 'KEYWORD' as const,
       gheName: null,
-    }))
+    };
+    })
     .filter((r) => r.name.length >= 2);
 
   const epiNeeds: PgroExtractedEpiNeed[] = (payload.epiNeeds ?? [])

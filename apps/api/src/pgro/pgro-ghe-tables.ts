@@ -13,6 +13,7 @@ import type {
   PgroExtractedRisk,
   PgroExtractedSector,
 } from './pgro-extract-types';
+import { clampPgroName } from './pgro-limits';
 
 export type {
   PgroExtractedEpiNeed,
@@ -373,12 +374,13 @@ export function gheTableBlocksToExtracted(blocks: ParsedGheTableBlock[]): {
 
     for (const row of block.risks) {
       riskRowCount += 1;
+      const agentName = clampPgroName(row.agent);
       const riskKey = normalizeTextKey(row.agent);
       const existing = riskMap.get(riskKey);
       if (!existing) {
         riskMap.set(riskKey, {
           tempId: randomUUID(),
-          name: row.agent,
+          name: agentName,
           category: row.category,
           exposure: row.exposure,
           source: row.source,
@@ -425,7 +427,7 @@ export function gheTableBlocksToExtracted(blocks: ParsedGheTableBlock[]): {
             matchedEpiNeedName: null,
             createNew: true,
             functionNames: [...fnNames],
-            riskNames: [row.agent],
+            riskNames: [agentName],
             included: fnNames.length > 0,
             confidence: 'high',
             extractionSource: 'GHE',
@@ -435,7 +437,7 @@ export function gheTableBlocksToExtracted(blocks: ParsedGheTableBlock[]): {
           prev.functionNames = [
             ...new Set([...prev.functionNames, ...fnNames]),
           ];
-          prev.riskNames = [...new Set([...prev.riskNames, row.agent])];
+          prev.riskNames = [...new Set([...prev.riskNames, agentName])];
           if (prev.functionNames.length > 0) prev.included = true;
         }
       }

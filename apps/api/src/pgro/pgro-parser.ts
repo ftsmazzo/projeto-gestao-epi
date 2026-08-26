@@ -18,6 +18,7 @@ import {
   inferOsRiskContext,
 } from '../client-structure/risk-context';
 import { DEFAULT_OCCUPATIONAL_RISK_SEEDS } from '../client-structure/risk-seeds';
+import { clampPgroName } from './pgro-limits';
 
 export type {
   ExtractionConfidence,
@@ -1972,11 +1973,12 @@ export function reminePgroCoverageForJobs(
       for (const block of relevant) {
         for (const row of block.risks) {
           const key = normalizeTextKey(row.agent);
+          const agentName = clampPgroName(row.agent);
           const existing = riskMap.get(key);
           if (!existing) {
             riskMap.set(key, {
               tempId: randomUUID(),
-              name: row.agent,
+              name: agentName,
               category: row.category,
               exposure: row.exposure,
               source: row.source,
@@ -2005,7 +2007,7 @@ export function reminePgroCoverageForJobs(
                 matchedEpiNeedName: null,
                 createNew: true,
                 functionNames: [functionName],
-                riskNames: [row.agent],
+                riskNames: [agentName],
                 included: true,
                 confidence: 'high',
                 extractionSource: 'GHE',
@@ -2015,8 +2017,8 @@ export function reminePgroCoverageForJobs(
               if (!prev.functionNames.includes(functionName)) {
                 prev.functionNames.push(functionName);
               }
-              if (!prev.riskNames.includes(row.agent)) {
-                prev.riskNames.push(row.agent);
+              if (!prev.riskNames.includes(agentName)) {
+                prev.riskNames.push(agentName);
               }
             }
           }

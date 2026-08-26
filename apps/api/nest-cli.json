@@ -7,7 +7,7 @@
     "assets": [
       {
         "include": "training/bundled/**/*",
-        "watchAssets": true
+        "watchAssets": false
       }
     ]
   }
