@@ -480,7 +480,7 @@ async function drawSignatureColumns(
     },
   ];
   const pageH = doc.page.height;
-  const safeSigY = Math.min(sigY, pageH - 58);
+  const safeSigY = Math.min(sigY, pageH - 90);
   for (const col of cols) {
     stayOnPage(doc, pageIndex);
     const lineY = safeSigY - 16;
