@@ -249,7 +249,7 @@ function PortalEstoqueContent() {
   );
   const [deductMode, setDeductMode] = useState<'remove' | 'target'>('target');
   const [deductQtyInput, setDeductQtyInput] = useState('');
-  const [deductReason, setDeductReason] = useState(
+  const [deductReason, setDeductReason] = useState<string>(
     SAIDA_REASON_PRESETS[0],
   );
   const [deductBusy, setDeductBusy] = useState(false);
