@@ -22,6 +22,7 @@ import type {
   PortalReportsActivityResponse,
   PortalReportsStockResponse,
   PortalStockEntradasResult,
+  PortalStockSaidaResult,
   PortalCustosDashboardResponse,
   PortalInvoiceUploadResult,
   PortalPgroPreview,
@@ -613,6 +614,19 @@ export async function createPortalStockEntradas(
   return clientApiFetch<PortalStockEntradasResult>('/portal/stock/entradas', {
     method: 'POST',
     body: JSON.stringify({ items }),
+  });
+}
+
+export async function createPortalStockSaida(input: {
+  epiItemId: string;
+  stockLocationId?: string;
+  quantity: number;
+  reason: string;
+  notes?: string;
+}) {
+  return clientApiFetch<PortalStockSaidaResult>('/portal/stock/saidas', {
+    method: 'POST',
+    body: JSON.stringify(input),
   });
 }
 

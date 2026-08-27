@@ -58,7 +58,10 @@ import {
   type PortalCreateDeliveryPayloadDto,
   type PortalCreateReturnDto,
 } from './dto/portal-delivery.dto';
-import type { PortalStockEntradasDto } from './dto/portal-stock.dto';
+import type {
+  PortalStockEntradasDto,
+  PortalStockSaidaDto,
+} from './dto/portal-stock.dto';
 import {
   resolveInvoiceDocumentAbsolutePath,
   saveInvoiceDocumentFile,
@@ -1491,6 +1494,98 @@ export class PortalService {
       locationId: location.id,
       created: results.length,
       items: results,
+    };
+  }
+
+  /**
+   * Baixa manual de estoque (ex.: corrigir digitacao na entrada 900→90).
+   * Registra SAIDA_MANUAL com motivo obrigatorio.
+   */
+  async createSaidaManual(
+    organizationId: string,
+    servedClientId: string,
+    userId: string,
+    dto: PortalStockSaidaDto,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    if (!userId) {
+      throw new BadRequestException(
+        'Usuario do portal sem vinculo para registrar movimentacao.',
+      );
+    }
+
+    const reason = dto.reason.trim();
+    if (reason.length < 3) {
+      throw new BadRequestException(
+        'Informe o motivo da baixa (ex.: erro de digitacao na entrada).',
+      );
+    }
+
+    const defaultLocation = await this.ensureDefaultLocation(
+      organizationId,
+      servedClientId,
+    );
+    const stockLocationId = dto.stockLocationId?.trim() || defaultLocation.id;
+
+    const location = await this.prisma.stockLocation.findFirst({
+      where: {
+        id: stockLocationId,
+        organizationId,
+        servedClientId,
+        isActive: true,
+      },
+      select: { id: true, name: true },
+    });
+    if (!location) {
+      throw new BadRequestException(
+        'Local de estoque nao encontrado para este cliente.',
+      );
+    }
+
+    const balance = await this.prisma.epiStockBalance.findFirst({
+      where: {
+        organizationId,
+        stockLocationId: location.id,
+        epiItemId: dto.epiItemId,
+        epiVariantId: null,
+      },
+      include: {
+        epiItem: {
+          select: { id: true, name: true, caNumber: true },
+        },
+      },
+    });
+    if (!balance) {
+      throw new BadRequestException(
+        'Nao ha saldo deste EPI no estoque do cliente.',
+      );
+    }
+    if (dto.quantity > balance.quantity) {
+      throw new BadRequestException(
+        `Quantidade a deduzir (${dto.quantity}) e maior que o saldo atual (${balance.quantity}).`,
+      );
+    }
+
+    const result = await this.stock.createMovement(organizationId, userId, {
+      type: EpiStockMovementType.SAIDA_MANUAL,
+      stockLocationId: location.id,
+      epiItemId: dto.epiItemId,
+      quantity: dto.quantity,
+      reason,
+      notes: dto.notes?.trim() || 'Baixa manual pelo Painel do Cliente',
+    });
+
+    return {
+      locationId: location.id,
+      locationName: location.name,
+      epiItemId: balance.epiItem.id,
+      epiName: balance.epiItem.name,
+      caNumber: balance.epiItem.caNumber,
+      quantityDeducted: dto.quantity,
+      previousQuantity: result.movement.previousQuantity,
+      newQuantity: result.movement.newQuantity,
+      movementId: result.movement.id,
+      reason,
     };
   }
 

@@ -5,6 +5,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
   MinLength,
   ValidateNested,
@@ -51,4 +52,29 @@ export class PortalStockEntradasDto {
   @ValidateNested({ each: true })
   @Type(() => PortalStockEntradaItemDto)
   items!: PortalStockEntradaItemDto[];
+}
+
+/** Baixa manual para corrigir entrada errada ou descarte. */
+export class PortalStockSaidaDto {
+  @IsString()
+  epiItemId!: string;
+
+  @IsOptional()
+  @IsString()
+  stockLocationId?: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+
+  @IsString()
+  @MinLength(3)
+  @MaxLength(300)
+  reason!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  notes?: string;
 }

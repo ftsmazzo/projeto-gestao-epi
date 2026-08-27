@@ -32,7 +32,7 @@ import {
   PreviewWorkerImportDto,
 } from '../workers/dto/worker-import.dto';
 import { PortalCreateDeliveryPayloadDto, PortalCancelDeliveryDto, PortalCreateReturnDto } from './dto/portal-delivery.dto';
-import { PortalStockEntradasDto } from './dto/portal-stock.dto';
+import { PortalStockEntradasDto, PortalStockSaidaDto } from './dto/portal-stock.dto';
 import { PortalPdfService } from './portal-pdf.service';
 import { PortalReportsService } from './portal-reports.service';
 import type { PortalReportFilters } from './portal-reports.service';
@@ -707,6 +707,20 @@ export class PortalController {
   ) {
     this.assertClient(user);
     return this.portal.createEntradas(
+      user.organizationId,
+      user.servedClientId,
+      user.sub,
+      dto,
+    );
+  }
+
+  @Post('stock/saidas')
+  stockSaidas(
+    @CurrentUser() user: ClientJwtPayload,
+    @Body() dto: PortalStockSaidaDto,
+  ) {
+    this.assertClient(user);
+    return this.portal.createSaidaManual(
       user.organizationId,
       user.servedClientId,
       user.sub,

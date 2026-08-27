@@ -24,6 +24,7 @@ import {
 } from '../../../lib/caepi-assist';
 import {
   createPortalStockEntradas,
+  createPortalStockSaida,
   fetchPortalEstoque,
   fetchPortalReportsActivity,
   fetchPortalReportsStock,
@@ -33,6 +34,11 @@ import {
 
 const SEARCH_MIN = 3;
 const SEARCH_DEBOUNCE_MS = 350;
+const SAIDA_REASON_PRESETS = [
+  'Erro de digitacao na entrada',
+  'Entrada duplicada',
+  'Ajuste de inventario',
+] as const;
 
 /** Converte "12,50" / "12.50" em centavos. Vazio = undefined. */
 function caDigits(raw: string): string {
@@ -238,6 +244,17 @@ function PortalEstoqueContent() {
   const [freeInvoiceFile, setFreeInvoiceFile] = useState<File | null>(null);
   const needSearchTimers = useRef<Record<string, number>>({});
 
+  const [deductRow, setDeductRow] = useState<PortalStockBalanceRow | null>(
+    null,
+  );
+  const [deductMode, setDeductMode] = useState<'remove' | 'target'>('target');
+  const [deductQtyInput, setDeductQtyInput] = useState('');
+  const [deductReason, setDeductReason] = useState(
+    SAIDA_REASON_PRESETS[0],
+  );
+  const [deductBusy, setDeductBusy] = useState(false);
+  const [deductError, setDeductError] = useState<string | null>(null);
+
   async function reload() {
     const [res, stock, activity] = await Promise.all([
       fetchPortalEstoque(),
@@ -439,6 +456,63 @@ function PortalEstoqueContent() {
         suggestLoading: false,
       })),
     );
+  }
+
+  function openDeduct(row: PortalStockBalanceRow) {
+    setDeductRow(row);
+    setDeductMode('target');
+    setDeductQtyInput('');
+    setDeductReason(SAIDA_REASON_PRESETS[0]);
+    setDeductError(null);
+  }
+
+  function closeDeduct() {
+    if (deductBusy) return;
+    setDeductRow(null);
+    setDeductError(null);
+  }
+
+  const deductParsed = Number.parseInt(deductQtyInput.replace(/\D/g, ''), 10);
+  const deductCurrent = deductRow?.quantity ?? 0;
+  const deductAmount =
+    !Number.isFinite(deductParsed) || deductParsed <= 0
+      ? 0
+      : deductMode === 'remove'
+        ? Math.min(deductParsed, deductCurrent)
+        : Math.max(0, deductCurrent - Math.min(deductParsed, deductCurrent));
+  const deductNewBalance = deductCurrent - deductAmount;
+  const deductCanSubmit =
+    Boolean(deductRow) &&
+    deductAmount > 0 &&
+    deductAmount <= deductCurrent &&
+    deductReason.trim().length >= 3 &&
+    !deductBusy;
+
+  async function submitDeduct() {
+    if (!deductRow || !deductCanSubmit) return;
+    setDeductBusy(true);
+    setDeductError(null);
+    setError(null);
+    setSuccess(null);
+    try {
+      const result = await createPortalStockSaida({
+        epiItemId: deductRow.epiItemId,
+        stockLocationId: deductRow.stockLocationId,
+        quantity: deductAmount,
+        reason: deductReason.trim(),
+      });
+      setSuccess(
+        `Baixa de ${result.quantityDeducted} un. em ${result.epiName}: saldo ${result.previousQuantity} → ${result.newQuantity}.`,
+      );
+      setDeductRow(null);
+      await reload();
+    } catch (err: unknown) {
+      setDeductError(
+        err instanceof Error ? err.message : 'Nao foi possivel deduzir o estoque.',
+      );
+    } finally {
+      setDeductBusy(false);
+    }
   }
 
   function resetNeedPickerToCorrelated(index: number) {
@@ -772,12 +846,13 @@ function PortalEstoqueContent() {
                         <th scope="col">Validade</th>
                         <th scope="col">Status</th>
                         <th scope="col">Qtd</th>
+                        <th scope="col">Acao</th>
                       </tr>
                     </thead>
                     <tbody>
                       {data.balances.length === 0 ? (
                         <tr>
-                          <td colSpan={5}>
+                          <td colSpan={6}>
                             Nenhum saldo ainda. Use Registrar entrada para
                             incluir EPIs.
                           </td>
@@ -805,6 +880,17 @@ function PortalEstoqueContent() {
                                 </span>
                               </td>
                               <td className="mono">{row.quantity}</td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm"
+                                  disabled={row.quantity <= 0 || saving}
+                                  onClick={() => openDeduct(row)}
+                                  title="Corrigir entrada ou deduzir quantidade"
+                                >
+                                  Deduzir
+                                </button>
+                              </td>
                             </tr>
                           );
                         })
@@ -813,6 +899,159 @@ function PortalEstoqueContent() {
                   </table>
                 </div>
               </section>
+
+              {deductRow ? (
+                <div
+                  className="portal-modal"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="deduct-stock-title"
+                >
+                  <div className="portal-modal__panel">
+                    <h2
+                      id="deduct-stock-title"
+                      className="page-title page-title--sm"
+                    >
+                      Deduzir estoque
+                    </h2>
+                    <p className="table-sub">
+                      <strong>{deductRow.epiName}</strong>
+                      {deductRow.caNumber
+                        ? ` · CA ${deductRow.caNumber}`
+                        : ''}
+                    </p>
+                    <p className="notice" role="status">
+                      Saldo atual: <strong className="mono">{deductCurrent}</strong>
+                      {deductAmount > 0 ? (
+                        <>
+                          {' '}
+                          → apos baixa:{' '}
+                          <strong className="mono">{deductNewBalance}</strong>
+                          {' '}
+                          (−{deductAmount})
+                        </>
+                      ) : null}
+                    </p>
+
+                    <div className="field">
+                      <label>Como quer corrigir?</label>
+                      <div className="btn-row" role="group" aria-label="Modo">
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${deductMode === 'target' ? 'btn-primary' : 'btn-secondary'}`}
+                          onClick={() => {
+                            setDeductMode('target');
+                            setDeductQtyInput('');
+                          }}
+                          disabled={deductBusy}
+                        >
+                          Deixar o saldo em…
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${deductMode === 'remove' ? 'btn-primary' : 'btn-secondary'}`}
+                          onClick={() => {
+                            setDeductMode('remove');
+                            setDeductQtyInput('');
+                          }}
+                          disabled={deductBusy}
+                        >
+                          Tirar esta quantidade
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="field">
+                      <label htmlFor="deduct-qty">
+                        {deductMode === 'target'
+                          ? 'Saldo correto desejado'
+                          : 'Quantidade a tirar'}
+                      </label>
+                      <input
+                        id="deduct-qty"
+                        className="mono"
+                        inputMode="numeric"
+                        autoFocus
+                        placeholder={
+                          deductMode === 'target'
+                            ? `Ex.: 90 (hoje ${deductCurrent})`
+                            : `Ex.: 810 (max ${deductCurrent})`
+                        }
+                        value={deductQtyInput}
+                        onChange={(e) =>
+                          setDeductQtyInput(e.target.value.replace(/[^\d]/g, ''))
+                        }
+                        disabled={deductBusy}
+                      />
+                      {deductMode === 'target' &&
+                      Number.isFinite(deductParsed) &&
+                      deductParsed >= 0 &&
+                      deductParsed < deductCurrent ? (
+                        <p className="table-sub">
+                          Vai tirar automaticamente{' '}
+                          <strong className="mono">{deductAmount}</strong> un.
+                          (erro tipico: digitou {deductCurrent} em vez de{' '}
+                          {deductParsed}).
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="field">
+                      <label htmlFor="deduct-reason">Motivo (obrigatorio)</label>
+                      <div className="btn-row" style={{ marginBottom: '0.5rem' }}>
+                        {SAIDA_REASON_PRESETS.map((preset) => (
+                          <button
+                            key={preset}
+                            type="button"
+                            className={`btn btn-sm ${deductReason === preset ? 'btn-primary' : 'btn-ghost'}`}
+                            onClick={() => setDeductReason(preset)}
+                            disabled={deductBusy}
+                          >
+                            {preset}
+                          </button>
+                        ))}
+                      </div>
+                      <textarea
+                        id="deduct-reason"
+                        rows={2}
+                        value={deductReason}
+                        onChange={(e) => setDeductReason(e.target.value)}
+                        maxLength={300}
+                        disabled={deductBusy}
+                      />
+                    </div>
+
+                    {deductError ? (
+                      <p className="error" role="alert">
+                        {deductError}
+                      </p>
+                    ) : null}
+
+                    <div className="btn-row">
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={!deductCanSubmit}
+                        onClick={() => void submitDeduct()}
+                      >
+                        {deductBusy
+                          ? 'Deduzindo...'
+                          : deductAmount > 0
+                            ? `Confirmar baixa (−${deductAmount})`
+                            : 'Confirmar baixa'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={deductBusy}
+                        onClick={closeDeduct}
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : (
             <>

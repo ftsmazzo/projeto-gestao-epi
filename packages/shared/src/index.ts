@@ -1827,6 +1827,19 @@ export interface PortalStockEntradasResult {
   }>;
 }
 
+export interface PortalStockSaidaResult {
+  locationId: string;
+  locationName: string;
+  epiItemId: string;
+  epiName: string;
+  caNumber: string | null;
+  quantityDeducted: number;
+  previousQuantity: number;
+  newQuantity: number;
+  movementId: string;
+  reason: string;
+}
+
 export interface PortalInvoiceExtractionLine {
   description: string;
   quantity: number | null;
