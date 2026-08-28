@@ -241,9 +241,10 @@ async function drawImage(
   y: number,
   w: number,
   h: number,
-  opts?: { stretch?: boolean },
+  opts?: { stretch?: boolean; valign?: 'center' | 'bottom' },
 ) {
   if (!filePath || !existsSync(filePath)) return false;
+  const valign = opts?.valign ?? 'center';
   try {
     if (/\.svg$/i.test(filePath)) {
       const svg = await readFile(filePath, 'utf8');
@@ -252,7 +253,7 @@ async function drawImage(
         doc.image(embedded, x, y, {
           fit: [w, h],
           align: 'center',
-          valign: 'center',
+          valign,
         });
         return true;
       }
@@ -272,7 +273,7 @@ async function drawImage(
       doc.image(filePath, x, y, {
         fit: [w, h],
         align: 'center',
-        valign: 'center',
+        valign,
       });
     }
     return true;
@@ -430,7 +431,7 @@ async function drawInstructorSignatureImage(
 ) {
   if (!filePath) return false;
   stayOnPage(doc, pageIndex);
-  const ok = await drawImage(doc, filePath, x, y, w, h);
+  const ok = await drawImage(doc, filePath, x, y, w, h, { valign: 'bottom' });
   stayOnPage(doc, pageIndex);
   return ok;
 }
@@ -480,10 +481,11 @@ async function drawSignatureColumns(
     },
   ];
   const pageH = doc.page.height;
-  const safeSigY = Math.min(sigY, pageH - 175);
+  const bottomReserve = 88;
+  const safeSigY = Math.min(sigY, pageH - bottomReserve);
   for (const col of cols) {
     stayOnPage(doc, pageIndex);
-    const lineY = safeSigY - 16;
+    const lineY = safeSigY - 10;
     doc.save();
     doc
       .moveTo(col.x + 8, lineY)
@@ -493,20 +495,21 @@ async function drawSignatureColumns(
       .stroke();
     doc.restore();
     if (col.signature && instructorSig) {
-      const sigH = 133;
-      const sigW = Math.min(col.width - 16, 412);
+      const sigW = col.width - 24;
+      const sigH = 108;
+      const sigTop = lineY - sigH - 4;
       await drawInstructorSignatureImage(
         doc,
         instructorSig,
         col.x + (col.width - sigW) / 2,
-        lineY - sigH - 4,
+        sigTop,
         sigW,
         sigH,
         pageIndex,
       );
     }
     const lines = col.lines.filter(Boolean);
-    let y = safeSigY;
+    let y = lineY + 8;
     for (const line of lines) {
       if (y + 14 > pageH - 4) break;
       doc.font('Times-Roman').fillColor(INK);
@@ -527,14 +530,22 @@ const FRONT_LAYOUT: Record<
 > = {
   nr01: {
     bodyY: 202,
-    sigY: 486,
-    // áreas variáveis já estão em branco no PNG do molde
-    covers: [],
+    sigY: 502,
+    // apaga nomes de exemplo do molde (somente abaixo da linha; não invade a moldura)
+    covers: [
+      [68, 488, 224, 56],
+      [312, 488, 236, 56],
+      [568, 488, 206, 56],
+    ],
   },
   nr35: {
     bodyY: 236,
-    sigY: 470,
-    covers: [],
+    sigY: 488,
+    covers: [
+      [68, 474, 224, 56],
+      [312, 474, 236, 56],
+      [568, 474, 206, 56],
+    ],
   },
 };
 

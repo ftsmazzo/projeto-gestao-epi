@@ -172,8 +172,10 @@ async function drawLogo(
   y: number,
   w: number,
   h: number,
+  opts?: { valign?: 'center' | 'bottom' },
 ) {
   if (!filePath || !existsSync(filePath)) return false;
+  const valign = opts?.valign ?? 'center';
   try {
     if (/\.svg$/i.test(filePath)) {
       const svg = await readFile(filePath, 'utf8');
@@ -182,7 +184,7 @@ async function drawLogo(
         doc.image(embedded, x, y, {
           fit: [w, h],
           align: 'center',
-          valign: 'center',
+          valign,
         });
         return true;
       }
@@ -196,7 +198,7 @@ async function drawLogo(
       return true;
     }
     const img = await readFile(filePath);
-    doc.image(img, x, y, { fit: [w, h], align: 'center', valign: 'center' });
+    doc.image(img, x, y, { fit: [w, h], align: 'center', valign });
     return true;
   } catch {
     return false;
@@ -207,13 +209,29 @@ async function drawTechnicalResponsibleFooter(
   doc: PDFKit.PDFDocument,
   payload: SstDocumentPayload,
 ) {
-  ensureSpace(doc, 130);
   const left = doc.page.margins.left;
   const w = pageInnerWidth(doc);
-  const rowH = 129;
-  const y = doc.y + 6;
+  const centerX = left + w / 2;
   const tr = payload.technicalResponsible;
   const signaturePath = bundledAssetPath('instructor-signature.png');
+
+  const sigW = 220;
+  const sigH = 80;
+  const ruleW = Math.min(280, w - 48);
+  const textLines: Array<{ text: string; bold?: boolean; size?: number }> = [
+    { text: tr.name ?? '—', bold: true, size: 10 },
+    ...(tr.role ? [{ text: tr.role, size: 9 }] : []),
+    ...(tr.registry ? [{ text: `MTB/${tr.registry}`, size: 9 }] : []),
+    {
+      text: 'Instrutor / Responsável Técnico',
+      size: 8,
+    },
+  ];
+
+  const rowH =
+    12 + sigH + 6 + 1 + 8 + textLines.length * 13 + 10;
+  ensureSpace(doc, rowH + 8);
+  const y = doc.y + 8;
 
   doc.save();
   doc.rect(left, y, w, rowH).fill('#E8E8E8');
@@ -224,37 +242,41 @@ async function drawTechnicalResponsibleFooter(
     .stroke();
   doc.restore();
 
-  const sigW = 392;
-  const sigH = 115;
-  let hasSignature = false;
+  const sigBoxY = y + 10;
+  let cursorY = sigBoxY + sigH;
   if (signaturePath) {
-    hasSignature = await drawLogo(doc, signaturePath, left + 12, y + 5, sigW, sigH);
+    const drawn = await drawLogo(
+      doc,
+      signaturePath,
+      centerX - sigW / 2,
+      sigBoxY,
+      sigW,
+      sigH,
+      { valign: 'bottom' },
+    );
+    if (!drawn) cursorY = sigBoxY + sigH;
   }
 
-  const textX = hasSignature ? left + sigW + 24 : left + 12;
-  const textW = w - (textX - left) - 12;
-  let textY = y + 14;
+  doc
+    .moveTo(centerX - ruleW / 2, cursorY + 4)
+    .lineTo(centerX + ruleW / 2, cursorY + 4)
+    .lineWidth(0.8)
+    .strokeColor('#111111')
+    .stroke();
+  cursorY += 16;
 
-  doc.font('Helvetica-Bold').fontSize(10).fillColor('#111111');
-  doc.text(tr.name ?? '—', textX, textY, { width: textW, lineBreak: false });
-  textY += 14;
-
-  if (tr.role) {
-    doc.font('Helvetica').fontSize(9).fillColor('#111111');
-    doc.text(tr.role, textX, textY, { width: textW, lineBreak: false });
-    textY += 12;
+  for (const line of textLines) {
+    doc
+      .font(line.bold ? 'Helvetica-Bold' : 'Helvetica')
+      .fontSize(line.size ?? 9)
+      .fillColor(line.bold ? '#111111' : '#222222');
+    doc.text(line.text, left, cursorY, {
+      width: w,
+      align: 'center',
+      lineBreak: false,
+    });
+    cursorY += line.bold ? 14 : 12;
   }
-
-  if (tr.registry) {
-    doc.text(`MTB/${tr.registry}`, textX, textY, { width: textW, lineBreak: false });
-    textY += 12;
-  }
-
-  doc.font('Helvetica-Oblique').fontSize(8).fillColor('#444444');
-  doc.text('Instrutor / Responsavel Tecnico', textX, textY, {
-    width: textW,
-    lineBreak: false,
-  });
 
   doc.y = y + rowH + 10;
 }
