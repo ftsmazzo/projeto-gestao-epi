@@ -40,6 +40,12 @@ export const DEFAULT_INTEGRATION_TOPICS = [
 export const DEFAULT_INTEGRATION_OBJECTIVE =
   'A Integracao de Seguranca do Trabalho tem como objetivo orientar os trabalhadores recem-admitidos quanto as normas de Seguranca e Saude no Trabalho da empresa, bem como apresentar os riscos existentes no ambiente de trabalho e as medidas preventivas adotadas, conforme determina a NR-01 — Disposicoes Gerais e Gerenciamento de Riscos Ocupacionais (GRO/PGR).';
 
+export const DEFAULT_SST_TECHNICAL_RESPONSIBLE = {
+  name: 'Ageziandro Antonio Martins',
+  role: 'Tecnico em Seguranca do Trabalho',
+  registry: 'SP/015088.6',
+};
+
 export const DEFAULT_OS_RECOMMENDATIONS = [
   'Cumprir as normas de Seguranca e Saude no Trabalho e as orientacoes estabelecidas pela empresa.',
   'Manter o posto de trabalho limpo, organizado e livre de materiais que possam provocar quedas, tropecos ou dificultar a circulacao.',
@@ -166,6 +172,7 @@ export type SstDocumentPayload = {
   };
   technicalResponsible: {
     name: string | null;
+    role: string | null;
     registry: string | null;
   };
   integration: {

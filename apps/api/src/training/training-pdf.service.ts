@@ -480,7 +480,7 @@ async function drawSignatureColumns(
     },
   ];
   const pageH = doc.page.height;
-  const safeSigY = Math.min(sigY, pageH - 90);
+  const safeSigY = Math.min(sigY, pageH - 175);
   for (const col of cols) {
     stayOnPage(doc, pageIndex);
     const lineY = safeSigY - 16;
@@ -493,9 +493,8 @@ async function drawSignatureColumns(
       .stroke();
     doc.restore();
     if (col.signature && instructorSig) {
-      // ~2x o tamanho anterior (34pt): encaixa na coluna sem subir demais no corpo.
-      const sigH = 68;
-      const sigW = Math.min(col.width - 16, 210);
+      const sigH = 133;
+      const sigW = Math.min(col.width - 16, 412);
       await drawInstructorSignatureImage(
         doc,
         instructorSig,
@@ -1108,7 +1107,7 @@ export class TrainingPdfService {
     const padY = 3;
     const maxCellLines = 2;
     const instructorSig = input.assets.INSTRUCTOR_SIGNATURE;
-    const sigRowH = instructorSig ? 78 : 48;
+    const sigRowH = instructorSig ? 154 : 48;
     const footerReserve = pageCount > 1 ? 36 : 20;
 
     for (const rowData of dataRows) {
@@ -1186,16 +1185,16 @@ export class TrainingPdfService {
       await drawInstructorSignatureImage(
         doc,
         instructorSig,
-        left + 12,
+        left + 10,
         y + 4,
-        220,
-        64,
+        431,
+        126,
         pageRef,
       );
     }
-    let sigTextY = y + (instructorSig ? 14 : 7);
-    const textX = instructorSig ? left + 248 : left + 6;
-    const textW = instructorSig ? tableW - 254 : tableW - 12;
+    let sigTextY = y + (instructorSig ? 22 : 7);
+    const textX = instructorSig ? left + 451 : left + 6;
+    const textW = instructorSig ? tableW - 457 : tableW - 12;
     for (const line of sigLines) {
       doc.font('Times-Roman').fillColor(INK);
       drawSingleLine(doc, line, textX, sigTextY, textW, {

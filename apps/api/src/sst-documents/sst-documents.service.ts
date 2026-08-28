@@ -26,6 +26,7 @@ import {
   DEFAULT_OS_OBSERVATIONS,
   DEFAULT_OS_RECOMMENDATIONS,
   DEFAULT_OS_RESPONSIBILITIES,
+  DEFAULT_SST_TECHNICAL_RESPONSIBLE,
   maskCpf,
   uniqueRisks,
   uniqueStrings,
@@ -33,6 +34,7 @@ import {
   type SstDocumentPayload,
 } from './sst-document-content';
 import { inferOsRiskContext } from '../client-structure/risk-context';
+import { isDeliverableEpiNeed } from '../epi-needs/epi-need-canonical';
 import { resolveOrgLogoAbsolutePath } from '../organization/org-logo.storage';
 import {
   deleteClientLogoFile,
@@ -573,8 +575,13 @@ export class SstDocumentsService {
           job?.name ?? worker.role ?? null,
       },
       technicalResponsible: {
-        name: profile?.technicalResponsibleName ?? null,
-        registry: profile?.technicalResponsibleRegistry ?? null,
+        name:
+          profile?.technicalResponsibleName?.trim() ||
+          DEFAULT_SST_TECHNICAL_RESPONSIBLE.name,
+        role: DEFAULT_SST_TECHNICAL_RESPONSIBLE.role,
+        registry:
+          profile?.technicalResponsibleRegistry?.trim() ||
+          DEFAULT_SST_TECHNICAL_RESPONSIBLE.registry,
       },
       integration: null,
       os: null,
@@ -618,6 +625,7 @@ export class SstDocumentsService {
     const epiByNeed = new Map<string, string>();
     for (const row of job?.epiRequirements ?? []) {
       if (!row.isActive || epiByNeed.has(row.epiNeedId)) continue;
+      if (!isDeliverableEpiNeed(row.epiNeed.name)) continue;
       const note = row.notes?.trim();
       epiByNeed.set(
         row.epiNeedId,

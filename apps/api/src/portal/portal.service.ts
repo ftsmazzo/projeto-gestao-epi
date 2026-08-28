@@ -77,6 +77,7 @@ import {
 import { resolveUsefulLife } from '../epi-needs/epi-useful-life.defaults';
 import {
   findMatchingEpiNeed,
+  isDeliverableEpiNeed,
   needNameMatchesEquipment,
 } from '../epi-needs/epi-need-canonical';
 import {
@@ -665,6 +666,7 @@ export class PortalService {
             { id: string; name: string; riskNames: string[] }
           >();
           for (const req of job.epiRequirements) {
+            if (!isDeliverableEpiNeed(req.epiNeed.name)) continue;
             const key = req.epiNeed.id;
             const existing = needMap.get(key);
             const riskName = req.risk?.name?.trim();
@@ -2496,6 +2498,7 @@ export class PortalService {
 
     const linkedItemIds = new Set<string>();
     for (const req of requirements) {
+      if (!isDeliverableEpiNeed(req.epiNeed.name)) continue;
       for (const link of req.epiNeed.itemLinks) {
         if (link.epiItem.isActive) linkedItemIds.add(link.epiItem.id);
       }
@@ -2507,6 +2510,7 @@ export class PortalService {
     );
 
     for (const req of requirements) {
+      if (!isDeliverableEpiNeed(req.epiNeed.name)) continue;
       const need = req.epiNeed;
       let entry = byNeed.get(need.id);
       if (!entry) {
@@ -2630,6 +2634,7 @@ export class PortalService {
 
     const linkedItemIds = new Set<string>();
     for (const req of requirements) {
+      if (!isDeliverableEpiNeed(req.epiNeed.name)) continue;
       for (const link of req.epiNeed.itemLinks) {
         if (link.epiItem.isActive) linkedItemIds.add(link.epiItem.id);
       }
@@ -2779,7 +2784,10 @@ export class PortalService {
               name: true,
               epiRequirements: {
                 where: { isActive: true },
-                select: { epiNeedId: true },
+                select: {
+                  epiNeedId: true,
+                  epiNeed: { select: { name: true } },
+                },
               },
             },
           },
@@ -2803,9 +2811,11 @@ export class PortalService {
     ]);
 
     const mapped = workers.map((w) => {
-      const needIds = new Set(
-        (w.clientJobFunction?.epiRequirements ?? []).map((r) => r.epiNeedId),
-      );
+      const needIds = new Set<string>();
+      for (const req of w.clientJobFunction?.epiRequirements ?? []) {
+        if (!isDeliverableEpiNeed(req.epiNeed.name)) continue;
+        needIds.add(req.epiNeedId);
+      }
       return {
         id: w.id,
         name: w.name,
@@ -2975,7 +2985,11 @@ export class PortalService {
       orderBy: [{ isRequired: 'desc' }, { createdAt: 'asc' }],
     });
 
-    if (requirements.length === 0) {
+    const deliverableRequirements = requirements.filter((req) =>
+      isDeliverableEpiNeed(req.epiNeed.name),
+    );
+
+    if (deliverableRequirements.length === 0) {
       return {
         worker: workerDto,
         workerHasFacialReference,
@@ -2995,7 +3009,7 @@ export class PortalService {
     }
 
     const epiItemIds = new Set<string>();
-    for (const req of requirements) {
+    for (const req of deliverableRequirements) {
       for (const link of req.epiNeed.itemLinks) {
         if (link.epiItem?.isActive) epiItemIds.add(link.epiItem.id);
       }
@@ -3034,7 +3048,7 @@ export class PortalService {
     }
 
     const grouped = groupCoverageRequirementsByNeed(
-      requirements.map((req) => ({
+      deliverableRequirements.map((req) => ({
         id: req.id,
         epiNeedId: req.epiNeedId,
         needName: req.epiNeed.name,
@@ -3047,8 +3061,11 @@ export class PortalService {
     );
 
     // Links de EPI real: uma vez por necessidade (nao por requisito/risco).
-    const linksByNeed = new Map<string, (typeof requirements)[0]['epiNeed']>();
-    for (const req of requirements) {
+    const linksByNeed = new Map<
+      string,
+      (typeof deliverableRequirements)[0]['epiNeed']
+    >();
+    for (const req of deliverableRequirements) {
       if (!linksByNeed.has(req.epiNeedId)) {
         linksByNeed.set(req.epiNeedId, req.epiNeed);
       }

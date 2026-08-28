@@ -11,6 +11,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import type { CreateWorkerDto } from './dto/create-worker.dto';
 import type { UpdateWorkerDto } from './dto/update-worker.dto';
 import { evaluateWorkerBiometrics } from './worker-biometrics.utils';
+import { isDeliverableEpiNeed } from '../epi-needs/epi-need-canonical';
 
 @Injectable()
 export class WorkersService {
@@ -68,6 +69,7 @@ export class WorkersService {
     const mapped = workers.map((worker) => {
       const needMap = new Map<string, string>();
       for (const req of worker.clientJobFunction?.epiRequirements ?? []) {
+        if (!isDeliverableEpiNeed(req.epiNeed.name)) continue;
         needMap.set(req.epiNeed.id, req.epiNeed.name);
       }
       const requiredEpiNeeds = Array.from(needMap.entries())

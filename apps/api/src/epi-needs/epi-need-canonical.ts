@@ -99,7 +99,7 @@ const FAMILY_SPLIT_RE =
   /(?=\b(?:Botinas?|Botas?|Capacete|Oculos|Óculos|Luvas?|Protetor|Respirador|Mascara|Máscara|Avental|Viseira|Creme|Uniforme|Cinto|Talabarte|Mangote|Macac[aã]o|Touca|Perneira|Cal[cç]ado)\b)/i;
 
 const JUNK_EPI_NAME_RE =
-  /^(?:realizar|efetuar|executar|manter|garantir|promover|adotar|defini[cç][aã]o)\b|exame\s+de\s+audiometria|manuten[cç][aã]o\s+de\s+rotina|tempo\s+de\s+espera|antes\s+de\s+tocar|gin[aá]stica\s+laboral|plano\s+de\s+a[cç][aã]o|medidas?\s+administrativas?|^\(?\s*(?:poeira|fumos|ru[ií]do|calor)\b/i;
+  /^(?:realizar|efetuar|executar|manter|garantir|promover|adotar|defini[cç][aã]o)\b|exame\s+de\s+audiometria|manuten[cç][aã]o\s+de\s+rotina|tempo\s+de\s+espera|antes\s+de\s+tocar|gin[aá]stica\s+laboral|plano\s+de\s+a[cç][aã]o|medidas?\s+administrativas?|orienta[cç][aã]o\s+t[eé]cnica|treinamento\b|procedimento\b|sinaliza[cç][aã]o|avalia[cç][aã]o\s+(?:medica|periodica|ocupacional)|fornecimento\s+de\s+epi|controle\s+de\s+entrega|^\(?\s*(?:poeira|fumos|ru[ií]do|calor)\b/i;
 
 function foldText(value: string): string {
   return value
@@ -162,6 +162,11 @@ export function isJunkEpiNeedName(name: string): boolean {
   const hasFamily = tokens.some((token) => FAMILY_HEADS.has(token));
   if (!hasFamily && tokens.length >= 6) return true;
   return false;
+}
+
+/** Necessidade que representa EPI entregavel (exclui junk administrativo do PGR). */
+export function isDeliverableEpiNeed(name: string): boolean {
+  return !isJunkEpiNeedName(name);
 }
 
 function tokenListsCompatible(a: string[], b: string[]): boolean {

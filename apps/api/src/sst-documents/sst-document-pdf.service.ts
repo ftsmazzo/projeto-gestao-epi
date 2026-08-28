@@ -15,6 +15,7 @@ import {
   type SstDocumentPayload,
 } from './sst-document-content';
 import { groupOsRisksByCategory } from '../client-structure/risk-context';
+import { bundledAssetPath } from '../training/bundled-assets';
 
 export type SstPdfBuildOptions = {
   signedAt?: string | null;
@@ -172,7 +173,7 @@ async function drawLogo(
   w: number,
   h: number,
 ) {
-  if (!filePath || !existsSync(filePath)) return;
+  if (!filePath || !existsSync(filePath)) return false;
   try {
     if (/\.svg$/i.test(filePath)) {
       const svg = await readFile(filePath, 'utf8');
@@ -183,22 +184,79 @@ async function drawLogo(
           align: 'center',
           valign: 'center',
         });
-        return;
+        return true;
       }
       const svgToPdf = loadSvgToPdf();
-      if (!svgToPdf) return;
+      if (!svgToPdf) return false;
       svgToPdf(doc, svg, x, y, {
         width: w,
         height: h,
         preserveAspectRatio: 'xMidYMid meet',
       });
-      return;
+      return true;
     }
     const img = await readFile(filePath);
     doc.image(img, x, y, { fit: [w, h], align: 'center', valign: 'center' });
+    return true;
   } catch {
-    // logo opcional
+    return false;
   }
+}
+
+async function drawTechnicalResponsibleFooter(
+  doc: PDFKit.PDFDocument,
+  payload: SstDocumentPayload,
+) {
+  ensureSpace(doc, 130);
+  const left = doc.page.margins.left;
+  const w = pageInnerWidth(doc);
+  const rowH = 129;
+  const y = doc.y + 6;
+  const tr = payload.technicalResponsible;
+  const signaturePath = bundledAssetPath('instructor-signature.png');
+
+  doc.save();
+  doc.rect(left, y, w, rowH).fill('#E8E8E8');
+  doc
+    .rect(left, y, w, rowH)
+    .lineWidth(0.6)
+    .strokeColor('#111111')
+    .stroke();
+  doc.restore();
+
+  const sigW = 392;
+  const sigH = 115;
+  let hasSignature = false;
+  if (signaturePath) {
+    hasSignature = await drawLogo(doc, signaturePath, left + 12, y + 5, sigW, sigH);
+  }
+
+  const textX = hasSignature ? left + sigW + 24 : left + 12;
+  const textW = w - (textX - left) - 12;
+  let textY = y + 14;
+
+  doc.font('Helvetica-Bold').fontSize(10).fillColor('#111111');
+  doc.text(tr.name ?? '—', textX, textY, { width: textW, lineBreak: false });
+  textY += 14;
+
+  if (tr.role) {
+    doc.font('Helvetica').fontSize(9).fillColor('#111111');
+    doc.text(tr.role, textX, textY, { width: textW, lineBreak: false });
+    textY += 12;
+  }
+
+  if (tr.registry) {
+    doc.text(`MTB/${tr.registry}`, textX, textY, { width: textW, lineBreak: false });
+    textY += 12;
+  }
+
+  doc.font('Helvetica-Oblique').fontSize(8).fillColor('#444444');
+  doc.text('Instrutor / Responsavel Tecnico', textX, textY, {
+    width: textW,
+    lineBreak: false,
+  });
+
+  doc.y = y + rowH + 10;
 }
 
 async function titleBlock(
@@ -836,27 +894,10 @@ export class SstDocumentPdfService {
     section(doc, 'ASSUNTOS ABORDADOS');
     twoColumnChecks(doc, payload.integration?.topics ?? []);
 
-    if (payload.technicalResponsible.name) {
-      section(doc, 'RESPONSAVEL TECNICO');
-      fieldBox(doc, [
-        [
-          {
-            label: 'NOME',
-            value: payload.technicalResponsible.name,
-            width: w * 0.62,
-          },
-          {
-            label: 'REGISTRO MTE',
-            value: payload.technicalResponsible.registry ?? '—',
-            width: w * 0.38,
-          },
-        ],
-      ]);
-    }
-
     section(doc, 'TERMO DE RESPONSABILIDADE');
     bodyText(doc, payload.termText);
 
+    await drawTechnicalResponsibleFooter(doc, payload);
     await drawFaceEvidence(doc, payload, options);
     writeGeneratedNote(doc, payload.generatedAt);
   }
