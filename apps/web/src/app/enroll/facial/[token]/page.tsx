@@ -13,6 +13,7 @@ import {
   FACE_ENGINE_META,
   LIVENESS_INTERVAL_MS,
   LIVENESS_MVP_NOTICE,
+  formatFaceEngineLoadError,
   loadFaceModels,
   livenessArrowSide,
   livenessChallengeLabel,
@@ -79,6 +80,8 @@ export default function FacialEnrollmentPage() {
     'Posicione o rosto no enquadramento',
   );
   const [modelsReady, setModelsReady] = useState(false);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsLoadAttempt, setModelsLoadAttempt] = useState(0);
   const [activeChallenge, setActiveChallenge] =
     useState<LivenessChallengeType | null>(null);
   const [turnUiPhase, setTurnUiPhase] = useState<'turn' | 'center' | null>(
@@ -99,22 +102,27 @@ export default function FacialEnrollmentPage() {
     return () => stopCamera();
   }, [stopCamera]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        await loadFaceModels();
-        if (!cancelled) setModelsReady(true);
-      } catch {
-        if (!cancelled) {
-          setError('Nao foi possivel carregar o motor facial neste aparelho.');
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const prepareFaceEngine = useCallback(async () => {
+    setModelsLoading(true);
+    setError(null);
+    try {
+      await loadFaceModels();
+      setModelsReady(true);
+    } catch (err) {
+      setModelsReady(false);
+      setError(formatFaceEngineLoadError(err));
+    } finally {
+      setModelsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    if (phase !== 'ready' && phase !== 'scanning' && phase !== 'liveness') {
+      return;
+    }
+    if (modelsReady || modelsLoading) return;
+    void prepareFaceEngine();
+  }, [phase, modelsReady, modelsLoading, modelsLoadAttempt, prepareFaceEngine]);
 
   async function onUnlock(event: React.FormEvent) {
     event.preventDefault();
@@ -148,7 +156,11 @@ export default function FacialEnrollmentPage() {
       return;
     }
     if (!modelsReady) {
-      setError('Aguarde o carregamento do motor facial.');
+      setError(
+        modelsLoading
+          ? 'Carregando motor facial… aguarde.'
+          : 'Motor facial ainda nao carregou. Use Tentar novamente.',
+      );
       return;
     }
     setError(null);
@@ -433,6 +445,11 @@ export default function FacialEnrollmentPage() {
                   <p className="enroll-page__hint enroll-page__hint--mvp">
                     {LIVENESS_MVP_NOTICE}
                   </p>
+                  {modelsLoading ? (
+                    <p className="enroll-page__hint" role="status">
+                      Preparando reconhecimento facial neste aparelho…
+                    </p>
+                  ) : null}
                 </>
               ) : (
                 <p className="enroll-page__live-status" role="status">
@@ -490,14 +507,29 @@ export default function FacialEnrollmentPage() {
 
             <div className="enroll-page__actions">
               {phase === 'ready' ? (
-                <button
-                  type="button"
-                  className="enroll-page__btn"
-                  onClick={() => void startScan()}
-                  disabled={!consentAccepted || !modelsReady}
-                >
-                  {modelsReady ? 'Iniciar camera' : 'Carregando…'}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="enroll-page__btn"
+                    onClick={() => void startScan()}
+                    disabled={!consentAccepted || !modelsReady || modelsLoading}
+                  >
+                    {modelsLoading
+                      ? 'Preparando motor…'
+                      : modelsReady
+                        ? 'Iniciar camera'
+                        : 'Aguardando motor…'}
+                  </button>
+                  {!modelsReady && !modelsLoading ? (
+                    <button
+                      type="button"
+                      className="enroll-page__btn enroll-page__btn--ghost"
+                      onClick={() => setModelsLoadAttempt((n) => n + 1)}
+                    >
+                      Tentar novamente
+                    </button>
+                  ) : null}
+                </>
               ) : null}
 
               {phase === 'scanning' || phase === 'liveness' ? (

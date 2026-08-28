@@ -78,6 +78,11 @@ export type LivenessProgress = {
 };
 
 type FaceApiGlobal = {
+  tf?: {
+    setBackend: (name: string) => Promise<boolean>;
+    ready: () => Promise<void>;
+    getBackend: () => string;
+  };
   nets: {
     tinyFaceDetector: { loadFromUri: (uri: string) => Promise<void> };
     faceLandmark68Net: { loadFromUri: (uri: string) => Promise<void> };
@@ -122,6 +127,77 @@ declare global {
 }
 
 let modelsReady: Promise<void> | null = null;
+
+export type FaceEngineLoadStage =
+  | 'browser'
+  | 'script'
+  | 'backend'
+  | 'models'
+  | 'unknown';
+
+export class FaceEngineLoadError extends Error {
+  readonly stage: FaceEngineLoadStage;
+
+  constructor(stage: FaceEngineLoadStage, message: string, cause?: unknown) {
+    super(message);
+    this.name = 'FaceEngineLoadError';
+    this.stage = stage;
+    if (cause instanceof Error && cause.stack) {
+      this.stack = cause.stack;
+    }
+  }
+}
+
+/** Verifica requisitos minimos antes de baixar script/modelos. */
+export function checkFaceEngineBrowserSupport(): string | null {
+  if (typeof window === 'undefined') {
+    return 'Motor facial disponivel apenas no navegador.';
+  }
+  const host = window.location.hostname;
+  if (
+    !window.isSecureContext &&
+    host !== 'localhost' &&
+    host !== '127.0.0.1'
+  ) {
+    return 'Abra o link em HTTPS para usar camera e biometria.';
+  }
+  if (typeof WebAssembly === 'undefined') {
+    return 'Este navegador nao suporta WebAssembly. Use Chrome ou Edge atualizado.';
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return 'Camera indisponivel neste navegador. Use Chrome ou Edge atualizado.';
+  }
+  return null;
+}
+
+export function formatFaceEngineLoadError(err: unknown): string {
+  if (err instanceof FaceEngineLoadError) {
+    switch (err.stage) {
+      case 'browser':
+        return err.message;
+      case 'script':
+        return `${err.message} Verifique firewall/antivirus ou tente outra rede.`;
+      case 'backend':
+        return 'Este computador nao conseguiu iniciar o motor grafico (WebGL). Ative aceleracao de hardware no navegador ou use Chrome/Edge atualizado.';
+      case 'models':
+        return `${err.message} Conexao lenta ou bloqueio de download — tente outra rede ou aguarde e clique em Tentar novamente.`;
+      default:
+        return err.message;
+    }
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/webgl|shader|texture/i.test(msg)) {
+    return 'Falha de WebGL neste PC. Ative aceleracao de hardware ou use Chrome/Edge atualizado.';
+  }
+  if (/failed to fetch|network|load/i.test(msg)) {
+    return 'Falha ao baixar o motor facial. Verifique internet, proxy ou antivirus.';
+  }
+  return 'Nao foi possivel carregar o motor facial neste aparelho.';
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /** Tempo minimo de enquadramento estavel antes da captura automatica. */
 export const AUTO_CAPTURE_STABLE_MS = 700;
@@ -174,7 +250,9 @@ async function ensureScript(): Promise<void> {
     if (existing) {
       existing.addEventListener('load', () => resolve());
       existing.addEventListener('error', () =>
-        reject(new Error('Falha ao carregar face-api.')),
+        reject(
+          new FaceEngineLoadError('script', 'Falha ao carregar face-api.'),
+        ),
       );
       if (window.faceapi) resolve();
       return;
@@ -185,22 +263,82 @@ async function ensureScript(): Promise<void> {
     script.dataset.faceApi = '1';
     script.onload = () => resolve();
     script.onerror = () =>
-      reject(new Error('Falha ao carregar /vendor/face-api.js'));
+      reject(
+        new FaceEngineLoadError(
+          'script',
+          'Falha ao carregar /vendor/face-api.js',
+        ),
+      );
     document.head.appendChild(script);
   });
 }
 
+async function ensureTfBackend(faceapi: FaceApiGlobal): Promise<void> {
+  const tf = faceapi.tf;
+  if (!tf?.setBackend) return;
+
+  const backends: Array<'webgl' | 'cpu'> = ['webgl', 'cpu'];
+  let lastErr: unknown;
+  for (const backend of backends) {
+    try {
+      const ok = await tf.setBackend(backend);
+      if (!ok) continue;
+      await tf.ready();
+      return;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw new FaceEngineLoadError(
+    'backend',
+    'WebGL e CPU indisponiveis para biometria.',
+    lastErr,
+  );
+}
+
+async function loadModelsSequential(faceapi: FaceApiGlobal, uri: string) {
+  await faceapi.nets.tinyFaceDetector.loadFromUri(uri);
+  await faceapi.nets.faceLandmark68Net.loadFromUri(uri);
+  await faceapi.nets.faceRecognitionNet.loadFromUri(uri);
+}
+
 export async function loadFaceModels(): Promise<void> {
+  const browserIssue = checkFaceEngineBrowserSupport();
+  if (browserIssue) {
+    throw new FaceEngineLoadError('browser', browserIssue);
+  }
+
   if (!modelsReady) {
     modelsReady = (async () => {
-      await ensureScript();
-      const faceapi = getFaceApi();
-      const uri = '/models';
-      await Promise.all([
-        faceapi.nets.tinyFaceDetector.loadFromUri(uri),
-        faceapi.nets.faceLandmark68Net.loadFromUri(uri),
-        faceapi.nets.faceRecognitionNet.loadFromUri(uri),
-      ]);
+      const maxAttempts = 3;
+      let lastErr: unknown;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          await ensureScript();
+          const faceapi = getFaceApi();
+          await ensureTfBackend(faceapi);
+          await loadModelsSequential(faceapi, '/models');
+          return;
+        } catch (err) {
+          lastErr = err;
+          modelsReady = null;
+          if (err instanceof FaceEngineLoadError && err.stage === 'browser') {
+            throw err;
+          }
+          if (attempt < maxAttempts) {
+            await sleep(800 * attempt);
+          }
+        }
+      }
+      if (lastErr instanceof FaceEngineLoadError) throw lastErr;
+      const message =
+        lastErr instanceof Error
+          ? lastErr.message
+          : 'Falha ao carregar modelos de reconhecimento facial.';
+      if (/face-api|vendor/i.test(message)) {
+        throw new FaceEngineLoadError('script', message, lastErr);
+      }
+      throw new FaceEngineLoadError('models', message, lastErr);
     })().catch((err) => {
       modelsReady = null;
       throw err;
