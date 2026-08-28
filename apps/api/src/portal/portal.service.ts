@@ -76,9 +76,8 @@ import {
 } from './facial-evidence.storage';
 import { resolveUsefulLife } from '../epi-needs/epi-useful-life.defaults';
 import {
-  findMatchingEpiNeed,
   isDeliverableEpiNeed,
-  needNameMatchesEquipment,
+  pickNeedsToLinkForEquipment,
 } from '../epi-needs/epi-need-canonical';
 import {
   calendarDaysRemaining,
@@ -1066,6 +1065,7 @@ export class PortalService {
 
   async getEstoqueResumo(organizationId: string, servedClientId: string) {
     await this.requireClient(organizationId, servedClientId);
+    await this.healUnlinkedStockedItems(organizationId, servedClientId);
     const location = await this.ensureDefaultLocation(
       organizationId,
       servedClientId,
@@ -1077,7 +1077,7 @@ export class PortalService {
 
     return {
       mode: 'stock' as const,
-      note: 'As necessidades desta empresa (PGRO/estrutura) sao a base. Informe o CA de cada uma para entrar no estoque — o sistema vincula ao catalogo automaticamente.',
+      note: 'As necessidades desta empresa (PGRO/estrutura) sao a base. Informe o CA no topo ou vincule abaixo — o sistema associa automaticamente a necessidade compativel do PGR.',
       location: {
         id: location.id,
         name: location.name,
@@ -1491,6 +1491,8 @@ export class PortalService {
         createdEpiItem: resolved.created,
       });
     }
+
+    await this.healUnlinkedStockedItems(organizationId, servedClientId);
 
     return {
       locationId: location.id,
@@ -2256,6 +2258,57 @@ export class PortalService {
     return rows.map((row) => row.epiNeedId);
   }
 
+  private async resolveAutoLinkHints(
+    organizationId: string,
+    epiItemId: string,
+    hints: { equipmentName: string | null; extraText?: string | null },
+  ): Promise<{ equipmentName: string | null; extraText: string | null }> {
+    const item = await this.prisma.epiItem.findFirst({
+      where: { id: epiItemId, organizationId },
+      select: {
+        name: true,
+        caNumber: true,
+        description: true,
+        approvedFor: true,
+        reference: true,
+        manufacturerName: true,
+      },
+    });
+    let equipmentName = hints.equipmentName?.trim() || item?.name?.trim() || null;
+    const extraParts = [
+      hints.extraText,
+      item?.description,
+      item?.approvedFor,
+      item?.reference,
+      item?.manufacturerName,
+    ].filter((part): part is string => Boolean(part?.trim()));
+
+    if (item?.caNumber) {
+      try {
+        const caepi = await this.caepi.findByCaNumber(item.caNumber);
+        if (caepi.found && caepi.certificate) {
+          const cert = caepi.certificate;
+          equipmentName = cert.equipmentName?.trim() || equipmentName;
+          extraParts.push(
+            ...[
+              cert.approvedFor,
+              cert.equipmentDescription,
+              cert.restriction,
+              cert.analysisNotes,
+            ].filter((part): part is string => Boolean(part?.trim())),
+          );
+        }
+      } catch {
+        // CAEPI opcional — segue com dados do catalogo.
+      }
+    }
+
+    return {
+      equipmentName,
+      extraText: extraParts.filter(Boolean).join(' ') || null,
+    };
+  }
+
   private async autoLinkCaItemToClientNeeds(
     organizationId: string,
     servedClientId: string,
@@ -2274,27 +2327,16 @@ export class PortalService {
     });
     if (needs.length === 0) return [];
 
-    const matched = needs.filter((need) =>
-      needNameMatchesEquipment(
-        need.name,
-        hints.equipmentName,
-        hints.extraText,
-      ),
+    const resolvedHints = await this.resolveAutoLinkHints(
+      organizationId,
+      epiItemId,
+      hints,
     );
-    if (matched.length === 0 && hints.equipmentName) {
-      const hit = findMatchingEpiNeed(hints.equipmentName, needs);
-      if (
-        hit &&
-        assessNeedEquipmentCompatibility(hit.name, hints.equipmentName)
-          .compatible
-      ) {
-        matched.push(hit);
-      }
-    }
-
-    const unique = [
-      ...new Map(matched.map((need) => [need.id, need])).values(),
-    ];
+    const unique = pickNeedsToLinkForEquipment(
+      needs,
+      resolvedHints.equipmentName,
+      resolvedHints.extraText,
+    );
     const linked: string[] = [];
     for (const need of unique) {
       await this.ensureNeedItemLink(organizationId, need.id, epiItemId);

@@ -683,7 +683,7 @@ function PortalEstoqueContent() {
           (invoiceDocumentId ? ' com nota' : '') +
           (linked.length > 0
             ? ` e vinculada a: ${linked.join(', ')}.`
-            : '. Confira se a necessidade do PGR combina com este CA.'),
+            : '. Saldo atualizado — ao abrir Entregas, o sistema tenta associar este CA a necessidade compativel do PGR.'),
       );
       setPicked(null);
       setQuery('');

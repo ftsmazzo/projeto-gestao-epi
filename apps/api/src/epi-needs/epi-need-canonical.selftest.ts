@@ -6,6 +6,7 @@ import {
   isGluedEpiNeedName,
   isJunkEpiNeedName,
   needNameMatchesEquipment,
+  pickNeedsToLinkForEquipment,
   splitGluedEpiPhrases,
 } from './epi-need-canonical';
 
@@ -195,6 +196,30 @@ assert.equal(
     'Respirador semifacial PFF2',
   ),
   false,
+);
+
+const pgrNeeds = [
+  { id: '1', name: 'Luva De Nitrílica' },
+  { id: '2', name: 'Capacete de Segurança com Jugular' },
+  { id: '3', name: 'Realizar Manutenção de Rotina no Caminhão' },
+];
+assert.deepEqual(
+  pickNeedsToLinkForEquipment(
+    pgrNeeds,
+    'Luva de seguranca nitrilica descartavel',
+  ).map((need) => need.id),
+  ['1'],
+);
+assert.deepEqual(
+  pickNeedsToLinkForEquipment(
+    pgrNeeds,
+    'Capacete de seguranca com jugular ajustavel',
+  ).map((need) => need.id),
+  ['2'],
+);
+assert.deepEqual(
+  pickNeedsToLinkForEquipment(pgrNeeds, 'Macacão impermeavel Tyvek').length,
+  0,
 );
 
 console.log(`epi-need-canonical.selftest: ok (${collapsed.length} nomes)`);

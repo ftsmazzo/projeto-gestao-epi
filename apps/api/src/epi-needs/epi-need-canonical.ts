@@ -376,3 +376,87 @@ export function needNameMatchesEquipment(
     Boolean(findMatchingEpiNeed(needName, [{ name: seed.name }]))
   );
 }
+
+function tokenOverlapScore(needName: string, equipmentBlob: string): number {
+  const needTokens = new Set(
+    canonicalEpiNeedKey(needName)
+      .split(' ')
+      .filter((token) => token.length >= 3),
+  );
+  const equipTokens = canonicalEpiNeedKey(equipmentBlob)
+    .split(' ')
+    .filter((token) => token.length >= 3);
+  let score = 0;
+  for (const token of equipTokens) {
+    if (needTokens.has(token)) {
+      score += 2;
+      continue;
+    }
+    for (const needToken of needTokens) {
+      if (
+        needToken.startsWith(token) ||
+        token.startsWith(needToken) ||
+        needToken.includes(token) ||
+        token.includes(needToken)
+      ) {
+        score += 1;
+        break;
+      }
+    }
+  }
+  return score;
+}
+
+/**
+ * Escolhe necessidades do PGR para vincular a um EPI/CA recém-entrado no estoque.
+ * Usa match estrito primeiro; se falhar, categoria compatível + identidade aproximada.
+ */
+export function pickNeedsToLinkForEquipment<
+  T extends { id: string; name: string },
+>(
+  needs: T[],
+  equipmentName: string | null | undefined,
+  extraText?: string | null,
+): T[] {
+  const deliverable = needs.filter((need) => isDeliverableEpiNeed(need.name));
+  const blob = [equipmentName, extraText]
+    .filter((part): part is string => Boolean(part?.trim()))
+    .join(' ')
+    .trim();
+  if (deliverable.length === 0 || !blob) return [];
+
+  const strict = deliverable.filter((need) =>
+    needNameMatchesEquipment(need.name, equipmentName, extraText),
+  );
+  if (strict.length > 0) {
+    return [...new Map(strict.map((need) => [need.id, need])).values()];
+  }
+
+  const compatible = deliverable.filter(
+    (need) =>
+      assessNeedEquipmentCompatibility(need.name, equipmentName).compatible,
+  );
+  if (compatible.length === 0) return [];
+
+  const identityHit = findMatchingEpiNeed(equipmentName ?? blob, compatible);
+  if (identityHit) return [identityHit];
+
+  const scored = compatible
+    .map((need) => ({ need, score: tokenOverlapScore(need.name, blob) }))
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (scored.length >= 1) {
+    const best = scored[0];
+    const runnerUp = scored[1];
+    if (
+      compatible.length === 1 ||
+      (best.score >= 2 && (!runnerUp || best.score > runnerUp.score))
+    ) {
+      return [best.need];
+    }
+  }
+
+  if (compatible.length === 1) return compatible;
+
+  return [];
+}
