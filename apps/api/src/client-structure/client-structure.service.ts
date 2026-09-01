@@ -13,6 +13,7 @@ import {
   suggestedNeedNamesForRisk,
 } from '@gestao-epi/shared';
 import { AuditService } from '../audit/audit.service';
+import { isDeliverableEpiNeed } from '../epi-needs/epi-need-canonical';
 import { PrismaService } from '../prisma/prisma.service';
 import { DEFAULT_EPI_NEED_SEEDS } from '../epi-needs/epi-need-suggest';
 import type {
@@ -1254,7 +1255,9 @@ export class ClientStructureService {
     const needIds = rows.map((row) => row.epiNeedId);
     const stockByNeed = await this.sumStockByNeedIds(organizationId, needIds);
 
-    return rows.map((row) => {
+    return rows
+      .filter((row) => isDeliverableEpiNeed(row.epiNeed.name))
+      .map((row) => {
       const stock = stockByNeed.get(row.epiNeedId) ?? {
         linkedItems: row.epiNeed._count.itemLinks,
         totalQuantity: 0,

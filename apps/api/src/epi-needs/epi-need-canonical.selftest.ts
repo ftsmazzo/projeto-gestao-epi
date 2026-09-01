@@ -59,6 +59,16 @@ const USER_CATALOG = [
 ];
 
 assert.equal(isJunkEpiNeedName('(Poeira e Fumos Metálicos),'), true);
+assert.equal(isJunkEpiNeedName('Moderado'), true);
+assert.equal(isJunkEpiNeedName('Planejamento Das Atividades'), true);
+assert.equal(isJunkEpiNeedName('Usar cinto de segurança'), true);
+assert.equal(isJunkEpiNeedName('Respeitar velocidade'), true);
+assert.equal(isJunkEpiNeedName('Medidas Administrativas'), true);
+assert.equal(
+  isJunkEpiNeedName('Cinto de Segurança Modelo Paraquedista'),
+  false,
+);
+assert.equal(isJunkEpiNeedName('Luva Nitrílica'), false);
 assert.equal(
   isJunkEpiNeedName('Realizar Manutenção de Rotina no Caminhão'),
   true,

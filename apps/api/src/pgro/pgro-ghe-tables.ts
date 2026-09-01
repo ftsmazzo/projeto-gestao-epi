@@ -82,7 +82,7 @@ const CATEGORY_MAP: Array<{ re: RegExp; cat: OccupationalRiskCategory }> = [
 ];
 
 const ADMIN_EPI_RE =
-  /^(gin[aá]stica\s+laboral|orienta[cç][aã]o\s+t[eé]cnica|treinamento|procedimento|sinaliza[cç][aã]o|manter\s+as\s+condi|avalia[cç][aã]o\s+abaixo|plano\s+de\s+a[cç][aã]o)/i;
+  /^(gin[aá]stica\s+laboral|orienta[cç][aã]o\s+t[eé]cnica|treinamento|procedimento|sinaliza[cç][aã]o|manter\s+as\s+condi|avalia[cç][aã]o\s+abaixo|plano\s+de\s+a[cç][aã]o|planejamento|moderado|baixo|alto|usar\s+|utilizar\s+|respeitar\s+)/i;
 
 const QUANT_HEADER_RE =
   /intensidade|concentra[cç][aã]o\s+avaliada|\blavg\b|\bdose\b|t[eé]cnica\s+utilizada|limite\s+de\s+exposi/i;

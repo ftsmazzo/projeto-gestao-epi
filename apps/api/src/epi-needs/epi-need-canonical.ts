@@ -99,7 +99,19 @@ const FAMILY_SPLIT_RE =
   /(?=\b(?:Botinas?|Botas?|Capacete|Oculos|Óculos|Luvas?|Protetor|Respirador|Mascara|Máscara|Avental|Viseira|Creme|Uniforme|Cinto|Talabarte|Mangote|Macac[aã]o|Touca|Perneira|Cal[cç]ado)\b)/i;
 
 const JUNK_EPI_NAME_RE =
-  /^(?:realizar|efetuar|executar|manter|garantir|promover|adotar|defini[cç][aã]o)\b|exame\s+de\s+audiometria|manuten[cç][aã]o\s+de\s+rotina|tempo\s+de\s+espera|antes\s+de\s+tocar|gin[aá]stica\s+laboral|plano\s+de\s+a[cç][aã]o|medidas?\s+administrativas?|orienta[cç][aã]o\s+t[eé]cnica|treinamento\b|procedimento\b|sinaliza[cç][aã]o|avalia[cç][aã]o\s+(?:medica|periodica|ocupacional)|fornecimento\s+de\s+epi|controle\s+de\s+entrega|^\(?\s*(?:poeira|fumos|ru[ií]do|calor)\b/i;
+  /^(?:realizar|efetuar|executar|manter|garantir|promover|adotar|usar|utilizar|respeitar|obedecer|seguir|defini[cç][aã]o)\b|exame\s+de\s+audiometria|manuten[cç][aã]o\s+de\s+rotina|tempo\s+de\s+espera|antes\s+de\s+tocar|gin[aá]stica\s+laboral|plano\s+de\s+a[cç][aã]o|medidas?\s+administrativas?|orienta[cç][aã]o\s+t[eé]cnica|treinamento\b|procedimento\b|sinaliza[cç][aã]o|avalia[cç][aã]o\s+(?:medica|periodica|ocupacional)|fornecimento\s+de\s+epi|controle\s+de\s+entrega|planejamento\b|controle\s+de\s+velocidade|limite\s+de\s+velocidade|medida(?:s)?\s+de\s+controle|^\(?\s*(?:poeira|fumos|ru[ií]do|calor)\b/i;
+
+/** Nivel de risco APRHO colado na coluna EPI (ex.: "Moderado"). */
+const RISK_LEVEL_ONLY_RE =
+  /^(?:muito\s+)?(?:baixo|moderado|alto|critico|insignificante|trivial|aceitavel|significativo)$/i;
+
+/** Instrucao comportamental, nao item entregavel (ex.: "Usar cinto de seguranca"). */
+const BEHAVIORAL_INSTRUCTION_RE =
+  /^(?:usar|utilizar|respeitar|obedecer|seguir)\s+/i;
+
+/** Medidas administrativas / EPC erroneamente importadas como EPI. */
+const ADMIN_MEASURE_RE =
+  /\b(?:planejamento(?:\s+das?\s+atividades?)?|respeitar\s+(?:a\s+)?velocidade|velocidade\s+(?:maxima|permitida|do\s+veiculo))\b|^epc$/i;
 
 function foldText(value: string): string {
   return value
@@ -154,6 +166,9 @@ export function isJunkEpiNeedName(name: string): boolean {
   if (trimmed.length < 4) return true;
   if (/^[^\p{L}]+$/u.test(trimmed)) return true;
   if (trimmed.startsWith('(') && trimmed.length < 48) return true;
+  if (RISK_LEVEL_ONLY_RE.test(trimmed)) return true;
+  if (BEHAVIORAL_INSTRUCTION_RE.test(trimmed)) return true;
+  if (ADMIN_MEASURE_RE.test(trimmed)) return true;
   if (JUNK_EPI_NAME_RE.test(trimmed)) return true;
   const key = canonicalEpiNeedKey(trimmed);
   if (!key) return true;
