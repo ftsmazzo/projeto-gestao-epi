@@ -16,8 +16,8 @@ Claude Teams  →  apps/mcp-inseg (MCP HTTP :3100)  →  API /mcp/v1/*  →  Pos
 |----------|-----------|
 | `MCP_API_KEY` | Chave secreta compartilhada com o servidor MCP |
 | `MCP_ORGANIZATION_ID` | ID da organização InSeg **ou** |
-| `MCP_ORGANIZATION_SLUG` | Slug da organização (ex.: `inseg`) |
-| `MCP_ORGANIZATION_NAME` | Nome parcial da consultoria (ex.: `InSeg`) — usado se slug/ID ausentes |
+| `MCP_ORGANIZATION_NAME` | Nome parcial da consultoria (ex.: `InSeg`) |
+| `MCP_ORGANIZATION_SLUG` | Slug exato (ex.: `inseg-consultoria-sst`) |
 
 ### MCP (`gestao-epi/mcp-inseg`)
 
