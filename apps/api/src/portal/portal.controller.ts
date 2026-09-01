@@ -179,7 +179,10 @@ export class PortalController {
     @UploadedFile() file: Express.Multer.File | undefined,
   ) {
     this.assertClient(user);
-    this.assertClientManager(user);
+    this.assertClientManager(
+      user,
+      'Apenas o gestor da empresa pode atualizar o PGR.',
+    );
     return this.pgro.previewForClient(
       user.organizationId,
       user.sub,
@@ -194,7 +197,10 @@ export class PortalController {
     @Param('id') id: string,
   ) {
     this.assertClient(user);
-    this.assertClientManager(user);
+    this.assertClientManager(
+      user,
+      'Apenas o gestor da empresa pode atualizar o PGR.',
+    );
     return this.pgro.confirmForClient(
       user.organizationId,
       user.sub,
@@ -416,6 +422,10 @@ export class PortalController {
     @Body() dto: CreateWorkerDto,
   ) {
     this.assertClient(user);
+    this.assertClientManager(
+      user,
+      'Apenas o gestor da empresa pode cadastrar trabalhadores.',
+    );
     return this.portal.createWorker(
       user.organizationId,
       user.sub,
@@ -427,6 +437,10 @@ export class PortalController {
   @Get('trabalhadores/import/csv-template')
   workerCsvTemplate(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);
+    this.assertClientManager(
+      user,
+      'Apenas o gestor da empresa pode importar trabalhadores.',
+    );
     return this.portal.getWorkerCsvTemplate();
   }
 
@@ -436,6 +450,10 @@ export class PortalController {
     @Body() dto: PreviewWorkerImportDto,
   ) {
     this.assertClient(user);
+    this.assertClientManager(
+      user,
+      'Apenas o gestor da empresa pode importar trabalhadores.',
+    );
     return this.portal.previewWorkerImport(
       user.organizationId,
       user.servedClientId,
@@ -449,6 +467,10 @@ export class PortalController {
     @Body() dto: ConfirmWorkerImportDto,
   ) {
     this.assertClient(user);
+    this.assertClientManager(
+      user,
+      'Apenas o gestor da empresa pode importar trabalhadores.',
+    );
     return this.portal.confirmWorkerImport(
       user.organizationId,
       user.sub,
@@ -464,6 +486,10 @@ export class PortalController {
     @Body() dto: UpdateWorkerDto,
   ) {
     this.assertClient(user);
+    this.assertClientManager(
+      user,
+      'Apenas o gestor da empresa pode editar trabalhadores.',
+    );
     return this.portal.updateWorker(
       user.organizationId,
       user.sub,
@@ -480,6 +506,10 @@ export class PortalController {
     @Body() dto: UpdateWorkerStatusDto,
   ) {
     this.assertClient(user);
+    this.assertClientManager(
+      user,
+      'Apenas o gestor da empresa pode ativar ou inativar trabalhadores.',
+    );
     return this.portal.updateWorkerStatus(
       user.organizationId,
       user.sub,
@@ -495,6 +525,10 @@ export class PortalController {
     @Param('id') id: string,
   ) {
     this.assertClient(user);
+    this.assertClientManager(
+      user,
+      'Apenas o gestor da empresa pode gerenciar o cadastro facial.',
+    );
     return this.portal.getWorkerFacialEnrollmentLink(
       user.organizationId,
       user.servedClientId,
@@ -508,6 +542,10 @@ export class PortalController {
     @Param('id') id: string,
   ) {
     this.assertClient(user);
+    this.assertClientManager(
+      user,
+      'Apenas o gestor da empresa pode gerenciar o cadastro facial.',
+    );
     return this.portal.generateWorkerFacialEnrollmentLink(
       user.organizationId,
       user.sub,
@@ -522,6 +560,10 @@ export class PortalController {
     @Param('id') id: string,
   ) {
     this.assertClient(user);
+    this.assertClientManager(
+      user,
+      'Apenas o gestor da empresa pode gerenciar o cadastro facial.',
+    );
     return this.portal.resendWorkerFacialEnrollmentWhatsapp(
       user.organizationId,
       user.sub,
@@ -784,10 +826,11 @@ export class PortalController {
     }
   }
 
-  private assertClientManager(user: ClientJwtPayload) {
+  private assertClientManager(user: ClientJwtPayload, action?: string) {
     if (user.clientRole !== 'CLIENT_MANAGER') {
       throw new ForbiddenException(
-        'Apenas o gestor da empresa pode atualizar o PGR.',
+        action ??
+          'Apenas o gestor da empresa pode executar esta acao.',
       );
     }
   }

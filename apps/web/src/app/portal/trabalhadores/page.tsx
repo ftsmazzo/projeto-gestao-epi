@@ -136,8 +136,10 @@ function latestSstByWorker(docs: SstDocumentListItem[]) {
 
 function PortalTrabalhadoresContent({
   sstEnabled,
+  isManager,
 }: {
   sstEnabled: boolean;
+  isManager: boolean;
 }) {
   const searchParams = useSearchParams();
   const filtro = searchParams.get('filtro');
@@ -249,6 +251,7 @@ function PortalTrabalhadoresContent({
   const warnDays = data?.replacementHorizon.warnDays ?? 15;
 
   function openCreate() {
+    if (!isManager) return;
     setPanel('list');
     setMode('create');
     setEditingId(null);
@@ -257,6 +260,7 @@ function PortalTrabalhadoresContent({
   }
 
   function openEdit(worker: PortalWorkerRow) {
+    if (!isManager) return;
     setPanel('list');
     setMode('edit');
     setEditingId(worker.id);
@@ -282,6 +286,7 @@ function PortalTrabalhadoresContent({
   }
 
   function openImport() {
+    if (!isManager) return;
     setMode('closed');
     setPanel('import');
     setImportErrorClear();
@@ -540,10 +545,12 @@ function PortalTrabalhadoresContent({
           <p className="portal-home-cnpj">
             {onlyDue
               ? `Filtrado: trocas em ate ${warnDays} dias`
-              : 'Cadastre vidas (individual ou planilha) e acompanhe trocas'}
+              : isManager
+                ? 'Cadastre vidas (individual ou planilha) e acompanhe trocas'
+                : 'Consulta de vidas e trocas — cadastro e edicao somente para gestor'}
           </p>
         </div>
-        {mode === 'closed' && panel === 'list' ? (
+        {isManager && mode === 'closed' && panel === 'list' ? (
           <div className="btn-row">
             <button
               type="button"
@@ -562,6 +569,13 @@ function PortalTrabalhadoresContent({
       {error ? (
         <p className="error" role="alert">
           {error}
+        </p>
+      ) : null}
+      {!isManager && mode === 'closed' && panel === 'list' ? (
+        <p className="notice notice--warn" role="status">
+          Operador de estoque: voce pode consultar trabalhadores e registrar
+          entregas de EPI. Cadastro, edicao, importacao e cadastro facial ficam
+          com o gestor.
         </p>
       ) : null}
       {enrollmentUrl ? (
@@ -627,7 +641,7 @@ function PortalTrabalhadoresContent({
         </p>
       ) : null}
 
-      {panel === 'import' ? (
+      {isManager && panel === 'import' ? (
         <section className="surface" aria-labelledby="portal-worker-import-title">
           <div className="form-section-header">
             <div>
@@ -829,7 +843,7 @@ function PortalTrabalhadoresContent({
         </section>
       ) : null}
 
-      {mode !== 'closed' ? (
+      {isManager && mode !== 'closed' ? (
         <section className="surface" aria-labelledby="portal-worker-form-title">
           <div className="form-section-header">
             <div>
@@ -1109,7 +1123,7 @@ function PortalTrabalhadoresContent({
                   >
                     Limpar busca
                   </button>
-                ) : !onlyDue ? (
+                ) : !onlyDue && isManager ? (
                   <div className="btn-row">
                     <button
                       type="button"
@@ -1229,7 +1243,7 @@ function PortalTrabalhadoresContent({
                           </button>
                         </>
                       ) : null}
-                      {!bio.ok ? (
+                      {!bio.ok && isManager ? (
                         <button
                           type="button"
                           className="btn btn-primary"
@@ -1241,20 +1255,24 @@ function PortalTrabalhadoresContent({
                             : 'Cadastrar facial'}
                         </button>
                       ) : null}
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => openEdit(worker)}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => void toggleStatus(worker)}
-                      >
-                        {worker.status === 'ACTIVE' ? 'Inativar' : 'Ativar'}
-                      </button>
+                      {isManager ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => openEdit(worker)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            onClick={() => void toggleStatus(worker)}
+                          >
+                            {worker.status === 'ACTIVE' ? 'Inativar' : 'Ativar'}
+                          </button>
+                        </>
+                      ) : null}
                       <Link
                         className="btn btn-secondary"
                         href={`/portal/trabalhadores/${worker.id}/ficha-epi`}
@@ -1321,6 +1339,7 @@ export default function PortalTrabalhadoresPage() {
         >
           <PortalTrabalhadoresContent
             sstEnabled={user.servedClient.sstDocumentsEnabled}
+            isManager={user.role === 'CLIENT_MANAGER'}
           />
         </Suspense>
       )}
