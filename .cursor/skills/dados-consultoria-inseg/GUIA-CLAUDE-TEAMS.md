@@ -45,27 +45,32 @@ Conecte o **ProntEPI Gestão EPI** ao Claude Teams para consultar, em linguagem 
 
 ## Conectar no Claude Teams
 
+O Claude Teams **exige OAuth** em servidores MCP remotos. Nosso servidor suporta **registro automático de cliente** — não é necessário colar OAuth Client ID manualmente.
+
 1. Peça ao administrador do Claude Teams para adicionar um **conector MCP personalizado**
 2. Configure:
 
 | Campo | Valor |
 |-------|-------|
 | **URL do servidor** | `https://gestao-epi-mcp-inseg.kxryyk.easypanel.host/mcp` |
-| **Autenticação** | Bearer Token **ou** cabeçalho `x-api-key` (veja abaixo) |
-| **Token** | chave fornecida pela InSeg |
+| **Cliente OAuth** | **Sem ID de cliente — registrar automaticamente** |
+| **Autenticação** | OAuth (detectado automaticamente) |
 
-### Importante no Claude Teams
+3. Ao salvar/conectar, o Claude abrirá uma **página de login InSeg**
+4. Cole a **chave de acesso InSeg** e clique em **Autorizar conexão**
+5. Teste: *"Use guia_mcp e me diga o que você consegue consultar"*
 
-Se a autenticação OAuth estiver ativa, o Claude **não permite** o cabeçalho `authorization`. Use **`x-api-key`**:
+### Erro “Não foi possível registrar no serviço de login”
 
-| Campo | Valor |
-|-------|-------|
-| Nome do cabeçalho | `x-api-key` |
-| Valor | cole **somente o token** (sem a palavra Bearer) |
-| Obrigatório | marcado |
+Esse erro (`ofid_…`) ocorria porque o servidor ainda **não tinha OAuth**. Após o deploy:
 
-3. Após conectar, teste: *"Use guia_mcp e me diga o que você consegue consultar"*
-4. Depois: *"Qual a cota de vidas da consultoria?"*
+1. Remova o conector antigo
+2. Crie de novo com **registrar automaticamente**
+3. Complete o login na página InSeg com a chave de acesso
+
+### Alternativa: cabeçalho fixo (Cursor)
+
+Se o Teams não permitir OAuth, use no **Cursor** com cabeçalho `x-api-key` ou `Authorization: Bearer` (seção abaixo).
 
 ## Conectar no Cursor (opcional)
 

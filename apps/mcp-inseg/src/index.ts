@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { assertConfigured } from './api-client.js';
+import {
+  isOAuthAccessToken,
+  mountOAuthRoutes,
+  oauthUnauthorizedHeader,
+} from './oauth.js';
 import { createMcpServer } from './server.js';
 
 const port = Number(process.env.MCP_PORT ?? process.env.PORT ?? 3100);
@@ -30,14 +35,46 @@ function extractToken(req: express.Request): string {
 function authOk(req: express.Request) {
   if (!publicKey) return false;
   const token = extractToken(req);
-  return token.length > 0 && token === publicKey;
+  if (!token) return false;
+  if (token === publicKey) return true;
+  return isOAuthAccessToken(token);
 }
+
+const publicBaseUrl =
+  process.env.MCP_PUBLIC_URL?.trim() ||
+  'https://gestao-epi-mcp-inseg.kxryyk.easypanel.host';
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+const { metadataUrl, scope } = mountOAuthRoutes(app, publicBaseUrl, publicKey);
+
+function unauthorized(res: express.Response) {
+  res
+    .status(401)
+    .set('WWW-Authenticate', oauthUnauthorizedHeader(metadataUrl, scope))
+    .json({
+      error: 'Unauthorized',
+      hint:
+        'Conecte via OAuth no Claude Teams (registro automatico) ou envie x-api-key / Bearer com a chave InSeg.',
+    });
+}
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'inseg-gestao-epi-mcp' });
+  res.json({ ok: true, service: 'inseg-gestao-epi-mcp', oauth: true });
+});
+
+app.get('/mcp', (_req, res) => {
+  res.json({
+    name: 'inseg-gestao-epi',
+    transport: 'streamable-http',
+    oauth: {
+      protectedResourceMetadata: metadataUrl,
+      authorizationServer: publicBaseUrl.replace(/\/$/, ''),
+    },
+    endpoint: `${publicBaseUrl.replace(/\/$/, '')}/mcp`,
+  });
 });
 
 app.get('/', (_req, res) => {
@@ -46,10 +83,11 @@ app.get('/', (_req, res) => {
       'InSeg MCP — ProntEPI Gestao EPI',
       '',
       'Endpoint MCP (Streamable HTTP): POST /mcp',
-      'Autenticacao (escolha uma):',
-      '  Authorization: Bearer <MCP_PUBLIC_KEY>',
-      '  x-api-key: <MCP_PUBLIC_KEY>  (recomendado no Claude Teams com OAuth)',
-      'Guia: use a tool guia_mcp apos conectar no Claude Teams.',
+      'Autenticacao:',
+      '  1) OAuth 2.1 (Claude Teams): registro automatico + login com chave InSeg',
+      '  2) x-api-key ou Authorization Bearer (integracoes diretas)',
+      '',
+      `OAuth metadata: ${metadataUrl}`,
       '',
       `Tools: ${[
         'guia_mcp',
@@ -75,7 +113,7 @@ app.get('/', (_req, res) => {
 
 app.post('/mcp', async (req, res) => {
   if (!authOk(req)) {
-    res.status(401).json({ error: 'Unauthorized' });
+    unauthorized(res);
     return;
   }
 
@@ -96,5 +134,5 @@ app.post('/mcp', async (req, res) => {
 });
 
 app.listen(port, '0.0.0.0', () => {
-  console.log(`InSeg MCP listening on :${port}`);
+  console.log(`InSeg MCP listening on :${port} (OAuth enabled)`);
 });
