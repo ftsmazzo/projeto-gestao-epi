@@ -62,20 +62,25 @@ O Claude Teams **exige OAuth** em servidores MCP remotos. Nosso servidor suporta
 
 ### “Este conector não possui ferramentas disponíveis”
 
-Isso pode aparecer na **tela de configuração** do conector — é um bug conhecido de UI do Claude Teams. As 16 tools existem e funcionam **na conversa**.
+Isso pode aparecer na **tela de configuração** — ignore. O servidor expõe **16 tools**; elas funcionam **no chat**, não nessa URL.
 
-Após corrigir sessões MCP no servidor, remova e reconecte o conector. Depois teste no chat:
+### Claude diz “não tenho ferramentas ativas nesta conversa”
 
-- *"Busque a empresa Ultrarapida e me dê um resumo"*
-- *"Liste os soldadores da Ultrarapida"*
+O conector está **conectado na conta**, mas precisa estar **ligado neste chat**:
+
+1. Abra uma **conversa nova** (importante — chats antigos não recebem tools)
+2. Clique no **+** (ou ícone de plug/conectores) **no campo de mensagem**
+3. Ative o conector **ProntEPI / InSeg**
+4. Confirme que aparece um badge/chip do conector acima do input
+5. Teste com texto explícito:
+
+   *“Use a tool `buscar_empresa_ou_trabalhador` com consulta Ultrarapida e me mostre o resultado.”*
+
+Se usar **Projeto** no Claude Teams, vincule o conector MCP **nas configurações do Projeto** e abra o chat **dentro des desse Projeto**.
 
 ### Skill / instruções do projeto (recomendado)
 
-Para o Claude saber **como** usar o MCP, crie um **Projeto** no Claude Teams e cole o conteúdo de:
-
-`.cursor/skills/dados-consultoria-inseg/SKILL-CLAUDE-TEAMS.md`
-
-Em **Instruções do projeto** (ou Knowledge), inclua esse texto. Ele ensina o fluxo: buscar empresa → resumo → listar trabalhadores, com exemplos como Ultrarapida e soldadores.
+Cole em **Instruções do projeto** o arquivo `SKILL-CLAUDE-TEAMS.md` — ensina buscar Ultrarapida, listar soldadores, etc.
 
 ### Erro “Não foi possível registrar no serviço de login”
 

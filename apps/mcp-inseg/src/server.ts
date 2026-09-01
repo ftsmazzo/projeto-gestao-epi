@@ -43,10 +43,18 @@ Sempre confirme **qual empresa (cliente)** antes de detalhar trabalhadores.
 `.trim();
 
 export function createMcpServer() {
-  const server = new McpServer({
-    name: 'inseg-gestao-epi',
-    version: '1.0.0',
-  });
+  const server = new McpServer(
+    {
+      name: 'inseg-gestao-epi',
+      version: '1.0.0',
+    },
+    {
+      capabilities: {
+        tools: { listChanged: false },
+      },
+      instructions: GUIDE,
+    },
+  );
 
   server.tool(
     'guia_mcp',
