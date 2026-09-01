@@ -46,7 +46,8 @@ export class McpApiKeyGuard implements CanActivate {
 
     const orgId = this.config.get<string>('MCP_ORGANIZATION_ID')?.trim();
     const orgSlug = this.config.get<string>('MCP_ORGANIZATION_SLUG')?.trim();
-    const organization = orgId
+    const orgName = this.config.get<string>('MCP_ORGANIZATION_NAME')?.trim();
+    let organization = orgId
       ? await this.prisma.organization.findUnique({
           where: { id: orgId },
           select: { id: true, name: true },
@@ -58,9 +59,17 @@ export class McpApiKeyGuard implements CanActivate {
           })
         : null;
 
+    if (!organization && orgName) {
+      organization = await this.prisma.organization.findFirst({
+        where: { name: { contains: orgName, mode: 'insensitive' } },
+        select: { id: true, name: true },
+        orderBy: { createdAt: 'asc' },
+      });
+    }
+
     if (!organization) {
       throw new UnauthorizedException(
-        'Organizacao MCP nao encontrada. Configure MCP_ORGANIZATION_ID ou MCP_ORGANIZATION_SLUG.',
+        'Organizacao MCP nao encontrada. Configure MCP_ORGANIZATION_ID, MCP_ORGANIZATION_SLUG ou MCP_ORGANIZATION_NAME.',
       );
     }
 
