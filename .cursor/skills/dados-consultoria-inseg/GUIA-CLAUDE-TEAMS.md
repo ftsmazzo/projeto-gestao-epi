@@ -60,6 +60,23 @@ O Claude Teams **exige OAuth** em servidores MCP remotos. Nosso servidor suporta
 4. Cole a **chave de acesso InSeg** e clique em **Autorizar conexão**
 5. Teste: *"Use guia_mcp e me diga o que você consegue consultar"*
 
+### “Este conector não possui ferramentas disponíveis”
+
+Isso pode aparecer na **tela de configuração** do conector — é um bug conhecido de UI do Claude Teams. As 16 tools existem e funcionam **na conversa**.
+
+Após corrigir sessões MCP no servidor, remova e reconecte o conector. Depois teste no chat:
+
+- *"Busque a empresa Ultrarapida e me dê um resumo"*
+- *"Liste os soldadores da Ultrarapida"*
+
+### Skill / instruções do projeto (recomendado)
+
+Para o Claude saber **como** usar o MCP, crie um **Projeto** no Claude Teams e cole o conteúdo de:
+
+`.cursor/skills/dados-consultoria-inseg/SKILL-CLAUDE-TEAMS.md`
+
+Em **Instruções do projeto** (ou Knowledge), inclua esse texto. Ele ensina o fluxo: buscar empresa → resumo → listar trabalhadores, com exemplos como Ultrarapida e soldadores.
+
 ### Erro “Não foi possível registrar no serviço de login”
 
 Esse erro (`ofid_…`) ocorria porque o servidor ainda **não tinha OAuth**. Após o deploy:

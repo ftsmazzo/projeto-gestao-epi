@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import express from 'express';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import { assertConfigured } from './api-client.js';
 import {
   isOAuthAccessToken,
@@ -11,6 +12,9 @@ import { createMcpServer } from './server.js';
 
 const port = Number(process.env.MCP_PORT ?? process.env.PORT ?? 3100);
 const publicKey = process.env.MCP_PUBLIC_KEY?.trim() ?? process.env.MCP_API_KEY?.trim() ?? '';
+
+/** Sessoes MCP devem persistir entre initialize, tools/list e invocacoes. */
+const transports = new Map<string, StreamableHTTPServerTransport>();
 
 function extractToken(req: express.Request): string {
   const authHeader = req.headers.authorization?.trim() ?? '';
@@ -62,7 +66,12 @@ function unauthorized(res: express.Response) {
 }
 
 app.get('/health', (_req, res) => {
-  res.json({ ok: true, service: 'inseg-gestao-epi-mcp', oauth: true });
+  res.json({
+    ok: true,
+    service: 'inseg-gestao-epi-mcp',
+    oauth: true,
+    mcpSessions: transports.size,
+  });
 });
 
 app.get('/mcp', (_req, res) => {
@@ -119,12 +128,45 @@ app.post('/mcp', async (req, res) => {
 
   try {
     assertConfigured();
-    const mcpServer = createMcpServer();
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-    });
-    await mcpServer.connect(transport);
-    await transport.handleRequest(req, res, req.body);
+
+    const sessionHeader = req.headers['mcp-session-id'];
+    const sessionId = Array.isArray(sessionHeader) ? sessionHeader[0] : sessionHeader;
+    const body = req.body;
+
+    let transport: StreamableHTTPServerTransport | undefined;
+
+    if (sessionId && transports.has(sessionId)) {
+      transport = transports.get(sessionId);
+    } else if (!sessionId && isInitializeRequest(body)) {
+      const mcpServer = createMcpServer();
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (newSessionId) => {
+          if (transport) transports.set(newSessionId, transport);
+        },
+      });
+
+      transport.onclose = () => {
+        if (transport?.sessionId) transports.delete(transport.sessionId);
+      };
+
+      await mcpServer.connect(transport);
+    } else {
+      res.status(400).json({
+        error: 'Invalid MCP request',
+        error_description: sessionId
+          ? 'Sessao desconhecida ou expirada; envie initialize para abrir nova sessao'
+          : 'Envie initialize antes de tools/list ou invocar tools',
+      });
+      return;
+    }
+
+    if (!transport) {
+      res.status(400).json({ error: 'Invalid MCP request' });
+      return;
+    }
+
+    await transport.handleRequest(req, res, body);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (!res.headersSent) {
@@ -134,5 +176,5 @@ app.post('/mcp', async (req, res) => {
 });
 
 app.listen(port, '0.0.0.0', () => {
-  console.log(`InSeg MCP listening on :${port} (OAuth enabled)`);
+  console.log(`InSeg MCP listening on :${port} (OAuth + sticky sessions)`);
 });
