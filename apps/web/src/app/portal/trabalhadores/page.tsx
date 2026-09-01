@@ -573,9 +573,9 @@ function PortalTrabalhadoresContent({
       ) : null}
       {!isManager && mode === 'closed' && panel === 'list' ? (
         <p className="notice notice--warn" role="status">
-          Operador de estoque: voce pode consultar trabalhadores e registrar
-          entregas de EPI. Cadastro, edicao, importacao e cadastro facial ficam
-          com o gestor.
+          Operador de estoque: voce pode consultar trabalhadores, cadastrar face
+          para entrega e registrar entregas de EPI. Cadastro, edicao e
+          importacao de dados ficam com o gestor.
         </p>
       ) : null}
       {enrollmentUrl ? (
@@ -1243,7 +1243,7 @@ function PortalTrabalhadoresContent({
                           </button>
                         </>
                       ) : null}
-                      {!bio.ok && isManager ? (
+                      {!bio.ok ? (
                         <button
                           type="button"
                           className="btn btn-primary"

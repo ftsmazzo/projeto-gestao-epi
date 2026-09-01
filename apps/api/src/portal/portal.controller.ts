@@ -525,10 +525,6 @@ export class PortalController {
     @Param('id') id: string,
   ) {
     this.assertClient(user);
-    this.assertClientManager(
-      user,
-      'Apenas o gestor da empresa pode gerenciar o cadastro facial.',
-    );
     return this.portal.getWorkerFacialEnrollmentLink(
       user.organizationId,
       user.servedClientId,
@@ -542,10 +538,6 @@ export class PortalController {
     @Param('id') id: string,
   ) {
     this.assertClient(user);
-    this.assertClientManager(
-      user,
-      'Apenas o gestor da empresa pode gerenciar o cadastro facial.',
-    );
     return this.portal.generateWorkerFacialEnrollmentLink(
       user.organizationId,
       user.sub,
@@ -560,10 +552,6 @@ export class PortalController {
     @Param('id') id: string,
   ) {
     this.assertClient(user);
-    this.assertClientManager(
-      user,
-      'Apenas o gestor da empresa pode gerenciar o cadastro facial.',
-    );
     return this.portal.resendWorkerFacialEnrollmentWhatsapp(
       user.organizationId,
       user.sub,
