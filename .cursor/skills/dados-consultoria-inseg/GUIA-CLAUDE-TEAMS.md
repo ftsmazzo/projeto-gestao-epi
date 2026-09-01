@@ -51,8 +51,18 @@ Conecte o **ProntEPI Gestão EPI** ao Claude Teams para consultar, em linguagem 
 | Campo | Valor |
 |-------|-------|
 | **URL do servidor** | `https://gestao-epi-mcp-inseg.kxryyk.easypanel.host/mcp` |
-| **Autenticação** | Bearer Token |
-| **Token** | chave fornecida pela InSeg (mesma do `MCP_PUBLIC_KEY`) |
+| **Autenticação** | Bearer Token **ou** cabeçalho `x-api-key` (veja abaixo) |
+| **Token** | chave fornecida pela InSeg |
+
+### Importante no Claude Teams
+
+Se a autenticação OAuth estiver ativa, o Claude **não permite** o cabeçalho `authorization`. Use **`x-api-key`**:
+
+| Campo | Valor |
+|-------|-------|
+| Nome do cabeçalho | `x-api-key` |
+| Valor | cole **somente o token** (sem a palavra Bearer) |
+| Obrigatório | marcado |
 
 3. Após conectar, teste: *"Use guia_mcp e me diga o que você consegue consultar"*
 4. Depois: *"Qual a cota de vidas da consultoria?"*
