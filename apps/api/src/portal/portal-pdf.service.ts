@@ -143,11 +143,14 @@ export class PortalPdfService {
       sectionTitle(doc, 'Itens');
       for (const item of detail.items) {
         ensureSpace(doc, 48);
+        const needLabel = item.isExtra
+          ? 'Extra (fora das indicacoes)'
+          : item.needName;
         doc
           .font('Helvetica-Bold')
           .fontSize(9)
           .fillColor('#111')
-          .text(`${item.needName} — ${item.epiName}`);
+          .text(`${needLabel} — ${item.epiName}`);
         doc
           .font('Helvetica')
           .fontSize(8)
@@ -309,12 +312,15 @@ export class PortalPdfService {
           .fillColor('#444')
           .text(delivery.statusLabel);
         for (const item of delivery.items) {
+          const needLabel = item.isExtra
+            ? 'Extra (fora das indicacoes)'
+            : item.needName;
           doc
             .font('Helvetica')
             .fontSize(8)
             .fillColor('#222')
             .text(
-              `• ${item.needName} — ${item.epiName}` +
+              `• ${needLabel} — ${item.epiName}` +
                 (item.caNumber ? ` (CA ${item.caNumber})` : '') +
                 ` · Qtd ${item.quantity}` +
                 (item.returnedQuantity

@@ -1290,7 +1290,8 @@ model EpiDelivery {
 model EpiDeliveryItem {
   id                 String                @id @default(cuid())
   deliveryId         String
-  epiNeedId          String
+  /// Null quando isExtra (entrega fora das indicacoes do PGR).
+  epiNeedId          String?
   epiItemId          String
   epiVariantId       String?
   stockLocationId    String
@@ -1301,6 +1302,8 @@ model EpiDeliveryItem {
   /// Quantidade revertida por cancelamento da entrega.
   cancelledQuantity  Int                   @default(0)
   status             EpiDeliveryItemStatus @default(DELIVERED)
+  /// Entrega avulsa por CA, fora das indicacoes da funcao.
+  isExtra            Boolean               @default(false)
   nextReplacementAt  DateTime?
   /// Snapshot da vida util aplicada na entrega (catalogo ou override).
   usefulLifeValue    Int?
@@ -1310,7 +1313,7 @@ model EpiDeliveryItem {
   createdAt          DateTime              @default(now())
 
   delivery      EpiDelivery     @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
-  epiNeed       EpiNeed         @relation(fields: [epiNeedId], references: [id], onDelete: Restrict)
+  epiNeed       EpiNeed?        @relation(fields: [epiNeedId], references: [id], onDelete: Restrict)
   epiItem       EpiItem         @relation(fields: [epiItemId], references: [id], onDelete: Restrict)
   epiVariant    EpiVariant?     @relation(fields: [epiVariantId], references: [id], onDelete: SetNull)
   stockLocation StockLocation   @relation(fields: [stockLocationId], references: [id], onDelete: Restrict)
@@ -1323,6 +1326,7 @@ model EpiDeliveryItem {
   @@index([stockLocationId])
   @@index([stockMovementId])
   @@index([status])
+  @@index([isExtra])
 }
 
 /// Devolucao de itens de uma entrega (parcial ou total).

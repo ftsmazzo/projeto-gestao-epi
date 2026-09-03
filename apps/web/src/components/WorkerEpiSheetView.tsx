@@ -265,7 +265,9 @@ export function WorkerEpiSheetView({
                     <tr key={item.id}>
                       <td className="epi-doc__cell-epi">
                         <strong>{item.epiName}</strong>
-                        <span className="epi-doc__sub">{item.needName}</span>
+                        <span className="epi-doc__sub">
+                          {item.isExtra ? 'Extra (fora das indicacoes)' : item.needName}
+                        </span>
                       </td>
                       <td className="mono epi-doc__cell-num">
                         {item.caNumber ?? '—'}

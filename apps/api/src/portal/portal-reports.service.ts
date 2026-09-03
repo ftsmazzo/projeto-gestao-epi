@@ -284,7 +284,13 @@ export class PortalReportsService {
           jobFunctionName: row.worker.clientJobFunction?.name ?? null,
         },
         itemsSummary: row.items
-          .map((i) => `${i.epiNeed.name}→${i.epiItem.name} (${i.quantity})`)
+          .map((i) => {
+            const need =
+              i.isExtra
+                ? 'Extra (fora das indicacoes)'
+                : (i.epiNeed?.name ?? '—');
+            return `${need}→${i.epiItem.name} (${i.quantity})`;
+          })
           .join('; '),
         itemCount: row.items.length,
         operatorName: row.deliveredByUser.name,
@@ -481,7 +487,11 @@ export class PortalReportsService {
           deliveryId: ret.delivery.id,
           workerName: ret.delivery.worker.name,
           workerRegistration: ret.delivery.worker.registration,
-          itemLabel: `${item.deliveryItem.epiNeed.name} → ${item.deliveryItem.epiItem.name}`,
+          itemLabel: `${
+            item.deliveryItem.isExtra
+              ? 'Extra (fora das indicacoes)'
+              : (item.deliveryItem.epiNeed?.name ?? '—')
+          } → ${item.deliveryItem.epiItem.name}`,
           quantity: item.quantity,
           condition: item.condition,
           returnedToStock:
@@ -503,7 +513,11 @@ export class PortalReportsService {
           deliveryId: cancel.id,
           workerName: cancel.worker.name,
           workerRegistration: cancel.worker.registration,
-          itemLabel: `${item.epiNeed.name} → ${item.epiItem.name}`,
+          itemLabel: `${
+            item.isExtra
+              ? 'Extra (fora das indicacoes)'
+              : (item.epiNeed?.name ?? '—')
+          } → ${item.epiItem.name}`,
           quantity: item.cancelledQuantity,
           condition: null,
           returnedToStock: true,
@@ -783,7 +797,9 @@ export class PortalReportsService {
           jobFunctionName:
             item.delivery.worker.clientJobFunction?.name ?? null,
           epiName: item.epiItem.name,
-          needName: item.epiNeed.name,
+          needName: item.isExtra
+            ? 'Extra (fora das indicacoes)'
+            : (item.epiNeed?.name ?? '—'),
           caNumber: item.epiItem.caNumber,
           nextReplacementAt: at.toISOString(),
           usefulLifeLabel: formatUsefulLifeSnapshot(

@@ -2387,6 +2387,7 @@ export interface PortalDeliveryListItem {
   items: Array<{
     id: string;
     needName: string;
+    isExtra?: boolean;
     epiName: string;
     caNumber: string | null;
     locationName: string;
@@ -2451,8 +2452,10 @@ export interface PortalDeliveryDetail {
   } | null;
   items: Array<{
     id: string;
-    epiNeedId: string;
+    epiNeedId: string | null;
     needName: string;
+    /** Entrega fora das indicacoes do PGR. */
+    isExtra: boolean;
     epiItemId: string;
     epiName: string;
     caNumber: string | null;
@@ -2495,6 +2498,7 @@ export interface PortalDeliveryDetail {
       id: string;
       deliveryItemId: string;
       needName: string;
+      isExtra?: boolean;
       epiName: string;
       quantity: number;
       condition: PortalDeliveryReturnCondition;
@@ -2557,6 +2561,8 @@ export interface PortalDeliveryDetail {
 export interface PortalWorkerEpiSheetDeliveryItem {
   id: string;
   needName: string;
+  /** Entrega fora das indicacoes do PGR. */
+  isExtra?: boolean;
   epiName: string;
   caNumber: string | null;
   quantity: number;
@@ -2622,11 +2628,14 @@ export interface PortalWorkerEpiSheetResponse {
 }
 
 export interface PortalCreateDeliveryItemInput {
-  epiNeedId: string;
+  /** Obrigatorio para item normativo; omitir quando isExtra. */
+  epiNeedId?: string;
   epiItemId: string;
   epiVariantId?: string | null;
   stockLocationId: string;
   quantity: number;
+  /** Item fora das indicacoes do PGR (selecao por CA/estoque). */
+  isExtra?: boolean;
   /** Override opcional da vida util (senao usa catalogo / periodicidade da funcao). */
   usefulLifeValue?: number | null;
   usefulLifeUnit?: EpiUsefulLifeUnit | null;

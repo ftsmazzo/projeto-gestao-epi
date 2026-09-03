@@ -307,7 +307,9 @@ export function DeliveryReceiptView({
                 <tr key={item.id}>
                   <td className="epi-doc__cell-epi">
                     <strong>{item.epiName}</strong>
-                    <span className="epi-doc__sub">{item.needName}</span>
+                    <span className="epi-doc__sub">
+                      {item.isExtra ? 'Extra (fora das indicacoes)' : item.needName}
+                    </span>
                     {item.variantName ? (
                       <span className="epi-doc__sub">{item.variantName}</span>
                     ) : null}
@@ -359,7 +361,7 @@ export function DeliveryReceiptView({
                     {ret.items
                       .map(
                         (ri) =>
-                          `${ri.epiName}: ${ri.quantity} (${ri.condition})`,
+                            `${ri.isExtra ? 'Extra (fora das indicacoes)' : ri.needName} → ${ri.epiName}: ${ri.quantity} (${ri.condition})`,
                       )
                       .join(' · ')}
                   </span>
@@ -487,7 +489,10 @@ export function DeliveryReceiptView({
                           }
                         />
                         <strong>
-                          {item.needName} → {item.epiName}
+                          {item.isExtra
+                            ? 'Extra (fora das indicacoes)'
+                            : item.needName}{' '}
+                          → {item.epiName}
                         </strong>
                       </label>
                       <p className="table-sub">

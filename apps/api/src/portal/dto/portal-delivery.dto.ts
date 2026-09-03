@@ -14,6 +14,7 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 import { EpiDeliveryReturnCondition, EpiUsefulLifeUnit } from '@prisma/client';
@@ -26,9 +27,11 @@ export const FACIAL_EVIDENCE_CONSENT_TEXT =
   'Declaro que a imagem facial será registrada como evidência da entrega deste EPI e vinculada ao comprovante de fornecimento.';
 
 export class PortalDeliveryItemDto {
+  /** Obrigatorio quando nao e item extra. */
+  @ValidateIf((o: PortalDeliveryItemDto) => !o.isExtra)
   @IsString()
   @MinLength(1)
-  epiNeedId!: string;
+  epiNeedId?: string;
 
   @IsString()
   @MinLength(1)
@@ -45,6 +48,11 @@ export class PortalDeliveryItemDto {
   @IsInt()
   @Min(1)
   quantity!: number;
+
+  /** Item fora das indicacoes do PGR (CA/estoque). */
+  @IsOptional()
+  @IsBoolean()
+  isExtra?: boolean;
 
   @IsOptional()
   @IsInt()

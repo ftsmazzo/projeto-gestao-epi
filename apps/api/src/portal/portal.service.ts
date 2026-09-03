@@ -810,7 +810,7 @@ export class PortalService {
         deliveryId: item.delivery.id,
         receiptNumber: item.delivery.receiptNumber,
         epiName: item.epiItem.name,
-        needName: item.epiNeed.name,
+        needName: this.deliveryNeedLabel(item),
         caNumber: item.epiItem.caNumber,
         nextReplacementAt: at.toISOString(),
         usefulLifeLabel: formatUsefulLifeSnapshot(
@@ -3452,7 +3452,8 @@ export class PortalService {
             nextAt != null ? calendarDaysRemaining(nextAt, generatedAt) : null;
           return {
             id: item.id,
-            needName: item.epiNeed.name,
+            needName: this.deliveryNeedLabel(item),
+            isExtra: item.isExtra === true,
             epiName: item.epiItem.name,
             caNumber: item.epiItem.caNumber,
             quantity: item.quantity,
@@ -3635,6 +3636,7 @@ export class PortalService {
                 deliveryItem: {
                   select: {
                     id: true,
+                    isExtra: true,
                     epiNeed: { select: { name: true } },
                     epiItem: { select: { name: true } },
                   },
@@ -3719,7 +3721,8 @@ export class PortalService {
         return {
           id: item.id,
           epiNeedId: item.epiNeedId,
-          needName: item.epiNeed.name,
+          needName: this.deliveryNeedLabel(item),
+          isExtra: item.isExtra === true,
           epiItemId: item.epiItemId,
           epiName: item.epiItem.name,
           caNumber: item.epiItem.caNumber,
@@ -3772,7 +3775,8 @@ export class PortalService {
         items: ret.items.map((ri) => ({
           id: ri.id,
           deliveryItemId: ri.deliveryItemId,
-          needName: ri.deliveryItem.epiNeed.name,
+          needName: this.deliveryNeedLabel(ri.deliveryItem),
+          isExtra: ri.deliveryItem.isExtra === true,
           epiName: ri.deliveryItem.epiItem.name,
           quantity: ri.quantity,
           condition: ri.condition,
@@ -4016,10 +4020,28 @@ export class PortalService {
       );
     }
 
-    const needIds = payload.items.map((item) => item.epiNeedId);
+    const normativeItems = payload.items.filter((item) => !item.isExtra);
+    const extraItems = payload.items.filter((item) => item.isExtra === true);
+
+    for (const item of normativeItems) {
+      if (!item.epiNeedId?.trim()) {
+        throw new BadRequestException(
+          'Item normativo exige epiNeedId da indicacao.',
+        );
+      }
+    }
+
+    const needIds = normativeItems.map((item) => item.epiNeedId!);
     if (new Set(needIds).size !== needIds.length) {
       throw new BadRequestException(
         'Nao e permitido repetir a mesma necessidade na entrega.',
+      );
+    }
+
+    const extraEpiIds = extraItems.map((item) => item.epiItemId);
+    if (new Set(extraEpiIds).size !== extraEpiIds.length) {
+      throw new BadRequestException(
+        'Nao e permitido repetir o mesmo EPI extra na entrega.',
       );
     }
 
@@ -4031,31 +4053,36 @@ export class PortalService {
       }
     }
 
-    const requirements = await this.prisma.jobFunctionEpiRequirement.findMany({
-      where: {
-        organizationId,
-        jobFunctionId: worker.clientJobFunctionId,
-        isActive: true,
-        epiNeedId: { in: needIds },
-      },
-      include: {
-        epiNeed: {
-          select: {
-            id: true,
-            name: true,
-            category: true,
-            usefulLifeValue: true,
-            usefulLifeUnit: true,
-            itemLinks: {
-              where: {
-                epiItemId: { in: payload.items.map((i) => i.epiItemId) },
-              },
-              select: { epiItemId: true },
+    const requirements =
+      needIds.length === 0
+        ? []
+        : await this.prisma.jobFunctionEpiRequirement.findMany({
+            where: {
+              organizationId,
+              jobFunctionId: worker.clientJobFunctionId,
+              isActive: true,
+              epiNeedId: { in: needIds },
             },
-          },
-        },
-      },
-    });
+            include: {
+              epiNeed: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                  usefulLifeValue: true,
+                  usefulLifeUnit: true,
+                  itemLinks: {
+                    where: {
+                      epiItemId: {
+                        in: normativeItems.map((i) => i.epiItemId),
+                      },
+                    },
+                    select: { epiItemId: true },
+                  },
+                },
+              },
+            },
+          });
 
     const reqByNeed = new Map(
       requirements.map((req) => [req.epiNeedId, req] as const),
@@ -4087,14 +4114,43 @@ export class PortalService {
       select: {
         id: true,
         name: true,
+        caNumber: true,
+        category: true,
         usefulLifeValue: true,
         usefulLifeUnit: true,
       },
     });
     const epiById = new Map(epis.map((e) => [e.id, e] as const));
 
-    for (const item of payload.items) {
-      const req = reqByNeed.get(item.epiNeedId);
+    const stockBalances =
+      payload.items.length === 0
+        ? []
+        : await this.prisma.epiStockBalance.findMany({
+            where: {
+              organizationId,
+              epiItemId: { in: epiIds },
+              stockLocationId: { in: locationIds },
+            },
+            select: {
+              epiItemId: true,
+              stockLocationId: true,
+              quantity: true,
+            },
+          });
+    const balanceKey = (epiItemId: string, stockLocationId: string) =>
+      `${epiItemId}:${stockLocationId}`;
+    const balanceByKey = new Map(
+      stockBalances.map(
+        (row) =>
+          [
+            balanceKey(row.epiItemId, row.stockLocationId),
+            row.quantity,
+          ] as const,
+      ),
+    );
+
+    for (const item of normativeItems) {
+      const req = reqByNeed.get(item.epiNeedId!);
       if (!req) {
         throw new BadRequestException(
           'Necessidade nao pertence a funcao do trabalhador (entrega avulsa nao permitida nesta etapa).',
@@ -4116,7 +4172,7 @@ export class PortalService {
         const anyLink = await this.prisma.epiItemNeed.findFirst({
           where: {
             organizationId,
-            epiNeedId: item.epiNeedId,
+            epiNeedId: item.epiNeedId!,
             epiItemId: item.epiItemId,
           },
           select: { id: true },
@@ -4126,6 +4182,27 @@ export class PortalService {
             `EPI "${epi.name}" nao esta vinculado a necessidade "${req.epiNeed.name}".`,
           );
         }
+      }
+    }
+
+    for (const item of extraItems) {
+      if (!locationSet.has(item.stockLocationId)) {
+        throw new BadRequestException(
+          'Local de estoque invalido ou nao pertence a este cliente.',
+        );
+      }
+      const epi = epiById.get(item.epiItemId);
+      if (!epi) {
+        throw new BadRequestException('EPI real invalido ou inativo.');
+      }
+      const available =
+        balanceByKey.get(
+          balanceKey(item.epiItemId, item.stockLocationId),
+        ) ?? 0;
+      if (available < item.quantity) {
+        throw new BadRequestException(
+          `Saldo insuficiente para EPI extra "${epi.name}" (CA ${epi.caNumber ?? 's/n'}). Disponivel: ${available}.`,
+        );
       }
     }
 
@@ -4185,18 +4262,23 @@ export class PortalService {
 
         const createdItems: Array<{
           id: string;
-          epiNeedId: string;
+          epiNeedId: string | null;
           epiItemId: string;
           stockLocationId: string;
           quantity: number;
           stockMovementId: string;
           nextReplacementAt: Date | null;
+          isExtra: boolean;
         }> = [];
 
         for (const item of payload.items) {
-          const req = reqByNeed.get(item.epiNeedId)!;
+          const isExtra = item.isExtra === true;
+          const req = isExtra ? null : reqByNeed.get(item.epiNeedId!)!;
           const epi = epiById.get(item.epiItemId)!;
           const variantId = item.epiVariantId?.trim() || null;
+          const needLabel = isExtra
+            ? 'Extra (fora das indicacoes)'
+            : req!.epiNeed.name;
 
           const movementResult = await this.stock.applyMovementInTx(
             tx,
@@ -4209,33 +4291,40 @@ export class PortalService {
               epiVariantId: variantId ?? undefined,
               quantity: item.quantity,
               reason: `Entrega de EPI — ${worker.name}`,
-              notes: `receipt=${receiptNumber}; need=${req.epiNeed.name}`,
+              notes: isExtra
+                ? `receipt=${receiptNumber}; extra=true; ca=${epi.caNumber ?? 's/n'}`
+                : `receipt=${receiptNumber}; need=${needLabel}`,
             },
           );
 
-          const needLife = resolveUsefulLife({
-            name: req.epiNeed.name,
-            category: req.epiNeed.category,
-            value: req.epiNeed.usefulLifeValue,
-            unit: req.epiNeed.usefulLifeUnit,
-          });
-          const resolvedLife = resolveUsefulLife({
-            name: req.epiNeed.name,
-            category: req.epiNeed.category,
-            value:
-              item.usefulLifeValue != null && item.usefulLifeValue > 0
-                ? item.usefulLifeValue
-                : epi.usefulLifeValue,
-            unit:
-              item.usefulLifeValue != null && item.usefulLifeValue > 0
-                ? (item.usefulLifeUnit ?? EpiUsefulLifeUnit.DIAS)
-                : (epi.usefulLifeUnit ?? needLife?.unit ?? null),
-          }) ?? needLife;
+          const needLife = isExtra
+            ? null
+            : resolveUsefulLife({
+                name: req!.epiNeed.name,
+                category: req!.epiNeed.category,
+                value: req!.epiNeed.usefulLifeValue,
+                unit: req!.epiNeed.usefulLifeUnit,
+              });
+          const resolvedLife =
+            resolveUsefulLife({
+              name: isExtra ? epi.name : req!.epiNeed.name,
+              category: isExtra ? epi.category : req!.epiNeed.category,
+              value:
+                item.usefulLifeValue != null && item.usefulLifeValue > 0
+                  ? item.usefulLifeValue
+                  : epi.usefulLifeValue,
+              unit:
+                item.usefulLifeValue != null && item.usefulLifeValue > 0
+                  ? (item.usefulLifeUnit ?? EpiUsefulLifeUnit.DIAS)
+                  : (epi.usefulLifeUnit ?? needLife?.unit ?? null),
+            }) ?? needLife;
           const lifeValue = resolvedLife?.value ?? null;
           const lifeUnit = resolvedLife?.unit ?? null;
-          const intervalDays = resolveRestrictiveReplacementDays(
-            intervalsByNeed.get(item.epiNeedId) ?? [],
-          );
+          const intervalDays = isExtra
+            ? null
+            : resolveRestrictiveReplacementDays(
+                intervalsByNeed.get(item.epiNeedId!) ?? [],
+              );
 
           const nextReplacementAt = computeNextReplacementAt({
             deliveredAt,
@@ -4262,7 +4351,8 @@ export class PortalService {
           const deliveryItem = await tx.epiDeliveryItem.create({
             data: {
               deliveryId: delivery.id,
-              epiNeedId: item.epiNeedId,
+              epiNeedId: isExtra ? null : item.epiNeedId!,
+              isExtra,
               epiItemId: item.epiItemId,
               epiVariantId: variantId,
               stockLocationId: item.stockLocationId,
@@ -4286,37 +4376,40 @@ export class PortalService {
             quantity: deliveryItem.quantity,
             stockMovementId: deliveryItem.stockMovementId,
             nextReplacementAt: deliveryItem.nextReplacementAt,
+            isExtra: deliveryItem.isExtra,
           });
         }
 
-        await tx.epiDeliveryItem.updateMany({
-          where: {
-            id: { notIn: createdItems.map((row) => row.id) },
-            epiNeedId: { in: needIds },
-            status: {
-              in: [
-                EpiDeliveryItemStatus.DELIVERED,
-                EpiDeliveryItemStatus.PARTIALLY_RETURNED,
-              ],
-            },
-            delivery: {
-              organizationId,
-              servedClientId,
-              workerId: worker.id,
+        if (needIds.length > 0) {
+          await tx.epiDeliveryItem.updateMany({
+            where: {
+              id: { notIn: createdItems.map((row) => row.id) },
+              isExtra: false,
+              epiNeedId: { in: needIds },
               status: {
                 in: [
-                  EpiDeliveryStatus.COMPLETED,
-                  EpiDeliveryStatus.PARTIALLY_RETURNED,
+                  EpiDeliveryItemStatus.DELIVERED,
+                  EpiDeliveryItemStatus.PARTIALLY_RETURNED,
                 ],
               },
+              delivery: {
+                organizationId,
+                servedClientId,
+                workerId: worker.id,
+                status: {
+                  in: [
+                    EpiDeliveryStatus.COMPLETED,
+                    EpiDeliveryStatus.PARTIALLY_RETURNED,
+                  ],
+                },
+              },
             },
-          },
-          data: {
-            status: EpiDeliveryItemStatus.REPLACED,
-            nextReplacementAt: null,
-          },
-        });
-
+            data: {
+              status: EpiDeliveryItemStatus.REPLACED,
+              nextReplacementAt: null,
+            },
+          });
+        }
         await tx.deliveryEvidence.create({
           data: {
             deliveryId: delivery.id,
@@ -4849,6 +4942,14 @@ export class PortalService {
     return EpiDeliveryStatus.COMPLETED;
   }
 
+  private deliveryNeedLabel(item: {
+    isExtra?: boolean;
+    epiNeed?: { name: string } | null;
+  }): string {
+    if (item.isExtra) return 'Extra (fora das indicacoes)';
+    return item.epiNeed?.name ?? '—';
+  }
+
   private deliveryStatusLabel(status: EpiDeliveryStatus): string {
     switch (status) {
       case EpiDeliveryStatus.CANCELLED:
@@ -4979,7 +5080,8 @@ export class PortalService {
     items: Array<{
       id: string;
       quantity: number;
-      epiNeed: { id: string; name: string };
+      isExtra?: boolean;
+      epiNeed: { id: string; name: string } | null;
       epiItem: { id: string; name: string; caNumber: string | null };
       stockLocation: { id: string; name: string };
     }>;
@@ -5011,7 +5113,8 @@ export class PortalService {
       itemCount: row.items.length,
       items: row.items.map((item) => ({
         id: item.id,
-        needName: item.epiNeed.name,
+        needName: this.deliveryNeedLabel(item),
+        isExtra: item.isExtra === true,
         epiName: item.epiItem.name,
         caNumber: item.epiItem.caNumber,
         locationName: item.stockLocation.name,

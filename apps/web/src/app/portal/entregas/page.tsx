@@ -8,6 +8,7 @@ import type {
   PortalEpiCoverageStatus,
   PortalEntregaWorkerOption,
   PortalEntregasPreparacaoResponse,
+  PortalStockBalanceRow,
 } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -23,6 +24,7 @@ import {
   createPortalDelivery,
   fetchPortalDeliveries,
   fetchPortalEntregasPreparacao,
+  fetchPortalEstoque,
   fetchPortalWorkerEpiCoverage,
 } from '../../../lib/client-auth';
 
@@ -39,6 +41,19 @@ type ItemSelection = {
   selected: boolean;
   epiItemId: string;
   stockLocationId: string;
+  quantity: number;
+  usefulLifeValue: string;
+  usefulLifeUnit: 'DIAS' | 'MESES' | 'ANOS';
+};
+
+type ExtraSelection = {
+  key: string;
+  epiItemId: string;
+  epiName: string;
+  caNumber: string | null;
+  stockLocationId: string;
+  locationName: string;
+  availableQuantity: number;
   quantity: number;
   usefulLifeValue: string;
   usefulLifeUnit: 'DIAS' | 'MESES' | 'ANOS';
@@ -350,6 +365,11 @@ function PortalEntregasContent() {
   const [selections, setSelections] = useState<Record<string, ItemSelection>>(
     {},
   );
+  const [extraItems, setExtraItems] = useState<ExtraSelection[]>([]);
+  const [stockBalances, setStockBalances] = useState<PortalStockBalanceRow[]>(
+    [],
+  );
+  const [extraQuery, setExtraQuery] = useState('');
   const [facialResult, setFacialResult] =
     useState<FacialValidationResult | null>(null);
   const [faceMatched, setFaceMatched] = useState(false);
@@ -459,25 +479,81 @@ function PortalEntregasContent() {
       .map((need) => ({ need, sel: selections[need.epiNeedId]! }));
   }, [coverage, selections]);
 
-  const pickedCount = selectedItems.length;
+  const totalPickedCount = selectedItems.length + extraItems.length;
   const configRow = selectedItems[epiConfigIndex] ?? null;
+
+  const extrasConfigured =
+    extraItems.length > 0 &&
+    extraItems.every(
+      (row) =>
+        row.epiItemId &&
+        row.stockLocationId &&
+        row.quantity > 0 &&
+        row.quantity <= row.availableQuantity &&
+        row.usefulLifeValue.trim() !== '',
+    );
 
   const canProceedToFace =
     Boolean(selectedId) &&
     Boolean(coverage?.workerHasBiometricTemplate) &&
     coverage?.biometricConsentStatus === 'GRANTED' &&
-    selectedItems.length > 0 &&
-    selectedItems.every(
-      (row) =>
-        row.sel.epiItemId &&
-        row.sel.stockLocationId &&
-        row.sel.quantity > 0 &&
-        row.sel.usefulLifeValue.trim() !== '',
-    ) &&
+    totalPickedCount > 0 &&
+    (selectedItems.length === 0 ||
+      selectedItems.every(
+        (row) =>
+          row.sel.epiItemId &&
+          row.sel.stockLocationId &&
+          row.sel.quantity > 0 &&
+          row.sel.usefulLifeValue.trim() !== '',
+      )) &&
+    (extraItems.length === 0 || extrasConfigured) &&
     !submitting;
 
   const canSubmit =
     canProceedToFace && faceMatched && Boolean(facialResult) && !submitting;
+
+  const availableExtraBalances = useMemo(() => {
+    const taken = new Set(extraItems.map((row) => row.epiItemId));
+    const q = stripDiacritics(extraQuery.trim());
+    return stockBalances
+      .filter((row) => row.quantity > 0 && !taken.has(row.epiItemId))
+      .filter((row) => {
+        if (!q) return true;
+        const hay = stripDiacritics(
+          `${row.epiName} ${row.caNumber ?? ''} ${row.locationName}`,
+        );
+        return hay.includes(q);
+      })
+      .slice(0, 12);
+  }, [stockBalances, extraItems, extraQuery]);
+
+  function addExtraFromBalance(row: PortalStockBalanceRow) {
+    const life =
+      row.usefulLifeValue != null && row.usefulLifeValue > 0
+        ? {
+            usefulLifeValue: String(row.usefulLifeValue),
+            usefulLifeUnit: (row.usefulLifeUnit ?? 'DIAS') as
+              | 'DIAS'
+              | 'MESES'
+              | 'ANOS',
+          }
+        : { usefulLifeValue: '30', usefulLifeUnit: 'DIAS' as const };
+    setExtraItems((prev) => [
+      ...prev,
+      {
+        key: `${row.epiItemId}:${row.stockLocationId}:${Date.now()}`,
+        epiItemId: row.epiItemId,
+        epiName: row.epiName,
+        caNumber: row.caNumber,
+        stockLocationId: row.stockLocationId,
+        locationName: row.locationName,
+        availableQuantity: row.quantity,
+        quantity: 1,
+        ...life,
+      },
+    ]);
+    setExtraQuery('');
+  }
 
   const resetFacial = useCallback(() => {
     setFacialResult(null);
@@ -538,13 +614,19 @@ function PortalEntregasContent() {
     setReceipt(null);
     closeFaceFlow();
     setNotes('');
+    setExtraItems([]);
+    setExtraQuery('');
     setEpiPhase('pick');
     setEpiConfigIndex(0);
     setLoadingCoverage(true);
     setError(null);
     try {
-      const res = await fetchPortalWorkerEpiCoverage(worker.id);
+      const [res, estoque] = await Promise.all([
+        fetchPortalWorkerEpiCoverage(worker.id),
+        fetchPortalEstoque(),
+      ]);
       setCoverage(res);
+      setStockBalances(estoque.balances);
       const next: Record<string, ItemSelection> = {};
       for (const need of res.needs) {
         next[need.epiNeedId] = defaultSelection(need);
@@ -554,6 +636,7 @@ function PortalEntregasContent() {
     } catch (err) {
       setCoverage(null);
       setSelections({});
+      setStockBalances([]);
       setError(
         err instanceof Error
           ? err.message
@@ -606,8 +689,8 @@ function PortalEntregasContent() {
       );
       return;
     }
-    if (selectedItems.length === 0) {
-      setError('Selecione ao menos um EPI disponivel para entregar.');
+    if (totalPickedCount === 0) {
+      setError('Selecione ao menos um EPI para entregar.');
       return;
     }
 
@@ -624,21 +707,38 @@ function PortalEntregasContent() {
           faceEngineVersion: facialResult.faceEngineVersion,
           livenessPassed: facialResult.livenessPassed,
           livenessChallenge: facialResult.livenessChallenge,
-          items: selectedItems.map(({ need, sel }) => {
-            const lifeRaw = Number(sel.usefulLifeValue);
-            return {
-              epiNeedId: need.epiNeedId,
-              epiItemId: sel.epiItemId,
-              stockLocationId: sel.stockLocationId,
-              quantity: sel.quantity,
-              usefulLifeValue:
-                Number.isFinite(lifeRaw) && lifeRaw > 0 ? lifeRaw : null,
-              usefulLifeUnit:
-                Number.isFinite(lifeRaw) && lifeRaw > 0
-                  ? sel.usefulLifeUnit
-                  : null,
-            };
-          }),
+          items: [
+            ...selectedItems.map(({ need, sel }) => {
+              const lifeRaw = Number(sel.usefulLifeValue);
+              return {
+                epiNeedId: need.epiNeedId,
+                epiItemId: sel.epiItemId,
+                stockLocationId: sel.stockLocationId,
+                quantity: sel.quantity,
+                usefulLifeValue:
+                  Number.isFinite(lifeRaw) && lifeRaw > 0 ? lifeRaw : null,
+                usefulLifeUnit:
+                  Number.isFinite(lifeRaw) && lifeRaw > 0
+                    ? sel.usefulLifeUnit
+                    : null,
+              };
+            }),
+            ...extraItems.map((item) => {
+              const lifeRaw = Number(item.usefulLifeValue);
+              return {
+                isExtra: true,
+                epiItemId: item.epiItemId,
+                stockLocationId: item.stockLocationId,
+                quantity: item.quantity,
+                usefulLifeValue:
+                  Number.isFinite(lifeRaw) && lifeRaw > 0 ? lifeRaw : null,
+                usefulLifeUnit:
+                  Number.isFinite(lifeRaw) && lifeRaw > 0
+                    ? item.usefulLifeUnit
+                    : null,
+              };
+            }),
+          ],
         },
         facialResult.blob,
       );
@@ -653,6 +753,8 @@ function PortalEntregasContent() {
         next[need.epiNeedId] = defaultSelection(need);
       }
       setSelections(next);
+      setExtraItems([]);
+      setExtraQuery('');
       await reloadHistory();
     } catch (err) {
       setError(
@@ -1054,10 +1156,11 @@ function PortalEntregasContent() {
 
                 {coverage.needs.length === 0 ? (
                   <p className="page-lead">
-                    {coverage.summary.message ??
-                      'Nenhum EPI necessario para este trabalhador.'}
+                    Nenhuma indicacao normativa para este trabalhador. Voce pode
+                    registrar entrega extra por CA/estoque abaixo.
                   </p>
-                ) : epiPhase === 'pick' ? (
+                ) : null}
+                {epiPhase === 'pick' ? (
                   <>
                     <p className="page-lead" style={{ marginBottom: '0.75rem' }}>
                       Marque os EPIs desta entrega. Os riscos ajudam a
@@ -1082,6 +1185,134 @@ function PortalEntregasContent() {
                       ))}
                     </div>
                     <div className="field" style={{ marginTop: '1rem' }}>
+                      <label htmlFor="entrega-extra-search">
+                        Adicionar EPI fora das indicacoes (CA/estoque)
+                      </label>
+                      <input
+                        id="entrega-extra-search"
+                        value={extraQuery}
+                        onChange={(e) => setExtraQuery(e.target.value)}
+                        placeholder="Buscar por nome, CA ou local"
+                        autoComplete="off"
+                      />
+                      <p className="field-hint">
+                        Entrega complementar sem alterar as indicacoes da funcao.
+                      </p>
+                    </div>
+                    {availableExtraBalances.length > 0 ? (
+                      <div className="portal-pick-list" role="list">
+                        {availableExtraBalances.map((row) => (
+                          <article
+                            key={`${row.epiItemId}:${row.stockLocationId}`}
+                            role="listitem"
+                            className="portal-pick-card"
+                          >
+                            <div className="portal-pick-card__body">
+                              <div className="portal-pick-card__main">
+                                <strong className="portal-pick-card__title">
+                                  {row.epiName}
+                                </strong>
+                                <p className="portal-pick-card__meta">
+                                  {row.caNumber ? `CA ${row.caNumber}` : 'CA n/a'}
+                                  {' · '}
+                                  {row.locationName}
+                                  {' · '}
+                                  Saldo {row.quantity}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-secondary portal-pick-card__action"
+                                onClick={() => addExtraFromBalance(row)}
+                              >
+                                Adicionar extra
+                              </button>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : null}
+                    {extraItems.length > 0 ? (
+                      <div className="portal-epi-pick-list" role="group">
+                        {extraItems.map((item) => (
+                          <article key={item.key} className="portal-epi-pick is-selected">
+                            <div className="portal-epi-pick__body">
+                              <div className="portal-epi-pick__top">
+                                <strong>
+                                  Extra: {item.epiName}
+                                  {item.caNumber ? ` (CA ${item.caNumber})` : ''}
+                                </strong>
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost"
+                                  onClick={() =>
+                                    setExtraItems((prev) =>
+                                      prev.filter((row) => row.key !== item.key),
+                                    )
+                                  }
+                                >
+                                  Remover
+                                </button>
+                              </div>
+                              <p className="table-sub">
+                                {item.locationName} · saldo {item.availableQuantity}
+                              </p>
+                              <div className="form-grid form-grid--compact">
+                                <div className="field">
+                                  <label>Quantidade</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={item.availableQuantity}
+                                    value={item.quantity}
+                                    onChange={(e) =>
+                                      setExtraItems((prev) =>
+                                        prev.map((row) =>
+                                          row.key !== item.key
+                                            ? row
+                                            : {
+                                                ...row,
+                                                quantity: Math.max(
+                                                  1,
+                                                  Math.min(
+                                                    row.availableQuantity,
+                                                    Number(e.target.value) || 1,
+                                                  ),
+                                                ),
+                                              },
+                                        ),
+                                      )
+                                    }
+                                  />
+                                </div>
+                                <div className="field">
+                                  <label>Vida util (dias corridos)</label>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={item.usefulLifeValue}
+                                    onChange={(e) =>
+                                      setExtraItems((prev) =>
+                                        prev.map((row) =>
+                                          row.key !== item.key
+                                            ? row
+                                            : {
+                                                ...row,
+                                                usefulLifeValue: e.target.value,
+                                                usefulLifeUnit: 'DIAS',
+                                              },
+                                        ),
+                                      )
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="field" style={{ marginTop: '1rem' }}>
                       <label htmlFor="entrega-notes">
                         Observacoes (opcional)
                       </label>
@@ -1095,19 +1326,24 @@ function PortalEntregasContent() {
                     </div>
                     {coverage.biometricConsentStatus === 'GRANTED' &&
                     coverage.workerHasBiometricTemplate &&
-                    coverage.needs.some((n) => n.status === 'DISPONIVEL') ? (
+                    (coverage.needs.some((n) => n.status === 'DISPONIVEL') ||
+                      extraItems.length > 0) ? (
                       <div className="flow-sticky-bar portal-sticky-actions">
                         <button
                           type="button"
                           className="btn btn-primary"
-                          disabled={pickedCount === 0}
+                          disabled={totalPickedCount === 0}
                           onClick={() => {
+                            if (selectedItems.length === 0) {
+                              void openFaceFlow();
+                              return;
+                            }
                             setEpiConfigIndex(0);
                             setEpiPhase('configure');
                           }}
                         >
-                          Continuar ({pickedCount} EPI
-                          {pickedCount === 1 ? '' : 's'})
+                          Continuar ({totalPickedCount} EPI
+                          {totalPickedCount === 1 ? '' : 's'})
                         </button>
                         <Link
                           className="btn btn-secondary"
@@ -1124,7 +1360,7 @@ function PortalEntregasContent() {
                       row={configRow.need}
                       selection={configRow.sel}
                       index={epiConfigIndex}
-                      total={pickedCount}
+                      total={selectedItems.length}
                       onChange={(next) =>
                         setSelections((prev) => ({
                           ...prev,
@@ -1146,7 +1382,7 @@ function PortalEntregasContent() {
                       >
                         {epiConfigIndex <= 0 ? 'Voltar a lista' : 'Anterior'}
                       </button>
-                      {epiConfigIndex < pickedCount - 1 ? (
+                      {epiConfigIndex < selectedItems.length - 1 ? (
                         <button
                           type="button"
                           className="btn btn-primary"
@@ -1213,9 +1449,9 @@ function PortalEntregasContent() {
                     </h2>
                     <p className="table-sub">
                       {coverage.worker.name}
-                      {selectedItems.length > 0
-                        ? ` · ${selectedItems.length} EPI${
-                            selectedItems.length === 1 ? '' : 's'
+                      {totalPickedCount > 0
+                        ? ` · ${totalPickedCount} EPI${
+                            totalPickedCount === 1 ? '' : 's'
                           }`
                         : ''}
                     </p>
@@ -1282,6 +1518,15 @@ function PortalEntregasContent() {
                         <li key={need.epiNeedId}>
                           <strong>{need.needName}</strong>
                           <span className="table-sub">Qtd {sel.quantity}</span>
+                        </li>
+                      ))}
+                      {extraItems.map((item) => (
+                        <li key={item.key}>
+                          <strong>
+                            Extra: {item.epiName}
+                            {item.caNumber ? ` (CA ${item.caNumber})` : ''}
+                          </strong>
+                          <span className="table-sub">Qtd {item.quantity}</span>
                         </li>
                       ))}
                     </ul>
