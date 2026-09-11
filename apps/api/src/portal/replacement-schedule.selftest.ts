@@ -94,7 +94,7 @@ function run() {
     quantity: 2,
   });
   assert.ok(bootPack);
-  assert.strictEqual(bootPack.toISOString().slice(0, 10), '2026-06-30');
+  assert.strictEqual(bootPack.toISOString().slice(0, 10), '2026-12-27');
 
   console.log('replacement-schedule.selftest ok');
 }

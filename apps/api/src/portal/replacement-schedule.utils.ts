@@ -4,11 +4,6 @@ import { EpiUsefulLifeUnit } from '@prisma/client';
 export const REPLACEMENT_WARN_DAYS = 15;
 /** Urgente: 3 dias ou ja vencido. */
 export const REPLACEMENT_CRITICAL_DAYS = 3;
-/**
- * Consumiveis curtos (PFF, etc.): a empresa entrega varias unidades.
- * O prazo da entrega e vida util × quantidade.
- */
-export const SHORT_LIFE_PACK_MAX_DAYS = 5;
 
 /** Converte vida util catalogada para dias-base de uso. */
 export function usefulLifeToBaseDays(
@@ -50,10 +45,7 @@ export function effectiveUsefulLifeDays(input: {
       : null);
   if (unitDays == null || unitDays <= 0) return null;
   const qty = Math.max(1, Math.floor(input.quantity ?? 1));
-  if (unitDays <= SHORT_LIFE_PACK_MAX_DAYS && qty > 1) {
-    return unitDays * qty;
-  }
-  return unitDays;
+  return unitDays * qty;
 }
 
 export function computeNextReplacementAt(input: {
@@ -93,9 +85,9 @@ export function formatUsefulLifeSnapshot(
   const label =
     unit === 'DIAS' ? 'dia(s)' : unit === 'MESES' ? 'mes(es)' : 'ano(s)';
   const base = `${value} ${label}`;
-  const unitDays = usefulLifeToBaseDays(value, unit);
   const qty = Math.max(1, Math.floor(quantity ?? 1));
-  if (unitDays != null && unitDays <= SHORT_LIFE_PACK_MAX_DAYS && qty > 1) {
+  const unitDays = usefulLifeToBaseDays(value, unit);
+  if (qty > 1 && unitDays != null) {
     return `${base} × ${qty} un. (${unitDays * qty} d)`;
   }
   return base;

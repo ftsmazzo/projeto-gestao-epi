@@ -144,6 +144,23 @@ function mapEpiSearchItem(item: EpiCatalogSelect) {
   };
 }
 
+function addUtcDays(base: Date, days: number): Date {
+  const next = new Date(base);
+  next.setUTCDate(next.getUTCDate() + Math.max(1, Math.floor(days)));
+  return next;
+}
+
+function resolveLineLifeDays(input: {
+  usefulLifeValue: number | null | undefined;
+  usefulLifeUnit: EpiUsefulLifeUnit | string | null | undefined;
+  quantity: number | null | undefined;
+}): number | null {
+  const unitDays = usefulLifeToBaseDays(input.usefulLifeValue, input.usefulLifeUnit);
+  if (unitDays == null || unitDays <= 0) return null;
+  const qty = Math.max(1, Math.floor(input.quantity ?? 1));
+  return unitDays * qty;
+}
+
 const epiCatalogSelect = {
   id: true,
   name: true,
@@ -235,7 +252,6 @@ export class PortalService {
               EpiDeliveryItemStatus.PARTIALLY_RETURNED,
             ],
           },
-          nextReplacementAt: { not: null, lte: warnHorizon },
           delivery: {
             organizationId,
             servedClientId,
@@ -247,7 +263,21 @@ export class PortalService {
             },
           },
         },
-        select: { nextReplacementAt: true },
+        select: {
+          epiItemId: true,
+          quantity: true,
+          returnedQuantity: true,
+          cancelledQuantity: true,
+          usefulLifeValue: true,
+          usefulLifeUnit: true,
+          delivery: {
+            select: {
+              id: true,
+              workerId: true,
+              deliveredAt: true,
+            },
+          },
+        },
       }),
       this.prisma.epiDelivery.count({
         where: {
@@ -287,16 +317,48 @@ export class PortalService {
       { quantity: 0, low: 0, zero: 0 },
     );
 
+    const latestDeliveryByWorkerEpi = new Map<string, Date>();
+    for (const item of replacementItems) {
+      const key = `${item.delivery.workerId}:${item.epiItemId}`;
+      const latest = latestDeliveryByWorkerEpi.get(key);
+      if (!latest || item.delivery.deliveredAt.getTime() > latest.getTime()) {
+        latestDeliveryByWorkerEpi.set(key, item.delivery.deliveredAt);
+      }
+    }
+
+    const replacementAgg = new Map<string, Date>();
+    for (const item of replacementItems) {
+      const workerEpiKey = `${item.delivery.workerId}:${item.epiItemId}`;
+      const latest = latestDeliveryByWorkerEpi.get(workerEpiKey);
+      if (!latest || item.delivery.deliveredAt.getTime() !== latest.getTime()) {
+        continue;
+      }
+      const remainingQty =
+        item.quantity - item.returnedQuantity - item.cancelledQuantity;
+      if (remainingQty <= 0) continue;
+      const lineDays = resolveLineLifeDays({
+        usefulLifeValue: item.usefulLifeValue,
+        usefulLifeUnit: item.usefulLifeUnit,
+        quantity: remainingQty,
+      });
+      if (lineDays == null) continue;
+      const key = `${item.delivery.id}:${item.epiItemId}`;
+      const current = replacementAgg.get(key);
+      if (!current) {
+        replacementAgg.set(key, addUtcDays(item.delivery.deliveredAt, lineDays));
+        continue;
+      }
+      replacementAgg.set(key, addUtcDays(current, lineDays));
+    }
+
     let replacementOverdue = 0;
     let replacementCritical = 0;
     let replacementWarn = 0;
-    for (const item of replacementItems) {
-      const at = item.nextReplacementAt;
-      if (!at) continue;
+    for (const at of replacementAgg.values()) {
+      if (at.getTime() > warnHorizon.getTime()) continue;
       if (at.getTime() < now.getTime()) replacementOverdue += 1;
-      else if (at.getTime() <= criticalHorizon.getTime()) {
-        replacementCritical += 1;
-      } else replacementWarn += 1;
+      else if (at.getTime() <= criticalHorizon.getTime()) replacementCritical += 1;
+      else replacementWarn += 1;
     }
     const replacementTotal =
       replacementOverdue + replacementCritical + replacementWarn;
@@ -726,7 +788,6 @@ export class PortalService {
               EpiDeliveryItemStatus.PARTIALLY_RETURNED,
             ],
           },
-          nextReplacementAt: { not: null, lte: warnHorizon },
           delivery: {
             organizationId,
             servedClientId,
@@ -744,12 +805,13 @@ export class PortalService {
               id: true,
               receiptNumber: true,
               workerId: true,
+              deliveredAt: true,
             },
           },
           epiNeed: { select: { name: true } },
-          epiItem: { select: { name: true, caNumber: true } },
+          epiItem: { select: { id: true, name: true, caNumber: true } },
         },
-        orderBy: { nextReplacementAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
       }),
       this.prisma.workerFacialReference.findMany({
         where: {
@@ -796,32 +858,88 @@ export class PortalService {
       }>
     >();
 
+    const groupedByWorkerDeliveryEpi = new Map<
+      string,
+      {
+        workerId: string;
+        deliveryId: string;
+        receiptNumber: string;
+        deliveredAt: Date;
+        epiName: string;
+        caNumber: string | null;
+        needNames: string[];
+        totalDays: number;
+      }
+    >();
+    const latestDeliveryPerWorkerEpi = new Map<string, Date>();
+
     for (const item of dueItems) {
-      const at = item.nextReplacementAt;
-      if (!at) continue;
+      const workerEpiKey = `${item.delivery.workerId}:${item.epiItem.id}`;
+      const latest = latestDeliveryPerWorkerEpi.get(workerEpiKey);
+      if (!latest || item.delivery.deliveredAt.getTime() > latest.getTime()) {
+        latestDeliveryPerWorkerEpi.set(workerEpiKey, item.delivery.deliveredAt);
+      }
+    }
+
+    for (const item of dueItems) {
+      const workerEpiKey = `${item.delivery.workerId}:${item.epiItem.id}`;
+      const latest = latestDeliveryPerWorkerEpi.get(workerEpiKey);
+      if (!latest || item.delivery.deliveredAt.getTime() !== latest.getTime()) {
+        continue;
+      }
+      const remainingQty =
+        item.quantity - item.returnedQuantity - item.cancelledQuantity;
+      if (remainingQty <= 0) continue;
+      const lineDays = resolveLineLifeDays({
+        usefulLifeValue: item.usefulLifeValue,
+        usefulLifeUnit: item.usefulLifeUnit,
+        quantity: remainingQty,
+      });
+      if (lineDays == null) continue;
+
+      const aggregateKey = `${item.delivery.workerId}:${item.delivery.id}:${item.epiItem.id}`;
+      const needLabel = this.deliveryNeedLabel(item);
+      const existing = groupedByWorkerDeliveryEpi.get(aggregateKey);
+      if (!existing) {
+        groupedByWorkerDeliveryEpi.set(aggregateKey, {
+          workerId: item.delivery.workerId,
+          deliveryId: item.delivery.id,
+          receiptNumber: item.delivery.receiptNumber,
+          deliveredAt: item.delivery.deliveredAt,
+          epiName: item.epiItem.name,
+          caNumber: item.epiItem.caNumber,
+          needNames: [needLabel],
+          totalDays: lineDays,
+        });
+        continue;
+      }
+      if (!existing.needNames.includes(needLabel)) {
+        existing.needNames.push(needLabel);
+      }
+      existing.totalDays += lineDays;
+    }
+
+    for (const row of groupedByWorkerDeliveryEpi.values()) {
+      const at = addUtcDays(row.deliveredAt, row.totalDays);
+      if (at.getTime() > warnHorizon.getTime()) continue;
       const msPerDay = 24 * 60 * 60 * 1000;
       const daysRemaining = Math.ceil((at.getTime() - now.getTime()) / msPerDay);
       const tone: 'warn' | 'critical' =
         at.getTime() <= criticalHorizon.getTime() ? 'critical' : 'warn';
-      const workerId = item.delivery.workerId;
-      const list = dueByWorker.get(workerId) ?? [];
+      const list = dueByWorker.get(row.workerId) ?? [];
       list.push({
-        id: item.id,
-        deliveryId: item.delivery.id,
-        receiptNumber: item.delivery.receiptNumber,
-        epiName: item.epiItem.name,
-        needName: this.deliveryNeedLabel(item),
-        caNumber: item.epiItem.caNumber,
+        id: `${row.deliveryId}:${row.epiName}:${row.caNumber ?? 'sn'}`,
+        deliveryId: row.deliveryId,
+        receiptNumber: row.receiptNumber,
+        epiName: row.epiName,
+        needName: row.needNames.join(' + '),
+        caNumber: row.caNumber,
         nextReplacementAt: at.toISOString(),
-        usefulLifeLabel: formatUsefulLifeSnapshot(
-          item.usefulLifeValue,
-          item.usefulLifeUnit,
-          item.quantity - item.returnedQuantity - item.cancelledQuantity,
-        ),
+        usefulLifeLabel: `${row.totalDays} dia(s) no total`,
         daysRemaining,
         tone,
       });
-      dueByWorker.set(workerId, list);
+      dueByWorker.set(row.workerId, list);
     }
 
     const active = workers.filter((w) => w.status === WorkerStatus.ACTIVE).length;
@@ -3439,7 +3557,7 @@ export class PortalService {
         items: {
           include: {
             epiNeed: { select: { name: true } },
-            epiItem: { select: { name: true, caNumber: true } },
+            epiItem: { select: { id: true, name: true, caNumber: true } },
             stockLocation: { select: { name: true } },
           },
         },
@@ -3466,49 +3584,111 @@ export class PortalService {
         status: row.status,
         statusLabel: this.deliveryStatusLabel(row.status),
         deliveredAt: row.deliveredAt.toISOString(),
-        items: row.items.map((item) => {
-          const remainingQty = Math.max(
-            0,
-            item.quantity - item.returnedQuantity - item.cancelledQuantity,
-          );
-          const closed =
-            item.status === EpiDeliveryItemStatus.REPLACED ||
-            item.status === EpiDeliveryItemStatus.RETURNED ||
-            item.status === EpiDeliveryItemStatus.CANCELLED;
-          const nextAt = closed
-            ? null
-            : (item.nextReplacementAt ??
-              computeNextReplacementAt({
-                deliveredAt: row.deliveredAt,
-                usefulLifeValue: item.usefulLifeValue,
-                usefulLifeUnit: item.usefulLifeUnit,
-                quantity: remainingQty > 0 ? remainingQty : item.quantity,
-              }));
-          const remaining =
-            nextAt != null ? calendarDaysRemaining(nextAt, generatedAt) : null;
-          return {
-            id: item.id,
-            needName: this.deliveryNeedLabel(item),
-            isExtra: item.isExtra === true,
-            epiName: item.epiItem.name,
-            caNumber: item.epiItem.caNumber,
-            quantity: item.quantity,
-            returnedQuantity: item.returnedQuantity,
-            cancelledQuantity: item.cancelledQuantity,
-            status: item.status,
-            statusLabel: this.itemStatusLabel(item.status),
-            nextReplacementAt: nextAt?.toISOString() ?? null,
-            usefulLifeLabel: formatUsefulLifeSnapshot(
-              item.usefulLifeValue,
-              item.usefulLifeUnit,
-              remainingQty > 0 ? remainingQty : item.quantity,
-            ),
-            remainingDays: remaining,
-            remainingLabel: formatRemainingDays(remaining),
-            usageFrequencyLabel: null,
-            locationName: item.stockLocation.name,
-          };
-        }),
+        items: (() => {
+          const grouped = new Map<
+            string,
+            {
+              id: string;
+              needNames: string[];
+              isExtra: boolean;
+              epiName: string;
+              caNumber: string | null;
+              quantity: number;
+              returnedQuantity: number;
+              cancelledQuantity: number;
+              status: EpiDeliveryItemStatus;
+              totalLifeDays: number;
+              locationName: string;
+            }
+          >();
+          for (const item of row.items) {
+            const key = item.epiItem.id;
+            const remainingQty = Math.max(
+              0,
+              item.quantity - item.returnedQuantity - item.cancelledQuantity,
+            );
+            const lineLifeDays = resolveLineLifeDays({
+              usefulLifeValue: item.usefulLifeValue,
+              usefulLifeUnit: item.usefulLifeUnit,
+              quantity: remainingQty,
+            });
+            const needLabel = this.deliveryNeedLabel(item);
+            const existing = grouped.get(key);
+            if (!existing) {
+              grouped.set(key, {
+                id: item.id,
+                needNames: [needLabel],
+                isExtra: item.isExtra === true,
+                epiName: item.epiItem.name,
+                caNumber: item.epiItem.caNumber,
+                quantity: item.quantity,
+                returnedQuantity: item.returnedQuantity,
+                cancelledQuantity: item.cancelledQuantity,
+                status: item.status,
+                totalLifeDays: lineLifeDays ?? 0,
+                locationName: item.stockLocation.name,
+              });
+              continue;
+            }
+            if (!existing.needNames.includes(needLabel)) {
+              existing.needNames.push(needLabel);
+            }
+            existing.quantity += item.quantity;
+            existing.returnedQuantity += item.returnedQuantity;
+            existing.cancelledQuantity += item.cancelledQuantity;
+            existing.totalLifeDays += lineLifeDays ?? 0;
+            if (
+              existing.status !== EpiDeliveryItemStatus.DELIVERED &&
+              item.status === EpiDeliveryItemStatus.DELIVERED
+            ) {
+              existing.status = EpiDeliveryItemStatus.DELIVERED;
+            } else if (
+              existing.status === EpiDeliveryItemStatus.PARTIALLY_RETURNED &&
+              item.status === EpiDeliveryItemStatus.DELIVERED
+            ) {
+              existing.status = EpiDeliveryItemStatus.DELIVERED;
+            }
+          }
+
+          return Array.from(grouped.values()).map((item) => {
+            const remainingQty = Math.max(
+              0,
+              item.quantity - item.returnedQuantity - item.cancelledQuantity,
+            );
+            const closed =
+              item.status === EpiDeliveryItemStatus.REPLACED ||
+              item.status === EpiDeliveryItemStatus.RETURNED ||
+              item.status === EpiDeliveryItemStatus.CANCELLED ||
+              remainingQty <= 0;
+            const nextAt =
+              closed || item.totalLifeDays <= 0
+                ? null
+                : addUtcDays(row.deliveredAt, item.totalLifeDays);
+            const remaining =
+              nextAt != null ? calendarDaysRemaining(nextAt, generatedAt) : null;
+            return {
+              id: item.id,
+              needName: item.needNames.join(' + '),
+              isExtra: item.isExtra,
+              epiName: item.epiName,
+              caNumber: item.caNumber,
+              quantity: item.quantity,
+              returnedQuantity: item.returnedQuantity,
+              cancelledQuantity: item.cancelledQuantity,
+              status: item.status,
+              statusLabel: this.itemStatusLabel(item.status),
+              nextReplacementAt: nextAt?.toISOString() ?? null,
+              usefulLifeLabel:
+                item.totalLifeDays > 0
+                  ? `${item.totalLifeDays} dia(s) no total`
+                  : '—',
+              remainingDays: remaining,
+              remainingLabel: formatRemainingDays(remaining),
+              usageFrequencyLabel: null,
+              locationName: item.locationName,
+            };
+          });
+        })(),
         evidence: facial
           ? {
               id: facial.id,
@@ -4242,6 +4422,53 @@ export class PortalService {
       }
     }
 
+    const totalDaysByEpiItem = new Map<string, number>();
+    for (const item of payload.items) {
+      const isExtra = item.isExtra === true;
+      const req = isExtra ? null : reqByNeed.get(item.epiNeedId!)!;
+      const epi = epiById.get(item.epiItemId)!;
+      const needLife = isExtra
+        ? null
+        : resolveUsefulLife({
+            name: req!.epiNeed.name,
+            category: req!.epiNeed.category,
+            value: req!.epiNeed.usefulLifeValue,
+            unit: req!.epiNeed.usefulLifeUnit,
+          });
+      const resolvedLife =
+        resolveUsefulLife({
+          name: isExtra ? epi.name : req!.epiNeed.name,
+          category: isExtra ? epi.category : req!.epiNeed.category,
+          value:
+            item.usefulLifeValue != null && item.usefulLifeValue > 0
+              ? item.usefulLifeValue
+              : epi.usefulLifeValue,
+          unit:
+            item.usefulLifeValue != null && item.usefulLifeValue > 0
+              ? (item.usefulLifeUnit ?? EpiUsefulLifeUnit.DIAS)
+              : (epi.usefulLifeUnit ?? needLife?.unit ?? null),
+        }) ?? needLife;
+      const lifeValue = resolvedLife?.value ?? null;
+      const lifeUnit = resolvedLife?.unit ?? null;
+      const intervalDays = isExtra
+        ? null
+        : resolveRestrictiveReplacementDays(
+            intervalsByNeed.get(item.epiNeedId!) ?? [],
+          );
+      const baseDays =
+        lifeValue != null && lifeValue > 0
+          ? usefulLifeToBaseDays(lifeValue, lifeUnit ?? EpiUsefulLifeUnit.DIAS)
+          : intervalDays != null && intervalDays > 0
+            ? intervalDays
+            : null;
+      if (baseDays == null || baseDays <= 0) continue;
+      const lineDays = baseDays * Math.max(1, Math.floor(item.quantity));
+      totalDaysByEpiItem.set(
+        item.epiItemId,
+        (totalDaysByEpiItem.get(item.epiItemId) ?? 0) + lineDays,
+      );
+    }
+
     const deliveredAt = new Date();
     const deliveryId = randomUUID().replace(/-/g, '').slice(0, 24);
     const operator = await this.prisma.user.findFirst({
@@ -4362,14 +4589,18 @@ export class PortalService {
                 intervalsByNeed.get(item.epiNeedId!) ?? [],
               );
 
-          const nextReplacementAt = computeNextReplacementAt({
-            deliveredAt,
-            replacementIntervalDays:
-              lifeValue != null && lifeValue > 0 ? null : intervalDays,
-            usefulLifeValue: lifeValue,
-            usefulLifeUnit: lifeUnit,
-            quantity: item.quantity,
-          });
+          const totalDaysForItem = totalDaysByEpiItem.get(item.epiItemId);
+          const nextReplacementAt =
+            totalDaysForItem != null && totalDaysForItem > 0
+              ? addUtcDays(deliveredAt, totalDaysForItem)
+              : computeNextReplacementAt({
+                  deliveredAt,
+                  replacementIntervalDays:
+                    lifeValue != null && lifeValue > 0 ? null : intervalDays,
+                  usefulLifeValue: lifeValue,
+                  usefulLifeUnit: lifeUnit,
+                  quantity: item.quantity,
+                });
 
           const snapshotLifeValue =
             lifeValue != null && lifeValue > 0
@@ -4422,6 +4653,36 @@ export class PortalService {
               id: { notIn: createdItems.map((row) => row.id) },
               isExtra: false,
               epiNeedId: { in: needIds },
+              status: {
+                in: [
+                  EpiDeliveryItemStatus.DELIVERED,
+                  EpiDeliveryItemStatus.PARTIALLY_RETURNED,
+                ],
+              },
+              delivery: {
+                organizationId,
+                servedClientId,
+                workerId: worker.id,
+                status: {
+                  in: [
+                    EpiDeliveryStatus.COMPLETED,
+                    EpiDeliveryStatus.PARTIALLY_RETURNED,
+                  ],
+                },
+              },
+            },
+            data: {
+              status: EpiDeliveryItemStatus.REPLACED,
+              nextReplacementAt: null,
+            },
+          });
+        }
+
+        if (epiIds.length > 0) {
+          await tx.epiDeliveryItem.updateMany({
+            where: {
+              id: { notIn: createdItems.map((row) => row.id) },
+              epiItemId: { in: epiIds },
               status: {
                 in: [
                   EpiDeliveryItemStatus.DELIVERED,

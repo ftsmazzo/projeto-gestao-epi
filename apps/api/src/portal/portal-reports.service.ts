@@ -9,7 +9,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { groupCoverageRequirementsByNeed } from './portal-epi-coverage.utils';
 import {
-  formatUsefulLifeSnapshot,
+  usefulLifeToBaseDays,
   REPLACEMENT_WARN_DAYS,
   REPLACEMENT_CRITICAL_DAYS,
 } from './replacement-schedule.utils';
@@ -60,6 +60,12 @@ function stockRowStatus(quantity: number, minQuantity: number | null) {
   if (quantity <= 0) return 'zerado' as const;
   if (minQuantity != null && quantity <= minQuantity) return 'baixo' as const;
   return 'ok' as const;
+}
+
+function addUtcDays(base: Date, days: number): Date {
+  const next = new Date(base);
+  next.setUTCDate(next.getUTCDate() + Math.max(1, Math.floor(days)));
+  return next;
 }
 
 @Injectable()
@@ -731,7 +737,6 @@ export class PortalReportsService {
             EpiDeliveryItemStatus.PARTIALLY_RETURNED,
           ],
         },
-        nextReplacementAt: { not: null, lte: warnHorizon },
         delivery: {
           organizationId,
           servedClientId,
@@ -752,6 +757,7 @@ export class PortalReportsService {
           select: {
             id: true,
             receiptNumber: true,
+            deliveredAt: true,
             worker: {
               select: {
                 id: true,
@@ -765,20 +771,86 @@ export class PortalReportsService {
           },
         },
         epiNeed: { select: { name: true } },
-        epiItem: { select: { name: true, caNumber: true } },
+        epiItem: { select: { id: true, name: true, caNumber: true } },
       },
-      orderBy: { nextReplacementAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       take: 500,
     });
 
     const msPerDay = 24 * 60 * 60 * 1000;
-    const rows = items
-      .filter((item) => item.nextReplacementAt)
+    const latestDeliveryPerWorkerEpi = new Map<string, Date>();
+    for (const item of items) {
+      const key = `${item.delivery.worker.id}:${item.epiItem.id}`;
+      const latest = latestDeliveryPerWorkerEpi.get(key);
+      if (!latest || item.delivery.deliveredAt.getTime() > latest.getTime()) {
+        latestDeliveryPerWorkerEpi.set(key, item.delivery.deliveredAt);
+      }
+    }
+
+    const grouped = new Map<
+      string,
+      {
+        deliveryId: string;
+        receiptNumber: string;
+        deliveredAt: Date;
+        workerId: string;
+        workerName: string;
+        workerRegistration: string | null;
+        unitName: string | null;
+        sectorName: string | null;
+        jobFunctionName: string | null;
+        epiName: string;
+        caNumber: string | null;
+        needNames: string[];
+        totalDays: number;
+      }
+    >();
+
+    for (const item of items) {
+      const latestKey = `${item.delivery.worker.id}:${item.epiItem.id}`;
+      const latestAt = latestDeliveryPerWorkerEpi.get(latestKey);
+      if (!latestAt || latestAt.getTime() !== item.delivery.deliveredAt.getTime()) {
+        continue;
+      }
+      const remainingQty =
+        item.quantity - item.returnedQuantity - item.cancelledQuantity;
+      if (remainingQty <= 0) continue;
+      const unitDays = usefulLifeToBaseDays(item.usefulLifeValue, item.usefulLifeUnit);
+      if (unitDays == null || unitDays <= 0) continue;
+      const lineDays = unitDays * Math.max(1, Math.floor(remainingQty));
+      const rowKey = `${item.delivery.worker.id}:${item.delivery.id}:${item.epiItem.id}`;
+      const needLabel = item.isExtra
+        ? 'Extra (fora das indicacoes)'
+        : (item.epiNeed?.name ?? '—');
+      const existing = grouped.get(rowKey);
+      if (!existing) {
+        grouped.set(rowKey, {
+          deliveryId: item.delivery.id,
+          receiptNumber: item.delivery.receiptNumber,
+          deliveredAt: item.delivery.deliveredAt,
+          workerId: item.delivery.worker.id,
+          workerName: item.delivery.worker.name,
+          workerRegistration: item.delivery.worker.registration,
+          unitName: item.delivery.worker.operationalUnit?.name ?? null,
+          sectorName: item.delivery.worker.clientSector?.name ?? null,
+          jobFunctionName: item.delivery.worker.clientJobFunction?.name ?? null,
+          epiName: item.epiItem.name,
+          caNumber: item.epiItem.caNumber,
+          needNames: [needLabel],
+          totalDays: lineDays,
+        });
+        continue;
+      }
+      if (!existing.needNames.includes(needLabel)) {
+        existing.needNames.push(needLabel);
+      }
+      existing.totalDays += lineDays;
+    }
+
+    const rows = Array.from(grouped.values())
       .map((item) => {
-        const at = item.nextReplacementAt!;
-        const daysRemaining = Math.ceil(
-          (at.getTime() - now.getTime()) / msPerDay,
-        );
+        const at = addUtcDays(item.deliveredAt, item.totalDays);
+        const daysRemaining = Math.ceil((at.getTime() - now.getTime()) / msPerDay);
         const tone: 'overdue' | 'critical' | 'warn' =
           daysRemaining < 0
             ? 'overdue'
@@ -786,27 +858,20 @@ export class PortalReportsService {
               ? 'critical'
               : 'warn';
         return {
-          id: item.id,
-          deliveryId: item.delivery.id,
-          receiptNumber: item.delivery.receiptNumber,
-          workerId: item.delivery.worker.id,
-          workerName: item.delivery.worker.name,
-          workerRegistration: item.delivery.worker.registration,
-          unitName: item.delivery.worker.operationalUnit?.name ?? null,
-          sectorName: item.delivery.worker.clientSector?.name ?? null,
-          jobFunctionName:
-            item.delivery.worker.clientJobFunction?.name ?? null,
-          epiName: item.epiItem.name,
-          needName: item.isExtra
-            ? 'Extra (fora das indicacoes)'
-            : (item.epiNeed?.name ?? '—'),
-          caNumber: item.epiItem.caNumber,
+          id: `${item.deliveryId}:${item.workerId}:${item.epiName}`,
+          deliveryId: item.deliveryId,
+          receiptNumber: item.receiptNumber,
+          workerId: item.workerId,
+          workerName: item.workerName,
+          workerRegistration: item.workerRegistration,
+          unitName: item.unitName,
+          sectorName: item.sectorName,
+          jobFunctionName: item.jobFunctionName,
+          epiName: item.epiName,
+          needName: item.needNames.join(' + '),
+          caNumber: item.caNumber,
           nextReplacementAt: at.toISOString(),
-          usefulLifeLabel: formatUsefulLifeSnapshot(
-            item.usefulLifeValue,
-            item.usefulLifeUnit,
-            item.quantity - item.returnedQuantity - item.cancelledQuantity,
-          ),
+          usefulLifeLabel: `${item.totalDays} dia(s) no total`,
           daysRemaining,
           tone,
           toneLabel:
@@ -815,9 +880,13 @@ export class PortalReportsService {
               : tone === 'critical'
                 ? 'Critico'
                 : 'Alerta',
+          _at: at,
         };
       })
-      .filter((row) => !filters.status || row.tone === filters.status);
+      .filter((row) => row._at.getTime() <= warnHorizon.getTime())
+      .filter((row) => !filters.status || row.tone === filters.status)
+      .sort((a, b) => a._at.getTime() - b._at.getTime())
+      .map(({ _at, ...row }) => row);
 
     return {
       horizon: {
