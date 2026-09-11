@@ -1,17 +1,28 @@
 'use client';
 
 import type {
+  CaCertificateSearchItem,
   ClientPortalUser,
   PortalDashboardResponse,
 } from '@gestao-epi/shared';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { InstallAppBanner } from '../../components/InstallAppBanner';
 import { PortalDashboardCards } from '../../components/PortalDashboardCards';
 import { StockDashboardKpis } from '../../components/portal/StockDashboardKpis';
 import { RequireClientAuth } from '../../components/RequireClientAuth';
 import { formatCnpj } from '../../lib/cnpj';
-import { fetchPortalDashboard } from '../../lib/client-auth';
+import { fetchPortalDashboard, searchPortalCaepi } from '../../lib/client-auth';
+
+type CaValidationResult = {
+  typedCa: string;
+  found: CaCertificateSearchItem | null;
+  isValid: boolean;
+};
+
+function normalizeCaInput(raw: string) {
+  return raw.replace(/\D/g, '');
+}
 
 function PortalHome({ user }: { user: ClientPortalUser }) {
   const clientName =
@@ -19,6 +30,12 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
   const [dash, setDash] = useState<PortalDashboardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [caQuery, setCaQuery] = useState('');
+  const [caChecking, setCaChecking] = useState(false);
+  const [caError, setCaError] = useState<string | null>(null);
+  const [caValidation, setCaValidation] = useState<CaValidationResult | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +58,34 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
       cancelled = true;
     };
   }, []);
+
+  async function submitCaValidation(event: FormEvent) {
+    event.preventDefault();
+    const typedCa = normalizeCaInput(caQuery);
+    if (typedCa.length < 3) {
+      setCaValidation(null);
+      setCaError('Digite ao menos 3 numeros para validar o CA.');
+      return;
+    }
+    setCaError(null);
+    setCaChecking(true);
+    try {
+      const res = await searchPortalCaepi(typedCa, 8);
+      const found =
+        res.items.find((item) => normalizeCaInput(item.caNumber) === typedCa) ??
+        null;
+      setCaValidation({
+        typedCa,
+        found,
+        isValid: Boolean(found && found.status === 'VALIDO'),
+      });
+    } catch (err) {
+      setCaValidation(null);
+      setCaError(err instanceof Error ? err.message : 'Falha ao validar CA.');
+    } finally {
+      setCaChecking(false);
+    }
+  }
 
   const kpiItems = useMemo(() => {
     if (!dash) return [];
@@ -150,6 +195,53 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
       {dash?.attention ? (
         <PortalDashboardCards cards={dash.attention.cards} />
       ) : null}
+
+      <section className="portal-card" aria-labelledby="ca-validate-title">
+        <div className="dash-panel__head">
+          <h2 id="ca-validate-title">Validar CA</h2>
+          <p>Digite o numero do CA e veja se esta valido.</p>
+        </div>
+        <form className="form-panel" onSubmit={submitCaValidation}>
+          <div className="form-grid">
+            <div className="field">
+              <label htmlFor="portal-ca-validate-input">Numero do CA</label>
+              <input
+                id="portal-ca-validate-input"
+                type="text"
+                inputMode="numeric"
+                value={caQuery}
+                onChange={(e) => setCaQuery(e.target.value)}
+                placeholder="Ex.: 11442"
+                autoComplete="off"
+              />
+            </div>
+            <div className="field" style={{ alignSelf: 'end' }}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={caChecking || normalizeCaInput(caQuery).length < 3}
+              >
+                {caChecking ? 'Validando...' : 'Validar CA'}
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {caValidation ? (
+          <p
+            className={caValidation.isValid ? 'notice notice--ok' : 'notice notice--warn'}
+            role="status"
+          >
+            CA {caValidation.typedCa}:{' '}
+            <strong>{caValidation.isValid ? 'VALIDO' : 'NAO VALIDO'}</strong>
+          </p>
+        ) : null}
+        {caError ? (
+          <p className="error" role="alert">
+            {caError}
+          </p>
+        ) : null}
+      </section>
     </div>
   );
 }
