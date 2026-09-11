@@ -94,6 +94,7 @@ export class PortalPdfService {
     detail: PortalDeliveryDetail,
     evidenceAbsolutePath?: string | null,
   ): Promise<Buffer> {
+    const issuedAtIso = new Date().toISOString();
     return bufferFromPdf(async (doc) => {
       doc
         .font('Helvetica-Bold')
@@ -105,7 +106,7 @@ export class PortalPdfService {
         .fontSize(9)
         .fillColor('#555')
         .text(`Recibo ${detail.receiptNumber} · ${detail.statusLabel}`);
-      doc.text(`Emitido em ${formatDateTime(new Date().toISOString())}`);
+      doc.text(`Emitido/reemitido em ${formatDateTime(issuedAtIso)}`);
 
       sectionTitle(doc, 'Empresa');
       kv(doc, 'Razao social', detail.client.legalName);
@@ -228,12 +229,20 @@ export class PortalPdfService {
         .text(
           'Documento gerado pelo ProntEPI. A impressao pelo navegador permanece disponivel como alternativa.',
         );
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor('#666')
+        .text(
+          `Controle de emissao: este PDF reflete as regras vigentes na data da emissao (${formatDateTime(issuedAtIso)}).`,
+        );
     });
   }
 
   async buildWorkerEpiSheetPdf(
     sheet: PortalWorkerEpiSheetResponse,
   ): Promise<Buffer> {
+    const issuedAtIso = new Date().toISOString();
     return bufferFromPdf(async (doc) => {
       doc
         .font('Helvetica-Bold')
@@ -245,6 +254,7 @@ export class PortalPdfService {
         .fontSize(9)
         .fillColor('#555')
         .text(`Gerada em ${formatDateTime(sheet.generatedAt)}`);
+      doc.text(`Emitida/reemitida em ${formatDateTime(issuedAtIso)}`);
 
       const periodParts: string[] = [];
       if (sheet.period.from) {
@@ -371,6 +381,13 @@ export class PortalPdfService {
         .fillColor('#444')
         .text(
           'Documento gerado pelo ProntEPI. A impressao pelo navegador permanece disponivel como alternativa.',
+        );
+      doc
+        .font('Helvetica')
+        .fontSize(7)
+        .fillColor('#666')
+        .text(
+          `Controle de emissao: esta ficha reflete as regras vigentes na data da emissao (${formatDateTime(issuedAtIso)}).`,
         );
     });
   }
