@@ -24,6 +24,11 @@ function normalizeCaInput(raw: string) {
   return raw.replace(/\D/g, '');
 }
 
+function formatCaLabel(raw: string) {
+  const digits = normalizeCaInput(raw);
+  return digits ? `CA ${digits}` : 'CA';
+}
+
 function PortalHome({ user }: { user: ClientPortalUser }) {
   const clientName =
     user.servedClient.tradeName || user.servedClient.legalName;
@@ -196,13 +201,20 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
         <PortalDashboardCards cards={dash.attention.cards} />
       ) : null}
 
-      <section className="portal-card" aria-labelledby="ca-validate-title">
+      <section
+        className="portal-card portal-ca-card"
+        aria-labelledby="ca-validate-title"
+      >
         <div className="dash-panel__head">
-          <h2 id="ca-validate-title">Validar CA</h2>
-          <p>Digite o numero do CA e veja se esta valido.</p>
+          <p className="page-kicker">Consulta rapida</p>
+          <h2 id="ca-validate-title">Validador de CA</h2>
+          <p>
+            Digite o numero e receba retorno imediato: <strong>VALIDO</strong>{' '}
+            ou <strong>NAO VALIDO</strong>.
+          </p>
         </div>
-        <form className="form-panel" onSubmit={submitCaValidation}>
-          <div className="form-grid">
+        <form className="form-panel portal-ca-card__form" onSubmit={submitCaValidation}>
+          <div className="form-grid portal-ca-card__grid">
             <div className="field">
               <label htmlFor="portal-ca-validate-input">Numero do CA</label>
               <input
@@ -214,8 +226,9 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
                 placeholder="Ex.: 11442"
                 autoComplete="off"
               />
+              <p className="field-hint">Apenas numeros.</p>
             </div>
-            <div className="field" style={{ alignSelf: 'end' }}>
+            <div className="field portal-ca-card__submit">
               <button
                 type="submit"
                 className="btn btn-primary"
@@ -228,13 +241,26 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
         </form>
 
         {caValidation ? (
-          <p
-            className={caValidation.isValid ? 'notice notice--ok' : 'notice notice--warn'}
+          <div
+            className={
+              caValidation.isValid
+                ? 'portal-ca-result portal-ca-result--ok'
+                : 'portal-ca-result portal-ca-result--warn'
+            }
             role="status"
           >
-            CA {caValidation.typedCa}:{' '}
-            <strong>{caValidation.isValid ? 'VALIDO' : 'NAO VALIDO'}</strong>
-          </p>
+            <p className="portal-ca-result__line">
+              <span className="mono">{formatCaLabel(caValidation.typedCa)}</span>
+              <strong>{caValidation.isValid ? 'VALIDO' : 'NAO VALIDO'}</strong>
+            </p>
+            {!caValidation.isValid ? (
+              <p className="portal-ca-result__meta">
+                {caValidation.found
+                  ? 'Status atual diferente de valido na base oficial.'
+                  : 'CA nao encontrado na base oficial.'}
+              </p>
+            ) : null}
+          </div>
         ) : null}
         {caError ? (
           <p className="error" role="alert">
