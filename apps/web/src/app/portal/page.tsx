@@ -24,6 +24,11 @@ function normalizeCaInput(raw: string) {
   return raw.replace(/\D/g, '');
 }
 
+function formatCaInputMask(raw: string) {
+  const digits = normalizeCaInput(raw).slice(0, 12);
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
 function formatCaLabel(raw: string) {
   const digits = normalizeCaInput(raw);
   return digits ? `CA ${digits}` : 'CA';
@@ -221,12 +226,12 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
                 id="portal-ca-validate-input"
                 type="text"
                 inputMode="numeric"
-                value={caQuery}
-                onChange={(e) => setCaQuery(e.target.value)}
-                placeholder="Ex.: 11442"
+                value={formatCaInputMask(caQuery)}
+                onChange={(e) => setCaQuery(normalizeCaInput(e.target.value))}
+                placeholder="Ex.: 11.442"
                 autoComplete="off"
               />
-              <p className="field-hint">Apenas numeros.</p>
+              <p className="field-hint">Apenas numeros (mascara automatica).</p>
             </div>
             <div className="field portal-ca-card__submit">
               <button
