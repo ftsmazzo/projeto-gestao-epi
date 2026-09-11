@@ -1450,21 +1450,24 @@ export class PortalService {
           reference: true,
         },
       });
-      const linkedNeedNames = await this.autoLinkCaItemToClientNeeds(
-        organizationId,
-        servedClientId,
-        resolved.epiItemId,
-        {
-          equipmentName: epiRow?.name ?? null,
-          extraText: [
-            epiRow?.description,
-            epiRow?.approvedFor,
-            epiRow?.reference,
-          ]
-            .filter(Boolean)
-            .join(' '),
-        },
-      );
+      const linkedNeedNames =
+        item.epiNeedId || item.caNumber
+          ? await this.autoLinkCaItemToClientNeeds(
+              organizationId,
+              servedClientId,
+              resolved.epiItemId,
+              {
+                equipmentName: epiRow?.name ?? null,
+                extraText: [
+                  epiRow?.description,
+                  epiRow?.approvedFor,
+                  epiRow?.reference,
+                ]
+                  .filter(Boolean)
+                  .join(' '),
+              },
+            )
+          : [];
       const result = await this.stock.createMovement(organizationId, userId, {
         type: EpiStockMovementType.ENTRADA,
         stockLocationId: location.id,
@@ -2061,6 +2064,10 @@ export class PortalService {
       epiItemId?: string;
       epiNeedId?: string;
       caNumber?: string;
+      manualEpiName?: string;
+      manualDescription?: string;
+      manualUsefulLifeValue?: number;
+      manualUsefulLifeUnit?: EpiUsefulLifeUnit;
     },
   ): Promise<{ epiItemId: string; created: boolean }> {
     const caNumber = input.caNumber
@@ -2091,7 +2098,7 @@ export class PortalService {
       return { epiItemId: existing.id, created: false };
     }
 
-    if (input.epiNeedId && !caNumber) {
+    if (input.epiNeedId && !caNumber && !input.manualEpiName?.trim()) {
       const links = await this.prisma.epiItemNeed.findMany({
         where: {
           organizationId,
@@ -2115,8 +2122,37 @@ export class PortalService {
     }
 
     if (!caNumber) {
+      const manualName = input.manualEpiName?.trim();
+      if (manualName) {
+        const manualLifeValue =
+          input.manualUsefulLifeValue != null && input.manualUsefulLifeValue > 0
+            ? input.manualUsefulLifeValue
+            : null;
+        const created = await this.prisma.epiItem.create({
+          data: {
+            organizationId,
+            name: manualName,
+            description: input.manualDescription?.trim() || null,
+            requiresCa: false,
+            caNumber: null,
+            usefulLifeValue: manualLifeValue,
+            usefulLifeUnit: manualLifeValue
+              ? (input.manualUsefulLifeUnit ?? EpiUsefulLifeUnit.DIAS)
+              : null,
+          },
+          select: { id: true },
+        });
+        if (input.epiNeedId) {
+          await this.ensureNeedItemLink(
+            organizationId,
+            input.epiNeedId,
+            created.id,
+          );
+        }
+        return { epiItemId: created.id, created: true };
+      }
       throw new BadRequestException(
-        'Informe o EPI, a necessidade com CA, ou o numero do CA.',
+        'Informe o EPI, a necessidade com CA, o numero do CA, ou o nome do EPI manual.',
       );
     }
 

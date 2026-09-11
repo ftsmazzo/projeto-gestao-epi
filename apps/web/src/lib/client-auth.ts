@@ -21,6 +21,7 @@ import type {
   PortalReportsReplacementsResponse,
   PortalReportsActivityResponse,
   PortalReportsStockResponse,
+  PortalStockEntradaInput,
   PortalStockEntradasResult,
   PortalStockSaidaResult,
   PortalCustosDashboardResponse,
@@ -602,14 +603,7 @@ export async function searchPortalCaepi(
 }
 
 export async function createPortalStockEntradas(
-  items: Array<{
-    epiItemId?: string;
-    epiNeedId?: string;
-    caNumber?: string;
-    quantity: number;
-    unitCostCents?: number;
-    invoiceDocumentId?: string;
-  }>,
+  items: PortalStockEntradaInput[],
 ) {
   return clientApiFetch<PortalStockEntradasResult>('/portal/stock/entradas', {
     method: 'POST',

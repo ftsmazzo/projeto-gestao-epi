@@ -1827,6 +1827,19 @@ export interface PortalStockEntradasResult {
   }>;
 }
 
+export interface PortalStockEntradaInput {
+  epiItemId?: string;
+  epiNeedId?: string;
+  caNumber?: string;
+  manualEpiName?: string;
+  manualDescription?: string;
+  manualUsefulLifeValue?: number;
+  manualUsefulLifeUnit?: EpiUsefulLifeUnit;
+  quantity: number;
+  unitCostCents?: number;
+  invoiceDocumentId?: string;
+}
+
 export interface PortalStockSaidaResult {
   locationId: string;
   locationName: string;

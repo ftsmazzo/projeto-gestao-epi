@@ -5,11 +5,13 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsEnum,
   MaxLength,
   Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { EpiUsefulLifeUnit } from '@prisma/client';
 
 export class PortalStockEntradaItemDto {
   /** Item real do catalogo (opcional se informar CA + necessidade). */
@@ -27,6 +29,30 @@ export class PortalStockEntradaItemDto {
   @IsString()
   @MinLength(3)
   caNumber?: string;
+
+  /** Nome do EPI para entrada manual sem CA (ex.: colete refletivo). */
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(160)
+  manualEpiName?: string;
+
+  /** Descricao livre do EPI manual sem CA. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  manualDescription?: string;
+
+  /** Periodo de uso/vida util do EPI manual. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  manualUsefulLifeValue?: number;
+
+  @IsOptional()
+  @IsEnum(EpiUsefulLifeUnit)
+  manualUsefulLifeUnit?: EpiUsefulLifeUnit;
 
   @Type(() => Number)
   @IsInt()

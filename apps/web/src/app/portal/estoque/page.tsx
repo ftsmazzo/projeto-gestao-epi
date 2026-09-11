@@ -2,6 +2,7 @@
 
 import type {
   CaCertificateSearchItem,
+  EpiUsefulLifeUnit,
   PortalEstoqueResponse,
   PortalInvoiceExtraction,
   PortalInvoiceExtractionLine,
@@ -239,9 +240,16 @@ function PortalEstoqueContent() {
   const [picked, setPicked] = useState<CaCertificateSearchItem | null>(null);
   const [freeQty, setFreeQty] = useState(1);
   const [freeUnitPriceReais, setFreeUnitPriceReais] = useState('');
-  const [freeMode, setFreeMode] = useState<'manual' | 'invoice'>('manual');
+  const [freeMode, setFreeMode] = useState<'manual' | 'invoice' | 'no_ca'>(
+    'manual',
+  );
   const [batchInvoiceFile, setBatchInvoiceFile] = useState<File | null>(null);
   const [freeInvoiceFile, setFreeInvoiceFile] = useState<File | null>(null);
+  const [manualEpiName, setManualEpiName] = useState('');
+  const [manualEpiDescription, setManualEpiDescription] = useState('');
+  const [manualUsefulLifeValue, setManualUsefulLifeValue] = useState(30);
+  const [manualUsefulLifeUnit, setManualUsefulLifeUnit] =
+    useState<EpiUsefulLifeUnit>('DIAS');
   const needSearchTimers = useRef<Record<string, number>>({});
 
   const [deductRow, setDeductRow] = useState<PortalStockBalanceRow | null>(
@@ -635,9 +643,14 @@ function PortalEstoqueContent() {
 
   async function onFreeEntrada(event: FormEvent) {
     event.preventDefault();
-    const caNumber = resolveFreeCaNumber();
-    if (!caNumber) {
+    const isNoCa = freeMode === 'no_ca';
+    const caNumber = isNoCa ? null : resolveFreeCaNumber();
+    if (!isNoCa && !caNumber) {
       setError('Informe o numero do CA (ou escolha um resultado da lista).');
+      return;
+    }
+    if (isNoCa && manualEpiName.trim().length < 2) {
+      setError('Informe o nome do EPI sem CA.');
       return;
     }
     if (freeMode === 'invoice' && !freeInvoiceFile) {
@@ -651,11 +664,11 @@ function PortalEstoqueContent() {
       let invoiceDocumentId: string | undefined;
       let unitCostCents = parseReaisToCents(freeUnitPriceReais);
       let qty = freeQty;
-      if (freeMode === 'invoice' && freeInvoiceFile) {
+      if (!isNoCa && freeMode === 'invoice' && freeInvoiceFile) {
         const uploaded = await uploadPortalInvoice({ file: freeInvoiceFile });
         invoiceDocumentId = uploaded.id;
         const matched = matchInvoiceLine(uploaded.extraction, {
-          caNumber,
+          caNumber: caNumber!,
           description: picked?.equipmentName ?? query,
         });
         if (unitCostCents == null && matched?.unitCostCents != null) {
@@ -668,22 +681,37 @@ function PortalEstoqueContent() {
         }
       }
       const result = await createPortalStockEntradas([
-        {
-          caNumber,
-          quantity: qty,
-          ...(unitCostCents != null ? { unitCostCents } : {}),
-          ...(invoiceDocumentId ? { invoiceDocumentId } : {}),
-        },
+        isNoCa
+          ? {
+              manualEpiName: manualEpiName.trim(),
+              manualDescription: manualEpiDescription.trim() || undefined,
+              manualUsefulLifeValue:
+                manualUsefulLifeValue > 0 ? manualUsefulLifeValue : undefined,
+              manualUsefulLifeUnit:
+                manualUsefulLifeValue > 0 ? manualUsefulLifeUnit : undefined,
+              quantity: qty,
+              ...(unitCostCents != null ? { unitCostCents } : {}),
+            }
+          : {
+              caNumber: caNumber!,
+              quantity: qty,
+              ...(unitCostCents != null ? { unitCostCents } : {}),
+              ...(invoiceDocumentId ? { invoiceDocumentId } : {}),
+            },
       ]);
       const linked = result.items
         .flatMap((row) => row.linkedNeedNames ?? [])
         .filter((name, index, all) => all.indexOf(name) === index);
       setSuccess(
-        `Entrada de ${qty} un. (CA ${caNumber}) registrada` +
+        `Entrada de ${qty} un. ${
+          isNoCa ? `(${manualEpiName.trim()})` : `(CA ${caNumber})`
+        } registrada` +
           (invoiceDocumentId ? ' com nota' : '') +
           (linked.length > 0
             ? ` e vinculada a: ${linked.join(', ')}.`
-            : '. Saldo atualizado — ao abrir Entregas, o sistema tenta associar este CA a necessidade compativel do PGR.'),
+            : isNoCa
+              ? '. Saldo atualizado para entrega manual/extra.'
+              : '. Saldo atualizado — ao abrir Entregas, o sistema tenta associar este CA a necessidade compativel do PGR.'),
       );
       setPicked(null);
       setQuery('');
@@ -691,6 +719,10 @@ function PortalEstoqueContent() {
       setFreeQty(1);
       setFreeUnitPriceReais('');
       setFreeInvoiceFile(null);
+      setManualEpiName('');
+      setManualEpiDescription('');
+      setManualUsefulLifeValue(30);
+      setManualUsefulLifeUnit('DIAS');
       await reload();
     } catch (err) {
       setError(
@@ -1057,11 +1089,10 @@ function PortalEstoqueContent() {
             <>
           <section className="portal-card" aria-labelledby="entrada-livre-title">
             <h2 id="entrada-livre-title" className="page-title page-title--sm">
-              Entrada por CA
+              Entrada avulsa no estoque
             </h2>
             <p className="page-lead">
-              Dois caminhos: so CA + quantidade + preco, ou o mesmo com nota
-              fiscal anexada. A nota nunca e obrigatoria no primeiro.
+              Tres caminhos: por CA sem nota, por CA com nota, ou manual sem CA.
             </p>
             <div
               className="portal-section-tabs"
@@ -1089,57 +1120,129 @@ function PortalEstoqueContent() {
               >
                 Com nota fiscal
               </button>
+              <button
+                type="button"
+                role="tab"
+                className={`portal-section-tab ${freeMode === 'no_ca' ? 'is-active' : ''}`}
+                aria-selected={freeMode === 'no_ca'}
+                onClick={() => {
+                  setFreeMode('no_ca');
+                  setPicked(null);
+                  setQuery('');
+                  setSuggestions([]);
+                  setFreeInvoiceFile(null);
+                }}
+              >
+                Sem CA (manual)
+              </button>
             </div>
             <form className="form-panel" onSubmit={onFreeEntrada}>
-              <div className="field">
-                <label htmlFor="portal-caepi-search">Numero do CA</label>
-                <input
-                  id="portal-caepi-search"
-                  value={
-                    picked
-                      ? `CA ${picked.caNumber} — ${picked.equipmentName ?? ''}`
-                      : query
-                  }
-                  onChange={(e) => {
-                    setPicked(null);
-                    setQuery(e.target.value);
-                  }}
-                  placeholder="Ex.: 11442 ou protetor facial"
-                  autoComplete="off"
-                />
-                {searching ? <p className="field-hint">Buscando na CAEPI...</p> : null}
-                {searchMessage ? (
-                  <p className="field-hint">{searchMessage}</p>
-                ) : null}
-                {!picked && suggestions.length > 0 ? (
-                  <ul
-                    className="caepi-suggest-list caepi-suggest-list--slot"
-                    role="listbox"
-                  >
-                    {suggestions.map((item) => (
-                      <li key={item.caNumber}>
-                        <CaepiSuggestionButton
-                          item={item}
-                          onSelect={() => {
-                            setPicked(item);
-                            setQuery('');
-                            setSuggestions([]);
-                            setSearchMessage(null);
-                          }}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
+              {freeMode !== 'no_ca' ? (
+                <>
+                  <div className="field">
+                    <label htmlFor="portal-caepi-search">Numero do CA</label>
+                    <input
+                      id="portal-caepi-search"
+                      value={
+                        picked
+                          ? `CA ${picked.caNumber} — ${picked.equipmentName ?? ''}`
+                          : query
+                      }
+                      onChange={(e) => {
+                        setPicked(null);
+                        setQuery(e.target.value);
+                      }}
+                      placeholder="Ex.: 11442 ou protetor facial"
+                      autoComplete="off"
+                    />
+                    {searching ? <p className="field-hint">Buscando na CAEPI...</p> : null}
+                    {searchMessage ? (
+                      <p className="field-hint">{searchMessage}</p>
+                    ) : null}
+                    {!picked && suggestions.length > 0 ? (
+                      <ul
+                        className="caepi-suggest-list caepi-suggest-list--slot"
+                        role="listbox"
+                      >
+                        {suggestions.map((item) => (
+                          <li key={item.caNumber}>
+                            <CaepiSuggestionButton
+                              item={item}
+                              onSelect={() => {
+                                setPicked(item);
+                                setQuery('');
+                                setSuggestions([]);
+                                setSearchMessage(null);
+                              }}
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
 
-              {picked ? (
-                <p className="field-hint">
-                  Selecionado: <strong>CA {picked.caNumber}</strong> ·{' '}
-                  {picked.equipmentName} · Val.{' '}
-                  {formatDate(picked.expiresAt)}
-                </p>
-              ) : null}
+                  {picked ? (
+                    <p className="field-hint">
+                      Selecionado: <strong>CA {picked.caNumber}</strong> ·{' '}
+                      {picked.equipmentName} · Val.{' '}
+                      {formatDate(picked.expiresAt)}
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <div className="form-grid">
+                  <div className="field">
+                    <label htmlFor="manual-epi-name">Nome do EPI</label>
+                    <input
+                      id="manual-epi-name"
+                      value={manualEpiName}
+                      onChange={(e) => setManualEpiName(e.target.value)}
+                      placeholder="Ex.: Colete refletivo"
+                      required
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="manual-epi-life-value">Periodo de uso</label>
+                    <div className="form-grid form-grid--compact">
+                      <input
+                        id="manual-epi-life-value"
+                        type="number"
+                        min={1}
+                        value={manualUsefulLifeValue}
+                        onChange={(e) =>
+                          setManualUsefulLifeValue(
+                            Math.max(1, Number(e.target.value) || 1),
+                          )
+                        }
+                      />
+                      <select
+                        value={manualUsefulLifeUnit}
+                        onChange={(e) =>
+                          setManualUsefulLifeUnit(
+                            e.target.value as EpiUsefulLifeUnit,
+                          )
+                        }
+                      >
+                        <option value="DIAS">Dias</option>
+                        <option value="MESES">Meses</option>
+                        <option value="ANOS">Anos</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="field field--span-2">
+                    <label htmlFor="manual-epi-description">
+                      Breve descricao
+                    </label>
+                    <textarea
+                      id="manual-epi-description"
+                      rows={2}
+                      value={manualEpiDescription}
+                      onChange={(e) => setManualEpiDescription(e.target.value)}
+                      placeholder="Detalhes opcionais para identificar o item"
+                    />
+                  </div>
+                </div>
+              )}
 
               <div className="form-grid">
                 <div className="field">
@@ -1183,7 +1286,7 @@ function PortalEstoqueContent() {
                 </div>
               ) : (
                 <p className="field-hint">
-                  Sem anexo. O saldo entra so com CA, quantidade e preco.
+                  Sem anexo. O saldo entra diretamente no estoque.
                 </p>
               )}
               <button
@@ -1191,11 +1294,16 @@ function PortalEstoqueContent() {
                 type="submit"
                 disabled={
                   saving ||
-                  (!picked && caDigits(query).length < 3 && query.trim().length < SEARCH_MIN)
+                  (freeMode !== 'no_ca' &&
+                    !picked &&
+                    caDigits(query).length < 3 &&
+                    query.trim().length < SEARCH_MIN)
                 }
               >
                 {saving
                   ? 'Salvando...'
+                  : freeMode === 'no_ca'
+                    ? 'Incluir EPI sem CA'
                   : freeMode === 'invoice'
                     ? 'Incluir com nota'
                     : 'Incluir sem nota'}
