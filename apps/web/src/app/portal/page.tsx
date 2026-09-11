@@ -34,6 +34,30 @@ function formatCaLabel(raw: string) {
   return digits ? `CA ${digits}` : 'CA';
 }
 
+function formatDatePt(iso: string | null | undefined) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('pt-BR');
+  } catch {
+    return '—';
+  }
+}
+
+function mapStatusLabel(status: CaCertificateSearchItem['status']) {
+  switch (status) {
+    case 'VALIDO':
+      return 'Valido';
+    case 'VENCIDO':
+      return 'Vencido';
+    case 'CANCELADO':
+      return 'Cancelado';
+    case 'SUSPENSO':
+      return 'Suspenso';
+    default:
+      return 'Desconhecido';
+  }
+}
+
 function PortalHome({ user }: { user: ClientPortalUser }) {
   const clientName =
     user.servedClient.tradeName || user.servedClient.legalName;
@@ -46,6 +70,14 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
   const [caValidation, setCaValidation] = useState<CaValidationResult | null>(
     null,
   );
+  const caDigits = normalizeCaInput(caQuery);
+  const canValidateCa = caDigits.length >= 3 && !caChecking;
+  const caInputHint =
+    caDigits.length === 0
+      ? 'Apenas numeros (mascara automatica).'
+      : caDigits.length < 3
+        ? `Digite mais ${3 - caDigits.length} numero(s) para validar.`
+        : `Pronto para validar: ${formatCaLabel(caDigits)}.`;
 
   useEffect(() => {
     let cancelled = false;
@@ -227,20 +259,41 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
                 type="text"
                 inputMode="numeric"
                 value={formatCaInputMask(caQuery)}
-                onChange={(e) => setCaQuery(normalizeCaInput(e.target.value))}
+                onChange={(e) => {
+                  const next = normalizeCaInput(e.target.value);
+                  setCaQuery(next);
+                  setCaError(null);
+                  if (caValidation && caValidation.typedCa !== next) {
+                    setCaValidation(null);
+                  }
+                }}
                 placeholder="Ex.: 11.442"
                 autoComplete="off"
               />
-              <p className="field-hint">Apenas numeros (mascara automatica).</p>
+              <p className="field-hint">{caInputHint}</p>
             </div>
             <div className="field portal-ca-card__submit">
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={caChecking || normalizeCaInput(caQuery).length < 3}
-              >
-                {caChecking ? 'Validando...' : 'Validar CA'}
-              </button>
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    setCaQuery('');
+                    setCaError(null);
+                    setCaValidation(null);
+                  }}
+                  disabled={caChecking || (!caQuery && !caValidation)}
+                >
+                  Limpar
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={!canValidateCa}
+                >
+                  {caChecking ? 'Validando...' : 'Validar CA'}
+                </button>
+              </div>
             </div>
           </div>
         </form>
@@ -258,6 +311,12 @@ function PortalHome({ user }: { user: ClientPortalUser }) {
               <span className="mono">{formatCaLabel(caValidation.typedCa)}</span>
               <strong>{caValidation.isValid ? 'VALIDO' : 'NAO VALIDO'}</strong>
             </p>
+            {caValidation.found ? (
+              <p className="portal-ca-result__meta">
+                Status base oficial: {mapStatusLabel(caValidation.found.status)} ·
+                Validade: {formatDatePt(caValidation.found.expiresAt)}
+              </p>
+            ) : null}
             {!caValidation.isValid ? (
               <p className="portal-ca-result__meta">
                 {caValidation.found

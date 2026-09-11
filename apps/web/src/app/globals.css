@@ -6892,6 +6892,10 @@ a.btn-primary:hover {
   justify-content: flex-end;
 }
 
+.portal-ca-card__submit .btn-row {
+  justify-content: flex-end;
+}
+
 .portal-ca-result {
   margin-top: 0.8rem;
   border-radius: 12px;
@@ -6919,6 +6923,20 @@ a.btn-primary:hover {
   margin: 0;
   font-size: 0.82rem;
   color: var(--color-muted);
+}
+
+@media (max-width: 760px) {
+  .portal-ca-card__submit {
+    justify-content: flex-start;
+  }
+
+  .portal-ca-card__submit .btn-row {
+    width: 100%;
+  }
+
+  .portal-ca-card__submit .btn {
+    flex: 1 1 auto;
+  }
 }
 
 .portal-ca-result--ok {
