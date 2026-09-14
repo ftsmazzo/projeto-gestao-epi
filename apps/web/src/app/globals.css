@@ -6013,6 +6013,12 @@ a.btn-primary:hover {
   font-family: var(--font-sans);
 }
 
+@media (max-width: 859px) {
+  .produto-lp {
+    padding-bottom: 5.2rem;
+  }
+}
+
 .produto-lp__nav {
   position: sticky;
   top: 0;
@@ -6396,6 +6402,45 @@ a.btn-primary:hover {
   color: rgba(226, 232, 240, 0.88);
 }
 
+.produto-lp__offer {
+  padding: 1.2rem;
+}
+
+.produto-lp__proof-seq {
+  margin: 1.35rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.9rem;
+}
+
+@media (min-width: 900px) {
+  .produto-lp__proof-seq {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.produto-lp__proof-seq li {
+  padding: 1rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.produto-lp__proof-seq span {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--lp-teal);
+  font-weight: 700;
+}
+
+.produto-lp__proof-seq p {
+  margin: 0;
+  color: var(--lp-navy);
+  font-weight: 600;
+  line-height: 1.45;
+}
+
 .produto-lp__benefits {
   list-style: none;
   margin: 2.5rem 0 0;
@@ -6561,6 +6606,33 @@ a.btn-primary:hover {
   color: var(--lp-muted);
   line-height: 1.5;
   font-size: 0.97rem;
+}
+
+.produto-lp__objections {
+  margin-top: 1.35rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+@media (min-width: 920px) {
+  .produto-lp__objections {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.produto-lp__objection {
+  padding: 1rem;
+}
+
+.produto-lp__objection h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.08rem;
+  color: var(--lp-navy);
+}
+
+.produto-lp__objection p {
+  margin: 0;
+  color: var(--lp-muted);
 }
 
 .produto-lp__card {
@@ -6917,6 +6989,28 @@ a.btn-primary:hover {
   gap: 0.65rem;
   color: var(--lp-muted);
   font-size: 0.92rem;
+}
+
+.produto-lp__mobile-cta {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  padding: 0.65rem 0.9rem calc(0.65rem + env(safe-area-inset-bottom));
+  background: linear-gradient(to top, rgba(11, 18, 32, 0.96), rgba(11, 18, 32, 0.76));
+  backdrop-filter: blur(8px);
+}
+
+.produto-lp__mobile-cta .produto-lp__btn {
+  width: 100%;
+  min-height: 2.9rem;
+}
+
+@media (min-width: 860px) {
+  .produto-lp__mobile-cta {
+    display: none;
+  }
 }
 
 .produto-lp__footer-mark {

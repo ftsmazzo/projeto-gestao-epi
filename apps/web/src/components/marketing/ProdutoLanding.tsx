@@ -36,6 +36,28 @@ type LeadStatus = 'idle' | 'sending' | 'sent';
 const CONTACT_EMAIL = 'contato@prontepi.com.br';
 const WEBSITE_URL = 'https://prontepi.com.br';
 const SALES_WHATSAPP = process.env.NEXT_PUBLIC_SALES_WHATSAPP ?? '5516996282630';
+const SALES_WHATSAPP_DISPLAY = '(16) 99628-2630';
+
+const PROOF_SEQUENCE = [
+  'Diagnostico da operacao atual por CNPJ e processo',
+  'Implantacao assistida com estrutura SST e regras de entrega',
+  'Time cliente operando com evidencia e relatorios em producao',
+] as const;
+
+const OBJECTIONS = [
+  {
+    title: 'Nao quero travar a equipe com tecnologia',
+    text: 'O fluxo foi feito para campo: rapido, guiado e com contingencia presencial.',
+  },
+  {
+    title: 'Nem todo EPI do meu cliente tem CA',
+    text: 'Sem problema. O sistema suporta EPI sem CA com entrada manual controlada.',
+  },
+  {
+    title: 'Tenho medo da implantacao demorar',
+    text: 'A proposta e implantacao objetiva em etapas curtas, sem parar a rotina.',
+  },
+] as const;
 
 function normalizeWhatsAppPhone(value: string) {
   return value.replace(/\D/g, '');
@@ -180,6 +202,8 @@ export function ProdutoLanding() {
           <span>{APP_NAME}</span>
         </Link>
         <nav className="produto-lp__nav-links" aria-label="Secoes">
+          <a href="#oferta">Oferta</a>
+          <a href="#prova-sequencia">Prova em sequencia</a>
           <a href="#real">Sistema real</a>
           <a href="#beneficios">Beneficios</a>
           <a href="#capabilities">Funcoes</a>
@@ -270,6 +294,48 @@ export function ProdutoLanding() {
           </p>
         </section>
 
+        <section id="oferta" className="produto-lp__block" data-reveal>
+          <div className="produto-lp__wrap">
+            <div className="produto-lp__offer produto-lp__card">
+              <p className="produto-lp__kicker">Oferta de implantacao</p>
+              <h2 className="produto-lp__h2">Implantacao orientada para operar rapido e vender melhor</h2>
+              <p className="produto-lp__text">
+                Voce entra com os dados da operacao e o time do ProntEPI guia a virada para processo
+                digital com evidencia forte, sem depender de planilhas.
+              </p>
+              <div className="produto-lp__cta-row">
+                <button
+                  type="button"
+                  className="produto-lp__btn produto-lp__btn--solid produto-lp__btn--lg"
+                  onClick={() => void openDirectWhatsApp()}
+                  disabled={isPrimaryBusy}
+                  aria-busy={isPrimaryBusy}
+                >
+                  Quero analisar meu cenario
+                </button>
+                <a className="produto-lp__btn produto-lp__btn--line produto-lp__btn--lg" href="#contato">
+                  Receber proposta comercial
+                </a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="prova-sequencia" className="produto-lp__block produto-lp__block--tint" data-reveal>
+          <div className="produto-lp__wrap">
+            <p className="produto-lp__kicker">Prova em sequencia</p>
+            <h2 className="produto-lp__h2">Como o cliente sai do caos para controle operacional</h2>
+            <ol className="produto-lp__proof-seq">
+              {PROOF_SEQUENCE.map((item, index) => (
+                <li key={item} className="produto-lp__card">
+                  <span>Passo {index + 1}</span>
+                  <p>{item}</p>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </section>
+
         <section className="produto-lp__block" aria-labelledby="problema-title" data-reveal>
           <div className="produto-lp__wrap produto-lp__wrap--narrow">
             <p className="produto-lp__kicker">O problema</p>
@@ -291,6 +357,22 @@ export function ProdutoLanding() {
           <ProductCapabilitiesSection />
         </section>
         <ProductStepsSection />
+
+        <section className="produto-lp__block" data-reveal>
+          <div className="produto-lp__wrap">
+            <p className="produto-lp__kicker">Objeções mais comuns</p>
+            <h2 className="produto-lp__h2">Sem surpresa na implantacao e na operacao</h2>
+            <div className="produto-lp__objections">
+              {OBJECTIONS.map((item) => (
+                <article key={item.title} className="produto-lp__card produto-lp__objection">
+                  <h3>{item.title}</h3>
+                  <p>{item.text}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <ProductQuotesSection />
         <ProductFaqSection />
 
@@ -343,7 +425,7 @@ export function ProdutoLanding() {
                 </button>
               ) : null}
               <p className="produto-lp__form-note">
-                Site: <a href={WEBSITE_URL}>{WEBSITE_URL}</a> · WhatsApp: (16) 99628-2630 · E-mail:{' '}
+                Site: <a href={WEBSITE_URL}>{WEBSITE_URL}</a> · WhatsApp: {SALES_WHATSAPP_DISPLAY} · E-mail:{' '}
                 {CONTACT_EMAIL}
               </p>
             </form>
@@ -397,6 +479,18 @@ export function ProdutoLanding() {
           <a href={`mailto:${CONTACT_EMAIL}`}>Contato</a>
         </div>
       </footer>
+
+      <div className="produto-lp__mobile-cta">
+        <button
+          type="button"
+          className="produto-lp__btn produto-lp__btn--solid"
+          onClick={() => void openDirectWhatsApp()}
+          disabled={isPrimaryBusy}
+          aria-busy={isPrimaryBusy}
+        >
+          {isPrimaryBusy ? 'Abrindo...' : 'WhatsApp comercial'}
+        </button>
+      </div>
     </div>
   );
 }
