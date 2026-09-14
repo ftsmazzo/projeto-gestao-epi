@@ -22,12 +22,20 @@ const ProductFaqSection = dynamic(
   () => import('./ProductFaqSection').then((mod) => mod.ProductFaqSection),
   { loading: () => <SectionSkeleton cards={4} /> },
 );
+const ProductRealOperationSection = dynamic(
+  () => import('./ProductRealOperationSection').then((mod) => mod.ProductRealOperationSection),
+  { loading: () => <SectionSkeleton cards={2} dark /> },
+);
+const ProductCapabilitiesSection = dynamic(
+  () => import('./ProductCapabilitiesSection').then((mod) => mod.ProductCapabilitiesSection),
+  { loading: () => <SectionSkeleton cards={6} /> },
+);
 
 type LeadStatus = 'idle' | 'sending' | 'sent';
 
 const CONTACT_EMAIL = 'contato@prontepi.com.br';
 const WEBSITE_URL = 'https://prontepi.com.br';
-const SALES_WHATSAPP = process.env.NEXT_PUBLIC_SALES_WHATSAPP ?? '';
+const SALES_WHATSAPP = process.env.NEXT_PUBLIC_SALES_WHATSAPP ?? '5516996282630';
 
 function normalizeWhatsAppPhone(value: string) {
   return value.replace(/\D/g, '');
@@ -123,6 +131,23 @@ export function ProdutoLanding() {
     window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
   }
 
+  async function openDirectWhatsApp() {
+    if (isPrimaryBusy) return;
+    setIsPrimaryBusy(true);
+    setFeedback('Abrindo WhatsApp do comercial...');
+    const phone = normalizeWhatsAppPhone(SALES_WHATSAPP);
+    const message = encodeURIComponent(
+      'Oi! Quero uma demonstracao do ProntEPI e entender como implantar na minha operacao.',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 320));
+    window.open(
+      withUtm(`https://wa.me/${phone}?text=${message}`, 'landing', 'cta', 'whatsapp_direto'),
+      '_blank',
+      'noopener,noreferrer',
+    );
+    setIsPrimaryBusy(false);
+  }
+
   function openWhatsAppCta() {
     const phone = normalizeWhatsAppPhone(SALES_WHATSAPP);
     if (!phone) return;
@@ -147,15 +172,6 @@ export function ProdutoLanding() {
     openDemoEmail();
   }
 
-  async function onPrimaryCtaClick() {
-    if (isPrimaryBusy) return;
-    setIsPrimaryBusy(true);
-    setFeedback('Preparando seu contato com o time comercial...');
-    await new Promise((resolve) => setTimeout(resolve, 650));
-    setIsPrimaryBusy(false);
-    openDemoEmail();
-  }
-
   return (
     <div className="produto-lp">
       <header className="produto-lp__nav">
@@ -164,7 +180,9 @@ export function ProdutoLanding() {
           <span>{APP_NAME}</span>
         </Link>
         <nav className="produto-lp__nav-links" aria-label="Secoes">
+          <a href="#real">Sistema real</a>
           <a href="#beneficios">Beneficios</a>
+          <a href="#capabilities">Funcoes</a>
           <a href="#como">Como funciona</a>
           <a href="#prova">Quem usa</a>
           <a href="#contato">Contato</a>
@@ -176,76 +194,102 @@ export function ProdutoLanding() {
           <button
             type="button"
             className="produto-lp__btn produto-lp__btn--solid"
-            onClick={() => void onPrimaryCtaClick()}
+            onClick={() => void openDirectWhatsApp()}
             disabled={isPrimaryBusy}
             aria-busy={isPrimaryBusy}
           >
-            {isPrimaryBusy ? 'Abrindo contato...' : 'Agendar demonstracao'}
+            {isPrimaryBusy ? 'Abrindo contato...' : 'Falar no WhatsApp'}
           </button>
         </div>
       </header>
 
       <main>
-        {/* 1. Hero — marca + 1 headline + 1 frase + CTAs (sem print) */}
         <section className="produto-lp__hero" aria-label="Apresentacao" data-reveal>
           <div className="produto-lp__hero-bg" aria-hidden="true" />
-          <div className="produto-lp__hero-inner produto-lp__anim-in">
-            <p className="produto-lp__brand-lock">
-              <BrandMark className="produto-lp__brand-mark" title={APP_NAME} />
-              <span className="produto-lp__brand-word">{APP_NAME}</span>
-            </p>
-            <h1 className="produto-lp__h1">
-              Transforme sua
-              <br />
-              <span>gestao de EPI em vantagem operacional.</span>
-            </h1>
-            <p className="produto-lp__lead">
-              Entrega com evidencia facial, controle de CA e estoque, alertas de validade e
-              relatorios prontos para auditoria, no ritmo do chao de fabrica.
-            </p>
-            <div className="produto-lp__cta-row">
-              <button
-                type="button"
-                className="produto-lp__btn produto-lp__btn--solid produto-lp__btn--lg"
-                onClick={() => void onPrimaryCtaClick()}
-                disabled={isPrimaryBusy}
-                aria-busy={isPrimaryBusy}
-              >
-                {isPrimaryBusy ? 'Preparando contato...' : 'Quero ver uma demonstracao'}
-              </button>
-              <a className="produto-lp__btn produto-lp__btn--ghost produto-lp__btn--lg" href="#como">
-                Ver como funciona
-              </a>
+          <div className="produto-lp__hero-grid">
+            <div className="produto-lp__hero-inner produto-lp__anim-in">
+              <p className="produto-lp__brand-lock">
+                <BrandMark className="produto-lp__brand-mark" title={APP_NAME} />
+                <span className="produto-lp__brand-word">{APP_NAME}</span>
+              </p>
+              <h1 className="produto-lp__h1">
+                Entregue EPI com
+                <br />
+                <span>prova real e sem gargalo operacional.</span>
+              </h1>
+              <p className="produto-lp__lead">
+                Do estoque a assinatura, o ProntEPI conecta operacao, evidencias e conformidade em
+                um fluxo rapido para consultoria e empresa.
+              </p>
+              <div className="produto-lp__cta-row">
+                <button
+                  type="button"
+                  className="produto-lp__btn produto-lp__btn--solid produto-lp__btn--lg"
+                  onClick={() => void openDirectWhatsApp()}
+                  disabled={isPrimaryBusy}
+                  aria-busy={isPrimaryBusy}
+                >
+                  Quero uma demo no WhatsApp
+                </button>
+                <a
+                  className="produto-lp__btn produto-lp__btn--ghost produto-lp__btn--lg"
+                  href="#real"
+                >
+                  Ver sistema operando
+                </a>
+              </div>
+              <p className="produto-lp__hero-note">
+                Contato direto: (16) 99628-2630 · {CONTACT_EMAIL}
+              </p>
             </div>
-            <p className="produto-lp__hero-note">
-              Dominio oficial: prontepi.com.br · Contato comercial: {CONTACT_EMAIL}
-            </p>
+
+            <aside className="produto-lp__hero-panel produto-lp__card">
+              <p className="produto-lp__hero-panel-title">Resultado que importa</p>
+              <ul className="produto-lp__hero-kpis">
+                <li>
+                  <strong>Entrega com evidencia</strong>
+                  <span>Facial presencial ou assinatura por link no celular.</span>
+                </li>
+                <li>
+                  <strong>Estoque sob controle</strong>
+                  <span>CA, validade, saldo por local e rastreabilidade de entrada/saida.</span>
+                </li>
+                <li>
+                  <strong>Pronto para auditoria</strong>
+                  <span>Comprovantes, ficha de EPI e relatorios em poucos cliques.</span>
+                </li>
+              </ul>
+            </aside>
           </div>
         </section>
 
-        {/* Trust */}
         <section className="produto-lp__trust" aria-label="Contexto" data-reveal>
           <p>
-            Feito para consultorias SST e empresas que precisam operar com velocidade, prova e
-            conformidade no mesmo fluxo.
+            Feito para consultorias SST e empresas com operacao real de EPI: industria, obra,
+            manutencao, logistica e servicos de campo.
           </p>
         </section>
 
-        {/* 2. Problema */}
         <section className="produto-lp__block" aria-labelledby="problema-title" data-reveal>
           <div className="produto-lp__wrap produto-lp__wrap--narrow">
             <p className="produto-lp__kicker">O problema</p>
             <h2 id="problema-title" className="produto-lp__h2">
-              Entregar EPI sem rastreabilidade vira risco tecnico, juridico e operacional.
+              Sem processo unico, sua equipe perde tempo e sua evidencia perde forca.
             </h2>
             <p className="produto-lp__text">
-              Planilhas e controles paralelos nao sustentam operacao de alto volume. O custo aparece
-              em retrabalho, troca atrasada e inseguranca quando a fiscalizacao exige evidencia.
+              O que parece detalhe vira prejuizo: entrega sem prova, troca atrasada, CA sem
+              conferencia e auditoria consumindo energia do time inteiro.
             </p>
           </div>
         </section>
 
+        <section id="real">
+          <ProductRealOperationSection />
+        </section>
         <ProductBenefitsSection />
+        <section id="capabilities">
+          <ProductCapabilitiesSection />
+        </section>
         <ProductStepsSection />
         <ProductQuotesSection />
         <ProductFaqSection />
@@ -255,7 +299,8 @@ export function ProdutoLanding() {
             <p className="produto-lp__kicker">Contato comercial</p>
             <h2 className="produto-lp__h2">Fale com o time e veja uma demonstracao guiada</h2>
             <p className="produto-lp__text">
-              Preencha os dados e abrimos seu e-mail com a mensagem pronta para {CONTACT_EMAIL}.
+              Preencha os dados ou chame agora no WhatsApp para entender implantacao, prazo e
+              investimento.
             </p>
             <form className="produto-lp__lead-form produto-lp__card" onSubmit={onLeadSubmit}>
               <label>
@@ -294,40 +339,40 @@ export function ProdutoLanding() {
                   className="produto-lp__btn produto-lp__btn--ghost produto-lp__btn--lg produto-lp__btn--line"
                   onClick={openWhatsAppCta}
                 >
-                  Falar no WhatsApp
+                  Chamar no WhatsApp agora
                 </button>
               ) : null}
               <p className="produto-lp__form-note">
-                Site oficial: <a href={WEBSITE_URL}>{WEBSITE_URL}</a> · E-mail: {CONTACT_EMAIL}
+                Site: <a href={WEBSITE_URL}>{WEBSITE_URL}</a> · WhatsApp: (16) 99628-2630 · E-mail:{' '}
+                {CONTACT_EMAIL}
               </p>
             </form>
           </div>
         </section>
 
-        {/* 6. CTA final */}
         <section className="produto-lp__close" aria-labelledby="cta-title" data-reveal>
           <div className="produto-lp__close-inner produto-lp__anim-in">
             <BrandMark className="produto-lp__close-mark" title={APP_NAME} />
             <h2 id="cta-title" className="produto-lp__h2">
-              Sua operacao pode sair da planilha agora
+              Se voce quer vender com prova, precisa mostrar operacao de verdade
             </h2>
             <p className="produto-lp__text">
-              O {APP_NAME} une implantacao tecnica da consultoria e rotina operacional da empresa
-              em uma jornada simples, moderna e rastreavel.
+              O ProntEPI entrega isso: fluxo real, evidencia forte, governanca e velocidade no dia a
+              dia.
             </p>
             <div className="produto-lp__cta-row produto-lp__cta-row--center">
               <button
                 type="button"
                 className="produto-lp__btn produto-lp__btn--solid produto-lp__btn--lg"
-                onClick={() => void onPrimaryCtaClick()}
+                onClick={() => void openDirectWhatsApp()}
                 disabled={isPrimaryBusy}
                 aria-busy={isPrimaryBusy}
               >
-                {isPrimaryBusy ? 'Abrindo contato...' : 'Quero conhecer o ProntEPI'}
+                {isPrimaryBusy ? 'Abrindo contato...' : 'Quero vender com o ProntEPI'}
               </button>
-              <Link className="produto-lp__link-quiet" href="/login">
-                Sou da consultoria
-              </Link>
+              <a className="produto-lp__link-quiet" href={`mailto:${CONTACT_EMAIL}`}>
+                Prefiro falar por e-mail
+              </a>
             </div>
             {feedback ? (
               <p className="produto-lp__feedback" role="status">

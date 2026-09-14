@@ -6193,6 +6193,65 @@ a.btn-primary:hover {
   max-width: 44rem;
 }
 
+.produto-lp__hero-grid {
+  position: relative;
+  z-index: 1;
+  width: min(1160px, 100%);
+  margin-inline: auto;
+  display: grid;
+  gap: 1.2rem;
+}
+
+@media (min-width: 980px) {
+  .produto-lp__hero-grid {
+    grid-template-columns: 1.1fr 0.9fr;
+    align-items: end;
+  }
+}
+
+.produto-lp__hero-panel {
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.35) !important;
+  backdrop-filter: blur(10px);
+}
+
+.produto-lp__hero-panel-title {
+  margin: 0 0 0.8rem;
+  color: var(--lp-mint);
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.produto-lp__hero-kpis {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.produto-lp__hero-kpis li {
+  padding: 0.7rem;
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.45);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  display: grid;
+  gap: 0.3rem;
+}
+
+.produto-lp__hero-kpis strong {
+  color: #f8fafc;
+  font-size: 0.97rem;
+}
+
+.produto-lp__hero-kpis span {
+  color: rgba(226, 232, 240, 0.84);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 .produto-lp__brand-lock {
   display: flex;
   align-items: center;
@@ -6281,6 +6340,11 @@ a.btn-primary:hover {
   color: #f8fafc;
 }
 
+.produto-lp__block--ink {
+  background: linear-gradient(160deg, #0a1220 0%, #111827 50%, #0b3a37 100%);
+  color: #f8fafc;
+}
+
 .produto-lp__wrap {
   max-width: 68rem;
   margin-inline: auto;
@@ -6328,6 +6392,10 @@ a.btn-primary:hover {
   color: rgba(226, 232, 240, 0.82);
 }
 
+.produto-lp__text--on-dark {
+  color: rgba(226, 232, 240, 0.88);
+}
+
 .produto-lp__benefits {
   list-style: none;
   margin: 2.5rem 0 0;
@@ -6360,6 +6428,129 @@ a.btn-primary:hover {
 .produto-lp__benefits li {
   padding-top: 1.1rem;
   border-top: 2px solid rgba(15, 118, 110, 0.35);
+}
+
+.produto-lp__media-layout {
+  display: grid;
+  gap: 1.1rem;
+}
+
+@media (min-width: 980px) {
+  .produto-lp__media-layout {
+    grid-template-columns: 0.88fr 1.12fr;
+    align-items: start;
+  }
+}
+
+.produto-lp__real-bullets {
+  margin: 1.1rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.produto-lp__real-bullets li {
+  font-size: 0.97rem;
+  color: rgba(226, 232, 240, 0.92);
+  line-height: 1.45;
+  padding-left: 1rem;
+  position: relative;
+}
+
+.produto-lp__real-bullets li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--lp-mint);
+}
+
+.produto-lp__media-card {
+  padding: 0.7rem;
+  background: rgba(15, 23, 42, 0.28) !important;
+}
+
+.produto-lp__video {
+  width: 100%;
+  height: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: #000;
+}
+
+.produto-lp__media-caption {
+  margin-top: 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  color: rgba(226, 232, 240, 0.88);
+  font-size: 0.83rem;
+}
+
+.produto-lp__real-gallery {
+  margin-top: 1.1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+@media (min-width: 980px) {
+  .produto-lp__real-gallery {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.produto-lp__real-shot {
+  overflow: hidden;
+  padding: 0.45rem;
+}
+
+.produto-lp__real-shot img {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+
+.produto-lp__real-shot figcaption {
+  margin-top: 0.5rem;
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 0.84rem;
+}
+
+.produto-lp__cap-grid {
+  list-style: none;
+  margin: 1.6rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+
+@media (min-width: 840px) {
+  .produto-lp__cap-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.produto-lp__cap-item {
+  padding: 1rem;
+}
+
+.produto-lp__cap-item h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.08rem;
+  color: var(--lp-navy);
+  letter-spacing: -0.01em;
+}
+
+.produto-lp__cap-item p {
+  margin: 0;
+  color: var(--lp-muted);
+  line-height: 1.5;
+  font-size: 0.97rem;
 }
 
 .produto-lp__card {
