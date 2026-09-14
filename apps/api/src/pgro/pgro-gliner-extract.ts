@@ -65,19 +65,65 @@ function pickFirstObject(input: FlexiblePayload): FlexiblePayload {
   );
 }
 
+function pickEntityTexts(value: unknown): string[] {
+  return asList(value)
+    .map((item) => {
+      if (typeof item === 'string') return item.trim();
+      const obj = asObject(item);
+      if (!obj) return null;
+      return (
+        asTrimmedString(obj.text) ??
+        asTrimmedString(obj.value) ??
+        asTrimmedString(obj.label)
+      );
+    })
+    .filter((item): item is string => Boolean(item && item.length > 0));
+}
+
+function normalizeGlinerEndpoint(raw: string): string {
+  const input = raw.trim();
+  if (!input) return input;
+  try {
+    const url = new URL(input);
+    const path = (url.pathname || '/').replace(/\/+$/, '') || '/';
+    if (
+      path === '/' ||
+      path === '/health' ||
+      path === '/docs' ||
+      path === '/openapi.json' ||
+      path === '/v1/info'
+    ) {
+      url.pathname = '/v1/extract';
+      return url.toString();
+    }
+    return url.toString();
+  } catch {
+    if (input.endsWith('/health')) return input.replace(/\/health$/, '/v1/extract');
+    if (input.endsWith('/docs')) return input.replace(/\/docs$/, '/v1/extract');
+    if (input.endsWith('/openapi.json')) {
+      return input.replace(/\/openapi\.json$/, '/v1/extract');
+    }
+    return input;
+  }
+}
+
 function buildParseResultFromPayload(
   payloadRaw: unknown,
   base: PgroParseResult,
 ): PgroParseResult {
   const payload = asObject(payloadRaw) ?? {};
   const picked = pickFirstObject(payload);
+  const entitiesObj = asObject(picked.entities);
   const companyObj = asObject(picked.company) ?? {};
 
-  const sectors: PgroExtractedSector[] = asList(picked.sectors)
-    .map((row) => {
-      if (typeof row === 'string') return row.trim();
-      return asTrimmedString(asObject(row)?.name);
-    })
+  const sectorsRaw = [
+    ...asList(picked.sectors).map((row) =>
+      typeof row === 'string' ? row.trim() : asTrimmedString(asObject(row)?.name),
+    ),
+    ...pickEntityTexts(entitiesObj?.sector),
+    ...pickEntityTexts(entitiesObj?.setor),
+  ];
+  const sectors: PgroExtractedSector[] = sectorsRaw
     .filter((name): name is string => Boolean(name && name.length >= 2))
     .map((name) => ({
       tempId: randomUUID(),
@@ -90,7 +136,12 @@ function buildParseResultFromPayload(
     }));
 
   const functions: PgroExtractedFunction[] = [];
-  for (const row of asList(picked.functions)) {
+  const functionRows = [
+    ...asList(picked.functions),
+    ...pickEntityTexts(entitiesObj?.function).map((name) => ({ name })),
+    ...pickEntityTexts(entitiesObj?.funcao).map((name) => ({ name })),
+  ];
+  for (const row of functionRows) {
     const obj = asObject(row) ?? {};
     const name = asTrimmedString(obj.name);
     if (!name) continue;
@@ -109,7 +160,12 @@ function buildParseResultFromPayload(
   }
 
   const risks: PgroExtractedRisk[] = [];
-  for (const row of asList(picked.risks)) {
+  const riskRows = [
+    ...asList(picked.risks),
+    ...pickEntityTexts(entitiesObj?.risk).map((name) => ({ name })),
+    ...pickEntityTexts(entitiesObj?.risco).map((name) => ({ name })),
+  ];
+  for (const row of riskRows) {
     const obj = asObject(row) ?? {};
     const rawName = asTrimmedString(obj.name);
     const name = clampPgroName(rawName ?? '');
@@ -132,7 +188,11 @@ function buildParseResultFromPayload(
   }
 
   const epiNeeds: PgroExtractedEpiNeed[] = [];
-  for (const row of asList(picked.epiNeeds)) {
+  const epiRows = [
+    ...asList(picked.epiNeeds),
+    ...pickEntityTexts(entitiesObj?.epi).map((name) => ({ name })),
+  ];
+  for (const row of epiRows) {
     const obj = asObject(row) ?? {};
     const name =
       asTrimmedString(obj.name) ?? asTrimmedString(obj.extractedText) ?? '';
@@ -154,9 +214,15 @@ function buildParseResultFromPayload(
   }
 
   const company: PgroCompanyData = {
-    legalName: asTrimmedString(companyObj.legalName) ?? base.company.legalName,
+    legalName:
+      asTrimmedString(companyObj.legalName) ??
+      pickEntityTexts(entitiesObj?.company)[0] ??
+      base.company.legalName,
     tradeName: asTrimmedString(companyObj.tradeName) ?? base.company.tradeName,
-    cnpj: asTrimmedString(companyObj.cnpj) ?? base.company.cnpj,
+    cnpj:
+      asTrimmedString(companyObj.cnpj) ??
+      pickEntityTexts(entitiesObj?.cnpj)[0] ??
+      base.company.cnpj,
     addressLine:
       asTrimmedString(companyObj.addressLine) ?? base.company.addressLine,
     city: asTrimmedString(companyObj.city) ?? base.company.city,
@@ -200,8 +266,9 @@ export async function extractPgroWithGlinerText(
   rawText: string,
   base: PgroParseResult,
 ): Promise<PgroParseResult | null> {
-  const endpoint = process.env.GLINER_PGR_ENDPOINT?.trim();
-  if (!endpoint) return null;
+  const endpointRaw = process.env.GLINER_PGR_ENDPOINT?.trim();
+  if (!endpointRaw) return null;
+  const endpoint = normalizeGlinerEndpoint(endpointRaw);
   const enabled = process.env.GLINER_PGR_ENABLED?.trim().toLowerCase();
   if (enabled === 'false') return null;
 
@@ -209,48 +276,20 @@ export async function extractPgroWithGlinerText(
   const apiKey = process.env.GLINER_PGR_API_KEY?.trim();
   const excerpt = pickTextForGliner(rawText);
   const body = {
-    task: 'pgro_extract',
-    language: 'pt-BR',
-    schema: {
-      company: [
-        'legalName',
-        'tradeName',
-        'cnpj',
-        'city',
-        'state',
-        'cnae',
-        'riskGrade',
-        'employeeCount',
-      ],
-      sectors: [{ name: 'string' }],
-      functions: [
-        {
-          name: 'string',
-          sectorName: 'string',
-          activityDescription: 'string',
-          environmentDescription: 'string',
-        },
-      ],
-      risks: [
-        {
-          name: 'string',
-          category:
-            'FISICO|QUIMICO|BIOLOGICO|ERGONOMICO|ACIDENTE|MECANICO|PSICOSSOCIAL',
-          exposure: 'string',
-          source: 'string',
-          functionNames: ['string'],
-        },
-      ],
-      epiNeeds: [
-        {
-          name: 'string',
-          extractedText: 'string',
-          functionNames: ['string'],
-          riskNames: ['string'],
-        },
-      ],
-      warnings: ['string'],
+    entities: {
+      sector: 'Setor/departamento do trabalhador no PGR',
+      function: 'Cargo ou funcao de trabalho no PGR',
+      risk: 'Agente de risco ocupacional citado no PGR',
+      epi: 'EPI citado nas medidas de controle',
+      company: 'Razao social da empresa cliente',
+      cnpj: 'CNPJ da empresa cliente',
+      cnae: 'CNAE da atividade principal',
+      city: 'Cidade da empresa cliente',
+      state: 'UF da empresa cliente',
+      risk_grade: 'Grau de risco da atividade',
+      employee_count: 'Quantidade de trabalhadores',
     },
+    include_spans: false,
     text: excerpt,
     model: process.env.GLINER_PGR_MODEL?.trim() || null,
   };
