@@ -40,6 +40,7 @@ import {
   extractPgroWithOpenAiText,
   mergePgroParseResults,
 } from './pgro-llm-extract';
+import { extractPgroWithGlinerText } from './pgro-gliner-extract';
 import {
   normalizeTextKey,
   parsePgroText,
@@ -127,18 +128,59 @@ export class PgroService {
       parseResult = parsePgroText(documentText, { extraAliases });
 
       const wantsLlm = shouldUsePgroLlmFallback(parseResult);
+      const hasGlinerEndpoint = Boolean(
+        process.env.GLINER_PGR_ENDPOINT?.trim(),
+      );
+
+      if (parseResult.textExtractable && wantsLlm && hasGlinerEndpoint) {
+        try {
+          const glinerPart = await extractPgroWithGlinerText(
+            documentText,
+            parseResult,
+          );
+          if (glinerPart && glinerPart.parseMethod === 'HEURISTIC_PLUS_LLM') {
+            const preferGlinerStructure = shouldPreferLlmStructure(
+              parseResult,
+              glinerPart,
+            );
+            parseResult = mergePgroParseResults(parseResult, glinerPart, {
+              preferLlmStructure: preferGlinerStructure,
+            });
+            parseResult.warnings.push(
+              preferGlinerStructure
+                ? 'GLiNER substituiu estrutura duvidosa. Revise setores e funcoes.'
+                : 'GLiNER complementou estrutura parcial. Revise setores e funcoes.',
+            );
+          } else if (glinerPart) {
+            parseResult = {
+              ...parseResult,
+              warnings: glinerPart.warnings,
+            };
+          }
+        } catch (glinerErr) {
+          parseResult.warnings.push(
+            `GLiNER indisponivel na extracao: ${
+              glinerErr instanceof Error
+                ? glinerErr.message
+                : String(glinerErr)
+            }`,
+          );
+        }
+      }
+
+      const stillWantsLlm = shouldUsePgroLlmFallback(parseResult);
       const hasLlmKey = Boolean(
         process.env.OPENROUTER_API_KEY?.trim() ||
           process.env.OPENAI_API_KEY?.trim(),
       );
 
-      if (parseResult.textExtractable && wantsLlm && !hasLlmKey) {
+      if (parseResult.textExtractable && stillWantsLlm && !hasLlmKey) {
         parseResult.warnings.push(
           'Extracao automatica duvidosa (layout complexo), mas nenhuma chave de IA foi configurada na API (OPENROUTER_API_KEY/OPENAI_API_KEY). O fallback de IA nao rodou.',
         );
       }
 
-      if (parseResult.textExtractable && wantsLlm && hasLlmKey) {
+      if (parseResult.textExtractable && stillWantsLlm && hasLlmKey) {
         try {
           const llmPart = await extractPgroWithOpenAiText(
             documentText,
