@@ -212,9 +212,6 @@ export function ProdutoLanding() {
           <a href="#contato">Contato</a>
         </nav>
         <div className="produto-lp__nav-actions">
-          <Link className="produto-lp__link-quiet" href="/login">
-            Consultoria
-          </Link>
           <button
             type="button"
             className="produto-lp__btn produto-lp__btn--solid"
@@ -452,9 +449,6 @@ export function ProdutoLanding() {
               >
                 {isPrimaryBusy ? 'Abrindo contato...' : 'Quero implantar agora'}
               </button>
-              <a className="produto-lp__link-quiet" href={`mailto:${CONTACT_EMAIL}`}>
-                Prefiro falar por e-mail
-              </a>
             </div>
             {feedback ? (
               <p className="produto-lp__feedback" role="status">
@@ -475,7 +469,6 @@ export function ProdutoLanding() {
         <div className="produto-lp__footer-links">
           <a href={withUtm(WEBSITE_URL, 'landing', 'footer', 'brand_access')}>Site</a>
           <Link href="/portal/login">Painel</Link>
-          <Link href="/login">Consultoria</Link>
           <a href={`mailto:${CONTACT_EMAIL}`}>Contato</a>
         </div>
       </footer>
