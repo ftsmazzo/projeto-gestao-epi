@@ -19,6 +19,31 @@ const FAQ = [
     answer:
       'Sim. O ProntEPI gera comprovantes, ficha de EPI e relatorios operacionais com rastreabilidade.',
   },
+  {
+    question: 'O sistema ajuda na implantacao de PGR/PGRO?',
+    answer:
+      'Sim. O processo de importacao acelera estruturacao de setor, funcao, risco e necessidades de EPI para o cliente operar mais rapido.',
+  },
+  {
+    question: 'Tem validacao de CA pela base oficial do MTE (CAEPI)?',
+    answer:
+      'Sim. O ProntEPI consulta dados de CAEPI para pesquisa de CA, status e validade, apoiando conformidade na rotina.',
+  },
+  {
+    question: 'Se eu tiver muitos trabalhadores, consigo subir em lote?',
+    answer:
+      'Sim. E possivel importar base por CSV, revisar e confirmar antes de colocar em producao.',
+  },
+  {
+    question: 'A equipe consegue usar no celular em campo?',
+    answer:
+      'Sim. A interface foi desenhada para uso em desktop e mobile na operacao diaria.',
+  },
+  {
+    question: 'Existe apoio para implantacao comercial e operacional?',
+    answer:
+      'Sim. O fluxo comercial pode ser iniciado pelo WhatsApp e seguido por demonstracao guiada para montar plano de implantacao.',
+  },
 ] as const;
 
 export function ProductFaqSection() {
