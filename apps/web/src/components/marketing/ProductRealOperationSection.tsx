@@ -5,6 +5,8 @@ import { useState } from 'react';
 
 export function ProductRealOperationSection() {
   const [playing, setPlaying] = useState(false);
+  const waLink =
+    'https://wa.me/5516996282630?text=Oi!%20Vi%20o%20video%20do%20ProntEPI%20e%20quero%20uma%20demo%20completa.';
 
   return (
     <section className="produto-lp__block produto-lp__block--ink" aria-labelledby="real-title" data-reveal>
@@ -16,13 +18,13 @@ export function ProductRealOperationSection() {
               Nao e mock: e tela do ProntEPI rodando no fluxo do cliente
             </h2>
             <p className="produto-lp__text produto-lp__text--on-dark">
-              Corte curto com operacao de estoque e entrega em contexto real. A proposta e simples:
-              reduzir retrabalho e aumentar prova operacional na rotina.
+              Corte real de 12 segundos com navegacao no modulo de validade e indicadores coloridos
+              de criticidade. Sem mock e sem tela inventada.
             </p>
             <ul className="produto-lp__real-bullets">
-              <li>Fluxo de estoque com entrada por CA e operacao guiada</li>
-              <li>Entregas vinculadas a evidencia e rastreabilidade</li>
-              <li>Painel pronto para uso em desktop e campo</li>
+              <li>Operacao por prioridade com foco no que esta vencendo</li>
+              <li>Visao unica de validade, estoque e cobertura por funcao</li>
+              <li>Base pronta para decisao rapida em auditoria</li>
             </ul>
           </div>
 
@@ -39,32 +41,45 @@ export function ProductRealOperationSection() {
               Seu navegador nao suporta video incorporado.
             </video>
             <div className="produto-lp__media-caption">
-              <span>{playing ? 'Reproduzindo agora' : 'Preview de operacao'}</span>
-              <span>Corte real do sistema em uso</span>
+              <span>{playing ? 'Reproduzindo agora' : 'Assistir demonstracao real (12s)'}</span>
+              <span>Trecho retirado do video operacional</span>
             </div>
+            <a className="produto-lp__btn produto-lp__btn--solid" href={waLink} target="_blank" rel="noreferrer">
+              Quero a demo completa no WhatsApp
+            </a>
           </div>
         </div>
 
         <div className="produto-lp__real-gallery">
           <figure className="produto-lp__real-shot produto-lp__card">
             <Image
-              src="/branding/screens/operacao-real-poster.jpg"
-              alt="Tela real do modulo de estoque do ProntEPI"
+              src="/branding/screens/sistema-shot-1.jpg"
+              alt="Tela real de configuracoes da consultoria no ProntEPI"
               width={1440}
               height={810}
-              sizes="(max-width: 900px) 100vw, 48vw"
+              sizes="(max-width: 980px) 100vw, 32vw"
             />
-            <figcaption>Tela real extraida do video operacional</figcaption>
+            <figcaption>Configuracoes e governanca da consultoria</figcaption>
           </figure>
           <figure className="produto-lp__real-shot produto-lp__card">
             <Image
-              src="/branding/screens/produto.png"
-              alt="Landing comercial do ProntEPI"
-              width={720}
-              height={1200}
-              sizes="(max-width: 900px) 100vw, 48vw"
+              src="/branding/screens/sistema-shot-2.jpg"
+              alt="Tela real de validade de EPI com indicadores coloridos"
+              width={1440}
+              height={810}
+              sizes="(max-width: 980px) 100vw, 32vw"
             />
-            <figcaption>Landing comercial com novo posicionamento de venda</figcaption>
+            <figcaption>Painel de validade com prioridades visuais</figcaption>
+          </figure>
+          <figure className="produto-lp__real-shot produto-lp__card">
+            <Image
+              src="/branding/screens/sistema-shot-3.jpg"
+              alt="Tela real da ficha de EPI com rastreabilidade"
+              width={1440}
+              height={810}
+              sizes="(max-width: 980px) 100vw, 32vw"
+            />
+            <figcaption>Ficha de EPI e comprovacao documental</figcaption>
           </figure>
         </div>
       </div>

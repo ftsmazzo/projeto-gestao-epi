@@ -6401,12 +6401,18 @@ a.btn-primary:hover {
   margin: 2.5rem 0 0;
   padding: 0;
   display: grid;
-  gap: 1.75rem 2.5rem;
+  gap: 1rem;
 }
 
 @media (min-width: 760px) {
   .produto-lp__benefits {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1080px) {
+  .produto-lp__benefits {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -6426,8 +6432,7 @@ a.btn-primary:hover {
 }
 
 .produto-lp__benefits li {
-  padding-top: 1.1rem;
-  border-top: 2px solid rgba(15, 118, 110, 0.35);
+  padding: 1rem;
 }
 
 .produto-lp__media-layout {
@@ -6500,13 +6505,14 @@ a.btn-primary:hover {
 
 @media (min-width: 980px) {
   .produto-lp__real-gallery {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 .produto-lp__real-shot {
   overflow: hidden;
   padding: 0.45rem;
+  background: rgba(15, 23, 42, 0.34) !important;
 }
 
 .produto-lp__real-shot img {
@@ -6519,6 +6525,10 @@ a.btn-primary:hover {
   margin-top: 0.5rem;
   color: rgba(226, 232, 240, 0.78);
   font-size: 0.84rem;
+}
+
+.produto-lp__media-card .produto-lp__btn {
+  width: 100%;
 }
 
 .produto-lp__cap-grid {

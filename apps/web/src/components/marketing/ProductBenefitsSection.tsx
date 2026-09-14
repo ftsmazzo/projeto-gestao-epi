@@ -15,6 +15,14 @@ const BENEFITS = [
     title: 'Operacao guiada por prioridade',
     text: 'Painel mostra vencimentos, trocas e pendencias para o time agir no que e critico.',
   },
+  {
+    title: 'Suporte a EPI sem CA',
+    text: 'Permite entrada manual com nome, descricao e periodo de uso para itens especiais.',
+  },
+  {
+    title: 'Assinatura remota sem travar entrega',
+    text: 'Trabalhador pode assinar por link no celular e manter fallback presencial quando preciso.',
+  },
 ] as const;
 
 export function ProductBenefitsSection() {
@@ -28,7 +36,7 @@ export function ProductBenefitsSection() {
       <div className="produto-lp__wrap">
         <p className="produto-lp__kicker">Beneficios principais</p>
         <h2 id="beneficios-title" className="produto-lp__h2">
-          Quatro ganhos imediatos para quem opera EPI todo dia
+          Seis ganhos imediatos para quem opera EPI todo dia
         </h2>
         <ul className="produto-lp__benefits">
           {BENEFITS.map((item) => (

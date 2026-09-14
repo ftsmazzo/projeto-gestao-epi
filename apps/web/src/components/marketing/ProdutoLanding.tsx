@@ -354,11 +354,11 @@ export function ProdutoLanding() {
           <div className="produto-lp__close-inner produto-lp__anim-in">
             <BrandMark className="produto-lp__close-mark" title={APP_NAME} />
             <h2 id="cta-title" className="produto-lp__h2">
-              Se voce quer vender com prova, precisa mostrar operacao de verdade
+              Pronto para implantar uma operacao de EPI mais forte?
             </h2>
             <p className="produto-lp__text">
-              O ProntEPI entrega isso: fluxo real, evidencia forte, governanca e velocidade no dia a
-              dia.
+              Fale com o comercial e veja como aplicar o ProntEPI no seu contexto com plano de
+              implantacao objetivo.
             </p>
             <div className="produto-lp__cta-row produto-lp__cta-row--center">
               <button
@@ -368,7 +368,7 @@ export function ProdutoLanding() {
                 disabled={isPrimaryBusy}
                 aria-busy={isPrimaryBusy}
               >
-                {isPrimaryBusy ? 'Abrindo contato...' : 'Quero vender com o ProntEPI'}
+                {isPrimaryBusy ? 'Abrindo contato...' : 'Quero implantar agora'}
               </button>
               <a className="produto-lp__link-quiet" href={`mailto:${CONTACT_EMAIL}`}>
                 Prefiro falar por e-mail
