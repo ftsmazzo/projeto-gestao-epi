@@ -65,7 +65,7 @@ export function ProductQuotesSection() {
               }`}
               aria-hidden={index !== active}
             >
-              <p>"{item.quote}"</p>
+              <p>&ldquo;{item.quote}&rdquo;</p>
               <footer>
                 <strong>{item.name}</strong>
                 <span>{item.role}</span>
