@@ -127,19 +127,23 @@ export class PgroService {
       parseResult = parsePgroText(documentText, { extraAliases });
 
       const wantsLlm = shouldUsePgroLlmFallback(parseResult);
-      const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY?.trim());
+      const hasLlmKey = Boolean(
+        process.env.OPENROUTER_API_KEY?.trim() ||
+          process.env.OPENAI_API_KEY?.trim(),
+      );
 
-      if (parseResult.textExtractable && wantsLlm && !hasOpenAiKey) {
+      if (parseResult.textExtractable && wantsLlm && !hasLlmKey) {
         parseResult.warnings.push(
-          'Extracao automatica duvidosa (layout complexo), mas OPENAI_API_KEY nao esta configurada na API — fallback de IA nao rodou. Configure a chave no EasyPanel para melhorar o preview.',
+          'Extracao automatica duvidosa (layout complexo), mas nenhuma chave de IA foi configurada na API (OPENROUTER_API_KEY/OPENAI_API_KEY). O fallback de IA nao rodou.',
         );
       }
 
-      if (parseResult.textExtractable && wantsLlm && hasOpenAiKey) {
+      if (parseResult.textExtractable && wantsLlm && hasLlmKey) {
         try {
           const llmPart = await extractPgroWithOpenAiText(
             documentText,
             parseResult,
+            { sourceKind: documentKind },
           );
           if (llmPart && llmPart.parseMethod === 'HEURISTIC_PLUS_LLM') {
             const preferLlmStructure = shouldPreferLlmStructure(

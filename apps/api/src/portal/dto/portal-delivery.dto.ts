@@ -87,6 +87,12 @@ export class PortalCreateDeliveryPayloadDto {
   @MaxLength(2000)
   notes?: string | null;
 
+  /** Link de assinatura facial remota (opcional, fallback presencial continua disponivel). */
+  @IsOptional()
+  @IsString()
+  @MinLength(6)
+  signatureLinkId?: string;
+
   /** Confirmacao explicita do aviso de captura facial (obrigatoria). */
   @IsBoolean()
   @Equals(true, {
@@ -96,11 +102,12 @@ export class PortalCreateDeliveryPayloadDto {
   facialEvidenceConsentAccepted!: boolean;
 
   /** Descritor 128-d da captura (extraido no browser). Matching no backend. */
+  @ValidateIf((o: PortalCreateDeliveryPayloadDto) => !o.signatureLinkId)
   @IsArray()
   @ArrayMinSize(FACE_DESCRIPTOR_LENGTH)
   @ArrayMaxSize(FACE_DESCRIPTOR_LENGTH)
   @IsNumber({}, { each: true })
-  faceDescriptor!: number[];
+  faceDescriptor?: number[];
 
   @IsOptional()
   @IsString()
@@ -163,4 +170,10 @@ export class PortalCreateReturnDto {
   @ValidateNested({ each: true })
   @Type(() => PortalReturnItemDto)
   items!: PortalReturnItemDto[];
+}
+
+export class PortalCreateDeliverySignLinkDto {
+  @IsString()
+  @MinLength(1)
+  workerId!: string;
 }

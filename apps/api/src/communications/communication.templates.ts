@@ -187,10 +187,17 @@ export function buildFacialEnrollmentInviteWhatsapp(
 
 export const COMM_TEMPLATE_SST_DOCUMENT_INVITE = 'sst_document_invite';
 export const COMM_TEMPLATE_SST_DOCUMENT_SIGNED = 'sst_document_signed';
+export const COMM_TEMPLATE_EPI_DELIVERY_SIGN_INVITE = 'epi_delivery_sign_invite';
 
 export type SstDocumentInviteInput = {
   workerName: string;
   documentTitle: string;
+  signUrl: string;
+  expiresAtIso: string;
+};
+
+export type EpiDeliverySignInviteInput = {
+  workerName: string;
   signUrl: string;
   expiresAtIso: string;
 };
@@ -221,6 +228,25 @@ export function buildSstDocumentSignedWhatsapp(input: {
     first ? `Ola, ${first}.` : 'Ola.',
     `Sua ciencia no documento "${input.documentTitle}" foi registrada.`,
     'Guarde este comprovante. O RH da empresa tambem recebe o arquivo no ProntEPI.',
+  ].join('\n');
+}
+
+export function buildEpiDeliverySignInviteWhatsapp(
+  input: EpiDeliverySignInviteInput,
+) {
+  const firstName =
+    input.workerName.trim().split(/\s+/)[0] || input.workerName;
+  const expiresLabel = new Date(input.expiresAtIso).toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    dateStyle: 'short',
+    timeStyle: 'short',
+  });
+  return [
+    `Ola, ${firstName}.`,
+    'Assine a entrega de EPI no seu celular.',
+    `Link (valido 24h, ate ${expiresLabel}):`,
+    input.signUrl,
+    'Voce precisara dos 4 ultimos digitos do CPF e da camera.',
   ].join('\n');
 }
 

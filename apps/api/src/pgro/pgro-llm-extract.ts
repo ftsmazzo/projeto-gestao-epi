@@ -45,6 +45,34 @@ type LlmPayload = {
   warnings?: string[];
 };
 
+type PgroLlmSourceKind = 'PDF' | 'DOCX' | 'DOC';
+
+function asTrimmedString(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const cleaned = value.trim();
+    return cleaned || null;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return null;
+}
+
+function asNullableNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.replace(',', '.').trim());
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function pickText(payload: unknown, fallback: string | null): string | null {
+  return asTrimmedString(payload) ?? fallback;
+}
+
 function pickTextForLlm(rawText: string, maxChars = 70_000): string {
   const text = rawText.replace(/\r/g, '\n');
   if (text.length <= maxChars) return text;
@@ -146,16 +174,21 @@ function llmToParseResult(
     .filter((e) => e.suggestedName.length >= 2);
 
   const company: PgroCompanyData = {
-    legalName: payload.company?.legalName?.trim() || base.company.legalName,
-    tradeName: payload.company?.tradeName?.trim() || base.company.tradeName,
-    cnpj: payload.company?.cnpj?.trim() || base.company.cnpj,
-    addressLine: payload.company?.addressLine?.trim() || base.company.addressLine,
-    city: payload.company?.city?.trim() || base.company.city,
-    state: payload.company?.state?.trim() || base.company.state,
-    cnae: payload.company?.cnae?.trim() || base.company.cnae,
-    riskGrade: payload.company?.riskGrade?.trim() || base.company.riskGrade,
-    employeeCount:
-      payload.company?.employeeCount ?? base.company.employeeCount,
+    legalName: pickText(payload.company?.legalName, base.company.legalName),
+    tradeName: pickText(payload.company?.tradeName, base.company.tradeName),
+    cnpj: pickText(payload.company?.cnpj, base.company.cnpj),
+    addressLine: pickText(
+      payload.company?.addressLine,
+      base.company.addressLine,
+    ),
+    city: pickText(payload.company?.city, base.company.city),
+    state: pickText(payload.company?.state, base.company.state),
+    cnae: pickText(payload.company?.cnae, base.company.cnae),
+    riskGrade: pickText(payload.company?.riskGrade, base.company.riskGrade),
+    employeeCount: (() => {
+      const fromLlm = asNullableNumber(payload.company?.employeeCount);
+      return fromLlm ?? base.company.employeeCount;
+    })(),
     rawText: base.company.rawText,
   };
 
@@ -298,21 +331,90 @@ export function mergePgroParseResults(
   return merged;
 }
 
+function resolveLlmConfig(sourceKind?: PgroLlmSourceKind):
+  | {
+      provider: 'openrouter' | 'openai';
+      endpoint: string;
+      model: string;
+      headers: Record<string, string>;
+    }
+  | null {
+  const openRouterKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (openRouterKey) {
+    const model =
+      (sourceKind === 'PDF'
+        ? process.env.OPENROUTER_PGR_MODEL_PDF?.trim()
+        : null) ||
+      process.env.OPENROUTER_PGR_MODEL?.trim() ||
+      'mistralai/mistral-small-3.2-24b-instruct:free';
+    const endpoint =
+      process.env.OPENROUTER_BASE_URL?.trim() ||
+      'https://openrouter.ai/api/v1/chat/completions';
+    const referer =
+      process.env.PUBLIC_WEB_URL?.trim() ||
+      process.env.CLIENT_PORTAL_URL?.trim() ||
+      'https://prontepi.local';
+    return {
+      provider: 'openrouter',
+      endpoint,
+      model,
+      headers: {
+        Authorization: `Bearer ${openRouterKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': referer,
+        'X-Title': 'ProntEPI PGRO Extractor',
+      },
+    };
+  }
+
+  const openAiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!openAiKey) return null;
+  return {
+    provider: 'openai',
+    endpoint: 'https://api.openai.com/v1/chat/completions',
+    model: process.env.OPENAI_PGR_MODEL?.trim() || 'gpt-4o-mini',
+    headers: {
+      Authorization: `Bearer ${openAiKey}`,
+      'Content-Type': 'application/json',
+    },
+  };
+}
+
+function extractTextContent(
+  content: unknown,
+): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part === 'object' && 'text' in part) {
+          return asTrimmedString((part as { text?: unknown }).text) ?? '';
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+  return '{}';
+}
+
 /**
- * Extracao via OpenAI no texto do PDF quando OPENAI_API_KEY estiver configurada.
+ * Extracao via LLM (OpenRouter preferencial; OpenAI como fallback) quando
+ * houver chave configurada.
  */
 export async function extractPgroWithOpenAiText(
   rawText: string,
   base: PgroParseResult,
+  options?: { sourceKind?: PgroLlmSourceKind },
 ): Promise<PgroParseResult | null> {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) return null;
+  const llm = resolveLlmConfig(options?.sourceKind);
+  if (!llm) return null;
 
   const excerpt = pickTextForLlm(rawText);
-  const model = process.env.OPENAI_PGR_MODEL?.trim() || 'gpt-4o-mini';
 
   const body = {
-    model,
+    model: llm.model,
     temperature: 0,
     response_format: { type: 'json_object' },
     messages: [
@@ -338,12 +440,9 @@ ${excerpt}`,
     ],
   };
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch(llm.endpoint, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
+    headers: llm.headers,
     body: JSON.stringify(body),
   });
 
@@ -353,16 +452,16 @@ ${excerpt}`,
       ...base,
       warnings: [
         ...base.warnings,
-        `Falha na leitura por IA (${res.status}). ${errText.slice(0, 160)}`,
+        `Falha na leitura por IA (${llm.provider}, ${res.status}). ${errText.slice(0, 160)}`,
       ],
       parseMethod: 'HEURISTIC',
     };
   }
 
   const json = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ message?: { content?: unknown } }>;
   };
-  const content = json.choices?.[0]?.message?.content ?? '{}';
+  const content = extractTextContent(json.choices?.[0]?.message?.content);
   let parsed: LlmPayload;
   try {
     parsed = JSON.parse(content) as LlmPayload;

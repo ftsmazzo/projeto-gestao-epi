@@ -18,17 +18,20 @@ import {
   buildFacialEnrollmentInviteWhatsapp,
   buildSstDocumentInviteWhatsapp,
   buildSstDocumentSignedWhatsapp,
+  buildEpiDeliverySignInviteWhatsapp,
   buildPgrRhGapAlertWhatsapp,
   COMM_TEMPLATE_CLIENT_ACCESS_INVITE,
   COMM_TEMPLATE_CONSULTORIA_ACCESS_INVITE,
   COMM_TEMPLATE_FACIAL_ENROLLMENT_INVITE,
   COMM_TEMPLATE_SST_DOCUMENT_INVITE,
   COMM_TEMPLATE_SST_DOCUMENT_SIGNED,
+  COMM_TEMPLATE_EPI_DELIVERY_SIGN_INVITE,
   COMM_TEMPLATE_PGR_RH_GAP,
   type ClientAccessInviteInput,
   type ConsultoriaAccessInviteInput,
   type FacialEnrollmentInviteInput,
   type SstDocumentInviteInput,
+  type EpiDeliverySignInviteInput,
 } from './communication.templates';
 import { EvolutionWhatsappSender } from './evolution-whatsapp.sender';
 
@@ -309,6 +312,48 @@ export class CommunicationsService {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Falha WhatsApp documento SST: ${message}`);
+      return { status: 'FAILED', error: message.slice(0, 500) };
+    }
+  }
+
+  async enqueueEpiDeliverySignWhatsapp(input: {
+    organizationId: string;
+    workerId: string;
+    linkId: string;
+    phone: string | null | undefined;
+    invite: EpiDeliverySignInviteInput;
+  }): Promise<{
+    status: AccessInviteChannelStatus | 'NO_PHONE' | 'DISABLED';
+    error?: string | null;
+  }> {
+    if (!this.isEnabled()) return { status: 'DISABLED' };
+    const phone = input.phone?.trim();
+    if (!phone) return { status: 'NO_PHONE' };
+    try {
+      const text = buildEpiDeliverySignInviteWhatsapp(input.invite);
+      const row = await this.prisma.communicationOutbox.create({
+        data: {
+          organizationId: input.organizationId,
+          channel: CommunicationChannel.WHATSAPP,
+          templateKey: COMM_TEMPLATE_EPI_DELIVERY_SIGN_INVITE,
+          toAddress: phone,
+          subject: null,
+          bodyText: text,
+          payload: {
+            workerId: input.workerId,
+            linkId: input.linkId,
+            signUrl: input.invite.signUrl,
+          },
+          relatedType: 'EpiDeliverySignLink',
+          relatedId: input.linkId,
+          status: CommunicationStatus.PENDING,
+        },
+      });
+      const result = await this.deliver(row.id);
+      return { status: result.status, error: result.error ?? null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Falha WhatsApp assinatura entrega EPI: ${message}`);
       return { status: 'FAILED', error: message.slice(0, 500) };
     }
   }

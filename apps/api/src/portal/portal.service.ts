@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   DeliveryEvidenceType,
@@ -31,12 +32,14 @@ import {
   isValidFaceDescriptor,
   resolveFaceMatchThreshold,
 } from '@gestao-epi/shared';
-import { randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { existsSync } from 'fs';
 import { unlink, readFile } from 'fs/promises';
 import { AuditService } from '../audit/audit.service';
 import { normalizeCaNumber } from '../caepi/caepi-import.utils';
 import { CaepiService } from '../caepi/caepi.service';
+import { CommunicationsService } from '../communications/communications.service';
+import { stripCpf } from '../common/cpf';
 import { PrismaService } from '../prisma/prisma.service';
 import { StockService } from '../stock/stock.service';
 import type { CreateWorkerDto } from '../workers/dto/create-worker.dto';
@@ -96,6 +99,8 @@ import {
 
 const VALIDITY_SOON_DAYS = 90;
 const DEFAULT_LOCATION_NAME = 'Estoque principal';
+const DELIVERY_SIGN_LINK_TTL_MS = 24 * 60 * 60 * 1000;
+const DELIVERY_SIGN_MAX_FAILED_ATTEMPTS = 5;
 
 type ValidityBucket = 'expired' | 'soon' | 'ok' | 'missing';
 
@@ -161,6 +166,35 @@ function resolveLineLifeDays(input: {
   return unitDays * qty;
 }
 
+function hashOpaqueToken(token: string): string {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+function getPublicWebBaseUrl(): string {
+  const fromEnv = process.env.PUBLIC_WEB_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  const cors = process.env.CORS_ORIGIN?.split(',')[0]?.trim();
+  if (cors && cors !== '*') return cors.replace(/\/$/, '');
+  return 'http://localhost:3000';
+}
+
+function buildPortalDeliverySignUrl(token: string): string {
+  return `${getPublicWebBaseUrl()}/assinar/entrega/${encodeURIComponent(token)}`;
+}
+
+function deliverySignStatusFromRow(row: {
+  expiresAt: Date;
+  consumedAt: Date | null;
+  revokedAt: Date | null;
+  signedAt: Date | null;
+}): 'PENDING' | 'SIGNED' | 'CONSUMED' | 'EXPIRED' | 'REVOKED' {
+  if (row.revokedAt) return 'REVOKED';
+  if (row.consumedAt) return 'CONSUMED';
+  if (row.expiresAt.getTime() <= Date.now()) return 'EXPIRED';
+  if (row.signedAt) return 'SIGNED';
+  return 'PENDING';
+}
+
 const epiCatalogSelect = {
   id: true,
   name: true,
@@ -179,6 +213,7 @@ export class PortalService {
     private readonly stock: StockService,
     private readonly caepi: CaepiService,
     private readonly audit: AuditService,
+    private readonly communications: CommunicationsService,
     private readonly biometricConsent: WorkerBiometricConsentService,
     private readonly workers: WorkersService,
     private readonly facialEnrollment: WorkerFacialEnrollmentService,
@@ -3438,6 +3473,361 @@ export class PortalService {
   }
 
   /** Historico de entregas do cliente (sem imagem facial). */
+  async createDeliverySignLink(
+    organizationId: string,
+    servedClientId: string,
+    userId: string,
+    workerId: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    const worker = await this.prisma.worker.findFirst({
+      where: {
+        id: workerId,
+        organizationId,
+        servedClientId,
+        status: WorkerStatus.ACTIVE,
+      },
+      select: { id: true, name: true, cpf: true, phone: true },
+    });
+    if (!worker) {
+      throw new NotFoundException('Trabalhador nao encontrado neste cliente.');
+    }
+    if (stripCpf(worker.cpf ?? '').length < 4) {
+      throw new BadRequestException(
+        'Informe o CPF do trabalhador (pelo menos 4 digitos finais).',
+      );
+    }
+
+    const now = new Date();
+    await this.prisma.epiDeliverySignLink.updateMany({
+      where: {
+        organizationId,
+        servedClientId,
+        workerId: worker.id,
+        consumedAt: null,
+        revokedAt: null,
+      },
+      data: { revokedAt: now },
+    });
+
+    const token = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(now.getTime() + DELIVERY_SIGN_LINK_TTL_MS);
+    const created = await this.prisma.epiDeliverySignLink.create({
+      data: {
+        organizationId,
+        servedClientId,
+        workerId: worker.id,
+        tokenHash: hashOpaqueToken(token),
+        expiresAt,
+        createdByUserId: userId,
+      },
+      select: { id: true, createdAt: true },
+    });
+
+    const url = buildPortalDeliverySignUrl(token);
+    const whatsapp = await this.communications.enqueueEpiDeliverySignWhatsapp({
+      organizationId,
+      workerId: worker.id,
+      linkId: created.id,
+      phone: worker.phone,
+      invite: {
+        workerName: worker.name,
+        signUrl: url,
+        expiresAtIso: expiresAt.toISOString(),
+      },
+    });
+
+    const whatsappStatus = whatsapp.status;
+
+    return {
+      id: created.id,
+      workerId: worker.id,
+      workerName: worker.name,
+      status: 'PENDING' as const,
+      url,
+      expiresAt: expiresAt.toISOString(),
+      createdAt: created.createdAt.toISOString(),
+      signedAt: null,
+      consumedAt: null,
+      revokedAt: null,
+      canFallbackToPresential: true,
+      whatsapp: whatsappStatus,
+      whatsappError: whatsapp.error ?? null,
+      notice:
+        whatsappStatus === 'NO_PHONE'
+          ? 'Trabalhador sem telefone. Copie o link e envie manualmente.'
+          : whatsappStatus === 'DISABLED'
+            ? 'Comunicacoes desabilitadas. Copie o link e envie manualmente.'
+            : 'Link gerado. Se nao assinar, siga no fluxo presencial normalmente.',
+    };
+  }
+
+  async getDeliverySignLinkStatus(
+    organizationId: string,
+    servedClientId: string,
+    linkId: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId);
+    const row = await this.prisma.epiDeliverySignLink.findFirst({
+      where: { id: linkId, organizationId, servedClientId },
+      select: {
+        id: true,
+        workerId: true,
+        worker: { select: { name: true } },
+        expiresAt: true,
+        createdAt: true,
+        signedAt: true,
+        consumedAt: true,
+        revokedAt: true,
+      },
+    });
+    if (!row) {
+      return {
+        id: linkId,
+        workerId: '',
+        workerName: '',
+        status: 'MISSING' as const,
+        expiresAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        signedAt: null,
+        consumedAt: null,
+        revokedAt: null,
+        canFallbackToPresential: true,
+        whatsapp: 'FAILED' as const,
+        whatsappError: 'Link nao encontrado.',
+        notice: 'Link nao encontrado. Gere um novo ou siga no presencial.',
+      };
+    }
+    const status = deliverySignStatusFromRow(row);
+    return {
+      id: row.id,
+      workerId: row.workerId,
+      workerName: row.worker.name,
+      status,
+      expiresAt: row.expiresAt.toISOString(),
+      createdAt: row.createdAt.toISOString(),
+      signedAt: row.signedAt?.toISOString() ?? null,
+      consumedAt: row.consumedAt?.toISOString() ?? null,
+      revokedAt: row.revokedAt?.toISOString() ?? null,
+      canFallbackToPresential: true,
+      whatsapp: 'PENDING' as const,
+      whatsappError: null,
+      notice:
+        status === 'SIGNED'
+          ? 'Assinatura no celular concluida.'
+          : status === 'PENDING'
+            ? 'Aguardando assinatura no celular.'
+            : 'Link nao esta mais pendente. Voce pode seguir no presencial.',
+    };
+  }
+
+  async unlockDeliverySignLink(token: string, cpfLast4Raw: string) {
+    const link = await this.findValidDeliverySignLinkOrThrow(token);
+    await this.assertDeliverySignCpfLast4(link, cpfLast4Raw);
+    return {
+      workerFirstName: link.worker.name.trim().split(/\s+/)[0] || link.worker.name,
+      expiresAt: link.expiresAt.toISOString(),
+      consentText: FACIAL_EVIDENCE_CONSENT_TEXT,
+      consentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
+      notice:
+        'Centralize o rosto, complete o desafio de presenca e confirme a assinatura da entrega de EPI.',
+    };
+  }
+
+  async completeDeliverySignLink(
+    token: string,
+    input: {
+      cpfLast4: string;
+      file: { buffer: Buffer; mimeType?: string };
+      faceDescriptor: number[];
+      faceEngine?: string;
+      livenessPassed: boolean;
+      livenessChallenge?: string | null;
+    },
+  ) {
+    const link = await this.findValidDeliverySignLinkOrThrow(token);
+    await this.assertDeliverySignCpfLast4(link, input.cpfLast4);
+    if (!isValidFaceDescriptor(input.faceDescriptor)) {
+      throw new BadRequestException('Descritor facial invalido.');
+    }
+    const challenge = input.livenessChallenge?.trim() ?? '';
+    if (!input.livenessPassed || !isLivenessChallengeType(challenge)) {
+      throw new BadRequestException('Desafio de presenca invalido.');
+    }
+
+    const facialReference = await this.prisma.workerFacialReference.findFirst({
+      where: {
+        organizationId: link.organizationId,
+        servedClientId: link.servedClientId,
+        workerId: link.workerId,
+        status: WorkerFacialReferenceStatus.ACTIVE,
+      },
+      select: { faceDescriptor: true },
+    });
+    if (!isValidFaceDescriptor(facialReference?.faceDescriptor)) {
+      throw new BadRequestException(
+        'Trabalhador sem biometria facial valida para assinatura remota.',
+      );
+    }
+    const threshold = resolveFaceMatchThreshold(
+      process.env.FACE_MATCH_THRESHOLD,
+    );
+    const match = decideFaceMatch(
+      facialReference.faceDescriptor,
+      input.faceDescriptor,
+      threshold,
+    );
+    if (!match.matched) {
+      await this.prisma.epiDeliverySignLink.update({
+        where: { id: link.id },
+        data: { failedAttempts: { increment: 1 } },
+      });
+      throw new UnauthorizedException(
+        'Face nao corresponde ao trabalhador. Tente novamente.',
+      );
+    }
+
+    const saved = await saveFacialEvidenceFile({
+      organizationId: link.organizationId,
+      deliveryId: `sign-${link.id}`,
+      buffer: input.file.buffer,
+      mimeType: input.file.mimeType,
+    });
+
+    const now = new Date();
+    await this.prisma.epiDeliverySignLink.update({
+      where: { id: link.id },
+      data: {
+        signedAt: now,
+        consentAcceptedAt: now,
+        consentText: FACIAL_EVIDENCE_CONSENT_TEXT,
+        consentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
+        filePath: saved.relativePath,
+        fileHash: saved.fileHash,
+        mimeType: saved.mimeType,
+        byteSize: saved.byteSize,
+        matchDistance: match.distance,
+        matchThreshold: match.threshold,
+        faceEngine: input.faceEngine?.trim() || FACE_ENGINE,
+        livenessPassed: true,
+        livenessChallenge: challenge,
+      },
+    });
+
+    return {
+      ok: true as const,
+      signedAt: now.toISOString(),
+      workerFirstName: link.worker.name.trim().split(/\s+/)[0] || link.worker.name,
+      message:
+        'Assinatura da entrega registrada. Avise o operador para concluir a entrega.',
+    };
+  }
+
+  private async findValidDeliverySignLinkOrThrow(tokenRaw: string) {
+    const token = tokenRaw?.trim();
+    if (!token) throw new NotFoundException('Link invalido.');
+    const link = await this.prisma.epiDeliverySignLink.findUnique({
+      where: { tokenHash: hashOpaqueToken(token) },
+      include: {
+        worker: { select: { name: true, cpf: true } },
+      },
+    });
+    if (!link) throw new NotFoundException('Link invalido.');
+    if (link.revokedAt) {
+      throw new BadRequestException('Este link foi revogado. Solicite um novo.');
+    }
+    if (link.consumedAt) {
+      throw new BadRequestException('Este link ja foi utilizado na entrega.');
+    }
+    if (link.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Este link expirou. Solicite um novo.');
+    }
+    if (link.failedAttempts >= DELIVERY_SIGN_MAX_FAILED_ATTEMPTS) {
+      throw new BadRequestException(
+        'Muitas tentativas invalidas. Solicite um novo link.',
+      );
+    }
+    return link;
+  }
+
+  private async assertDeliverySignCpfLast4(
+    link: { id: string; failedAttempts: number; worker: { cpf: string | null } },
+    cpfLast4Raw: string,
+  ) {
+    const provided = stripCpf(cpfLast4Raw).slice(-4);
+    const expected = stripCpf(link.worker.cpf ?? '').slice(-4);
+    if (provided.length !== 4 || expected.length !== 4 || provided !== expected) {
+      const nextAttempts = link.failedAttempts + 1;
+      await this.prisma.epiDeliverySignLink.update({
+        where: { id: link.id },
+        data: {
+          failedAttempts: nextAttempts,
+          ...(nextAttempts >= DELIVERY_SIGN_MAX_FAILED_ATTEMPTS
+            ? { revokedAt: new Date() }
+            : {}),
+        },
+      });
+      throw new UnauthorizedException(
+        nextAttempts >= DELIVERY_SIGN_MAX_FAILED_ATTEMPTS
+          ? 'Muitas tentativas invalidas. Solicite um novo link.'
+          : 'CPF invalido. Confira os 4 ultimos digitos.',
+      );
+    }
+  }
+
+  private async resolveSignedDeliveryLinkForWorker(input: {
+    organizationId: string;
+    servedClientId: string;
+    workerId: string;
+    signatureLinkId: string;
+  }) {
+    const row = await this.prisma.epiDeliverySignLink.findFirst({
+      where: {
+        id: input.signatureLinkId,
+        organizationId: input.organizationId,
+        servedClientId: input.servedClientId,
+        workerId: input.workerId,
+      },
+      select: {
+        id: true,
+        expiresAt: true,
+        consumedAt: true,
+        revokedAt: true,
+        signedAt: true,
+        consentAcceptedAt: true,
+        consentText: true,
+        consentVersion: true,
+        filePath: true,
+        fileHash: true,
+        mimeType: true,
+        byteSize: true,
+        matchDistance: true,
+        matchThreshold: true,
+        faceEngine: true,
+        livenessPassed: true,
+        livenessChallenge: true,
+      },
+    });
+    if (!row) {
+      throw new BadRequestException('Link de assinatura da entrega nao encontrado.');
+    }
+    if (row.revokedAt) {
+      throw new BadRequestException('Link de assinatura foi revogado.');
+    }
+    if (row.consumedAt) {
+      throw new BadRequestException('Link de assinatura ja foi usado em outra entrega.');
+    }
+    if (row.expiresAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Link de assinatura expirado.');
+    }
+    if (!row.signedAt || !row.filePath || !row.fileHash) {
+      throw new BadRequestException(
+        'Assinatura no celular ainda nao foi concluida para este link.',
+      );
+    }
+    return row;
+  }
+
   async listDeliveries(
     organizationId: string,
     servedClientId: string,
@@ -4090,7 +4480,7 @@ export class PortalService {
     servedClientId: string,
     userId: string,
     payload: PortalCreateDeliveryPayloadDto,
-    facial: { buffer: Buffer; mimeType?: string; originalName?: string },
+    facial?: { buffer: Buffer; mimeType?: string; originalName?: string },
     requestMeta?: { operatorIp?: string | null; userAgent?: string | null },
   ) {
     const client = await this.requireClient(organizationId, servedClientId);
@@ -4105,47 +4495,48 @@ export class PortalService {
         'E necessario aceitar o aviso de registro da imagem facial como evidencia.',
       );
     }
+    const signatureLinkId = payload.signatureLinkId?.trim() || null;
+    const usingRemoteSignature = Boolean(signatureLinkId);
 
-    if (!isValidFaceDescriptor(payload.faceDescriptor)) {
-      throw new BadRequestException(
-        'Descritor facial da captura invalido. Detecte exatamente uma face e tente novamente.',
-      );
-    }
-
-    const livenessRequired = isLivenessRequired(
-      process.env.LIVENESS_REQUIRED,
-      process.env.NODE_ENV,
-    );
     const livenessChallenge = payload.livenessChallenge?.trim() ?? '';
-    if (livenessRequired) {
-      if (payload.livenessPassed !== true) {
+    if (!usingRemoteSignature) {
+      if (!isValidFaceDescriptor(payload.faceDescriptor)) {
         throw new BadRequestException(
-          'Desafio de presenca obrigatorio. Complete o desafio (piscar/virar) e tente novamente.',
+          'Descritor facial da captura invalido. Detecte exatamente uma face e tente novamente.',
         );
       }
-      if (!isLivenessChallengeType(livenessChallenge)) {
+      const livenessRequired = isLivenessRequired(
+        process.env.LIVENESS_REQUIRED,
+        process.env.NODE_ENV,
+      );
+      if (livenessRequired) {
+        if (payload.livenessPassed !== true) {
+          throw new BadRequestException(
+            'Desafio de presenca obrigatorio. Complete o desafio (piscar/virar) e tente novamente.',
+          );
+        }
+        if (!isLivenessChallengeType(livenessChallenge)) {
+          throw new BadRequestException(
+            'Tipo de desafio de presenca invalido.',
+          );
+        }
+      }
+      if (!facial?.buffer?.byteLength) {
         throw new BadRequestException(
-          'Tipo de desafio de presenca invalido.',
+          'Evidencia facial obrigatoria. Capture a foto antes de confirmar.',
         );
       }
-    }
-
-    if (!facial?.buffer?.byteLength) {
-      throw new BadRequestException(
-        'Evidencia facial obrigatoria. Capture a foto antes de confirmar.',
-      );
-    }
-
-    const mimeType = facial.mimeType?.trim() || 'image/jpeg';
-    if (!mimeType.startsWith('image/')) {
-      throw new BadRequestException(
-        'Arquivo de evidencia facial deve ser uma imagem.',
-      );
-    }
-    if (facial.buffer.byteLength > 5 * 1024 * 1024) {
-      throw new BadRequestException(
-        'Imagem facial excede o limite de 5 MB.',
-      );
+      const mimeType = facial.mimeType?.trim() || 'image/jpeg';
+      if (!mimeType.startsWith('image/')) {
+        throw new BadRequestException(
+          'Arquivo de evidencia facial deve ser uma imagem.',
+        );
+      }
+      if (facial.buffer.byteLength > 5 * 1024 * 1024) {
+        throw new BadRequestException(
+          'Imagem facial excede o limite de 5 MB.',
+        );
+      }
     }
 
     const worker = await this.prisma.worker.findFirst({
@@ -4222,14 +4613,29 @@ export class PortalService {
       );
     }
 
+    const mobileSigned = usingRemoteSignature
+      ? await this.resolveSignedDeliveryLinkForWorker({
+          organizationId,
+          servedClientId,
+          workerId: worker.id,
+          signatureLinkId: signatureLinkId!,
+        })
+      : null;
+
     const matchThreshold = resolveFaceMatchThreshold(
       process.env.FACE_MATCH_THRESHOLD,
     );
-    const match = decideFaceMatch(
-      facialReference.faceDescriptor,
-      payload.faceDescriptor,
-      matchThreshold,
-    );
+    const match = usingRemoteSignature
+      ? {
+          matched: true,
+          distance: mobileSigned?.matchDistance ?? 0,
+          threshold: mobileSigned?.matchThreshold ?? matchThreshold,
+        }
+      : decideFaceMatch(
+          facialReference.faceDescriptor,
+          payload.faceDescriptor!,
+          matchThreshold,
+        );
     if (!match.matched) {
       throw new BadRequestException(
         'Face nao corresponde ao trabalhador selecionado.',
@@ -4479,7 +4885,8 @@ export class PortalService {
       throw new BadRequestException('Operador do portal nao encontrado.');
     }
 
-    const consentAcceptedAt = new Date();
+    const consentAcceptedAt =
+      mobileSigned?.consentAcceptedAt ?? mobileSigned?.signedAt ?? new Date();
     const operatorIp = this.normalizeMetaText(requestMeta?.operatorIp, 64);
     const userAgent = this.normalizeMetaText(requestMeta?.userAgent, 400);
 
@@ -4487,12 +4894,14 @@ export class PortalService {
       null;
 
     try {
-      savedFile = await saveFacialEvidenceFile({
-        organizationId,
-        deliveryId,
-        buffer: facial.buffer,
-        mimeType,
-      });
+      if (!usingRemoteSignature) {
+        savedFile = await saveFacialEvidenceFile({
+          organizationId,
+          deliveryId,
+          buffer: facial!.buffer,
+          mimeType: facial!.mimeType,
+        });
+      }
 
       const created = await this.prisma.$transaction(async (tx) => {
         const receiptNumber = await this.nextReceiptNumber(
@@ -4711,21 +5120,39 @@ export class PortalService {
           data: {
             deliveryId: delivery.id,
             type: DeliveryEvidenceType.FACIAL_CAPTURE,
-            capturedAt: deliveredAt,
-            filePath: savedFile!.relativePath,
-            fileHash: savedFile!.fileHash,
-            mimeType: savedFile!.mimeType,
-            byteSize: savedFile!.byteSize,
+            capturedAt: mobileSigned?.signedAt ?? deliveredAt,
+            filePath: usingRemoteSignature
+              ? mobileSigned!.filePath
+              : savedFile!.relativePath,
+            fileHash: usingRemoteSignature
+              ? mobileSigned!.fileHash
+              : savedFile!.fileHash,
+            mimeType: usingRemoteSignature
+              ? mobileSigned!.mimeType
+              : savedFile!.mimeType,
+            byteSize: usingRemoteSignature
+              ? mobileSigned!.byteSize
+              : savedFile!.byteSize,
             verificationStatus: DeliveryEvidenceVerificationStatus.MATCHED,
             matchDistance: match.distance,
             matchThreshold: match.threshold,
-            faceEngine: payload.faceEngine?.trim() || FACE_ENGINE,
-            verifiedAt: deliveredAt,
+            faceEngine:
+              mobileSigned?.faceEngine ??
+              payload.faceEngine?.trim() ??
+              FACE_ENGINE,
+            verifiedAt: mobileSigned?.signedAt ?? deliveredAt,
             livenessPassed:
-              payload.livenessPassed === true ? true : payload.livenessPassed === false ? false : null,
-            livenessChallenge: isLivenessChallengeType(livenessChallenge)
-              ? livenessChallenge
-              : null,
+              mobileSigned?.livenessPassed ??
+              (payload.livenessPassed === true
+                ? true
+                : payload.livenessPassed === false
+                  ? false
+                  : null),
+            livenessChallenge:
+              mobileSigned?.livenessChallenge ??
+              (isLivenessChallengeType(livenessChallenge)
+                ? livenessChallenge
+                : null),
             retentionUntil: (() => {
               const until = new Date(deliveredAt);
               until.setFullYear(until.getFullYear() + 5);
@@ -4733,24 +5160,42 @@ export class PortalService {
             })(),
             deletionStatus: WorkerBiometricDeletionStatus.NONE,
             metadata: {
-              captureSource: 'portal_camera',
+              captureSource: usingRemoteSignature
+                ? 'mobile_signature_link'
+                : 'portal_camera',
               consentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,
               biometricMatch: true,
               faceEngineVersion:
                 payload.faceEngineVersion?.trim() || FACE_ENGINE_VERSION,
               faceDetectionScore: payload.faceDetectionScore ?? null,
               workerFacialReferenceId: facialReference.id,
-              livenessPassed: payload.livenessPassed === true,
-              livenessChallenge: isLivenessChallengeType(livenessChallenge)
-                ? livenessChallenge
-                : null,
+              livenessPassed:
+                mobileSigned?.livenessPassed ?? (payload.livenessPassed === true),
+              livenessChallenge:
+                mobileSigned?.livenessChallenge ??
+                (isLivenessChallengeType(livenessChallenge)
+                  ? livenessChallenge
+                  : null),
+              signatureLinkId: mobileSigned?.id ?? null,
               note:
-                payload.livenessPassed === true
+                usingRemoteSignature
+                  ? 'Matching biometrico aprovado no link de assinatura do celular.'
+                  : payload.livenessPassed === true
                   ? 'Matching biometrico automatico aprovado (face-api) com desafio de presenca MVP.'
                   : 'Matching biometrico automatico aprovado (face-api descritor 128-d).',
             } as Prisma.InputJsonValue,
           },
         });
+
+        if (mobileSigned) {
+          await tx.epiDeliverySignLink.update({
+            where: { id: mobileSigned.id },
+            data: {
+              consumedAt: new Date(),
+              consumedByDeliveryId: delivery.id,
+            },
+          });
+        }
 
         return { delivery, createdItems };
       });
@@ -4769,6 +5214,10 @@ export class PortalService {
           stockMovementIds: created.createdItems.map((i) => i.stockMovementId),
           facialEvidence: true,
           biometricMatched: true,
+          evidenceSource: usingRemoteSignature
+            ? 'mobile_signature_link'
+            : 'portal_camera',
+          signatureLinkId: mobileSigned?.id ?? null,
           matchDistance: match.distance,
           matchThreshold: match.threshold,
           consentVersion: FACIAL_EVIDENCE_CONSENT_VERSION,

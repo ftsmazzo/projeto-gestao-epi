@@ -3,6 +3,7 @@
 import type {
   PortalDeliveryDetail,
   PortalDeliveryListItem,
+  PortalDeliverySignLinkResponse,
   PortalEpiCoverageNeedRow,
   PortalEpiCoverageResponse,
   PortalEpiCoverageStatus,
@@ -22,7 +23,9 @@ import { RequireClientAuth } from '../../../components/RequireClientAuth';
 import { WizardSteps } from '../../../components/ui/WizardSteps';
 import {
   createPortalDelivery,
+  createPortalDeliverySignLink,
   fetchPortalDeliveries,
+  fetchPortalDeliverySignLinkStatus,
   fetchPortalEntregasPreparacao,
   fetchPortalEstoque,
   fetchPortalWorkerEpiCoverage,
@@ -31,6 +34,7 @@ import {
 const DELIVERY_STEPS = [
   { id: 'worker', label: 'Trabalhador' },
   { id: 'epis', label: 'EPIs' },
+  { id: 'sign', label: 'Assinatura' },
   { id: 'face', label: 'Biometria' },
 ] as const;
 
@@ -375,8 +379,14 @@ function PortalEntregasContent() {
   const [faceMatched, setFaceMatched] = useState(false);
   const [facePreviewUrl, setFacePreviewUrl] = useState<string | null>(null);
   const [faceFlowOpen, setFaceFlowOpen] = useState(false);
-  const [faceFlowStep, setFaceFlowStep] = useState<'scan' | 'confirm'>('scan');
+  const [faceFlowStep, setFaceFlowStep] = useState<
+    'precheck' | 'scan' | 'confirm'
+  >('precheck');
   const [faceScanKey, setFaceScanKey] = useState(0);
+  const [deliverySignLink, setDeliverySignLink] =
+    useState<PortalDeliverySignLinkResponse | null>(null);
+  const [sendingSignLink, setSendingSignLink] = useState(false);
+  const [loadingSignStatus, setLoadingSignStatus] = useState(false);
   const [epiPhase, setEpiPhase] = useState<'pick' | 'configure'>('pick');
   const [epiConfigIndex, setEpiConfigIndex] = useState(0);
   const [notes, setNotes] = useState('');
@@ -566,7 +576,7 @@ function PortalEntregasContent() {
 
   const closeFaceFlow = useCallback(() => {
     setFaceFlowOpen(false);
-    setFaceFlowStep('scan');
+    setFaceFlowStep('precheck');
     resetFacial();
   }, [resetFacial]);
 
@@ -579,10 +589,45 @@ function PortalEntregasContent() {
     }
     setError(null);
     resetFacial();
-    setFaceFlowStep('scan');
+    setFaceFlowStep('precheck');
     setFaceScanKey((k) => k + 1);
     setFaceFlowOpen(true);
   }
+
+  const sendSignatureLink = useCallback(async () => {
+    if (!selectedId) return;
+    setSendingSignLink(true);
+    setError(null);
+    try {
+      const created = await createPortalDeliverySignLink(selectedId);
+      setDeliverySignLink(created);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel gerar o link de assinatura.',
+      );
+    } finally {
+      setSendingSignLink(false);
+    }
+  }, [selectedId]);
+
+  const refreshSignatureLinkStatus = useCallback(async () => {
+    if (!deliverySignLink?.id) return;
+    setLoadingSignStatus(true);
+    try {
+      const status = await fetchPortalDeliverySignLinkStatus(deliverySignLink.id);
+      setDeliverySignLink(status);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel atualizar o status do link.',
+      );
+    } finally {
+      setLoadingSignStatus(false);
+    }
+  }, [deliverySignLink?.id]);
 
   const onFaceMatched = useCallback(
     (result: FacialValidationResult) => {
@@ -609,6 +654,21 @@ function PortalEntregasContent() {
     };
   }, [faceFlowOpen]);
 
+  useEffect(() => {
+    if (!faceFlowOpen || faceFlowStep !== 'precheck') return;
+    if (!deliverySignLink?.id || deliverySignLink.status !== 'PENDING') return;
+    const t = window.setInterval(() => {
+      void refreshSignatureLinkStatus();
+    }, 5000);
+    return () => window.clearInterval(t);
+  }, [
+    faceFlowOpen,
+    faceFlowStep,
+    deliverySignLink?.id,
+    deliverySignLink?.status,
+    refreshSignatureLinkStatus,
+  ]);
+
   async function selectWorker(worker: PortalEntregaWorkerOption) {
     setSelectedId(worker.id);
     setReceipt(null);
@@ -616,6 +676,7 @@ function PortalEntregasContent() {
     setNotes('');
     setExtraItems([]);
     setExtraQuery('');
+    setDeliverySignLink(null);
     setEpiPhase('pick');
     setEpiConfigIndex(0);
     setLoadingCoverage(true);
@@ -678,8 +739,10 @@ function PortalEntregasContent() {
     void selectWorker(worker);
   }, [prep, workerFromQuery]);
 
-  async function submitDelivery() {
-    if (!selectedId || !facialResult || !faceMatched) {
+  async function submitDelivery(signatureLinkId?: string) {
+    const usingSignatureLink = Boolean(signatureLinkId);
+    if (!selectedId) return;
+    if (!usingSignatureLink && (!facialResult || !faceMatched)) {
       setError('Valide a face antes de registrar a entrega.');
       return;
     }
@@ -702,11 +765,15 @@ function PortalEntregasContent() {
           workerId: selectedId,
           notes: notes.trim() || null,
           facialEvidenceConsentAccepted: true,
-          faceDescriptor: facialResult.descriptor,
-          faceEngine: facialResult.faceEngine,
-          faceEngineVersion: facialResult.faceEngineVersion,
-          livenessPassed: facialResult.livenessPassed,
-          livenessChallenge: facialResult.livenessChallenge,
+          ...(usingSignatureLink
+            ? { signatureLinkId }
+            : {
+                faceDescriptor: facialResult!.descriptor,
+                faceEngine: facialResult!.faceEngine,
+                faceEngineVersion: facialResult!.faceEngineVersion,
+                livenessPassed: facialResult!.livenessPassed,
+                livenessChallenge: facialResult!.livenessChallenge,
+              }),
           items: [
             ...selectedItems.map(({ need, sel }) => {
               const lifeRaw = Number(sel.usefulLifeValue);
@@ -740,11 +807,11 @@ function PortalEntregasContent() {
             }),
           ],
         },
-        facialResult.blob,
+        usingSignatureLink ? undefined : facialResult!.blob,
       );
       setReceipt(detail);
       setFaceFlowOpen(false);
-      setFaceFlowStep('scan');
+      setFaceFlowStep('precheck');
       resetFacial();
       const refreshed = await fetchPortalWorkerEpiCoverage(selectedId);
       setCoverage(refreshed);
@@ -755,6 +822,7 @@ function PortalEntregasContent() {
       setSelections(next);
       setExtraItems([]);
       setExtraQuery('');
+      setDeliverySignLink(null);
       await reloadHistory();
     } catch (err) {
       setError(
@@ -826,7 +894,7 @@ function PortalEntregasContent() {
           ) : null}
           {receipt.consent.accepted ? (
             <p className="field-hint" role="note">
-              Evidencia facial registrada no ato da entrega
+              Evidencia facial registrada (camera presencial ou assinatura no celular)
               {receipt.consent.version
                 ? ` (${receipt.consent.version})`
                 : ''}
@@ -842,6 +910,7 @@ function PortalEntregasContent() {
                 setSelectedId(null);
                 setCoverage(null);
                 setSelections({});
+                setDeliverySignLink(null);
                 setWorkerPickerOpen(true);
                 closeFaceFlow();
               }}
@@ -867,7 +936,9 @@ function PortalEntregasContent() {
               !selectedId
                 ? 'worker'
                 : faceFlowOpen
-                  ? 'face'
+                  ? faceFlowStep === 'precheck'
+                    ? 'sign'
+                    : 'face'
                   : 'epis'
             }
           />
@@ -1443,9 +1514,11 @@ function PortalEntregasContent() {
                       id="delivery-face-title"
                       className="page-title page-title--sm"
                     >
-                      {faceFlowStep === 'scan'
-                        ? 'Validacao facial'
-                        : 'Confirmar entrega'}
+                      {faceFlowStep === 'precheck'
+                        ? 'Forma de assinatura'
+                        : faceFlowStep === 'scan'
+                          ? 'Validacao facial'
+                          : 'Confirmar entrega'}
                     </h2>
                     <p className="table-sub">
                       {coverage.worker.name}
@@ -1472,7 +1545,82 @@ function PortalEntregasContent() {
                   </p>
                 ) : null}
 
-                {faceFlowStep === 'scan' ? (
+                {faceFlowStep === 'precheck' ? (
+                  <div className="delivery-face-flow__confirm">
+                    <p className="page-lead">
+                      Voce pode tentar assinatura por link no celular antes da
+                      camera. Se nao concluir, siga no fluxo presencial.
+                    </p>
+                    {deliverySignLink ? (
+                      <p
+                        className={
+                          deliverySignLink.status === 'SIGNED'
+                            ? 'notice notice--ok'
+                            : deliverySignLink.status === 'PENDING'
+                              ? 'notice notice--info'
+                              : 'notice notice--warn'
+                        }
+                        role="status"
+                      >
+                        {deliverySignLink.notice}
+                      </p>
+                    ) : null}
+                    {deliverySignLink?.url ? (
+                      <p className="field-hint">
+                        Link gerado:{' '}
+                        <a
+                          href={deliverySignLink.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          abrir pagina de assinatura
+                        </a>
+                      </p>
+                    ) : null}
+                    <div className="delivery-face-flow__actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={sendingSignLink || submitting}
+                        onClick={() => void sendSignatureLink()}
+                      >
+                        {sendingSignLink
+                          ? 'Gerando link...'
+                          : 'Enviar link para celular'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={!deliverySignLink || loadingSignStatus || submitting}
+                        onClick={() => void refreshSignatureLinkStatus()}
+                      >
+                        {loadingSignStatus ? 'Atualizando...' : 'Atualizar status'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={submitting}
+                        onClick={() => setFaceFlowStep('scan')}
+                      >
+                        Assinar presencial (camera)
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        disabled={
+                          submitting || deliverySignLink?.status !== 'SIGNED'
+                        }
+                        onClick={() =>
+                          void submitDelivery(deliverySignLink?.id ?? undefined)
+                        }
+                      >
+                        {submitting
+                          ? 'Registrando...'
+                          : 'Concluir com assinatura do celular'}
+                      </button>
+                    </div>
+                  </div>
+                ) : faceFlowStep === 'scan' ? (
                   <div className="delivery-face-flow__body">
                     <FacialValidationPanel
                       key={`face-scan-${coverage.worker.id}-${faceScanKey}`}

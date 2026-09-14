@@ -2660,15 +2660,50 @@ export interface PortalCreateDeliveryPayload {
   workerId: string;
   items: PortalCreateDeliveryItemInput[];
   notes?: string | null;
+  /** Assinatura facial remota no celular (opcional, alternativa ao fluxo presencial). */
+  signatureLinkId?: string;
   facialEvidenceConsentAccepted: true;
   /** Descritor 128-d extraido no browser (face-api). Matching no backend. */
-  faceDescriptor: number[];
+  faceDescriptor?: number[];
   faceEngine?: string;
   faceEngineVersion?: string;
   faceDetectionScore?: number;
   /** Desafio de presenca MVP (piscar/virar). */
   livenessPassed?: boolean;
   livenessChallenge?: LivenessChallengeType;
+}
+
+export type PortalDeliverySignLinkStatus =
+  | 'PENDING'
+  | 'SIGNED'
+  | 'CONSUMED'
+  | 'EXPIRED'
+  | 'REVOKED'
+  | 'MISSING';
+
+export interface PortalDeliverySignLinkResponse {
+  id: string;
+  workerId: string;
+  workerName: string;
+  status: PortalDeliverySignLinkStatus;
+  url?: string;
+  expiresAt: string;
+  createdAt: string;
+  signedAt: string | null;
+  consumedAt: string | null;
+  revokedAt: string | null;
+  canFallbackToPresential: boolean;
+  whatsapp: 'SENT' | 'FAILED' | 'PENDING' | 'NO_PHONE' | 'DISABLED';
+  whatsappError: string | null;
+  notice: string;
+}
+
+export interface PublicPortalDeliverySignUnlockResponse {
+  workerFirstName: string;
+  expiresAt: string;
+  consentText: string;
+  consentVersion: string;
+  notice: string;
 }
 
 export interface PortalCancelDeliveryPayload {

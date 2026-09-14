@@ -6,6 +6,7 @@ import type {
   PortalDeliveryDetail,
   PortalDeliveriesListResponse,
   PortalCreateDeliveryPayload,
+  PortalDeliverySignLinkResponse,
   PortalEpiByCaResponse,
   PortalEpiCoverageResponse,
   PortalEpiSearchItem,
@@ -506,16 +507,34 @@ export async function createPortalDeliveryReturn(
 
 export async function createPortalDelivery(
   payload: PortalCreateDeliveryPayload,
-  facialBlob: Blob,
+  facialBlob?: Blob,
   facialFileName = 'facial-capture.jpg',
 ) {
   const form = new FormData();
   form.append('payload', JSON.stringify(payload));
-  form.append('facial', facialBlob, facialFileName);
+  if (facialBlob) {
+    form.append('facial', facialBlob, facialFileName);
+  }
   return clientApiFetch<PortalDeliveryDetail>('/portal/entregas', {
     method: 'POST',
     body: form,
   });
+}
+
+export async function createPortalDeliverySignLink(workerId: string) {
+  return clientApiFetch<PortalDeliverySignLinkResponse>(
+    '/portal/entregas/sign-link',
+    {
+      method: 'POST',
+      body: JSON.stringify({ workerId }),
+    },
+  );
+}
+
+export async function fetchPortalDeliverySignLinkStatus(id: string) {
+  return clientApiFetch<PortalDeliverySignLinkResponse>(
+    `/portal/entregas/sign-link/${encodeURIComponent(id)}`,
+  );
 }
 
 /** Preview de matching biometrico (sem concluir entrega). */

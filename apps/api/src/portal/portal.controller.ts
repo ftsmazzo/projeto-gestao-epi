@@ -31,7 +31,12 @@ import {
   ConfirmWorkerImportDto,
   PreviewWorkerImportDto,
 } from '../workers/dto/worker-import.dto';
-import { PortalCreateDeliveryPayloadDto, PortalCancelDeliveryDto, PortalCreateReturnDto } from './dto/portal-delivery.dto';
+import {
+  PortalCreateDeliveryPayloadDto,
+  PortalCancelDeliveryDto,
+  PortalCreateReturnDto,
+  PortalCreateDeliverySignLinkDto,
+} from './dto/portal-delivery.dto';
 import { PortalStockEntradasDto, PortalStockSaidaDto } from './dto/portal-stock.dto';
 import { PortalPdfService } from './portal-pdf.service';
 import { PortalReportsService } from './portal-reports.service';
@@ -342,12 +347,6 @@ export class PortalController {
   ) {
     this.assertClient(user);
 
-    if (!facial?.buffer?.length) {
-      throw new BadRequestException(
-        'Evidencia facial obrigatoria. Envie a captura no campo multipart "facial".',
-      );
-    }
-
     if (!payloadRaw?.trim()) {
       throw new BadRequestException(
         'Payload da entrega obrigatorio (campo multipart "payload" em JSON).',
@@ -392,11 +391,13 @@ export class PortalController {
       user.servedClientId,
       user.sub,
       dto,
-      {
-        buffer: facial.buffer,
-        mimeType: facial.mimetype,
-        originalName: facial.originalname,
-      },
+      facial?.buffer?.length
+        ? {
+            buffer: facial.buffer,
+            mimeType: facial.mimetype,
+            originalName: facial.originalname,
+          }
+        : undefined,
       {
         operatorIp: forwardedIp || req?.ip || null,
         userAgent:
@@ -404,6 +405,33 @@ export class PortalController {
             ? req.headers['user-agent']
             : null,
       },
+    );
+  }
+
+  @Post('entregas/sign-link')
+  createEntregaSignLink(
+    @CurrentUser() user: ClientJwtPayload,
+    @Body() dto: PortalCreateDeliverySignLinkDto,
+  ) {
+    this.assertClient(user);
+    return this.portal.createDeliverySignLink(
+      user.organizationId,
+      user.servedClientId,
+      user.sub,
+      dto.workerId,
+    );
+  }
+
+  @Get('entregas/sign-link/:id')
+  getEntregaSignLinkStatus(
+    @CurrentUser() user: ClientJwtPayload,
+    @Param('id') id: string,
+  ) {
+    this.assertClient(user);
+    return this.portal.getDeliverySignLinkStatus(
+      user.organizationId,
+      user.servedClientId,
+      id,
     );
   }
 

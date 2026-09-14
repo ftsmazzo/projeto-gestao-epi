@@ -129,6 +129,7 @@ model Organization {
   workerFacialReferences WorkerFacialReference[]
   workerBiometricConsents WorkerBiometricConsent[]
   workerFacialEnrollmentLinks WorkerFacialEnrollmentLink[]
+  epiDeliverySignLinks EpiDeliverySignLink[]
   invoiceDocuments InvoiceDocument[]
   lifePricing      OrganizationLifePricing?
   clientSubscriptions ClientSubscription[]
@@ -236,6 +237,7 @@ model User {
   biometricConsentsUpdated WorkerBiometricConsent[] @relation("WorkerBiometricConsentUpdatedBy")
   deliveryEvidencesDeleted DeliveryEvidence[] @relation("DeliveryEvidenceDeletedBy")
   facialEnrollmentLinksCreated WorkerFacialEnrollmentLink[] @relation("WorkerFacialEnrollmentLinkCreatedBy")
+  epiDeliverySignLinksCreated EpiDeliverySignLink[] @relation("EpiDeliverySignLinkCreatedBy")
   invoiceDocuments InvoiceDocument[]
 }
 
@@ -286,6 +288,7 @@ model ServedClient {
   workerFacialReferences WorkerFacialReference[]
   workerBiometricConsents WorkerBiometricConsent[]
   workerFacialEnrollmentLinks WorkerFacialEnrollmentLink[]
+  epiDeliverySignLinks EpiDeliverySignLink[]
   invoiceDocuments InvoiceDocument[]
   subscription     ClientSubscription?
   sstProfile       SstClientProfile?
@@ -629,6 +632,7 @@ model Worker {
   facialReferences  WorkerFacialReference[]
   biometricConsents WorkerBiometricConsent[]
   facialEnrollmentLinks WorkerFacialEnrollmentLink[]
+  deliverySignLinks EpiDeliverySignLink[]
   sstDocuments          SstDocument[]
   sstDocumentLinks      SstDocumentLink[]
 
@@ -1141,6 +1145,50 @@ model WorkerFacialEnrollmentLink {
   @@index([workerId])
   @@index([expiresAt])
   @@index([consumedAt])
+}
+
+/// Link temporario para assinatura facial da entrega de EPI no celular.
+model EpiDeliverySignLink {
+  id                  String   @id @default(cuid())
+  organizationId      String
+  servedClientId      String
+  workerId            String
+  /// SHA-256 hex do token opaco da URL.
+  tokenHash           String   @unique
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  revokedAt           DateTime?
+  failedAttempts      Int      @default(0)
+  createdByUserId     String?
+  consumedByDeliveryId String?
+  signedAt            DateTime?
+  consentAcceptedAt   DateTime?
+  consentVersion      String?
+  consentText         String?
+  filePath            String?
+  fileHash            String?
+  mimeType            String?
+  byteSize            Int?
+  matchDistance       Float?
+  matchThreshold      Float?
+  faceEngine          String?
+  livenessPassed      Boolean?
+  livenessChallenge   String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient  ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  worker        Worker       @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  createdByUser User?        @relation("EpiDeliverySignLinkCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([workerId])
+  @@index([expiresAt])
+  @@index([consumedAt])
+  @@index([signedAt])
+  @@index([consumedByDeliveryId])
 }
 
 /// Consentimento LGPD biométrico do trabalhador (Consultoria).
