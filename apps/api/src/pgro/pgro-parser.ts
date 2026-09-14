@@ -262,6 +262,20 @@ function uniqueBySectorAndFunction(
   return out;
 }
 
+function dropUnscopedFunctionDuplicates(
+  items: PgroExtractedFunction[],
+): PgroExtractedFunction[] {
+  const namesWithSector = new Set(
+    items
+      .filter((item) => Boolean(item.sectorName?.trim()))
+      .map((item) => normalizeFunctionKey(item.name)),
+  );
+  return items.filter((item) => {
+    if (item.sectorName?.trim()) return true;
+    return !namesWithSector.has(normalizeFunctionKey(item.name));
+  });
+}
+
 function uniqueByName<T extends { name: string }>(items: T[]): T[] {
   const seen = new Set<string>();
   const out: T[] = [];
@@ -1676,6 +1690,7 @@ export function parsePgroText(
         extra?.jobFunctions ?? [],
       ) as PgroExtractedFunction[],
     );
+    functions = dropUnscopedFunctionDuplicates(functions);
     if (extra?.sectors?.length) {
       functions = functions.map((fn) => {
         if (!fn.sectorName) return fn;
@@ -1752,6 +1767,24 @@ export function parsePgroText(
   const sectorItems: PgroExtractedSector[] = [];
   const functionItems: PgroExtractedFunction[] = [];
 
+  // Quando o tabular pega a maior parte dos GHEs, nao descartamos esses dados
+  // mesmo com cobertura incompleta: usamos como base e completamos via fallback.
+  const tabularCoverageRatio =
+    headerCount > 0 ? tabular.stats.ghesWithFunctions / headerCount : 0;
+  const usePartialTabularAsBase =
+    headerCount > 0 &&
+    tabular.stats.functionCount > 0 &&
+    tabular.stats.functionsWithSector > 0 &&
+    tabularCoverageRatio >= 0.65;
+
+  if (usePartialTabularAsBase) {
+    sectorItems.push(...tabular.sectors);
+    functionItems.push(...tabular.functions);
+    warnings.push(
+      `Aproveitando estrutura tabular parcial (${tabular.stats.ghesWithFunctions}/${headerCount} GHE) como base antes do fallback.`,
+    );
+  }
+
   for (const block of gheBlocks) {
     for (const pair of block.pairs) {
       if (pair.sectorName && isValidSectorName(pair.sectorName)) {
@@ -1795,6 +1828,7 @@ export function parsePgroText(
       extra?.jobFunctions ?? [],
     ) as PgroExtractedFunction[],
   );
+  functions = dropUnscopedFunctionDuplicates(functions);
 
   if (extra?.sectors?.length) {
     functions = functions.map((fn) => {

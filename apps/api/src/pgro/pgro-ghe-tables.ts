@@ -142,7 +142,9 @@ function isEnvironmentSector(name: string): boolean {
   if (!cleaned) return true;
   if (ENV_SECTOR_RE.test(cleaned)) return true;
   if (/^e\s+ventilado$/i.test(cleaned)) return true;
-  if (/interno\s+e\s+externo/i.test(cleaned)) return true;
+  if (/interno\s+e\s+externo/i.test(cleaned) && !/^mercado\s+/i.test(cleaned)) {
+    return true;
+  }
   return false;
 }
 
