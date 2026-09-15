@@ -40,7 +40,7 @@ export class CommunicationAlertsService {
 
   /**
    * Varre clientes ativos e envia digest diario (EPI/CA/biometria)
-   * para contato institucional + gestores do portal.
+   * para contato institucional + gestores e operadores do portal.
    */
   async runDailyClientAlerts(options?: {
     organizationId?: string;
@@ -218,10 +218,12 @@ export class CommunicationAlertsService {
     contactPhone: string | null;
     legalName: string;
   }): Promise<Recipient[]> {
-    const managers = await this.prisma.clientUserMembership.findMany({
+    const portalRecipients = await this.prisma.clientUserMembership.findMany({
       where: {
         servedClientId: client.id,
-        role: ClientUserRole.CLIENT_MANAGER,
+        role: {
+          in: [ClientUserRole.CLIENT_MANAGER, ClientUserRole.STOCK_OPERATOR],
+        },
         isActive: true,
       },
       select: { name: true, email: true, phone: true },
@@ -239,7 +241,7 @@ export class CommunicationAlertsService {
     };
 
     add(client.legalName, client.contactEmail, client.contactPhone);
-    for (const m of managers) {
+    for (const m of portalRecipients) {
       add(m.name, m.email, m.phone);
     }
     return [...map.values()];
