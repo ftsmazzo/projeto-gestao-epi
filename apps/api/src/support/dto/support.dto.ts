@@ -11,6 +11,11 @@ export class SupportLoadThreadQueryDto {
   @IsOptional()
   @IsString()
   servedClientId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  currentPath?: string;
 }
 
 export class SupportSendMessageDto {
@@ -21,6 +26,11 @@ export class SupportSendMessageDto {
   @IsOptional()
   @IsString()
   servedClientId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  currentPath?: string;
 
   @IsString()
   @MinLength(1)
@@ -36,6 +46,11 @@ export class SupportEscalateDto {
   @IsOptional()
   @IsString()
   servedClientId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(180)
+  currentPath?: string;
 
   @IsOptional()
   @IsString()

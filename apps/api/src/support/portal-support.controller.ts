@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { ClientJwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { ClientJwtPayload } from '../auth/types/jwt-payload';
@@ -15,7 +15,10 @@ export class PortalSupportController {
   constructor(private readonly support: SupportService) {}
 
   @Get('thread')
-  loadThread(@CurrentUser() user: ClientJwtPayload) {
+  loadThread(
+    @CurrentUser() user: ClientJwtPayload,
+    @Query() dto: SupportLoadThreadQueryDto,
+  ) {
     return this.support.loadThread(
       {
         audience: 'portal',
@@ -26,6 +29,7 @@ export class PortalSupportController {
       },
       'CLIENTE',
       user.servedClientId,
+      dto.currentPath,
     );
   }
 
@@ -39,7 +43,12 @@ export class PortalSupportController {
         clientRole: user.clientRole,
         servedClientId: user.servedClientId,
       },
-      { scope: 'CLIENTE', body: dto.body, servedClientId: user.servedClientId },
+      {
+        scope: 'CLIENTE',
+        body: dto.body,
+        servedClientId: user.servedClientId,
+        currentPath: dto.currentPath,
+      },
     );
   }
 
@@ -53,7 +62,12 @@ export class PortalSupportController {
         clientRole: user.clientRole,
         servedClientId: user.servedClientId,
       },
-      { scope: 'CLIENTE', servedClientId: user.servedClientId, reason: dto.reason },
+      {
+        scope: 'CLIENTE',
+        servedClientId: user.servedClientId,
+        currentPath: dto.currentPath,
+        reason: dto.reason,
+      },
     );
   }
 
@@ -72,6 +86,7 @@ export class PortalSupportController {
       },
       'CLIENTE',
       user.servedClientId,
+      _dto.currentPath,
     );
   }
 }

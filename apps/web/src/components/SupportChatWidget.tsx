@@ -2,6 +2,7 @@
 
 import type { SupportMessageView, SupportScope, SupportThreadView } from '@gestao-epi/shared';
 import { FormEvent, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { usePathname } from 'next/navigation';
 import {
   escalateSupport,
   fetchSupportThread,
@@ -32,6 +33,35 @@ const SUGGESTIONS_CLIENTE = [
   'Onde vejo alertas de reposicao?',
 ];
 
+function suggestionsByPath(
+  path: string | null,
+  scope: SupportScope,
+): string[] {
+  if (!path) return scope === 'CLIENTE' ? SUGGESTIONS_CLIENTE : SUGGESTIONS_CONSULTORIA;
+  if (path.startsWith('/portal/entregas')) {
+    return [
+      'Por que este trabalhador esta bloqueado para entrega?',
+      'Como enviar link de assinatura remota?',
+      'Como registrar entrega extra fora da indicacao?',
+    ];
+  }
+  if (path.startsWith('/portal/estoque')) {
+    return [
+      'Como dar entrada de EPI sem CA?',
+      'Como corrigir saldo insuficiente?',
+      'Como vincular item real a necessidade?',
+    ];
+  }
+  if (path.startsWith('/clientes')) {
+    return [
+      'Qual o proximo passo do roteiro deste cliente?',
+      'Como atualizar PGR sem perder consistencia?',
+      'Como liberar acesso de gestor e operador?',
+    ];
+  }
+  return scope === 'CLIENTE' ? SUGGESTIONS_CLIENTE : SUGGESTIONS_CONSULTORIA;
+}
+
 function roleLabel(role: SupportMessageView['role']) {
   if (role === 'user') return 'Voce';
   if (role === 'assistant') return 'Agente';
@@ -40,8 +70,8 @@ function roleLabel(role: SupportMessageView['role']) {
 }
 
 export function SupportChatWidget({ mode, clientContextId }: Props) {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const [scope, setScope] = useState<SupportScope>('CONSULTORIA');
   const [thread, setThread] = useState<SupportThreadView | null>(null);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -49,20 +79,9 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
   const [pending, startTransition] = useTransition();
   const endRef = useRef<HTMLDivElement | null>(null);
 
-  const allowClientScope = mode === 'portal' || Boolean(clientContextId);
   const effectiveScope: SupportScope =
-    mode === 'portal'
-      ? 'CLIENTE'
-      : scope === 'CLIENTE' && !allowClientScope
-        ? 'CONSULTORIA'
-        : scope;
-  const suggestions = effectiveScope === 'CLIENTE' ? SUGGESTIONS_CLIENTE : SUGGESTIONS_CONSULTORIA;
-
-  useEffect(() => {
-    if (mode === 'consultoria' && !allowClientScope && scope !== 'CONSULTORIA') {
-      setScope('CONSULTORIA');
-    }
-  }, [mode, allowClientScope, scope]);
+    mode === 'portal' || Boolean(clientContextId) ? 'CLIENTE' : 'CONSULTORIA';
+  const suggestions = suggestionsByPath(pathname, effectiveScope);
 
   const load = useMemo(
     () => async () => {
@@ -71,10 +90,11 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
       try {
         const data =
           mode === 'portal'
-            ? await fetchPortalSupportThread()
+            ? await fetchPortalSupportThread(pathname || undefined)
             : await fetchSupportThread({
                 scope: effectiveScope,
                 servedClientId: effectiveScope === 'CLIENTE' ? clientContextId || undefined : undefined,
+                currentPath: pathname || undefined,
               });
         setThread(data);
       } catch (err) {
@@ -83,7 +103,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
         setLoading(false);
       }
     },
-    [mode, effectiveScope, clientContextId],
+    [mode, effectiveScope, clientContextId, pathname],
   );
 
   useEffect(() => {
@@ -104,10 +124,11 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
       try {
         const data =
           mode === 'portal'
-            ? await sendPortalSupportMessage(body)
+            ? await sendPortalSupportMessage(body, pathname || undefined)
             : await sendSupportMessage({
                 scope: effectiveScope,
                 servedClientId: effectiveScope === 'CLIENTE' ? clientContextId || undefined : undefined,
+                currentPath: pathname || undefined,
                 body,
               });
         setThread(data);
@@ -123,10 +144,11 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
       try {
         const data =
           mode === 'portal'
-            ? await escalatePortalSupport()
+            ? await escalatePortalSupport(undefined, pathname || undefined)
             : await escalateSupport({
                 scope: effectiveScope,
                 servedClientId: effectiveScope === 'CLIENTE' ? clientContextId || undefined : undefined,
+                currentPath: pathname || undefined,
               });
         setThread(data);
         setError(null);
@@ -141,10 +163,11 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
       try {
         const data =
           mode === 'portal'
-            ? await returnPortalSupportToAi()
+            ? await returnPortalSupportToAi(pathname || undefined)
             : await returnSupportToAi({
                 scope: effectiveScope,
                 servedClientId: effectiveScope === 'CLIENTE' ? clientContextId || undefined : undefined,
+                currentPath: pathname || undefined,
               });
         setThread(data);
         setError(null);
@@ -186,31 +209,10 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
             </button>
           </header>
 
-          {mode === 'consultoria' ? (
-            <div className="support-widget__scopes">
-              <button
-                type="button"
-                className={effectiveScope === 'CONSULTORIA' ? 'is-active' : ''}
-                onClick={() => setScope('CONSULTORIA')}
-                disabled={pending}
-              >
-                Consultoria
-              </button>
-              <button
-                type="button"
-                className={effectiveScope === 'CLIENTE' ? 'is-active' : ''}
-                onClick={() => setScope('CLIENTE')}
-                disabled={!allowClientScope || pending}
-                title={
-                  allowClientScope
-                    ? 'Suporte para o cliente atual'
-                    : 'Abra um workspace de cliente para usar este nivel'
-                }
-              >
-                Cliente
-              </button>
-            </div>
-          ) : null}
+          <div className="support-widget__scope-label">
+            Contexto: {effectiveScope === 'CONSULTORIA' ? 'Consultoria' : 'Cliente'}{' '}
+            {pathname ? `· ${pathname}` : ''}
+          </div>
 
           {thread?.status === 'human' ? (
             <div className="support-widget__banner">

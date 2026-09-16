@@ -8167,6 +8167,13 @@ a.btn-primary:hover {
   color: #123d91;
 }
 
+.support-widget__scope-label {
+  padding: 0.45rem 0.8rem 0.6rem;
+  font-size: 0.75rem;
+  color: #5b6472;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
 .support-widget__banner {
   margin: 0 0.8rem 0.55rem;
   border: 1px solid rgba(199, 121, 6, 0.35);

@@ -28,6 +28,7 @@ export class SupportController {
       },
       query.scope ?? 'CONSULTORIA',
       query.servedClientId,
+      query.currentPath,
     );
   }
 
@@ -43,6 +44,7 @@ export class SupportController {
       {
         scope: dto.scope ?? 'CONSULTORIA',
         servedClientId: dto.servedClientId,
+        currentPath: dto.currentPath,
         body: dto.body,
       },
     );
@@ -60,6 +62,7 @@ export class SupportController {
       {
         scope: dto.scope ?? 'CONSULTORIA',
         servedClientId: dto.servedClientId,
+        currentPath: dto.currentPath,
         reason: dto.reason,
       },
     );
@@ -79,6 +82,7 @@ export class SupportController {
       },
       dto.scope ?? 'CONSULTORIA',
       dto.servedClientId,
+      dto.currentPath,
     );
   }
 }

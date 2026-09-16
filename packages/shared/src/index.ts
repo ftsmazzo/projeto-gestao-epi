@@ -3142,6 +3142,7 @@ export interface SupportMessageView {
 export interface SupportThreadView {
   id: string;
   scope: SupportScope;
+  currentPath?: string | null;
   servedClientId: string | null;
   status: SupportThreadStatusView;
   humanRequestedAt: string | null;

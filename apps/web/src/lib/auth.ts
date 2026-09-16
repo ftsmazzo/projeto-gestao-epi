@@ -129,10 +129,12 @@ export async function requestPasswordReset(input: {
 export async function fetchSupportThread(input?: {
   scope?: SupportScope;
   servedClientId?: string;
+  currentPath?: string;
 }) {
   const params = new URLSearchParams();
   if (input?.scope) params.set('scope', input.scope);
   if (input?.servedClientId) params.set('servedClientId', input.servedClientId);
+  if (input?.currentPath) params.set('currentPath', input.currentPath);
   const qs = params.toString();
   return apiFetch<SupportThreadView>(`/support/thread${qs ? `?${qs}` : ''}`);
 }
@@ -141,6 +143,7 @@ export async function sendSupportMessage(input: {
   scope: SupportScope;
   body: string;
   servedClientId?: string;
+  currentPath?: string;
 }) {
   return apiFetch<SupportThreadView>('/support/message', {
     method: 'POST',
@@ -152,6 +155,7 @@ export async function escalateSupport(input: {
   scope: SupportScope;
   servedClientId?: string;
   reason?: string;
+  currentPath?: string;
 }) {
   return apiFetch<SupportThreadView>('/support/escalate', {
     method: 'POST',
@@ -162,6 +166,7 @@ export async function escalateSupport(input: {
 export async function returnSupportToAi(input: {
   scope: SupportScope;
   servedClientId?: string;
+  currentPath?: string;
 }) {
   return apiFetch<SupportThreadView>('/support/return-ai', {
     method: 'POST',

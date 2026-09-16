@@ -745,27 +745,30 @@ export async function fetchPortalReportsActivity(
   );
 }
 
-export async function fetchPortalSupportThread() {
-  return clientApiFetch<SupportThreadView>('/portal/support/thread');
+export async function fetchPortalSupportThread(currentPath?: string) {
+  const qs = currentPath
+    ? `?currentPath=${encodeURIComponent(currentPath)}`
+    : '';
+  return clientApiFetch<SupportThreadView>(`/portal/support/thread${qs}`);
 }
 
-export async function sendPortalSupportMessage(body: string) {
+export async function sendPortalSupportMessage(body: string, currentPath?: string) {
   return clientApiFetch<SupportThreadView>('/portal/support/message', {
     method: 'POST',
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({ body, currentPath }),
   });
 }
 
-export async function escalatePortalSupport(reason?: string) {
+export async function escalatePortalSupport(reason?: string, currentPath?: string) {
   return clientApiFetch<SupportThreadView>('/portal/support/escalate', {
     method: 'POST',
-    body: JSON.stringify({ reason }),
+    body: JSON.stringify({ reason, currentPath }),
   });
 }
 
-export async function returnPortalSupportToAi() {
+export async function returnPortalSupportToAi(currentPath?: string) {
   return clientApiFetch<SupportThreadView>('/portal/support/return-ai', {
     method: 'POST',
-    body: JSON.stringify({}),
+    body: JSON.stringify({ currentPath }),
   });
 }

@@ -32,11 +32,13 @@ type SendInput = {
   scope: SupportScopeKind;
   body: string;
   servedClientId?: string;
+  currentPath?: string;
 };
 
 type EscalateInput = {
   scope: SupportScopeKind;
   servedClientId?: string;
+  currentPath?: string;
   reason?: string;
 };
 
@@ -44,10 +46,15 @@ type EscalateInput = {
 export class SupportService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async loadThread(actor: SupportActor, scope: SupportScopeKind, servedClientId?: string) {
+  async loadThread(
+    actor: SupportActor,
+    scope: SupportScopeKind,
+    servedClientId?: string,
+    currentPath?: string,
+  ) {
     const context = await this.resolveContext(actor, scope, servedClientId);
     const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
-    return this.serializeThread(thread);
+    return this.serializeThread(thread, currentPath || null);
   }
 
   async sendMessage(actor: SupportActor, input: SendInput) {
@@ -82,10 +89,17 @@ export class SupportService {
           data: { lastMessageAt: now },
           include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
         }),
+        input.currentPath || null,
       );
     }
 
-    const reply = await this.buildAgentReply(actor, context.scope, context.servedClientId, body);
+    const reply = await this.buildAgentReply(
+      actor,
+      context.scope,
+      context.servedClientId,
+      body,
+      input.currentPath || null,
+    );
     await this.appendAssistantMessage(actor, context.servedClientId, thread.id, reply, {
       kind: 'ai_reply',
     });
@@ -94,7 +108,7 @@ export class SupportService {
       data: { lastMessageAt: now, updatedAt: now },
       include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
     });
-    return this.serializeThread(updated);
+    return this.serializeThread(updated, input.currentPath || null);
   }
 
   async escalate(actor: SupportActor, input: EscalateInput) {
@@ -113,10 +127,16 @@ export class SupportService {
         where: { id: thread.id },
         include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
       }),
+      input.currentPath || null,
     );
   }
 
-  async returnToAi(actor: SupportActor, scope: SupportScopeKind, servedClientId?: string) {
+  async returnToAi(
+    actor: SupportActor,
+    scope: SupportScopeKind,
+    servedClientId?: string,
+    currentPath?: string,
+  ) {
     const context = await this.resolveContext(actor, scope, servedClientId);
     const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
     await this.prisma.supportThread.update({
@@ -135,6 +155,7 @@ export class SupportService {
         where: { id: thread.id },
         include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
       }),
+      currentPath || null,
     );
   }
 
@@ -312,9 +333,15 @@ export class SupportService {
     scope: SupportScopeKind,
     servedClientId: string | null,
     userText: string,
+    currentPath: string | null,
   ) {
-    const knowledge = searchSupportKnowledge(userText, scope, 3);
-    const fallback = this.fallbackReply(scope, knowledge);
+    const knowledge = searchSupportKnowledge({
+      query: userText,
+      scope,
+      currentPath,
+      limit: 5,
+    });
+    const fallback = this.fallbackReply(scope, currentPath, knowledge);
 
     const llm = this.resolveLlmConfig();
     if (!llm) return fallback;
@@ -336,6 +363,7 @@ export class SupportService {
 
     const system = buildSupportSystemPrompt({
       scope,
+      currentPath: currentPath || undefined,
       humanChannelOnline: false,
       roleLabel:
         actor.audience === 'portal'
@@ -347,7 +375,13 @@ export class SupportService {
         ? knowledge
             .map(
               (item) =>
-                `- ${item.question} => ${item.answer}${item.route ? ` (rota ${item.route})` : ''}`,
+                [
+                  `- ${item.title}: ${item.question} => ${item.answer}${item.route ? ` (rota ${item.route})` : ''}`,
+                  item.steps?.length ? `  passos: ${item.steps.join(' | ')}` : null,
+                  item.warnings?.length ? `  cuidados: ${item.warnings.join(' | ')}` : null,
+                ]
+                  .filter(Boolean)
+                  .join('\n'),
             )
             .join('\n')
         : '- Sem match forte. Responder com transparencia e orientar rota segura.';
@@ -392,6 +426,7 @@ export class SupportService {
 
   private fallbackReply(
     scope: SupportScopeKind,
+    currentPath: string | null,
     knowledge: Array<{ answer: string; route?: string; question: string }>,
   ) {
     if (knowledge.length > 0) {
@@ -399,8 +434,9 @@ export class SupportService {
       const routePart = top.route ? ` Abra [${top.route}](${top.route}).` : '';
       return `${top.answer}${routePart}`;
     }
+    const pathPart = currentPath ? ` na tela ${currentPath}` : '';
     const scopeLabel = scope === 'CONSULTORIA' ? 'consultoria' : 'painel da empresa';
-    return `Ainda nao achei uma instrucao especifica para isso no escopo ${scopeLabel}. Descreva a tarefa com mais detalhe (tela/acao esperada) que eu te guio no fluxo correto.`;
+    return `Ainda nao achei uma instrucao especifica para isso no escopo ${scopeLabel}${pathPart}. Descreva a tarefa com mais detalhe (tela/acao esperada) que eu te guio no fluxo correto.`;
   }
 
   private resolveLlmConfig():
@@ -457,7 +493,8 @@ export class SupportService {
     return 'WORKER';
   }
 
-  private serializeThread(thread: {
+  private serializeThread(
+    thread: {
     id: string;
     status: SupportThreadStatus;
     scope: 'CONSULTORIA' | 'CLIENTE';
@@ -469,10 +506,13 @@ export class SupportService {
       body: string;
       createdAt: Date;
     }>;
-  }) {
+    },
+    currentPath: string | null,
+  ) {
     return {
       id: thread.id,
       scope: thread.scope,
+      currentPath,
       servedClientId: thread.servedClientId,
       status: thread.status === SupportThreadStatus.HUMAN ? 'human' : 'ai',
       humanRequestedAt: thread.humanRequestedAt?.toISOString() ?? null,

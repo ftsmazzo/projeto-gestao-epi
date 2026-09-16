@@ -2,6 +2,7 @@ import type { SupportScopeKind } from './support-knowledge';
 
 export function buildSupportSystemPrompt(input: {
   scope: SupportScopeKind;
+  currentPath?: string;
   userName?: string | null;
   organizationName?: string | null;
   clientName?: string | null;
@@ -14,12 +15,14 @@ export function buildSupportSystemPrompt(input: {
     input.clientName ? `Cliente: ${input.clientName}` : null,
     input.roleLabel ? `Papel: ${input.roleLabel}` : null,
     `Escopo: ${input.scope === 'CONSULTORIA' ? 'Consultoria' : 'Painel do cliente'}`,
+    input.currentPath ? `Tela atual: ${input.currentPath}` : null,
   ]
     .filter(Boolean)
     .join(' | ');
 
   return [
     'Voce e o suporte interno do ProntEPI.',
+    'Voce e um agente unico: mesma identidade em todos os niveis (consultoria e cliente).',
     'Seu unico assunto e orientar como operar o sistema ProntEPI.',
     'Nao responda assuntos fora do produto, comercial, opiniao pessoal ou tema geral.',
     'Tom direto, humano, sem frases de bot e sem exagero.',
