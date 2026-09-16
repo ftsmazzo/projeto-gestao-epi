@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtPayload } from '../auth/types/jwt-payload';
 import {
   SupportEscalateDto,
+  SupportHumanReplyDto,
   SupportLoadThreadQueryDto,
   SupportSendMessageDto,
 } from './dto/support.dto';
@@ -83,6 +84,20 @@ export class SupportController {
       dto.scope ?? 'CONSULTORIA',
       dto.servedClientId,
       dto.currentPath,
+    );
+  }
+
+  @Post('human-reply')
+  humanReply(@CurrentUser() user: JwtPayload, @Body() dto: SupportHumanReplyDto) {
+    return this.support.appendHumanReply(
+      {
+        audience: 'consultoria',
+        organizationId: user.organizationId,
+        userId: user.sub,
+        membershipRole: user.membershipRole,
+      },
+      dto.threadId,
+      dto.body,
     );
   }
 }

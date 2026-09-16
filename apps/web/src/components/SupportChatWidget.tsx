@@ -1,6 +1,7 @@
 'use client';
 
 import type { SupportMessageView, SupportScope, SupportThreadView } from '@gestao-epi/shared';
+import Link from 'next/link';
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { usePathname } from 'next/navigation';
 import {
@@ -69,7 +70,25 @@ function roleLabel(role: SupportMessageView['role']) {
   return 'Sistema';
 }
 
-function renderBodyWithDeepLinks(body: string): ReactNode {
+function mapSupportError(err: unknown, fallback: string) {
+  if (!(err instanceof Error) || !err.message) return fallback;
+  const lower = err.message.toLowerCase();
+  if (
+    lower.startsWith('erro http') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('network') ||
+    lower.includes('database') ||
+    lower.includes('prisma') ||
+    lower.includes('stack') ||
+    lower.includes('sql') ||
+    lower.includes('timeout')
+  ) {
+    return fallback;
+  }
+  return err.message;
+}
+
+function renderBodyWithDeepLinks(body: string, onNavigate?: () => void): ReactNode {
   const normalized = body.replace(/\]\(rota\s+([^)]+)\)/gi, ']($1)');
   const lines = normalized.split('\n');
   return lines.map((line, idx) => {
@@ -84,9 +103,14 @@ function renderBodyWithDeepLinks(body: string): ReactNode {
         parts.push(line.slice(lastIndex, start));
       }
       parts.push(
-        <a key={`${idx}-${start}-${href}`} href={href} className="support-widget__link">
+        <Link
+          key={`${idx}-${start}-${href}`}
+          href={href}
+          className="support-widget__link"
+          onClick={() => onNavigate?.()}
+        >
           {label}
-        </a>,
+        </Link>,
       );
       lastIndex = start + raw.length;
     }
@@ -111,6 +135,12 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
   const [loading, setLoading] = useState(false);
   const [pending, startTransition] = useTransition();
   const endRef = useRef<HTMLDivElement | null>(null);
+  const fabRef = useRef<HTMLButtonElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const closeRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const [reducedMotion, setReducedMotion] = useState(false);
 
   const effectiveScope: SupportScope =
     mode === 'portal' || Boolean(clientContextId) ? 'CLIENTE' : 'CONSULTORIA';
@@ -131,7 +161,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
               });
         setThread(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Falha ao abrir suporte.');
+        setError(mapSupportError(err, 'Falha ao abrir suporte.'));
       } finally {
         setLoading(false);
       }
@@ -145,14 +175,80 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
   }, [open, load]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [thread?.messages.length, pending, open]);
+    const behavior = reducedMotion ? 'auto' : 'smooth';
+    endRef.current?.scrollIntoView({ behavior });
+  }, [thread?.messages.length, pending, open, reducedMotion]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const persisted = window.sessionStorage.getItem('support.widget.open');
+    if (persisted === '1') setOpen(true);
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const update = () => setReducedMotion(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.setItem('support.widget.open', open ? '1' : '0');
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const id = window.setInterval(() => {
+      if (!pending) void load();
+    }, thread?.status === 'human' ? 6000 : 15000);
+    return () => window.clearInterval(id);
+  }, [open, pending, load, thread?.status]);
+
+  useEffect(() => {
+    if (!open) return;
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const timeout = window.setTimeout(() => {
+      inputRef.current?.focus();
+    }, 0);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setOpen(false);
+      }
+      if (event.key !== 'Tab') return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusables = panel.querySelectorAll<HTMLElement>(
+        'a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (open) return;
+    previousFocusRef.current?.focus();
+  }, [open]);
 
   function onSubmit(event: FormEvent) {
     event.preventDefault();
     const body = draft.trim();
     if (!body || pending) return;
-    setDraft('');
+    const previousDraft = draft;
     startTransition(async () => {
       try {
         const data =
@@ -166,8 +262,10 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
               });
         setThread(data);
         setError(null);
+        setDraft('');
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Falha ao enviar mensagem.');
+        setDraft(previousDraft);
+        setError(mapSupportError(err, 'Falha ao enviar mensagem.'));
       }
     });
   }
@@ -186,7 +284,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
         setThread(data);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Falha ao acionar humano.');
+        setError(mapSupportError(err, 'Falha ao acionar humano.'));
       }
     });
   }
@@ -205,7 +303,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
         setThread(data);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Falha ao voltar para IA.');
+        setError(mapSupportError(err, 'Falha ao voltar para IA.'));
       }
     });
   }
@@ -214,15 +312,27 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
     <div className={`support-widget ${open ? 'is-open' : ''}`}>
       {!open ? (
         <button
+          ref={fabRef}
           type="button"
           className="support-widget__fab"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            previousFocusRef.current =
+              document.activeElement instanceof HTMLElement ? document.activeElement : fabRef.current;
+            setOpen(true);
+          }}
           aria-label="Abrir suporte interno"
         >
           Suporte
         </button>
       ) : (
-        <section className="support-widget__panel" aria-label="Suporte interno">
+        <section
+          ref={panelRef}
+          className="support-widget__panel"
+          aria-label="Suporte interno"
+          role="dialog"
+          aria-modal="true"
+          aria-live="polite"
+        >
           <header className="support-widget__header">
             <div>
               <strong>Suporte interno</strong>
@@ -235,6 +345,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
             <button
               type="button"
               className="support-widget__close"
+              ref={closeRef}
               onClick={() => setOpen(false)}
               aria-label="Fechar suporte"
             >
@@ -246,6 +357,17 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
             Contexto: {effectiveScope === 'CONSULTORIA' ? 'Consultoria' : 'Cliente'}{' '}
             {pathname ? `· ${pathname}` : ''}
           </div>
+          <p className="support-widget__sr-only" aria-live="polite">
+            {loading
+              ? 'Carregando conversa.'
+              : pending
+                ? 'Aguarde, processando mensagem.'
+                : error
+                  ? `Erro: ${error}`
+                  : thread?.messages.length
+                    ? `Conversa com ${thread.messages.length} mensagens carregada.`
+                    : 'Conversa vazia.'}
+          </p>
 
           {thread?.status === 'human' ? (
             <div className="support-widget__banner">
@@ -276,7 +398,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
                 className={`support-widget__bubble support-widget__bubble--${message.role}`}
               >
                 <span>{roleLabel(message.role)}</span>
-                <p>{renderBodyWithDeepLinks(message.body)}</p>
+                <p>{renderBodyWithDeepLinks(message.body, () => setOpen(true))}</p>
               </article>
             ))}
             {pending ? (
@@ -295,7 +417,12 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
           ) : null}
 
           <form className="support-widget__compose" onSubmit={onSubmit}>
+            <label htmlFor="support-widget-message" className="support-widget__sr-only">
+              Mensagem para o suporte
+            </label>
             <input
+              ref={inputRef}
+              id="support-widget-message"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="Como faco...?"

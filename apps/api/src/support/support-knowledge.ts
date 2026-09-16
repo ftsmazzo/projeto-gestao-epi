@@ -19,30 +19,73 @@ function normalize(value: string) {
     .trim();
 }
 
+function editDistance(a: string, b: string) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const matrix: number[][] = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => 0),
+  );
+  for (let i = 0; i < rows; i += 1) matrix[i][0] = i;
+  for (let j = 0; j < cols; j += 1) matrix[0][j] = j;
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+  return matrix[a.length][b.length];
+}
+
 function score(query: string, text: string) {
   const q = normalize(query);
   const t = normalize(text);
   if (!q || !t) return 0;
   if (t.includes(q)) return 10;
-  return q
+  const lexical = q
     .split(/\s+/)
     .filter((part) => part.length > 2)
     .reduce((sum, part) => sum + (t.includes(part) ? 2 : 0), 0);
+  const qTokens = q.split(/\s+/).filter((part) => part.length > 3);
+  const tTokens = t.split(/\s+/).filter((part) => part.length > 3);
+  let fuzzy = 0;
+  for (const qt of qTokens) {
+    for (const tt of tTokens) {
+      const distance = editDistance(qt, tt);
+      if (distance === 0) {
+        fuzzy += 2;
+        break;
+      }
+      if (distance === 1 || (qt.length >= 7 && distance === 2)) {
+        fuzzy += 1;
+        break;
+      }
+    }
+  }
+  return lexical + fuzzy;
 }
 
 function routeMatchScore(path: string | null, entry: SupportKnowledgeEntry) {
   if (!path) return 0;
-  const p = normalize(path);
+  const pathOnly = path.split('?')[0] || path;
+  const p = normalize(pathOnly);
   const candidates = [entry.route, ...(entry.routeAlias ?? [])].filter(Boolean) as string[];
   for (const candidate of candidates) {
-    const normalizedCandidate = candidate.replace(/\[[^\]]+\]/g, '[SEG]');
+    const candidatePath = candidate.split('?')[0] || candidate;
+    const normalizedCandidate = candidatePath.replace(/\[[^\]]+\]/g, '[SEG]');
     const escaped = normalizedCandidate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const regexSource = escaped.replace(/\[SEG\]/g, '[^/]+');
     const exact = new RegExp(`^${regexSource}$`, 'i');
     const prefix = new RegExp(`^${regexSource}(?:/|$)`, 'i');
-    if (exact.test(path)) return 12;
-    if (prefix.test(path)) return 9;
-    const simplified = normalize(candidate.replace(/\[[^\]]+\]/g, ''));
+    if (exact.test(pathOnly)) return 12;
+    if (prefix.test(pathOnly)) return 9;
+    const simplified = normalize(candidatePath.replace(/\[[^\]]+\]/g, ''));
     if (simplified && p.includes(simplified.replace(/\/{2,}/g, '/'))) return 6;
   }
   return 0;

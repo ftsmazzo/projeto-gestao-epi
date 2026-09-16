@@ -1,8 +1,11 @@
 import {
   BadRequestException,
+  HttpException,
   ForbiddenException,
+  InternalServerErrorException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   ClientUserRole,
@@ -52,83 +55,157 @@ export class SupportService {
     servedClientId?: string,
     currentPath?: string,
   ) {
-    const context = await this.resolveContext(actor, scope, servedClientId);
-    const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
-    return this.serializeThread(thread, currentPath || null);
+    try {
+      const context = await this.resolveContext(actor, scope, servedClientId);
+      const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
+      return this.serializeThread(thread, currentPath || null);
+    } catch (error) {
+      throw this.sanitizeSupportError(error);
+    }
   }
 
   async sendMessage(actor: SupportActor, input: SendInput) {
-    const context = await this.resolveContext(actor, input.scope, input.servedClientId);
-    const body = input.body.trim();
-    if (!body) throw new BadRequestException('Escreva uma mensagem.');
+    try {
+      const context = await this.resolveContext(actor, input.scope, input.servedClientId);
+      const body = input.body.trim();
+      if (!body) throw new BadRequestException('Escreva uma mensagem.');
 
-    const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
-    const now = new Date();
-    await this.prisma.supportMessage.create({
-      data: {
-        organizationId: actor.organizationId,
-        servedClientId: context.servedClientId,
-        threadId: thread.id,
-        role: SupportMessageRole.USER,
-        body,
-        authorUserId: actor.userId,
-      },
-    });
+      const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
+      const now = new Date();
 
-    const asksHuman = /\b(humano|atendente|pessoa|suporte humano|falar com)\b/i.test(body);
-    if (asksHuman) {
-      await this.markHumanThread(thread.id, thread.meta, body.slice(0, 200));
-      const reply =
-        'Pedido de atendimento humano registrado. Enquanto isso, sigo te ajudando por aqui no que for operacional do ProntEPI.';
-      await this.appendAssistantMessage(actor, context.servedClientId, thread.id, reply, {
-        kind: 'escalate_ack',
+      if (thread.status === SupportThreadStatus.HUMAN) {
+        const forwarded = await this.forwardHumanMessage(
+          actor,
+          context.scope,
+          thread.id,
+          context.servedClientId,
+          body,
+        );
+        if (!forwarded) {
+          throw new ServiceUnavailableException(
+            'Nao foi possivel encaminhar sua mensagem para o atendimento humano agora. Tente novamente.',
+          );
+        }
+        await this.prisma.supportMessage.create({
+          data: {
+            organizationId: actor.organizationId,
+            servedClientId: context.servedClientId,
+            threadId: thread.id,
+            role: SupportMessageRole.USER,
+            body,
+            authorUserId: actor.userId,
+          },
+        });
+        return this.serializeThread(
+          await this.prisma.supportThread.update({
+            where: { id: thread.id },
+            data: { lastMessageAt: now, updatedAt: now },
+            include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
+          }),
+          input.currentPath || null,
+        );
+      }
+
+      await this.prisma.supportMessage.create({
+        data: {
+          organizationId: actor.organizationId,
+          servedClientId: context.servedClientId,
+          threadId: thread.id,
+          role: SupportMessageRole.USER,
+          body,
+          authorUserId: actor.userId,
+        },
       });
-      return this.serializeThread(
-        await this.prisma.supportThread.update({
-          where: { id: thread.id },
-          data: { lastMessageAt: now },
-          include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
-        }),
+
+      const asksHuman = /\b(humano|atendente|suporte humano|falar com)\b/i.test(body);
+      if (asksHuman) {
+        const activated = await this.tryActivateHumanQueue(
+          actor,
+          context.scope,
+          context.servedClientId,
+          thread.id,
+          body.slice(0, 200),
+          thread.meta,
+        );
+        const reply = activated
+          ? 'Pedido de atendimento humano registrado. Enquanto isso, sigo te ajudando por aqui no que for operacional do ProntEPI.'
+          : 'No momento o canal humano esta indisponivel. Posso seguir te ajudando aqui no fluxo operacional.';
+        await this.appendAssistantMessage(actor, context.servedClientId, thread.id, reply, {
+          kind: activated ? 'escalate_ack' : 'human_channel_offline',
+        });
+        return this.serializeThread(
+          await this.prisma.supportThread.update({
+            where: { id: thread.id },
+            data: { lastMessageAt: now, updatedAt: now },
+            include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
+          }),
+          input.currentPath || null,
+        );
+      }
+
+      const reply = await this.buildAgentReply(
+        actor,
+        context.scope,
+        context.servedClientId,
+        body,
         input.currentPath || null,
       );
+      await this.appendAssistantMessage(actor, context.servedClientId, thread.id, reply, {
+        kind: 'ai_reply',
+      });
+      const updated = await this.prisma.supportThread.update({
+        where: { id: thread.id },
+        data: { lastMessageAt: now, updatedAt: now },
+        include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
+      });
+      return this.serializeThread(updated, input.currentPath || null);
+    } catch (error) {
+      throw this.sanitizeSupportError(error);
     }
-
-    const reply = await this.buildAgentReply(
-      actor,
-      context.scope,
-      context.servedClientId,
-      body,
-      input.currentPath || null,
-    );
-    await this.appendAssistantMessage(actor, context.servedClientId, thread.id, reply, {
-      kind: 'ai_reply',
-    });
-    const updated = await this.prisma.supportThread.update({
-      where: { id: thread.id },
-      data: { lastMessageAt: now, updatedAt: now },
-      include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
-    });
-    return this.serializeThread(updated, input.currentPath || null);
   }
 
   async escalate(actor: SupportActor, input: EscalateInput) {
-    const context = await this.resolveContext(actor, input.scope, input.servedClientId);
-    const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
-    const reason = input.reason?.trim() || 'Pedido manual de atendimento humano';
-    await this.markHumanThread(thread.id, thread.meta, reason);
-    const reply =
-      'Fila humana ativada para esta conversa. Se quiser, descreva o problema com mais detalhe para acelerar o atendimento.';
-    await this.appendSystemMessage(actor, context.servedClientId, thread.id, reply, {
-      kind: 'manual_escalate',
-      reason,
-    });
-    return this.serializeThread(
-      await this.prisma.supportThread.findUniqueOrThrow({
-        where: { id: thread.id },
-        include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
-      }),
-      input.currentPath || null,
-    );
+    try {
+      const context = await this.resolveContext(actor, input.scope, input.servedClientId);
+      const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
+      const reason = input.reason?.trim() || 'Pedido manual de atendimento humano';
+      const activated = await this.tryActivateHumanQueue(
+        actor,
+        context.scope,
+        context.servedClientId,
+        thread.id,
+        reason,
+        thread.meta,
+      );
+      if (activated) {
+        const reply =
+          'Fila humana ativada para esta conversa. Se quiser, descreva o problema com mais detalhe para acelerar o atendimento.';
+        await this.appendSystemMessage(actor, context.servedClientId, thread.id, reply, {
+          kind: 'manual_escalate',
+          reason,
+        });
+      } else {
+        await this.appendSystemMessage(
+          actor,
+          context.servedClientId,
+          thread.id,
+          'Canal humano indisponivel agora. Continuarei te ajudando no fluxo operacional ate normalizar.',
+          {
+            kind: 'manual_escalate_offline',
+            reason,
+          },
+        );
+      }
+      return this.serializeThread(
+        await this.prisma.supportThread.findUniqueOrThrow({
+          where: { id: thread.id },
+          include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
+        }),
+        input.currentPath || null,
+      );
+    } catch (error) {
+      throw this.sanitizeSupportError(error);
+    }
   }
 
   async returnToAi(
@@ -137,26 +214,70 @@ export class SupportService {
     servedClientId?: string,
     currentPath?: string,
   ) {
-    const context = await this.resolveContext(actor, scope, servedClientId);
-    const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
-    await this.prisma.supportThread.update({
-      where: { id: thread.id },
-      data: { status: SupportThreadStatus.AI, updatedAt: new Date() },
-    });
-    await this.appendSystemMessage(
-      actor,
-      context.servedClientId,
-      thread.id,
-      'Conversa voltou para modo automatico do agente de suporte.',
-      { kind: 'return_ai' },
-    );
-    return this.serializeThread(
-      await this.prisma.supportThread.findUniqueOrThrow({
+    try {
+      const context = await this.resolveContext(actor, scope, servedClientId);
+      const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
+      await this.prisma.supportThread.update({
         where: { id: thread.id },
-        include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
-      }),
-      currentPath || null,
-    );
+        data: { status: SupportThreadStatus.AI, updatedAt: new Date() },
+      });
+      await this.appendSystemMessage(
+        actor,
+        context.servedClientId,
+        thread.id,
+        'Conversa voltou para modo automatico do agente de suporte.',
+        { kind: 'return_ai' },
+      );
+      return this.serializeThread(
+        await this.prisma.supportThread.findUniqueOrThrow({
+          where: { id: thread.id },
+          include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
+        }),
+        currentPath || null,
+      );
+    } catch (error) {
+      throw this.sanitizeSupportError(error);
+    }
+  }
+
+  async appendHumanReply(actor: SupportActor, threadId: string, body: string) {
+    try {
+      this.assertConsultoriaAccess(actor.membershipRole);
+      const text = body.trim();
+      if (!text) throw new BadRequestException('Escreva uma mensagem.');
+      const thread = await this.prisma.supportThread.findFirst({
+        where: { id: threadId, organizationId: actor.organizationId },
+        select: { id: true, servedClientId: true },
+      });
+      if (!thread) throw new NotFoundException('Conversa nao encontrada.');
+      await this.prisma.supportMessage.create({
+        data: {
+          organizationId: actor.organizationId,
+          servedClientId: thread.servedClientId,
+          threadId: thread.id,
+          role: SupportMessageRole.HUMAN_SUPPORT,
+          body: text,
+          authorUserId: actor.userId,
+        },
+      });
+      await this.prisma.supportThread.update({
+        where: { id: thread.id },
+        data: {
+          status: SupportThreadStatus.HUMAN,
+          lastMessageAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
+      return this.serializeThread(
+        await this.prisma.supportThread.findUniqueOrThrow({
+          where: { id: thread.id },
+          include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
+        }),
+        null,
+      );
+    } catch (error) {
+      throw this.sanitizeSupportError(error);
+    }
   }
 
   private async resolveContext(
@@ -227,7 +348,7 @@ export class SupportService {
         scope,
         contextKey,
       },
-      include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
+      include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
     });
     if (existing) return existing;
 
@@ -248,7 +369,7 @@ export class SupportService {
                 : actor.membershipRole || 'MEMBER',
           } as Prisma.JsonObject,
         },
-        include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
+        include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
       });
     } catch (error) {
       if (
@@ -262,7 +383,7 @@ export class SupportService {
             scope,
             contextKey,
           },
-          include: { messages: { orderBy: { createdAt: 'asc' }, take: 200 } },
+          include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
         });
         if (thread) return thread;
       }
@@ -364,7 +485,7 @@ export class SupportService {
     const system = buildSupportSystemPrompt({
       scope,
       currentPath: currentPath || undefined,
-      humanChannelOnline: false,
+      humanChannelOnline: this.isHumanChannelOnline(),
       roleLabel:
         actor.audience === 'portal'
           ? this.clientRoleLabel(actor.clientRole)
@@ -495,6 +616,105 @@ export class SupportService {
     return 'WORKER';
   }
 
+  private isHumanChannelOnline() {
+    return Boolean(process.env.SUPPORT_HUMAN_WEBHOOK_URL?.trim());
+  }
+
+  private async tryActivateHumanQueue(
+    actor: SupportActor,
+    scope: SupportScopeKind,
+    servedClientId: string | null,
+    threadId: string,
+    reason: string,
+    currentMeta: Prisma.JsonValue | null,
+  ) {
+    if (!this.isHumanChannelOnline()) return false;
+    const result = await this.notifyHumanWebhook({
+      event: 'ESCALATE',
+      actor,
+      scope,
+      servedClientId,
+      threadId,
+      body: reason,
+    });
+    if (!result.ok) {
+      throw new ServiceUnavailableException(
+        'Canal humano indisponivel no momento. Tente novamente em instantes.',
+      );
+    }
+    await this.markHumanThread(threadId, currentMeta, reason);
+    return true;
+  }
+
+  private async forwardHumanMessage(
+    actor: SupportActor,
+    scope: SupportScopeKind,
+    threadId: string,
+    servedClientId: string | null,
+    body: string,
+  ) {
+    if (!this.isHumanChannelOnline()) return false;
+    const result = await this.notifyHumanWebhook({
+      event: 'MESSAGE',
+      actor,
+      scope,
+      servedClientId,
+      threadId,
+      body,
+    });
+    return result.ok;
+  }
+
+  private async notifyHumanWebhook(input: {
+    event: 'ESCALATE' | 'MESSAGE';
+    actor: SupportActor;
+    scope: SupportScopeKind;
+    servedClientId: string | null;
+    threadId: string;
+    body: string;
+  }) {
+    const url = process.env.SUPPORT_HUMAN_WEBHOOK_URL?.trim();
+    if (!url) return { ok: false as const, reason: 'offline' };
+    const token = process.env.SUPPORT_HUMAN_WEBHOOK_TOKEN?.trim();
+    const timeoutMs = Number(process.env.SUPPORT_HUMAN_WEBHOOK_TIMEOUT_MS || '8000');
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) ? timeoutMs : 8000);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          event: input.event,
+          at: new Date().toISOString(),
+          threadId: input.threadId,
+          scope: input.scope,
+          servedClientId: input.servedClientId,
+          organizationId: input.actor.organizationId,
+          actorUserId: input.actor.userId,
+          actorAudience: input.actor.audience,
+          message: input.body,
+        }),
+      });
+      if (!response.ok) return { ok: false as const, status: response.status };
+      return { ok: true as const };
+    } catch {
+      return { ok: false as const, status: 0 };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private sanitizeSupportError(error: unknown) {
+    if (error instanceof HttpException) return error;
+    return new InternalServerErrorException(
+      'Nao foi possivel concluir a operacao de suporte agora. Tente novamente.',
+    );
+  }
+
   private serializeThread(
     thread: {
     id: string;
@@ -511,6 +731,9 @@ export class SupportService {
     },
     currentPath: string | null,
   ) {
+    const orderedMessages = [...thread.messages].sort(
+      (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+    );
     return {
       id: thread.id,
       scope: thread.scope,
@@ -519,7 +742,7 @@ export class SupportService {
       servedClientId: thread.servedClientId,
       status: thread.status === SupportThreadStatus.HUMAN ? 'human' : 'ai',
       humanRequestedAt: thread.humanRequestedAt?.toISOString() ?? null,
-      messages: thread.messages.map((message) => ({
+      messages: orderedMessages.map((message) => ({
         id: message.id,
         role: this.messageRoleToClient(message.role),
         body: message.body,
