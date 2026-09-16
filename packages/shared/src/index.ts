@@ -3124,4 +3124,28 @@ export type TrainingGenerateInput = {
   controlNumber?: string;
 };
 
+export type SupportScope = 'CONSULTORIA' | 'CLIENTE';
+export type SupportThreadStatusView = 'ai' | 'human';
+export type SupportMessageRoleView =
+  | 'user'
+  | 'assistant'
+  | 'human_support'
+  | 'system';
+
+export interface SupportMessageView {
+  id: string;
+  role: SupportMessageRoleView;
+  body: string;
+  createdAt: string;
+}
+
+export interface SupportThreadView {
+  id: string;
+  scope: SupportScope;
+  servedClientId: string | null;
+  status: SupportThreadStatusView;
+  humanRequestedAt: string | null;
+  messages: SupportMessageView[];
+}
+
 

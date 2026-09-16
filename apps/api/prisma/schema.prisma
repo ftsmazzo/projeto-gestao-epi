@@ -106,6 +106,8 @@ model Organization {
   clientGroupMembers ClientGroupMember[]
   contacts          OrganizationContact[]
   communicationOutbox CommunicationOutbox[]
+  supportThreads   SupportThread[]
+  supportMessages  SupportMessage[]
   auditLogs         AuditLog[]
   servedClients     ServedClient[]
   operationalUnits  OperationalUnit[]
@@ -182,6 +184,23 @@ enum CommunicationStatus {
   SKIPPED
 }
 
+enum SupportScope {
+  CONSULTORIA
+  CLIENTE
+}
+
+enum SupportThreadStatus {
+  AI
+  HUMAN
+}
+
+enum SupportMessageRole {
+  USER
+  ASSISTANT
+  HUMAN_SUPPORT
+  SYSTEM
+}
+
 /// Fila leve de mensagens (e-mail/WhatsApp) antes de Redis/BullMQ.
 model CommunicationOutbox {
   id             String                @id @default(cuid())
@@ -206,6 +225,57 @@ model CommunicationOutbox {
   @@index([organizationId])
   @@index([status, createdAt])
   @@index([relatedType, relatedId])
+}
+
+/// Thread do agente interno de suporte. Escopo consultoria ou cliente.
+model SupportThread {
+  id               String              @id @default(cuid())
+  organizationId   String
+  servedClientId   String?
+  /// Chave derivada do contexto para evitar duplicidade com servedClientId null.
+  contextKey       String
+  userId           String?
+  scope            SupportScope
+  status           SupportThreadStatus @default(AI)
+  lastMessageAt    DateTime?
+  humanRequestedAt DateTime?
+  meta             Json?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient? @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages     SupportMessage[]
+
+  @@unique([organizationId, userId, scope, contextKey])
+  @@index([organizationId, scope, status])
+  @@index([organizationId, userId, contextKey])
+  @@index([servedClientId])
+  @@index([userId])
+}
+
+/// Mensagens da thread de suporte interno (usuario, agente, humano ou sistema).
+model SupportMessage {
+  id             String             @id @default(cuid())
+  organizationId String
+  servedClientId String?
+  threadId       String
+  role           SupportMessageRole
+  body           String
+  authorUserId   String?
+  meta           Json?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient? @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  thread       SupportThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorUser   User?         @relation("SupportMessageAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([threadId, createdAt])
+  @@index([servedClientId])
 }
 
 model User {
@@ -239,6 +309,8 @@ model User {
   facialEnrollmentLinksCreated WorkerFacialEnrollmentLink[] @relation("WorkerFacialEnrollmentLinkCreatedBy")
   epiDeliverySignLinksCreated EpiDeliverySignLink[] @relation("EpiDeliverySignLinkCreatedBy")
   invoiceDocuments InvoiceDocument[]
+  supportThreads   SupportThread[]
+  supportMessages  SupportMessage[] @relation("SupportMessageAuthor")
 }
 
 model Membership {
@@ -290,6 +362,8 @@ model ServedClient {
   workerFacialEnrollmentLinks WorkerFacialEnrollmentLink[]
   epiDeliverySignLinks EpiDeliverySignLink[]
   invoiceDocuments InvoiceDocument[]
+  supportThreads         SupportThread[]
+  supportMessages        SupportMessage[]
   subscription     ClientSubscription?
   sstProfile       SstClientProfile?
   sstDocuments     SstDocument[]

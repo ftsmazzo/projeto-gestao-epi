@@ -7,6 +7,7 @@ import { ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { isPortalNavActive, PORTAL_NAV } from '../lib/nav';
 import { formatCnpj } from '../lib/cnpj';
 import { PoweredBy } from './PoweredBy';
+import { SupportChatWidget } from './SupportChatWidget';
 import {
   IconBuilding,
   IconChart,
@@ -335,6 +336,7 @@ export function PortalShell({ children, user, onLogout, onSwitchCompany }: Props
           </button>
         </nav>
       ) : null}
+      {user ? <SupportChatWidget mode="portal" /> : null}
     </div>
   );
 }

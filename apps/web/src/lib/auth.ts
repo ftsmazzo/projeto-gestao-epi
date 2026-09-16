@@ -1,4 +1,9 @@
-import type { AuthResponse, AuthUser } from '@gestao-epi/shared';
+import type {
+  AuthResponse,
+  AuthUser,
+  SupportScope,
+  SupportThreadView,
+} from '@gestao-epi/shared';
 
 const TOKEN_KEY = 'gestao-epi.accessToken';
 
@@ -116,6 +121,49 @@ export async function requestPasswordReset(input: {
   audience: 'portal' | 'consultoria';
 }) {
   return apiFetch<ForgotPasswordResponse>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function fetchSupportThread(input?: {
+  scope?: SupportScope;
+  servedClientId?: string;
+}) {
+  const params = new URLSearchParams();
+  if (input?.scope) params.set('scope', input.scope);
+  if (input?.servedClientId) params.set('servedClientId', input.servedClientId);
+  const qs = params.toString();
+  return apiFetch<SupportThreadView>(`/support/thread${qs ? `?${qs}` : ''}`);
+}
+
+export async function sendSupportMessage(input: {
+  scope: SupportScope;
+  body: string;
+  servedClientId?: string;
+}) {
+  return apiFetch<SupportThreadView>('/support/message', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function escalateSupport(input: {
+  scope: SupportScope;
+  servedClientId?: string;
+  reason?: string;
+}) {
+  return apiFetch<SupportThreadView>('/support/escalate', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function returnSupportToAi(input: {
+  scope: SupportScope;
+  servedClientId?: string;
+}) {
+  return apiFetch<SupportThreadView>('/support/return-ai', {
     method: 'POST',
     body: JSON.stringify(input),
   });

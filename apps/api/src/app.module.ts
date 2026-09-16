@@ -23,6 +23,7 @@ import { SstDocumentsModule } from './sst-documents/sst-documents.module';
 import { TrainingModule } from './training/training.module';
 import { ClientGroupsModule } from './client-groups/client-groups.module';
 import { McpApiModule } from './mcp-api/mcp-api.module';
+import { SupportModule } from './support/support.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { McpApiModule } from './mcp-api/mcp-api.module';
     SstDocumentsModule,
     TrainingModule,
     ClientGroupsModule,
+    SupportModule,
     McpApiModule,
     PlatformModule,
     HealthModule,

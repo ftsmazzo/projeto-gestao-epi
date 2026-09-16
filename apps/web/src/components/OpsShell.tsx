@@ -8,6 +8,7 @@ import { OPS_NAV } from '../lib/nav';
 import { PoweredBy } from './PoweredBy';
 import { InstallAppBanner } from './InstallAppBanner';
 import { TenantBrand } from './TenantBrand';
+import { SupportChatWidget } from './SupportChatWidget';
 import {
   IconBuilding,
   IconCertificate,
@@ -58,6 +59,12 @@ function currentNavLabel(pathname: string) {
 export function OpsShell({ children, user, onLogout }: OpsShellProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const clientContextId = (() => {
+    const match = pathname.match(/^\/clientes\/([^/?#]+)/);
+    const maybeId = match?.[1] ?? null;
+    if (!maybeId) return null;
+    return /^c[a-z0-9]{24}$/i.test(maybeId) ? maybeId : null;
+  })();
 
   useEffect(() => {
     setMenuOpen(false);
@@ -168,6 +175,9 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
           {children}
         </main>
       </div>
+      {user ? (
+        <SupportChatWidget mode="consultoria" clientContextId={clientContextId} />
+      ) : null}
     </div>
   );
 }

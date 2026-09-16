@@ -32,6 +32,7 @@ import type {
   PortalTrabalhadoresResponse,
   PortalValidadeResponse,
   PortalWorkerEpiSheetResponse,
+  SupportThreadView,
   WorkerFacialEnrollmentLinkGenerated,
   WorkerFacialEnrollmentLinkStatusResponse,
   SstClientProfile,
@@ -742,4 +743,29 @@ export async function fetchPortalReportsActivity(
   return clientApiFetch<PortalReportsActivityResponse>(
     `/portal/reports/activity${portalReportQuery(filters)}`,
   );
+}
+
+export async function fetchPortalSupportThread() {
+  return clientApiFetch<SupportThreadView>('/portal/support/thread');
+}
+
+export async function sendPortalSupportMessage(body: string) {
+  return clientApiFetch<SupportThreadView>('/portal/support/message', {
+    method: 'POST',
+    body: JSON.stringify({ body }),
+  });
+}
+
+export async function escalatePortalSupport(reason?: string) {
+  return clientApiFetch<SupportThreadView>('/portal/support/escalate', {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function returnPortalSupportToAi() {
+  return clientApiFetch<SupportThreadView>('/portal/support/return-ai', {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
 }
