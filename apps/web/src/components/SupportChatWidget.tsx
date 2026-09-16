@@ -1,7 +1,7 @@
 'use client';
 
 import type { SupportMessageView, SupportScope, SupportThreadView } from '@gestao-epi/shared';
-import { FormEvent, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   escalateSupport,
@@ -67,6 +67,39 @@ function roleLabel(role: SupportMessageView['role']) {
   if (role === 'assistant') return 'Agente';
   if (role === 'human_support') return 'Humano';
   return 'Sistema';
+}
+
+function renderBodyWithDeepLinks(body: string): ReactNode {
+  const normalized = body.replace(/\]\(rota\s+([^)]+)\)/gi, ']($1)');
+  const lines = normalized.split('\n');
+  return lines.map((line, idx) => {
+    const parts: ReactNode[] = [];
+    const regex = /\[([^\]]+)\]\((\/[^)\s]*)\)/g;
+    let lastIndex = 0;
+    let match: RegExpExecArray | null = null;
+    while ((match = regex.exec(line)) !== null) {
+      const [raw, label, href] = match;
+      const start = match.index;
+      if (start > lastIndex) {
+        parts.push(line.slice(lastIndex, start));
+      }
+      parts.push(
+        <a key={`${idx}-${start}-${href}`} href={href} className="support-widget__link">
+          {label}
+        </a>,
+      );
+      lastIndex = start + raw.length;
+    }
+    if (lastIndex < line.length) {
+      parts.push(line.slice(lastIndex));
+    }
+    return (
+      <span key={`line-${idx}`}>
+        {parts}
+        {idx < lines.length - 1 ? <br /> : null}
+      </span>
+    );
+  });
 }
 
 export function SupportChatWidget({ mode, clientContextId }: Props) {
@@ -243,7 +276,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
                 className={`support-widget__bubble support-widget__bubble--${message.role}`}
               >
                 <span>{roleLabel(message.role)}</span>
-                <p>{message.body}</p>
+                <p>{renderBodyWithDeepLinks(message.body)}</p>
               </article>
             ))}
             {pending ? (

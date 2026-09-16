@@ -8243,6 +8243,12 @@ a.btn-primary:hover {
   line-height: 1.35;
 }
 
+.support-widget__link {
+  color: #0f4fd6;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
 .support-widget__bubble--user {
   background: #dbeafe;
 }

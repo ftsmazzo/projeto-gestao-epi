@@ -28,8 +28,9 @@
   ],
   "entryPolicy": {
     "globalEntries": 6,
+    "specialEntries": 3,
     "entriesPerModule": 4,
-    "totalEntries": 94
+    "totalEntries": 97
   },
   "notes": [
     "Arquivo manifesto da KB v2.",

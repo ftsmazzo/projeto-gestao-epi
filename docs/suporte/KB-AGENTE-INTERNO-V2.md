@@ -19,9 +19,10 @@ Esta base sustenta o agente interno unico do ProntEPI para os dois niveis:
 ## Composicao da base
 
 - Entradas globais: `6`
+- Entradas especiais (casos criticos): `3`
 - Modulos operacionais: `22`
 - Entradas por modulo: `4`
-- Total de entradas KB V2: `94`
+- Total de entradas KB V2: `97`
 
 Cada modulo gera 4 tipos de resposta:
 

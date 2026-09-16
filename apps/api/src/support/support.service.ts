@@ -376,7 +376,7 @@ export class SupportService {
             .map(
               (item) =>
                 [
-                  `- ${item.title}: ${item.question} => ${item.answer}${item.route ? ` (rota ${item.route})` : ''}`,
+                  `- ${item.title}: ${item.question} => ${item.answer}${item.route ? ` Link: [Abrir tela](${this.safeRouteForLink(item.route)})` : ''}`,
                   item.steps?.length ? `  passos: ${item.steps.join(' | ')}` : null,
                   item.warnings?.length ? `  cuidados: ${item.warnings.join(' | ')}` : null,
                 ]
@@ -431,7 +431,9 @@ export class SupportService {
   ) {
     if (knowledge.length > 0) {
       const top = knowledge[0];
-      const routePart = top.route ? ` Abra [${top.route}](${top.route}).` : '';
+      const routePart = top.route
+        ? ` Abra [Ir para tela](${this.safeRouteForLink(top.route)}).`
+        : '';
       return `${top.answer}${routePart}`;
     }
     const pathPart = currentPath ? ` na tela ${currentPath}` : '';
@@ -536,5 +538,14 @@ export class SupportService {
   private contextKey(scope: SupportScopeKind, servedClientId: string | null) {
     if (scope === 'CONSULTORIA') return 'consultoria';
     return servedClientId || 'cliente-desconhecido';
+  }
+
+  private safeRouteForLink(route: string) {
+    if (!/\[[^\]]+\]/.test(route)) return route;
+    if (route.startsWith('/clientes/')) return '/clientes';
+    if (route.startsWith('/portal/trabalhadores/')) return '/portal/trabalhadores';
+    if (route.startsWith('/portal/entregas/')) return '/portal/entregas';
+    if (route.startsWith('/portal/estrutura/')) return '/portal/estrutura';
+    return route.replace(/\/\[[^\]]+\]/g, '');
   }
 }

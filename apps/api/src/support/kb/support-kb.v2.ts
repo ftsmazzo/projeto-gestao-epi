@@ -335,6 +335,63 @@ const MODULES: SupportKbModule[] = [
   },
 ];
 
+const SPECIAL_ENTRIES: SupportKnowledgeEntryRecord[] = [
+  {
+    id: 'special-novo-cliente-manual-ou-pgr',
+    scope: 'CONSULTORIA',
+    title: 'Novo cliente: caminho manual ou via PGR',
+    question: 'Como cadastrar cliente novo com PGR e sem PGR?',
+    answer:
+      'Voce tem dois caminhos validos: cadastro manual em Clientes ou implantacao via Importar PGR.',
+    route: '/clientes',
+    routeAlias: ['/clientes/importar-pgro'],
+    steps: [
+      'Manual: abra [Clientes](/clientes), clique em "Novo cliente" e preencha razao social, CNPJ e franquia inicial.',
+      'Via PGR: abra [Importar PGR](/clientes/importar-pgro), envie o arquivo e confirme a estrutura antes de concluir.',
+      'Depois acesse o workspace do cliente para validar trabalhadores e usuarios do portal.',
+    ],
+    tags: ['novo cliente', 'importar pgr', 'cadastro manual', 'onboarding'],
+  },
+  {
+    id: 'special-trabalhador-importar-planilha',
+    scope: 'CLIENTE',
+    title: 'Trabalhador por planilha CSV',
+    question: 'Como inserir trabalhadores por planilha?',
+    answer:
+      'Na tela de Trabalhadores existe fluxo de lote por CSV com preview e confirmacao.',
+    route: '/portal/trabalhadores',
+    steps: [
+      'Acesse [Trabalhadores](/portal/trabalhadores).',
+      'Clique no botao "Importar CSV".',
+      'Clique em "Baixar modelo CSV", preencha a planilha e use "Selecionar CSV".',
+      'Revise a previa e finalize em "Confirmar importacao".',
+    ],
+    warnings: [
+      'Setor e funcao precisam existir na estrutura.',
+      'Linhas com erro nao entram na confirmacao.',
+    ],
+    tags: ['trabalhador', 'planilha', 'csv', 'importacao em lote'],
+  },
+  {
+    id: 'special-atualizar-base-caeip-botao',
+    scope: 'CONSULTORIA',
+    title: 'Atualizar catalogo CAEPI pelo botao correto',
+    question: 'Como atualizar o catalogo de EPI oficial?',
+    answer:
+      'Para atualizar a base oficial, use o botao de manutencao da tela de Catalogo de EPIs.',
+    route: '/epis',
+    steps: [
+      'Abra [Catalogo de EPIs](/epis).',
+      'Na secao "Manutencao da base", clique em "Atualizar base oficial agora".',
+      'Aguarde a mensagem de inicio da atualizacao e recarregue o status.',
+    ],
+    warnings: [
+      'Esse fluxo atualiza a base CAEPI, nao edita um item individual.',
+    ],
+    tags: ['atualizar catalogo', 'caepi', 'botao atualizar', 'base oficial'],
+  },
+];
+
 function moduleId(scope: SupportScopeKind, key: string, suffix: string) {
   return `${scope.toLowerCase()}-${key}-${suffix}`;
 }
@@ -391,6 +448,7 @@ export const SUPPORT_KB_MODULES = MODULES;
 
 export const SUPPORT_KB_V2_ENTRIES: SupportKnowledgeEntryRecord[] = [
   ...GLOBAL_ENTRIES,
+  ...SPECIAL_ENTRIES,
   ...MODULES.flatMap((module) => buildModuleEntries(module)),
 ];
 
