@@ -1,0 +1,39 @@
+{
+  "version": "v2-2026-09-16",
+  "agentIdentity": "agente-unico-prontepi",
+  "scopes": ["CONSULTORIA", "CLIENTE", "BOTH"],
+  "modules": [
+    { "key": "dashboard", "scope": "CONSULTORIA", "route": "/dashboard" },
+    { "key": "clientes", "scope": "CONSULTORIA", "route": "/clientes" },
+    { "key": "workspace", "scope": "CONSULTORIA", "route": "/clientes/[id]" },
+    { "key": "importar-pgr", "scope": "CONSULTORIA", "route": "/clientes/importar-pgro" },
+    { "key": "atualizar-pgr", "scope": "CONSULTORIA", "route": "/clientes/[id]/atualizar-pgro" },
+    { "key": "grupos", "scope": "CONSULTORIA", "route": "/clientes/grupos" },
+    { "key": "epis", "scope": "CONSULTORIA", "route": "/epis" },
+    { "key": "needs", "scope": "CONSULTORIA", "route": "/epi-needs" },
+    { "key": "config", "scope": "CONSULTORIA", "route": "/configuracoes" },
+    { "key": "certificados", "scope": "CONSULTORIA", "route": "/certificados" },
+    { "key": "painel", "scope": "CLIENTE", "route": "/portal" },
+    { "key": "entregas", "scope": "CLIENTE", "route": "/portal/entregas" },
+    { "key": "entrega-extra", "scope": "CLIENTE", "route": "/portal/entregas" },
+    { "key": "assinatura-remota", "scope": "CLIENTE", "route": "/portal/entregas" },
+    { "key": "estoque", "scope": "CLIENTE", "route": "/portal/estoque" },
+    { "key": "custos", "scope": "CLIENTE", "route": "/portal/custos" },
+    { "key": "trabalhadores", "scope": "CLIENTE", "route": "/portal/trabalhadores" },
+    { "key": "documentos-sst", "scope": "CLIENTE", "route": "/portal/documentos-sst" },
+    { "key": "estrutura", "scope": "CLIENTE", "route": "/portal/estrutura" },
+    { "key": "validade", "scope": "CLIENTE", "route": "/portal/validade" },
+    { "key": "relatorios", "scope": "CLIENTE", "route": "/portal/relatorios" },
+    { "key": "conta", "scope": "CLIENTE", "route": "/portal/conta" }
+  ],
+  "entryPolicy": {
+    "globalEntries": 6,
+    "entriesPerModule": 4,
+    "totalEntries": 94
+  },
+  "notes": [
+    "Arquivo manifesto da KB v2.",
+    "A base operacional e gerada em support-kb.v2.ts.",
+    "Evitar editar este JSON sem atualizar a implementacao TS."
+  ]
+}

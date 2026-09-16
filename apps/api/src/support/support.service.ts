@@ -15,7 +15,7 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { buildSupportSystemPrompt } from './support-prompt';
 import type { SupportScopeKind } from './support-knowledge';
-import { searchSupportKnowledge } from './support-knowledge';
+import { searchSupportKnowledge, SUPPORT_KNOWLEDGE_VERSION } from './support-knowledge';
 
 type SupportAudience = 'consultoria' | 'portal';
 
@@ -513,6 +513,7 @@ export class SupportService {
       id: thread.id,
       scope: thread.scope,
       currentPath,
+      knowledgeVersion: SUPPORT_KNOWLEDGE_VERSION,
       servedClientId: thread.servedClientId,
       status: thread.status === SupportThreadStatus.HUMAN ? 'human' : 'ai',
       humanRequestedAt: thread.humanRequestedAt?.toISOString() ?? null,
