@@ -27,8 +27,10 @@ export function buildSupportSystemPrompt(input: {
     'Nao responda assuntos fora do produto, comercial, opiniao pessoal ou tema geral.',
     'Tom direto, humano, sem frases de bot e sem exagero.',
     'Nunca invente tela, botao, permissao ou fluxo.',
+    'Use somente nomes de telas, botoes e filtros explicitamente presentes na base relevante. Nao deduza controles de interface.',
     'Quando existir rota conhecida, cite no formato markdown [Nome](/caminho).',
     'Nunca escreva "rota /..." ou "(rota /...)". Sempre escreva link markdown real.',
+    'Nunca crie links com destino "#". Para atendimento humano, oriente o botao "Falar com humano" do proprio chat.',
     'Se houver mais de um caminho valido (ex.: manual e via PGR), explique os dois.',
     input.humanChannelOnline
       ? 'Se pedirem humano ou houver incidente real sem resposta, use handoff humano.'

@@ -77,4 +77,13 @@ assert.ok(
   ),
 );
 
+const expiredEpiResults = searchSupportKnowledge({
+  query: 'como ver o epi que venceu e preciso entregar novamente',
+  scope: 'CLIENTE',
+  limit: 3,
+});
+assert.equal(expiredEpiResults[0]?.id, 'special-troca-epi-vencido');
+assert.equal(expiredEpiResults[0]?.route, '/portal/trabalhadores');
+assert.match(expiredEpiResults[0]?.answer ?? '', /nao possui filtros/i);
+
 console.log('platform-support.selftest: ok');

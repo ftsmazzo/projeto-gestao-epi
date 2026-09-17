@@ -135,9 +135,6 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
   const endRef = useRef<HTMLDivElement | null>(null);
   const fabRef = useRef<HTMLButtonElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const closeRef = useRef<HTMLButtonElement | null>(null);
-  const panelRef = useRef<HTMLElement | null>(null);
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const loadRequestRef = useRef(0);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -219,48 +216,11 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
         event.preventDefault();
         setOpen(false);
       }
-      if (event.key !== 'Tab') return;
-      const panel = panelRef.current;
-      if (!panel) return;
-      const focusables = panel.querySelectorAll<HTMLElement>(
-        'a[href],button:not([disabled]),input:not([disabled]),textarea:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])',
-      );
-      if (!focusables.length) return;
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      const active = document.activeElement;
-      if (!event.shiftKey && active === last) {
-        event.preventDefault();
-        first.focus();
-      } else if (event.shiftKey && active === first) {
-        event.preventDefault();
-        last.focus();
-      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => {
       window.clearTimeout(timeout);
       window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open || !rootRef.current) return;
-    const changed: Array<{ element: HTMLElement; inert: boolean }> = [];
-    let current: HTMLElement | null = rootRef.current;
-    while (current?.parentElement) {
-      const parent: HTMLElement = current.parentElement;
-      for (const sibling of Array.from(parent.children)) {
-        if (sibling !== current && sibling instanceof HTMLElement) {
-          changed.push({ element: sibling, inert: sibling.inert });
-          sibling.inert = true;
-        }
-      }
-      current = parent;
-      if (parent === document.body) break;
-    }
-    return () => {
-      for (const item of changed) item.element.inert = item.inert;
     };
   }, [open]);
 
@@ -317,7 +277,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
   }
 
   return (
-    <div ref={rootRef} className={`support-widget ${open ? 'is-open' : ''}`}>
+    <div className={`support-widget ${open ? 'is-open' : ''}`}>
       {!open ? (
         <button
           ref={fabRef}
@@ -334,11 +294,9 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
         </button>
       ) : (
         <section
-          ref={panelRef}
           className="support-widget__panel"
           aria-label="Suporte interno"
           role="dialog"
-          aria-modal="true"
         >
           <header className="support-widget__header">
             <div>
@@ -352,7 +310,6 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
             <button
               type="button"
               className="support-widget__close"
-              ref={closeRef}
               onClick={() => setOpen(false)}
               aria-label="Fechar suporte"
             >

@@ -1,5 +1,5 @@
 {
-  "version": "v2-2026-09-16",
+  "version": "v2-2026-09-17",
   "agentIdentity": "agente-unico-prontepi",
   "scopes": ["CONSULTORIA", "CLIENTE", "BOTH"],
   "modules": [
@@ -28,9 +28,9 @@
   ],
   "entryPolicy": {
     "globalEntries": 6,
-    "specialEntries": 3,
+    "specialEntries": 4,
     "entriesPerModule": 4,
-    "totalEntries": 97
+    "totalEntries": 98
   },
   "notes": [
     "Arquivo manifesto da KB v2.",

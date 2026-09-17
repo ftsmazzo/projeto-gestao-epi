@@ -26,7 +26,7 @@ type SupportKbModule = {
   tags: string[];
 };
 
-export const SUPPORT_KB_VERSION = 'v2-2026-09-16';
+export const SUPPORT_KB_VERSION = 'v2-2026-09-17';
 
 const GLOBAL_ENTRIES: SupportKnowledgeEntryRecord[] = [
   {
@@ -389,6 +389,36 @@ const SPECIAL_ENTRIES: SupportKnowledgeEntryRecord[] = [
       'Esse fluxo atualiza a base CAEPI, nao edita um item individual.',
     ],
     tags: ['atualizar catalogo', 'caepi', 'botao atualizar', 'base oficial'],
+  },
+  {
+    id: 'special-troca-epi-vencido',
+    scope: 'CLIENTE',
+    title: 'Identificar EPI vencido e registrar troca',
+    question: 'Como ver o EPI que venceu e precisa ser entregue novamente?',
+    answer:
+      'As trocas vencidas e proximas aparecem por trabalhador; a tela de Entregas nao possui filtros chamados "Vencido" ou "Reentrega".',
+    route: '/portal/trabalhadores',
+    routeAlias: ['/portal/relatorios'],
+    steps: [
+      'Abra [Trabalhadores](/portal/trabalhadores).',
+      'Localize os cartões marcados como "Urgente" ou "Proxima".',
+      'Clique em "Ver EPI(s)" para conferir quais itens precisam de troca.',
+      'Clique em "Registrar troca" para abrir a entrega já vinculada ao trabalhador.',
+      'Para uma visão consolidada, abra [Relatorios - Trocas](/portal/relatorios) e selecione a aba "Trocas".',
+    ],
+    warnings: [
+      'Nao procure os filtros "Vencido" ou "Reentrega" na tela de Entregas, pois eles nao existem.',
+      'Antes de confirmar a troca, confira estoque, CA e dados do trabalhador.',
+    ],
+    tags: [
+      'epi vencido',
+      'entregar novamente',
+      'troca',
+      'reposicao',
+      'vencimento',
+      'urgente',
+      'proxima troca',
+    ],
   },
 ];
 
