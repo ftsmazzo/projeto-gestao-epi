@@ -765,10 +765,3 @@ export async function escalatePortalSupport(reason?: string, currentPath?: strin
     body: JSON.stringify({ reason, currentPath }),
   });
 }
-
-export async function returnPortalSupportToAi(currentPath?: string) {
-  return clientApiFetch<SupportThreadView>('/portal/support/return-ai', {
-    method: 'POST',
-    body: JSON.stringify({ currentPath }),
-  });
-}

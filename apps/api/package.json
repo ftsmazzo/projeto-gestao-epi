@@ -19,6 +19,7 @@
     "test:worker-match": "npx --yes tsx src/workers/worker-structure-match.selftest.ts",
     "test:pgr-rh-gap": "npx --yes tsx src/communications/pgr-rh-gap.selftest.ts",
     "test:epi-canonical": "npx --yes tsx src/epi-needs/epi-need-canonical.selftest.ts",
+    "test:platform-support": "npx --yes tsx src/support/platform-support.selftest.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",

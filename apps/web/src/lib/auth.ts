@@ -162,14 +162,3 @@ export async function escalateSupport(input: {
     body: JSON.stringify(input),
   });
 }
-
-export async function returnSupportToAi(input: {
-  scope: SupportScope;
-  servedClientId?: string;
-  currentPath?: string;
-}) {
-  return apiFetch<SupportThreadView>('/support/return-ai', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-}

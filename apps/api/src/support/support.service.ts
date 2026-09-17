@@ -5,12 +5,12 @@ import {
   InternalServerErrorException,
   Injectable,
   NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   ClientUserRole,
   MembershipRole,
   Prisma,
+  SupportLifecycleStatus,
   SupportMessageRole,
   SupportThreadStatus,
 } from '@prisma/client';
@@ -74,37 +74,65 @@ export class SupportService {
       const now = new Date();
 
       if (thread.status === SupportThreadStatus.HUMAN) {
-        const forwarded = await this.forwardHumanMessage(
-          actor,
-          context.scope,
-          thread.id,
-          context.servedClientId,
-          body,
-        );
-        if (!forwarded) {
-          throw new ServiceUnavailableException(
-            'Nao foi possivel encaminhar sua mensagem para o atendimento humano agora. Tente novamente.',
-          );
-        }
-        await this.prisma.supportMessage.create({
-          data: {
-            organizationId: actor.organizationId,
-            servedClientId: context.servedClientId,
-            threadId: thread.id,
-            role: SupportMessageRole.USER,
-            body,
-            authorUserId: actor.userId,
-          },
-        });
-        return this.serializeThread(
-          await this.prisma.supportThread.update({
-            where: { id: thread.id },
+        const routedToHuman = await this.prisma.$transaction(async (tx) => {
+          const current = await tx.supportThread.updateMany({
+            where: {
+              id: thread.id,
+              status: SupportThreadStatus.HUMAN,
+              lifecycleStatus: {
+                in: [
+                  SupportLifecycleStatus.WAITING_HUMAN,
+                  SupportLifecycleStatus.IN_PROGRESS,
+                ],
+              },
+            },
             data: { lastMessageAt: now, updatedAt: now },
-            include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
-          }),
-          input.currentPath || null,
-        );
+          });
+          if (!current.count) return false;
+          await tx.supportMessage.create({
+            data: {
+              organizationId: actor.organizationId,
+              servedClientId: context.servedClientId,
+              threadId: thread.id,
+              role: SupportMessageRole.USER,
+              body,
+              authorUserId: actor.userId,
+            },
+          });
+          return true;
+        });
+        if (routedToHuman) {
+          const current = await this.prisma.supportThread.findUniqueOrThrow({
+            where: { id: thread.id },
+            include: {
+              messages: { orderBy: { createdAt: 'desc' }, take: 200 },
+            },
+          });
+          if (current.status === SupportThreadStatus.HUMAN) {
+            await this.forwardHumanMessage(
+              actor,
+              context.scope,
+              thread.id,
+              context.servedClientId,
+              body,
+            );
+          }
+          return this.serializeThread(current, input.currentPath || null);
+        }
       }
+
+      await this.prisma.supportThread.updateMany({
+        where: {
+          id: thread.id,
+          status: SupportThreadStatus.AI,
+          lifecycleStatus: SupportLifecycleStatus.RESOLVED,
+        },
+        data: {
+          lifecycleStatus: SupportLifecycleStatus.ACTIVE,
+          resolvedAt: null,
+          updatedAt: now,
+        },
+      });
 
       await this.prisma.supportMessage.create({
         data: {
@@ -150,12 +178,29 @@ export class SupportService {
         body,
         input.currentPath || null,
       );
-      await this.appendAssistantMessage(actor, context.servedClientId, thread.id, reply, {
-        kind: 'ai_reply',
+      await this.prisma.$transaction(async (tx) => {
+        const stillAi = await tx.supportThread.updateMany({
+          where: {
+            id: thread.id,
+            status: SupportThreadStatus.AI,
+            lifecycleStatus: SupportLifecycleStatus.ACTIVE,
+          },
+          data: { lastMessageAt: now, updatedAt: now },
+        });
+        if (!stillAi.count) return;
+        await tx.supportMessage.create({
+          data: {
+            organizationId: actor.organizationId,
+            servedClientId: context.servedClientId,
+            threadId: thread.id,
+            role: SupportMessageRole.ASSISTANT,
+            body: reply,
+            meta: { kind: 'ai_reply' },
+          },
+        });
       });
-      const updated = await this.prisma.supportThread.update({
+      const updated = await this.prisma.supportThread.findUniqueOrThrow({
         where: { id: thread.id },
-        data: { lastMessageAt: now, updatedAt: now },
         include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
       });
       return this.serializeThread(updated, input.currentPath || null);
@@ -168,6 +213,9 @@ export class SupportService {
     try {
       const context = await this.resolveContext(actor, input.scope, input.servedClientId);
       const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
+      if (thread.status === SupportThreadStatus.HUMAN) {
+        return this.serializeThread(thread, input.currentPath || null);
+      }
       const reason = input.reason?.trim() || 'Pedido manual de atendimento humano';
       const activated = await this.tryActivateHumanQueue(
         actor,
@@ -202,78 +250,6 @@ export class SupportService {
           include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
         }),
         input.currentPath || null,
-      );
-    } catch (error) {
-      throw this.sanitizeSupportError(error);
-    }
-  }
-
-  async returnToAi(
-    actor: SupportActor,
-    scope: SupportScopeKind,
-    servedClientId?: string,
-    currentPath?: string,
-  ) {
-    try {
-      const context = await this.resolveContext(actor, scope, servedClientId);
-      const thread = await this.getOrCreateThread(actor, context.scope, context.servedClientId);
-      await this.prisma.supportThread.update({
-        where: { id: thread.id },
-        data: { status: SupportThreadStatus.AI, updatedAt: new Date() },
-      });
-      await this.appendSystemMessage(
-        actor,
-        context.servedClientId,
-        thread.id,
-        'Conversa voltou para modo automatico do agente de suporte.',
-        { kind: 'return_ai' },
-      );
-      return this.serializeThread(
-        await this.prisma.supportThread.findUniqueOrThrow({
-          where: { id: thread.id },
-          include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
-        }),
-        currentPath || null,
-      );
-    } catch (error) {
-      throw this.sanitizeSupportError(error);
-    }
-  }
-
-  async appendHumanReply(actor: SupportActor, threadId: string, body: string) {
-    try {
-      this.assertConsultoriaAccess(actor.membershipRole);
-      const text = body.trim();
-      if (!text) throw new BadRequestException('Escreva uma mensagem.');
-      const thread = await this.prisma.supportThread.findFirst({
-        where: { id: threadId, organizationId: actor.organizationId },
-        select: { id: true, servedClientId: true },
-      });
-      if (!thread) throw new NotFoundException('Conversa nao encontrada.');
-      await this.prisma.supportMessage.create({
-        data: {
-          organizationId: actor.organizationId,
-          servedClientId: thread.servedClientId,
-          threadId: thread.id,
-          role: SupportMessageRole.HUMAN_SUPPORT,
-          body: text,
-          authorUserId: actor.userId,
-        },
-      });
-      await this.prisma.supportThread.update({
-        where: { id: thread.id },
-        data: {
-          status: SupportThreadStatus.HUMAN,
-          lastMessageAt: new Date(),
-          updatedAt: new Date(),
-        },
-      });
-      return this.serializeThread(
-        await this.prisma.supportThread.findUniqueOrThrow({
-          where: { id: thread.id },
-          include: { messages: { orderBy: { createdAt: 'desc' }, take: 200 } },
-        }),
-        null,
       );
     } catch (error) {
       throw this.sanitizeSupportError(error);
@@ -400,15 +376,29 @@ export class SupportService {
       currentMeta && typeof currentMeta === 'object' && !Array.isArray(currentMeta)
         ? (currentMeta as Prisma.JsonObject)
         : ({} as Prisma.JsonObject);
-    await this.prisma.supportThread.update({
-      where: { id: threadId },
+    const transitioned = await this.prisma.supportThread.updateMany({
+      where: {
+        id: threadId,
+        status: SupportThreadStatus.AI,
+        lifecycleStatus: {
+          in: [
+            SupportLifecycleStatus.ACTIVE,
+            SupportLifecycleStatus.RESOLVED,
+          ],
+        },
+      },
       data: {
         status: SupportThreadStatus.HUMAN,
+        lifecycleStatus: SupportLifecycleStatus.WAITING_HUMAN,
+        assignedToUserId: null,
         humanRequestedAt: new Date(),
+        firstHumanResponseAt: null,
+        resolvedAt: null,
         updatedAt: new Date(),
         meta: { ...safeMeta, lastEscalateReason: reason } as Prisma.JsonObject,
       },
     });
+    return transitioned.count > 0;
   }
 
   private async appendAssistantMessage(
@@ -515,7 +505,6 @@ export class SupportService {
           role: m.role === SupportMessageRole.USER ? 'user' : 'assistant',
           content: m.body,
         })),
-      { role: 'user', content: userText },
     ];
 
     const controller = new AbortController();
@@ -617,7 +606,7 @@ export class SupportService {
   }
 
   private isHumanChannelOnline() {
-    return Boolean(process.env.SUPPORT_HUMAN_WEBHOOK_URL?.trim());
+    return true;
   }
 
   private async tryActivateHumanQueue(
@@ -628,22 +617,27 @@ export class SupportService {
     reason: string,
     currentMeta: Prisma.JsonValue | null,
   ) {
-    if (!this.isHumanChannelOnline()) return false;
-    const result = await this.notifyHumanWebhook({
-      event: 'ESCALATE',
-      actor,
-      scope,
-      servedClientId,
+    const transitioned = await this.markHumanThread(
       threadId,
-      body: reason,
-    });
-    if (!result.ok) {
-      throw new ServiceUnavailableException(
-        'Canal humano indisponivel no momento. Tente novamente em instantes.',
-      );
+      currentMeta,
+      reason,
+    );
+    if (transitioned && process.env.SUPPORT_HUMAN_WEBHOOK_URL?.trim()) {
+      await this.notifyHumanWebhook({
+        event: 'ESCALATE',
+        actor,
+        scope,
+        servedClientId,
+        threadId,
+        body: reason,
+      });
     }
-    await this.markHumanThread(threadId, currentMeta, reason);
-    return true;
+    if (transitioned) return true;
+    const current = await this.prisma.supportThread.findUnique({
+      where: { id: threadId },
+      select: { status: true },
+    });
+    return current?.status === SupportThreadStatus.HUMAN;
   }
 
   private async forwardHumanMessage(
@@ -653,7 +647,7 @@ export class SupportService {
     servedClientId: string | null,
     body: string,
   ) {
-    if (!this.isHumanChannelOnline()) return false;
+    if (!process.env.SUPPORT_HUMAN_WEBHOOK_URL?.trim()) return true;
     const result = await this.notifyHumanWebhook({
       event: 'MESSAGE',
       actor,
@@ -719,6 +713,7 @@ export class SupportService {
     thread: {
     id: string;
     status: SupportThreadStatus;
+    lifecycleStatus: SupportLifecycleStatus;
     scope: 'CONSULTORIA' | 'CLIENTE';
     servedClientId: string | null;
     humanRequestedAt: Date | null;
@@ -741,6 +736,7 @@ export class SupportService {
       knowledgeVersion: SUPPORT_KNOWLEDGE_VERSION,
       servedClientId: thread.servedClientId,
       status: thread.status === SupportThreadStatus.HUMAN ? 'human' : 'ai',
+      lifecycleStatus: thread.lifecycleStatus,
       humanRequestedAt: thread.humanRequestedAt?.toISOString() ?? null,
       messages: orderedMessages.map((message) => ({
         id: message.id,

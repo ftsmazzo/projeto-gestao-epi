@@ -57,14 +57,3 @@ export class SupportEscalateDto {
   @MaxLength(240)
   reason?: string;
 }
-
-export class SupportHumanReplyDto {
-  @IsString()
-  @MinLength(1)
-  threadId!: string;
-
-  @IsString()
-  @MinLength(1)
-  @MaxLength(4000)
-  body!: string;
-}

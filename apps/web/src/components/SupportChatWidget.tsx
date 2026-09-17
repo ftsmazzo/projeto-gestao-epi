@@ -7,13 +7,11 @@ import { usePathname } from 'next/navigation';
 import {
   escalateSupport,
   fetchSupportThread,
-  returnSupportToAi,
   sendSupportMessage,
 } from '../lib/auth';
 import {
   escalatePortalSupport,
   fetchPortalSupportThread,
-  returnPortalSupportToAi,
   sendPortalSupportMessage,
 } from '../lib/client-auth';
 
@@ -139,7 +137,9 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const loadRequestRef = useRef(0);
   const [reducedMotion, setReducedMotion] = useState(false);
 
   const effectiveScope: SupportScope =
@@ -147,9 +147,12 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
   const suggestions = suggestionsByPath(pathname, effectiveScope);
 
   const load = useMemo(
-    () => async () => {
-      setLoading(true);
-      setError(null);
+    () => async (silent = false) => {
+      const requestId = ++loadRequestRef.current;
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
       try {
         const data =
           mode === 'portal'
@@ -159,11 +162,13 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
                 servedClientId: effectiveScope === 'CLIENTE' ? clientContextId || undefined : undefined,
                 currentPath: pathname || undefined,
               });
-        setThread(data);
+        if (requestId === loadRequestRef.current) setThread(data);
       } catch (err) {
-        setError(mapSupportError(err, 'Falha ao abrir suporte.'));
+        if (!silent && requestId === loadRequestRef.current) {
+          setError(mapSupportError(err, 'Falha ao abrir suporte.'));
+        }
       } finally {
-        setLoading(false);
+        if (!silent && requestId === loadRequestRef.current) setLoading(false);
       }
     },
     [mode, effectiveScope, clientContextId, pathname],
@@ -198,7 +203,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
   useEffect(() => {
     if (!open) return;
     const id = window.setInterval(() => {
-      if (!pending) void load();
+      if (!pending) void load(true);
     }, thread?.status === 'human' ? 6000 : 15000);
     return () => window.clearInterval(id);
   }, [open, pending, load, thread?.status]);
@@ -240,6 +245,26 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
   }, [open]);
 
   useEffect(() => {
+    if (!open || !rootRef.current) return;
+    const changed: Array<{ element: HTMLElement; inert: boolean }> = [];
+    let current: HTMLElement | null = rootRef.current;
+    while (current?.parentElement) {
+      const parent: HTMLElement = current.parentElement;
+      for (const sibling of Array.from(parent.children)) {
+        if (sibling !== current && sibling instanceof HTMLElement) {
+          changed.push({ element: sibling, inert: sibling.inert });
+          sibling.inert = true;
+        }
+      }
+      current = parent;
+      if (parent === document.body) break;
+    }
+    return () => {
+      for (const item of changed) item.element.inert = item.inert;
+    };
+  }, [open]);
+
+  useEffect(() => {
     if (open) return;
     previousFocusRef.current?.focus();
   }, [open]);
@@ -249,6 +274,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
     const body = draft.trim();
     if (!body || pending) return;
     const previousDraft = draft;
+    loadRequestRef.current += 1;
     startTransition(async () => {
       try {
         const data =
@@ -271,6 +297,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
   }
 
   function escalate() {
+    loadRequestRef.current += 1;
     startTransition(async () => {
       try {
         const data =
@@ -289,27 +316,8 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
     });
   }
 
-  function backToAi() {
-    startTransition(async () => {
-      try {
-        const data =
-          mode === 'portal'
-            ? await returnPortalSupportToAi(pathname || undefined)
-            : await returnSupportToAi({
-                scope: effectiveScope,
-                servedClientId: effectiveScope === 'CLIENTE' ? clientContextId || undefined : undefined,
-                currentPath: pathname || undefined,
-              });
-        setThread(data);
-        setError(null);
-      } catch (err) {
-        setError(mapSupportError(err, 'Falha ao voltar para IA.'));
-      }
-    });
-  }
-
   return (
-    <div className={`support-widget ${open ? 'is-open' : ''}`}>
+    <div ref={rootRef} className={`support-widget ${open ? 'is-open' : ''}`}>
       {!open ? (
         <button
           ref={fabRef}
@@ -331,7 +339,6 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
           aria-label="Suporte interno"
           role="dialog"
           aria-modal="true"
-          aria-live="polite"
         >
           <header className="support-widget__header">
             <div>
@@ -371,14 +378,19 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
 
           {thread?.status === 'human' ? (
             <div className="support-widget__banner">
-              Fila humana ativa para esta conversa.
-              <button type="button" onClick={backToAi} disabled={pending}>
-                Voltar para IA
-              </button>
+              {thread.lifecycleStatus === 'IN_PROGRESS'
+                ? 'A equipe ProntEPI está atendendo esta conversa.'
+                : 'Solicitação enviada à equipe ProntEPI. Você pode continuar descrevendo o problema.'}
             </div>
           ) : null}
 
-          <div className="support-widget__thread">
+          <div
+            className="support-widget__thread"
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions"
+            aria-atomic="false"
+          >
             {loading && !thread ? <p>Abrindo conversa...</p> : null}
             {!loading && thread && thread.messages.length === 0 ? (
               <div className="support-widget__empty">

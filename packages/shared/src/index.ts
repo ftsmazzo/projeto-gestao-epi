@@ -3146,8 +3146,79 @@ export interface SupportThreadView {
   knowledgeVersion?: string;
   servedClientId: string | null;
   status: SupportThreadStatusView;
+  lifecycleStatus?: PlatformSupportLifecycleStatus;
   humanRequestedAt: string | null;
   messages: SupportMessageView[];
+}
+
+export type PlatformSupportLifecycleStatus =
+  | 'ACTIVE'
+  | 'WAITING_HUMAN'
+  | 'IN_PROGRESS'
+  | 'RESOLVED';
+
+export interface PlatformSupportOverview {
+  totals: {
+    all: number;
+    waitingHuman: number;
+    inProgress: number;
+    resolved: number;
+    activeAi: number;
+    messagesLast24Hours: number;
+  };
+  performance: {
+    averageFirstResponseMinutes: number | null;
+    oldestWaitingMinutes: number | null;
+  };
+  byScope: Array<{ scope: SupportScope; count: number }>;
+  byOrganization: Array<{
+    organizationId: string;
+    organizationName: string;
+    count: number;
+  }>;
+}
+
+export interface PlatformSupportThreadRow {
+  id: string;
+  scope: SupportScope;
+  status: SupportThreadStatusView;
+  lifecycleStatus: PlatformSupportLifecycleStatus;
+  organization: { id: string; name: string };
+  servedClient: { id: string; name: string } | null;
+  requester: { id: string; name: string; email?: string } | null;
+  assignedTo: { id: string; name: string; email?: string } | null;
+  humanRequestedAt: string | null;
+  firstHumanResponseAt: string | null;
+  resolvedAt: string | null;
+  lastMessageAt: string | null;
+  updatedAt: string;
+  messageCount: number;
+  lastMessage: {
+    role: SupportMessageRoleView;
+    body: string;
+    createdAt: string;
+  } | null;
+}
+
+export interface PlatformSupportThreadList {
+  items: PlatformSupportThreadRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface PlatformSupportMessageView extends SupportMessageView {
+  author: { id: string; name: string; email: string } | null;
+}
+
+export interface PlatformSupportThreadDetail
+  extends Omit<PlatformSupportThreadRow, 'lastMessage'> {
+  messages: PlatformSupportMessageView[];
+  messagesPage: number;
+  messagesPageSize: number;
+  messagesTotal: number;
+  messagesTotalPages: number;
 }
 
 

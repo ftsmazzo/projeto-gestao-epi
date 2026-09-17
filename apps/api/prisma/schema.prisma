@@ -194,6 +194,13 @@ enum SupportThreadStatus {
   HUMAN
 }
 
+enum SupportLifecycleStatus {
+  ACTIVE
+  WAITING_HUMAN
+  IN_PROGRESS
+  RESOLVED
+}
+
 enum SupportMessageRole {
   USER
   ASSISTANT
@@ -229,27 +236,34 @@ model CommunicationOutbox {
 
 /// Thread do agente interno de suporte. Escopo consultoria ou cliente.
 model SupportThread {
-  id               String              @id @default(cuid())
-  organizationId   String
-  servedClientId   String?
+  id                   String                 @id @default(cuid())
+  organizationId       String
+  servedClientId       String?
   /// Chave derivada do contexto para evitar duplicidade com servedClientId null.
-  contextKey       String
-  userId           String?
-  scope            SupportScope
-  status           SupportThreadStatus @default(AI)
-  lastMessageAt    DateTime?
-  humanRequestedAt DateTime?
-  meta             Json?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  contextKey           String
+  userId               String?
+  scope                SupportScope
+  status               SupportThreadStatus    @default(AI)
+  lifecycleStatus      SupportLifecycleStatus @default(ACTIVE)
+  assignedToUserId     String?
+  lastMessageAt        DateTime?
+  humanRequestedAt     DateTime?
+  firstHumanResponseAt DateTime?
+  resolvedAt           DateTime?
+  meta                 Json?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   servedClient ServedClient? @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
   user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  assignedTo   User?         @relation("SupportThreadAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   messages     SupportMessage[]
 
   @@unique([organizationId, userId, scope, contextKey])
   @@index([organizationId, scope, status])
+  @@index([lifecycleStatus, humanRequestedAt])
+  @@index([assignedToUserId, lifecycleStatus])
   @@index([organizationId, userId, contextKey])
   @@index([servedClientId])
   @@index([userId])
@@ -310,6 +324,7 @@ model User {
   epiDeliverySignLinksCreated EpiDeliverySignLink[] @relation("EpiDeliverySignLinkCreatedBy")
   invoiceDocuments InvoiceDocument[]
   supportThreads   SupportThread[]
+  supportAssignedThreads SupportThread[] @relation("SupportThreadAssignedTo")
   supportMessages  SupportMessage[] @relation("SupportMessageAuthor")
 }
 

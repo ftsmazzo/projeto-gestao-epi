@@ -8143,6 +8143,8 @@ a.btn-primary:hover {
   background: transparent;
   color: #5b6472;
   font-size: 1.2rem;
+  min-width: 2rem;
+  min-height: 2rem;
 }
 
 .support-widget__scopes {
@@ -8295,6 +8297,14 @@ a.btn-primary:hover {
   color: #46546a;
   text-decoration: underline;
   font-size: 0.82rem;
+  min-height: 2rem;
+  padding: 0.25rem 0.35rem;
+}
+
+.support-widget button:focus-visible,
+.support-widget input:focus-visible,
+.support-widget a:focus-visible {
+  outline-color: #1d4ed8;
 }
 
 .support-widget__error {
@@ -8314,5 +8324,500 @@ a.btn-primary:hover {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.platform-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-right: auto;
+}
+
+.platform-nav a {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.55rem;
+  color: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+  font-size: 0.87rem;
+  font-weight: 700;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease;
+}
+
+.platform-nav a:hover,
+.platform-nav a:focus-visible,
+.platform-nav a.is-active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.platform-support {
+  display: grid;
+  gap: 1rem;
+}
+
+.platform-support__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.platform-support__presence {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.48rem 0.7rem;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.platform-support__presence > span {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #16a34a;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.12);
+}
+
+.platform-support__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.platform-support__metrics article {
+  display: grid;
+  gap: 0.3rem;
+  min-height: 7rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.09);
+  border-radius: 0.9rem;
+  background: #fff;
+  box-shadow: 0 8px 24px -22px rgba(15, 23, 42, 0.55);
+}
+
+.platform-support__metrics span {
+  color: #64748b;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.platform-support__metrics strong {
+  color: #0f172a;
+  font-size: clamp(1.45rem, 2.6vw, 2rem);
+  line-height: 1;
+}
+
+.platform-support__metrics small {
+  align-self: end;
+  color: #64748b;
+}
+
+.platform-support__workspace {
+  display: grid;
+  grid-template-columns: minmax(19rem, 0.82fr) minmax(28rem, 1.55fr);
+  min-height: 36rem;
+  height: calc(100vh - 19rem);
+  overflow: hidden;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 20px 48px -38px rgba(15, 23, 42, 0.58);
+}
+
+.platform-support__queue {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+  background: #f8fafc;
+}
+
+.platform-support__filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.55rem;
+  padding: 0.8rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.platform-support__filters select,
+.platform-support__filters input,
+.platform-support__reply textarea {
+  width: 100%;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  border-radius: 0.65rem;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.platform-support__filters select,
+.platform-support__filters input {
+  min-height: 2.45rem;
+  padding: 0.48rem 0.58rem;
+  font-size: 0.8rem;
+}
+
+.platform-support__search {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr auto;
+  gap: 0.45rem;
+}
+
+.platform-support__queue-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.4rem;
+}
+
+.platform-support__thread {
+  display: grid;
+  width: 100%;
+  gap: 0.35rem;
+  padding: 0.72rem;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  background: transparent;
+  color: #0f172a;
+  text-align: left;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    transform 150ms ease;
+}
+
+.platform-support__thread:hover,
+.platform-support__thread:focus-visible {
+  border-color: rgba(37, 99, 235, 0.18);
+  background: #fff;
+}
+
+.platform-support__thread.is-selected {
+  border-color: rgba(37, 99, 235, 0.32);
+  background: #eff6ff;
+}
+
+.platform-support__thread > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.platform-support__thread > span,
+.platform-support__thread small {
+  color: #475569;
+  font-size: 0.73rem;
+}
+
+.platform-support__thread p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin: 0;
+  color: #334155;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.platform-support__status {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.42rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.65rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.platform-support__status--waiting_human {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.platform-support__status--in_progress {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.platform-support__status--resolved {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.platform-support__pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
+.platform-support__conversation {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.platform-support__conversation-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.platform-support__conversation-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.platform-support__conversation-title h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.platform-support__conversation-header p {
+  margin: 0.25rem 0 0;
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
+.platform-support__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+.platform-support__messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.8rem 1rem;
+  background:
+    radial-gradient(circle at top right, rgba(219, 234, 254, 0.4), transparent 35%),
+    #f8fafc;
+}
+
+.platform-support__message {
+  width: fit-content;
+  max-width: min(82%, 46rem);
+  margin: 0.55rem 0;
+  padding: 0.62rem 0.72rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 0.8rem;
+  background: #fff;
+  box-shadow: 0 5px 16px -15px rgba(15, 23, 42, 0.65);
+}
+
+.platform-support__message--human_support {
+  margin-left: auto;
+  border-color: rgba(37, 99, 235, 0.2);
+  background: #dbeafe;
+}
+
+.platform-support__message--assistant {
+  background: #eef2ff;
+}
+
+.platform-support__message--system {
+  max-width: 100%;
+  margin-right: auto;
+  margin-left: auto;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.platform-support__message > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.24rem;
+}
+
+.platform-support__message strong,
+.platform-support__message time {
+  font-size: 0.68rem;
+}
+
+.platform-support__message time {
+  color: #64748b;
+}
+
+.platform-support__message p {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.platform-support__reply {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.platform-support__reply label {
+  color: #475569;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.platform-support__reply textarea {
+  resize: vertical;
+  padding: 0.58rem 0.65rem;
+  line-height: 1.4;
+}
+
+.platform-support__reply > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.platform-support__reply span {
+  color: #64748b;
+  font-size: 0.7rem;
+}
+
+.platform-support button:focus-visible,
+.platform-support input:focus-visible,
+.platform-support select:focus-visible,
+.platform-support textarea:focus-visible,
+.platform-nav a:focus-visible {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 2px;
+}
+
+.platform-support__empty {
+  display: grid;
+  place-items: center;
+  gap: 0.3rem;
+  padding: 2rem 1rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.platform-support__empty--large {
+  flex: 1;
+}
+
+.platform-support__empty strong {
+  color: #334155;
+}
+
+.platform-support__empty span {
+  font-size: 0.8rem;
+}
+
+.platform-support__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 72rem) {
+  .platform-support__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .platform-support__workspace {
+    grid-template-columns: minmax(17rem, 0.75fr) minmax(24rem, 1.25fr);
+  }
+}
+
+@media (max-width: 52rem) {
+  .platform-topbar {
+    flex-wrap: wrap;
+  }
+
+  .platform-nav {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .platform-support__workspace {
+    display: flex;
+    height: auto;
+    min-height: 0;
+    flex-direction: column;
+    overflow: visible;
+  }
+
+  .platform-support__queue {
+    max-height: 30rem;
+    border-right: 0;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  }
+
+  .platform-support__conversation {
+    min-height: 34rem;
+  }
+}
+
+@media (max-width: 36rem) {
+  .platform-support__heading {
+    flex-direction: column;
+  }
+
+  .platform-support__metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .platform-support__filters {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-support__search {
+    grid-column: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .platform-support__conversation-header {
+    flex-direction: column;
+  }
+
+  .platform-support__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .platform-support__message {
+    max-width: 92%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .platform-nav a,
+  .platform-support__thread {
+    transition: none;
+  }
 }
 

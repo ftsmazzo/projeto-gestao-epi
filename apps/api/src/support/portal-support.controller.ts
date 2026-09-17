@@ -71,22 +71,4 @@ export class PortalSupportController {
     );
   }
 
-  @Post('return-ai')
-  returnToAi(
-    @CurrentUser() user: ClientJwtPayload,
-    @Body() _dto: SupportLoadThreadQueryDto,
-  ) {
-    return this.support.returnToAi(
-      {
-        audience: 'portal',
-        organizationId: user.organizationId,
-        userId: user.sub,
-        clientRole: user.clientRole,
-        servedClientId: user.servedClientId,
-      },
-      'CLIENTE',
-      user.servedClientId,
-      _dto.currentPath,
-    );
-  }
 }
