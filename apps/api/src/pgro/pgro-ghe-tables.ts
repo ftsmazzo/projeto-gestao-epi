@@ -87,6 +87,9 @@ const ADMIN_EPI_RE =
 const QUANT_HEADER_RE =
   /intensidade|concentra[cç][aã]o\s+avaliada|\blavg\b|\bdose\b|t[eé]cnica\s+utilizada|limite\s+de\s+exposi/i;
 
+const RISK_LEVEL_RE =
+  /^(?:muito\s+)?(?:baixo|moderado|alto|critico|insignificante|trivial|aceitavel|significativo)$/i;
+
 function cleanCell(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
@@ -252,6 +255,7 @@ export function parseGheTableBlocks(text: string): ParsedGheTableBlock[] {
       if (aprhoMatch && String(Number(aprhoMatch[1])).padStart(2, '0') === gheNumber) {
         i += 1;
         let quantitative = false;
+        let currentCategory: OccupationalRiskCategory | null = null;
         while (i < lines.length) {
           const line = cleanCell(lines[i]);
           if (isCharacterizationHeader(line)) break;
@@ -277,23 +281,36 @@ export function parseGheTableBlocks(text: string): ParsedGheTableBlock[] {
             i += 1;
             continue;
           }
-          if (cells.length >= 2) {
-            const category = mapCategory(cells[0]);
-            const agent = cleanCell(cells[1]);
-            if (category && agent.length >= 2 && !/^agente$/i.test(agent)) {
-              const epiCell =
-                cells.length >= 10
-                  ? cells[cells.length - 1]
-                  : cells.length >= 7
-                    ? cells[cells.length - 1]
-                    : cells[cells.length - 1];
+          // Linhas qualitativas reais têm agente, exposição, fonte, dano,
+          // avaliação e controle. Não herdar categoria em legendas/matrizes.
+          if (cells.length >= 7) {
+            const explicitCategory = mapCategory(cells[0]);
+            if (explicitCategory) currentCategory = explicitCategory;
+            const category = explicitCategory ?? currentCategory;
+            const offset = explicitCategory || !cells[0] ? 1 : 0;
+            const agent = cleanCell(cells[offset]);
+            if (
+              category &&
+              agent.length >= 2 &&
+              !/^agente$/i.test(agent) &&
+              !RISK_LEVEL_RE.test(agent)
+            ) {
+              const epiCell = cells[cells.length - 1];
               risks.push({
                 category,
                 agent,
-                exposure: cells[2] ? cleanCell(cells[2]) : null,
-                source: cells[3] ? cleanCell(cells[3]) : null,
-                possibleDamage: cells[5] ? cleanCell(cells[5]) : cells[4] ? cleanCell(cells[4]) : null,
-                riskLevel: cells.find((c) => /^(muito\s+)?(baixo|moderado|alto)$/i.test(c)) ?? null,
+                exposure: cells[offset + 1]
+                  ? cleanCell(cells[offset + 1])
+                  : null,
+                source: cells[offset + 2]
+                  ? cleanCell(cells[offset + 2])
+                  : null,
+                possibleDamage: cells[offset + 4]
+                  ? cleanCell(cells[offset + 4])
+                  : cells[offset + 3]
+                    ? cleanCell(cells[offset + 3])
+                    : null,
+                riskLevel: cells.find((c) => RISK_LEVEL_RE.test(c)) ?? null,
                 epiTexts: splitEpiTexts(epiCell),
               });
             }

@@ -5,6 +5,7 @@ import {
 } from '@prisma/client';
 import type { ConfirmPgroImportDto } from './dto/pgro-import.dto';
 import { normalizeTextKey, type PgroExtraAliasPack } from './pgro-parser';
+import { isJunkEpiNeedName } from '../epi-needs/epi-need-canonical';
 
 type AliasRow = {
   kind: PgroExtractionAliasKind;
@@ -222,7 +223,11 @@ export async function learnFromConfirm(
     const raw =
       prev?.extractedText || prev?.suggestedName || epi.suggestedName || '';
     const canonical = epi.suggestedName;
-    if (shouldLearn(raw, canonical)) {
+    const canLearnEpi =
+      !isJunkEpiNeedName(raw) &&
+      !isJunkEpiNeedName(canonical) &&
+      shouldLearn(raw, canonical);
+    if (canLearnEpi) {
       await upsertAlias(tx, {
         organizationId,
         kind: PgroExtractionAliasKind.EPI_NEED,
@@ -233,7 +238,7 @@ export async function learnFromConfirm(
     }
 
     const needId = epi.matchedEpiNeedId || prev?.matchedEpiNeedId;
-    if (needId && raw && shouldLearn(raw, canonical)) {
+    if (needId && raw && canLearnEpi) {
       const need = await tx.epiNeed.findFirst({
         where: { id: needId, organizationId },
         select: { id: true, aliases: true },

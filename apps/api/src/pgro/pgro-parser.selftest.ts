@@ -612,6 +612,54 @@ assert(
   );
 }
 
+// Regressao PGRO (9): linhas mescladas herdam categoria e separam EPI de
+// medidas administrativas/EPC na mesma celula de controle.
+{
+  const empilhadeira = parsePgroText(`
+Razão Social: Empresa Teste Ltda
+CNPJ: 12.345.678/0001-95
+Caracterização do GHE 15 – Operador de Empilhadeira
+Setor\tCargo/Função\tDescrição da Atividade\tDescrição do Ambiente
+PRODUÇÃO\tOPERADOR DE EMPILHADEIRA\tOpera empilhadeira no armazem.\tAMBIENTE INTERNO
+APRHO do GHE 15 – Operador de Empilhadeira
+Perigos\tExposição\tCausa / Fonte\tTrajetória\tPossíveis Danos\tAvaliação\tMedidas de Controle
+Categoria\tAgente\tGrau de Exposição\tGrau do Efeito\tPotencial\tEPI, EPC, Medida Administrativa
+Químico\tVazamento de Gás\tHabitual\tTroca do cilindro\tVapores\tDoenças Pulmonares\t3\t3\tModerado\tSempre Substituir O Anel De Vedação, Desligar A Empilhadeira, Proibir Fontes De Ignição
+Acidente\tFalta De Visibilidade\tHabitual\tCirculação\tContato\tLesões\t2\t2\tBaixo\tRespeitar Limite de Velocidade
+Incêndio e Explosão\tHabitual\tTroca do cilindro\tContato\tQueimadura\t3\t3\tModerado\tDesligar A Empilhadeira, Fechar A Válvula Do Cilindro Vazio, Esperar Resfriamento Do Sistema, Proibir Fontes De Ignição. Botina de Segurança com Bico de Polipropileno, Óculos de Segurança de Policarbonato, Luva de Segurança de Vaqueta, Luva de Segurança com Banho de Pu
+\tColisão com obstáculos\tHabitual\tCirculação\tContato\tLesões\t2\t2\tBaixo\tCapacete de Segurança
+Potencial de Risco
+Muito Baixo\tBaixo\tModerado\tAlto\tMuito Alto
+`);
+  const names = empilhadeira.epiNeeds.map((item) => item.suggestedName);
+  assert(
+    names.some((name) => /botina/i.test(name)),
+    `faltou botina: ${names.join(' | ')}`,
+  );
+  assert(
+    names.filter((name) => /[oó]culos|luva/i.test(name)).length === 3,
+    `faltaram oculos/luvas: ${names.join(' | ')}`,
+  );
+  assert(
+    !names.some((name) =>
+      /desligar|substituir|proibir|fechar|esperar|velocidade/i.test(name),
+    ),
+    `medida administrativa virou EPI: ${names.join(' | ')}`,
+  );
+  assert(
+    empilhadeira.risks.some((risk) => /inc[eê]ndio/i.test(risk.name)),
+    'linha mesclada deve herdar categoria Acidente',
+  );
+  assert(
+    empilhadeira.risks.some((risk) => /colis[aã]o/i.test(risk.name)),
+    'linha com primeira celula vazia deve herdar categoria Acidente',
+  );
+  assert(
+    !empilhadeira.risks.some((risk) => /muito baixo/i.test(risk.name)),
+    'legenda da matriz de risco nao deve virar risco ocupacional',
+  );
+}
+
 // Validacao reversa: setor/funcao da planilha → riscos do GHE no texto.
 {
   const remine = reminePgroCoverageForJobs(SAMPLE_REAL, [

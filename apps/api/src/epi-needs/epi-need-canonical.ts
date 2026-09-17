@@ -99,7 +99,24 @@ const FAMILY_SPLIT_RE =
   /(?=\b(?:Botinas?|Botas?|Capacete|Oculos|Óculos|Luvas?|Protetor|Respirador|Mascara|Máscara|Avental|Viseira|Creme|Uniforme|Cinto|Talabarte|Mangote|Macac[aã]o|Touca|Perneira|Cal[cç]ado)\b)/i;
 
 const JUNK_EPI_NAME_RE =
-  /^(?:realizar|efetuar|executar|manter|garantir|promover|adotar|usar|utilizar|respeitar|obedecer|seguir|defini[cç][aã]o)\b|exame\s+de\s+audiometria|manuten[cç][aã]o\s+de\s+rotina|tempo\s+de\s+espera|antes\s+de\s+tocar|gin[aá]stica\s+laboral|plano\s+de\s+a[cç][aã]o|medidas?\s+administrativas?|orienta[cç][aã]o\s+t[eé]cnica|treinamento\b|procedimento\b|sinaliza[cç][aã]o|avalia[cç][aã]o\s+(?:medica|periodica|ocupacional)|fornecimento\s+de\s+epi|controle\s+de\s+entrega|planejamento\b|controle\s+de\s+velocidade|limite\s+de\s+velocidade|medida(?:s)?\s+de\s+controle|^\(?\s*(?:poeira|fumos|ru[ií]do|calor)\b/i;
+  /^(?:(?:sempre\s+)?(?:realizar|efetuar|executar|fazer|operar|manter|garantir|promover|adotar|usar|utilizar|respeitar|obedecer|seguir|substituir|desligar|proibir|fechar|esperar|verificar|inspecionar|eliminar|evitar|isolar|defini[cç][aã]o))\b|^uso\s+de\b|exame\s+de\s+audiometria|^manuten[cç][aã]o\b|tempo\s+de\s+espera|antes\s+de\s+tocar|gin[aá]stica\s+laboral|plano\s+de\s+a[cç][aã]o|medidas?\s+administrativas?|orienta[cç][aã]o\s+t[eé]cnica|treinamento\b|procedimento\b|sinaliza[cç][aã]o|avalia[cç][aã]o\s+(?:medica|periodica|ocupacional)|fornecimento\s+de\s+epi|controle\s+de\s+entrega|planejamento\b|controle\s+de\s+velocidade|limite\s+de\s+velocidade|medida(?:s)?\s+de\s+controle|ventiladores?\b|exaustores?\b|^\(?\s*(?:poeira|fumos|ru[ií]do|calor)\b/i;
+
+const EPI_FAMILY_START_RE =
+  /^(?:botinas?|botas?|capacete|[oó]culos|luvas?|protetor|respirador|m[aá]scara|avental|viseira|creme|uniforme|cinto|talabarte|mangote|macac[aã]o|touca|perneira|cal[cç]ado)\b/i;
+
+const PROMPT_INJECTION_RE =
+  /\b(?:ignore|ignorar|desconsidere|esque[cç]a|override|prompt|cadastre|execute|responda|previous\s+directions?|instru[cç][oõ]es?\s+(?:anteriores?|do\s+sistema)|regras?\s+(?:anteriores?|do\s+sistema))\b/i;
+
+function normalizeEpiCandidate(name: string): string {
+  const compact = name.replace(/\s+/g, ' ').trim();
+  const withoutUsagePrefix = compact.replace(
+    /^uso\s+(?:de|do|da|dos|das)\s+(?=[A-Za-zÀ-ÿ])/i,
+    '',
+  );
+  return EPI_FAMILY_START_RE.test(withoutUsagePrefix)
+    ? withoutUsagePrefix
+    : compact;
+}
 
 /** Nivel de risco APRHO colado na coluna EPI (ex.: "Moderado"). */
 const RISK_LEVEL_ONLY_RE =
@@ -162,14 +179,17 @@ export function canonicalEpiNeedKey(name: string): string {
 }
 
 export function isJunkEpiNeedName(name: string): boolean {
-  const trimmed = name.replace(/\s+/g, ' ').trim();
+  const trimmed = normalizeEpiCandidate(name);
   if (trimmed.length < 4) return true;
+  if (trimmed.length > 180) return true;
   if (/^[^\p{L}]+$/u.test(trimmed)) return true;
   if (trimmed.startsWith('(') && trimmed.length < 48) return true;
   if (RISK_LEVEL_ONLY_RE.test(trimmed)) return true;
   if (BEHAVIORAL_INSTRUCTION_RE.test(trimmed)) return true;
   if (ADMIN_MEASURE_RE.test(trimmed)) return true;
   if (JUNK_EPI_NAME_RE.test(trimmed)) return true;
+  if (PROMPT_INJECTION_RE.test(trimmed)) return true;
+  if (/\b(?:de|da|do|das|dos|com|para|tipo)$/i.test(trimmed)) return true;
   const key = canonicalEpiNeedKey(trimmed);
   if (!key) return true;
   const tokens = key.split(' ');
@@ -278,7 +298,7 @@ export function epiNeedsAreSame(left: string, right: string): boolean {
 }
 
 export function canonicalizeEpiNeedLabel(name: string): string | null {
-  const trimmed = name.replace(/\s+/g, ' ').trim();
+  const trimmed = normalizeEpiCandidate(name);
   if (!trimmed || isJunkEpiNeedName(trimmed)) return null;
   const seed = resolveEpiNeedSeedForIdentity(trimmed);
   if (seed) return seed.name;

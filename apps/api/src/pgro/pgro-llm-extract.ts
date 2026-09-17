@@ -11,8 +11,20 @@ import {
   type PgroParseResult,
 } from './pgro-parser';
 import { clampPgroName } from './pgro-limits';
+import {
+  collapseExtractedEpiLabels,
+} from '../epi-needs/epi-need-canonical';
+import {
+  PgroResponseTooLargeError,
+  readResponseTextWithLimit,
+} from './pgro-http-response';
 
 const RISK_CATEGORIES = new Set<string>(Object.values(OccupationalRiskCategory));
+const MAX_MODEL_ITEMS = 500;
+const MAX_EPI_LABELS_PER_ITEM = 20;
+const MAX_EXTRACTED_EPIS = 500;
+const MAX_ASSOCIATIONS_PER_ITEM = 100;
+const MAX_MODEL_RESPONSE_BYTES = 2_000_000;
 
 type LlmCompany = Partial<PgroCompanyData>;
 type LlmSector = { name?: string };
@@ -46,6 +58,18 @@ type LlmPayload = {
 };
 
 type PgroLlmSourceKind = 'PDF' | 'DOCX' | 'DOC';
+
+function sanitizeExtractedEpiNeeds(
+  epi: PgroExtractedEpiNeed,
+): PgroExtractedEpiNeed[] {
+  return collapseExtractedEpiLabels([epi.suggestedName])
+    .slice(0, MAX_EPI_LABELS_PER_ITEM)
+    .map((suggestedName, index) => ({
+      ...epi,
+      tempId: index === 0 ? epi.tempId : randomUUID(),
+      suggestedName,
+    }));
+}
 
 function asTrimmedString(value: unknown): string | null {
   if (typeof value === 'string') {
@@ -99,6 +123,7 @@ function llmToParseResult(
   base: PgroParseResult,
 ): PgroParseResult {
   const sectors: PgroExtractedSector[] = (payload.sectors ?? [])
+    .slice(0, MAX_MODEL_ITEMS)
     .map((s) => (s.name ?? '').trim())
     .filter((name) => name.length >= 2)
     .map((name) => ({
@@ -112,6 +137,7 @@ function llmToParseResult(
     }));
 
   const functions: PgroExtractedFunction[] = (payload.functions ?? [])
+    .slice(0, MAX_MODEL_ITEMS)
     .map((fn) => ({
       tempId: randomUUID(),
       name: (fn.name ?? '').trim(),
@@ -127,6 +153,7 @@ function llmToParseResult(
     .filter((fn) => fn.name.length >= 2);
 
   const risks: PgroExtractedRisk[] = (payload.risks ?? [])
+    .slice(0, MAX_MODEL_ITEMS)
     .map((risk) => {
       const name = clampPgroName((risk.name ?? '').trim());
       return {
@@ -138,7 +165,9 @@ function llmToParseResult(
       possibleDamage: null,
       riskLevel: null,
       functionNames: Array.isArray(risk.functionNames)
-        ? risk.functionNames.filter((n) => typeof n === 'string' && n.trim())
+        ? risk.functionNames
+            .filter((n) => typeof n === 'string' && n.trim())
+            .slice(0, MAX_ASSOCIATIONS_PER_ITEM)
         : [],
       rawText: (risk.name ?? '').trim(),
       included: true,
@@ -149,29 +178,39 @@ function llmToParseResult(
     })
     .filter((r) => r.name.length >= 2);
 
-  const epiNeeds: PgroExtractedEpiNeed[] = (payload.epiNeeds ?? [])
-    .map((epi) => {
-      const name = (epi.name ?? epi.extractedText ?? '').trim();
-      return {
+  const epiNeeds: PgroExtractedEpiNeed[] = [];
+  for (const epi of (payload.epiNeeds ?? []).slice(0, MAX_MODEL_ITEMS)) {
+    if (epiNeeds.length >= MAX_EXTRACTED_EPIS) break;
+    const extractedText = (epi.extractedText ?? epi.name ?? '').trim();
+    const names = collapseExtractedEpiLabels([
+      (epi.name ?? epi.extractedText ?? '').trim(),
+    ]).slice(0, MAX_EPI_LABELS_PER_ITEM);
+    for (const name of names) {
+      if (epiNeeds.length >= MAX_EXTRACTED_EPIS) break;
+      epiNeeds.push({
         tempId: randomUUID(),
-        extractedText: (epi.extractedText ?? name).trim() || name,
+        extractedText: extractedText || name,
         suggestedName: name,
         matchedEpiNeedId: null,
         matchedEpiNeedName: null,
         createNew: true,
         functionNames: Array.isArray(epi.functionNames)
-          ? epi.functionNames.filter((n) => typeof n === 'string' && n.trim())
+          ? epi.functionNames
+              .filter((n) => typeof n === 'string' && n.trim())
+              .slice(0, MAX_ASSOCIATIONS_PER_ITEM)
           : [],
         riskNames: Array.isArray(epi.riskNames)
-          ? epi.riskNames.filter((n) => typeof n === 'string' && n.trim())
+          ? epi.riskNames
+              .filter((n) => typeof n === 'string' && n.trim())
+              .slice(0, MAX_ASSOCIATIONS_PER_ITEM)
           : [],
         included: true,
         confidence: 'low' as const,
         extractionSource: 'KEYWORD' as const,
         gheName: null,
-      };
-    })
-    .filter((e) => e.suggestedName.length >= 2);
+      });
+    }
+  }
 
   const company: PgroCompanyData = {
     legalName: pickText(payload.company?.legalName, base.company.legalName),
@@ -271,28 +310,33 @@ export function mergePgroParseResults(
     }
     existing.functionNames = [
       ...new Set([...existing.functionNames, ...risk.functionNames]),
-    ];
+    ].slice(0, MAX_ASSOCIATIONS_PER_ITEM);
     if (!existing.source && risk.source) existing.source = risk.source;
     if (!existing.exposure && risk.exposure) existing.exposure = risk.exposure;
   }
   const risks = [...riskByName.values()];
 
-  const epiByName = new Map(
-    heuristic.epiNeeds.map((e) => [normalizeTextKey(e.suggestedName), e] as const),
-  );
-  for (const epi of llm.epiNeeds) {
-    const key = normalizeTextKey(epi.suggestedName);
-    const existing = epiByName.get(key);
-    if (!existing) {
-      epiByName.set(key, epi);
-      continue;
+  const epiByName = new Map<string, PgroExtractedEpiNeed>();
+  for (const rawEpi of heuristic.epiNeeds) {
+    for (const epi of sanitizeExtractedEpiNeeds(rawEpi)) {
+      epiByName.set(normalizeTextKey(epi.suggestedName), epi);
     }
-    existing.functionNames = [
-      ...new Set([...existing.functionNames, ...epi.functionNames]),
-    ];
-    existing.riskNames = [
-      ...new Set([...(existing.riskNames ?? []), ...(epi.riskNames ?? [])]),
-    ];
+  }
+  for (const rawEpi of llm.epiNeeds) {
+    for (const epi of sanitizeExtractedEpiNeeds(rawEpi)) {
+      const key = normalizeTextKey(epi.suggestedName);
+      const existing = epiByName.get(key);
+      if (!existing) {
+        epiByName.set(key, epi);
+        continue;
+      }
+      existing.functionNames = [
+        ...new Set([...existing.functionNames, ...epi.functionNames]),
+      ].slice(0, MAX_ASSOCIATIONS_PER_ITEM);
+      existing.riskNames = [
+        ...new Set([...(existing.riskNames ?? []), ...(epi.riskNames ?? [])]),
+      ].slice(0, MAX_ASSOCIATIONS_PER_ITEM);
+    }
   }
   const epiNeeds = [...epiByName.values()];
 
@@ -421,7 +465,7 @@ export async function extractPgroWithOpenAiText(
       {
         role: 'system',
         content:
-          'Voce extrai estrutura de um PGR/PGRO brasileiro (setores, funcoes/cargos, riscos ocupacionais e EPIs). Responda so JSON valido. Ignore empresa elaboradora/consultoria SST; foque na empresa CONTRATADA/cliente. Nomes em portugues. IMPORTANTE: setor e a area/departamento (ex.: ACM, Caldeiraria Leve, Almoxarifado). Nunca coloque Junior/Pleno/Senior no nome do setor — isso pertence ao cargo/funcao. PDF impresso de Word e valido (tem texto).',
+          'Voce extrai estrutura de um PGR/PGRO brasileiro (setores, funcoes/cargos, riscos ocupacionais e EPIs). Responda so JSON valido. Ignore empresa elaboradora/consultoria SST; foque na empresa CONTRATADA/cliente. Nomes em portugues. IMPORTANTE: setor e a area/departamento (ex.: ACM, Caldeiraria Leve, Almoxarifado). Nunca coloque Junior/Pleno/Senior no nome do setor — isso pertence ao cargo/funcao. Em epiNeeds, inclua SOMENTE equipamentos de protecao individual vestiveis ou entregaveis ao trabalhador. Nunca classifique como EPI procedimentos, comandos, treinamento, manutencao, sinalizacao, EPC, protecao coletiva, componente de maquina, acao preventiva ou medida administrativa, mesmo quando estiverem na mesma celula. Se uma celula misturar medidas e EPIs, extraia somente cada EPI real. PDF impresso de Word e valido (tem texto).',
       },
       {
         role: 'user',
@@ -447,7 +491,10 @@ ${excerpt}`,
   });
 
   if (!res.ok) {
-    const errText = await res.text().catch(() => '');
+    const errText = await readResponseTextWithLimit(
+      res,
+      MAX_MODEL_RESPONSE_BYTES,
+    ).catch(() => '');
     return {
       ...base,
       warnings: [
@@ -458,9 +505,36 @@ ${excerpt}`,
     };
   }
 
-  const json = (await res.json()) as {
+  let rawResponse: string;
+  try {
+    rawResponse = await readResponseTextWithLimit(
+      res,
+      MAX_MODEL_RESPONSE_BYTES,
+    );
+  } catch (error) {
+    return {
+      ...base,
+      warnings: [
+        ...base.warnings,
+        error instanceof PgroResponseTooLargeError
+          ? 'IA retornou resposta grande demais para o PGR.'
+          : 'Nao foi possivel ler a resposta da IA para o PGR.',
+      ],
+      parseMethod: 'HEURISTIC',
+    };
+  }
+  let json: {
     choices?: Array<{ message?: { content?: unknown } }>;
   };
+  try {
+    json = JSON.parse(rawResponse) as typeof json;
+  } catch {
+    return {
+      ...base,
+      warnings: [...base.warnings, 'IA retornou resposta HTTP invalida para o PGR.'],
+      parseMethod: 'HEURISTIC',
+    };
+  }
   const content = extractTextContent(json.choices?.[0]?.message?.content);
   let parsed: LlmPayload;
   try {

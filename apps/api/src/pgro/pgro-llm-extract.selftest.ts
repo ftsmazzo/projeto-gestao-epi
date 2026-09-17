@@ -124,6 +124,36 @@ const llm: PgroParseResult = {
       extractionSource: 'KEYWORD',
       gheName: null,
     },
+    {
+      tempId: 'e2',
+      extractedText: 'Desligar a empilhadeira',
+      suggestedName: 'Desligar a empilhadeira',
+      matchedEpiNeedId: null,
+      matchedEpiNeedName: null,
+      createNew: true,
+      functionNames: ['OPERADOR'],
+      riskNames: ['Vazamento de gas'],
+      included: true,
+      confidence: 'low',
+      extractionSource: 'KEYWORD',
+      gheName: null,
+    },
+    {
+      tempId: 'e3',
+      extractedText:
+        'Botina de Segurança, Óculos de Segurança, Luva de Vaqueta',
+      suggestedName:
+        'Botina de Segurança, Óculos de Segurança, Luva de Vaqueta',
+      matchedEpiNeedId: null,
+      matchedEpiNeedName: null,
+      createNew: true,
+      functionNames: ['OPERADOR'],
+      riskNames: ['Acidente'],
+      included: true,
+      confidence: 'low',
+      extractionSource: 'KEYWORD',
+      gheName: null,
+    },
   ],
   warnings: ['llm'],
   ignoredCandidates: [],
@@ -142,7 +172,36 @@ assert(merged.company.cnae === '10.31-7-00', 'preenche cnae do llm');
 assert(merged.sectors.length === 2, `setores: ${merged.sectors.length}`);
 assert(merged.functions.length === 2, `funcoes: ${merged.functions.length}`);
 assert(merged.risks.length === 1, 'riscos');
-assert(merged.epiNeeds.length === 1, 'epis');
+assert(merged.epiNeeds.length === 4, `epis separados: ${merged.epiNeeds.length}`);
+assert(
+  !merged.epiNeeds.some((epi) => /desligar/i.test(epi.suggestedName)),
+  'medida administrativa da IA removida',
+);
+assert(
+  new Set(merged.epiNeeds.map((epi) => epi.tempId)).size ===
+    merged.epiNeeds.length,
+  'EPIs separados precisam de tempId unico',
+);
+const associationHeavy = mergePgroParseResults(heuristic, {
+  ...llm,
+  epiNeeds: Array.from({ length: 5 }, (_, group) => ({
+    ...llm.epiNeeds[0],
+    tempId: `heavy-${group}`,
+    functionNames: Array.from(
+      { length: 100 },
+      (_, index) => `FUNCAO ${group}-${index}`,
+    ),
+    riskNames: Array.from(
+      { length: 100 },
+      (_, index) => `RISCO ${group}-${index}`,
+    ),
+  })),
+});
+assert(
+  associationHeavy.epiNeeds[0].functionNames.length <= 100 &&
+    associationHeavy.epiNeeds[0].riskNames.length <= 100,
+  'merge precisa preservar teto de associacoes',
+);
 assert(
   merged.sectors.some((s) => s.name === 'PRODUCAO' && s.confidence === 'high'),
   'mantem high confidence',

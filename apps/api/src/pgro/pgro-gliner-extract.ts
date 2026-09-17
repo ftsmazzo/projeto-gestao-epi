@@ -10,8 +10,18 @@ import {
   type PgroParseResult,
 } from './pgro-parser';
 import { clampPgroName } from './pgro-limits';
+import { collapseExtractedEpiLabels } from '../epi-needs/epi-need-canonical';
+import {
+  PgroResponseTooLargeError,
+  readResponseTextWithLimit,
+} from './pgro-http-response';
 
 const RISK_CATEGORIES = new Set<string>(Object.values(OccupationalRiskCategory));
+const MAX_MODEL_ITEMS = 500;
+const MAX_EPI_LABELS_PER_ITEM = 20;
+const MAX_EXTRACTED_EPIS = 500;
+const MAX_ASSOCIATIONS_PER_ITEM = 100;
+const MAX_MODEL_RESPONSE_BYTES = 2_000_000;
 
 type FlexiblePayload = Record<string, unknown>;
 
@@ -21,7 +31,7 @@ function asObject(value: unknown): FlexiblePayload | null {
 }
 
 function asList(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
+  return Array.isArray(value) ? value.slice(0, MAX_MODEL_ITEMS) : [];
 }
 
 function asTrimmedString(value: unknown): string | null {
@@ -47,7 +57,8 @@ function asNullableNumber(value: unknown): number | null {
 function asStringList(value: unknown): string[] {
   return asList(value)
     .map((item) => asTrimmedString(item))
-    .filter((item): item is string => Boolean(item));
+    .filter((item): item is string => Boolean(item))
+    .slice(0, MAX_ASSOCIATIONS_PER_ITEM);
 }
 
 function asCategory(value: unknown): OccupationalRiskCategory {
@@ -193,24 +204,31 @@ function buildParseResultFromPayload(
     ...pickEntityTexts(entitiesObj?.epi).map((name) => ({ name })),
   ];
   for (const row of epiRows) {
+    if (epiNeeds.length >= MAX_EXTRACTED_EPIS) break;
     const obj = asObject(row) ?? {};
-    const name =
+    const extractedText =
       asTrimmedString(obj.name) ?? asTrimmedString(obj.extractedText) ?? '';
-    if (!name || name.length < 2) continue;
-    epiNeeds.push({
-      tempId: randomUUID(),
-      extractedText: asTrimmedString(obj.extractedText) ?? name,
-      suggestedName: name,
-      matchedEpiNeedId: null,
-      matchedEpiNeedName: null,
-      createNew: true,
-      functionNames: asStringList(obj.functionNames),
-      riskNames: asStringList(obj.riskNames),
-      included: true,
-      confidence: 'low',
-      extractionSource: 'KEYWORD',
-      gheName: null,
-    });
+    const names = collapseExtractedEpiLabels([extractedText]).slice(
+      0,
+      MAX_EPI_LABELS_PER_ITEM,
+    );
+    for (const name of names) {
+      if (epiNeeds.length >= MAX_EXTRACTED_EPIS) break;
+      epiNeeds.push({
+        tempId: randomUUID(),
+        extractedText: asTrimmedString(obj.extractedText) ?? extractedText,
+        suggestedName: name,
+        matchedEpiNeedId: null,
+        matchedEpiNeedName: null,
+        createNew: true,
+        functionNames: asStringList(obj.functionNames),
+        riskNames: asStringList(obj.riskNames),
+        included: true,
+        confidence: 'low',
+        extractionSource: 'KEYWORD',
+        gheName: null,
+      });
+    }
   }
 
   const company: PgroCompanyData = {
@@ -280,7 +298,7 @@ export async function extractPgroWithGlinerText(
       sector: 'Setor/departamento do trabalhador no PGR',
       function: 'Cargo ou funcao de trabalho no PGR',
       risk: 'Agente de risco ocupacional citado no PGR',
-      epi: 'EPI citado nas medidas de controle',
+      epi: 'Somente equipamento de protecao individual vestivel ou entregavel ao trabalhador; excluir procedimento, comando, manutencao, EPC, protecao coletiva e medida administrativa',
       company: 'Razao social da empresa cliente',
       cnpj: 'CNPJ da empresa cliente',
       cnae: 'CNAE da atividade principal',
@@ -308,7 +326,10 @@ export async function extractPgroWithGlinerText(
     });
 
     if (!res.ok) {
-      const errText = await res.text().catch(() => '');
+      const errText = await readResponseTextWithLimit(
+        res,
+        MAX_MODEL_RESPONSE_BYTES,
+      ).catch(() => '');
       return {
         ...base,
         warnings: [
@@ -319,7 +340,37 @@ export async function extractPgroWithGlinerText(
       };
     }
 
-    const payload = (await res.json()) as unknown;
+    let rawResponse: string;
+    try {
+      rawResponse = await readResponseTextWithLimit(
+        res,
+        MAX_MODEL_RESPONSE_BYTES,
+      );
+    } catch (error) {
+      return {
+        ...base,
+        warnings: [
+          ...base.warnings,
+          error instanceof PgroResponseTooLargeError
+            ? 'GLiNER retornou resposta grande demais para o PGR.'
+            : 'Nao foi possivel ler a resposta do GLiNER para o PGR.',
+        ],
+        parseMethod: 'HEURISTIC',
+      };
+    }
+    let payload: unknown;
+    try {
+      payload = JSON.parse(rawResponse) as unknown;
+    } catch {
+      return {
+        ...base,
+        warnings: [
+          ...base.warnings,
+          'GLiNER retornou resposta HTTP invalida para o PGR.',
+        ],
+        parseMethod: 'HEURISTIC',
+      };
+    }
     const parsed = buildParseResultFromPayload(payload, base);
     parsed.structureWeak = isPgroStructureWeak(parsed);
     return parsed;

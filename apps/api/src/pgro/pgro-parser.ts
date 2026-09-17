@@ -1681,7 +1681,7 @@ export function parsePgroText(
       );
     }
 
-    let sectors = uniqueByName(
+    const sectors = uniqueByName(
       applyLearnedNameAliases(tabular.sectors, extra?.sectors ?? []),
     );
     let functions = uniqueBySectorAndFunction(
@@ -1819,7 +1819,7 @@ export function parsePgroText(
     }
   }
 
-  let sectors = uniqueByName(
+  const sectors = uniqueByName(
     applyLearnedNameAliases(sectorItems, extra?.sectors ?? []),
   );
   let functions = uniqueBySectorAndFunction(
