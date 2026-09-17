@@ -43,7 +43,7 @@ function bufferFromPdf(
       size: 'A4',
       margin: 48,
       info: {
-        Title: 'ProntEPI',
+        Title: 'ProntEPI – Plataforma de Gestão Digital de SST',
         Author: 'ProntEPI',
       },
     });
@@ -227,7 +227,7 @@ export class PortalPdfService {
         .fontSize(8)
         .fillColor('#444')
         .text(
-          'Documento gerado pelo ProntEPI. A impressao pelo navegador permanece disponivel como alternativa.',
+          'Documento gerado pelo ProntEPI – Plataforma de Gestão Digital de SST. A impressao pelo navegador permanece disponivel como alternativa.',
         );
       doc
         .font('Helvetica')
@@ -380,7 +380,7 @@ export class PortalPdfService {
         .fontSize(8)
         .fillColor('#444')
         .text(
-          'Documento gerado pelo ProntEPI. A impressao pelo navegador permanece disponivel como alternativa.',
+          'Documento gerado pelo ProntEPI – Plataforma de Gestão Digital de SST. A impressao pelo navegador permanece disponivel como alternativa.',
         );
       doc
         .font('Helvetica')

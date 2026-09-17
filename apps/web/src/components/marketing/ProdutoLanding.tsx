@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { APP_NAME } from '@gestao-epi/shared';
+import { APP_FULL_NAME, APP_NAME } from '@gestao-epi/shared';
 import { BrandMark } from '../BrandMark';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 
@@ -239,8 +239,8 @@ export function ProdutoLanding() {
                 <span>prova real e sem gargalo operacional.</span>
               </h1>
               <p className="produto-lp__lead">
-                Do estoque a assinatura, o ProntEPI conecta operacao, evidencias e conformidade em
-                um fluxo rapido para consultoria e empresa.
+                {APP_FULL_NAME} conecta estoque, assinatura, evidencias e conformidade em um fluxo
+                rapido para consultorias e empresas.
               </p>
               <div className="produto-lp__cta-row">
                 <button
@@ -463,7 +463,7 @@ export function ProdutoLanding() {
         <div className="produto-lp__footer-brand">
           <BrandMark className="produto-lp__footer-mark" title={APP_NAME} />
           <span>
-            {APP_NAME} · entrega com conformidade
+            {APP_FULL_NAME}
           </span>
         </div>
         <div className="produto-lp__footer-links">

@@ -1,4 +1,6 @@
 export const APP_NAME = 'ProntEPI';
+export const APP_DESCRIPTOR = 'Plataforma de Gestão Digital de SST';
+export const APP_FULL_NAME = `${APP_NAME} – ${APP_DESCRIPTOR}`;
 export const APP_TAGLINE = 'EPI sob controle. Entrega sem falha.';
 export const APP_PITCH =
   'Da implantacao ao comprovante facial — conformidade NR-06 no ritmo da operacao.';

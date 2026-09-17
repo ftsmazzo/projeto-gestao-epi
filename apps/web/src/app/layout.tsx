@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
+import { APP_FULL_NAME, APP_NAME, APP_PITCH } from '@gestao-epi/shared';
 import { PwaManifestSwitch } from '../components/PwaManifestSwitch';
 import { ServiceWorkerRegister } from '../components/ServiceWorkerRegister';
 import './globals.css';
@@ -15,7 +15,7 @@ import '@fontsource/jetbrains-mono/600.css';
 
 export const metadata: Metadata = {
   title: {
-    default: `${APP_NAME} — ${APP_TAGLINE}`,
+    default: APP_FULL_NAME,
     template: `%s · ${APP_NAME}`,
   },
   description: APP_PITCH,

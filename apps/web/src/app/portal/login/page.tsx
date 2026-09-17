@@ -1,6 +1,6 @@
 'use client';
 
-import { APP_NAME } from '@gestao-epi/shared';
+import { APP_FULL_NAME } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -47,7 +47,7 @@ function PortalLoginForm() {
     <AuthLayout
       brandHref="/portal/login"
       brandTone="portal"
-      kicker={`${APP_NAME} · Painel do cliente`}
+      kicker={`${APP_FULL_NAME} · Painel do cliente`}
       footer={
         <>
           E da Consultoria? <Link href="/login">Entrar na gestao</Link>

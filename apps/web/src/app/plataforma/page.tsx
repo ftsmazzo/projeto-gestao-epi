@@ -5,7 +5,7 @@ import type {
   PlatformOverview,
   PlatformTenantRow,
 } from '@gestao-epi/shared';
-import { formatBrlFromCents } from '@gestao-epi/shared';
+import { APP_FULL_NAME, formatBrlFromCents } from '@gestao-epi/shared';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { RequirePlatformAuth } from '../../components/RequirePlatformAuth';
 import {
@@ -225,7 +225,7 @@ function PlataformaContent({ userName }: { userName: string }) {
     <div className="module-page">
       <header className="dash-page-header">
         <div>
-          <p className="page-kicker">ProntEPI · SaaS</p>
+          <p className="page-kicker">{APP_FULL_NAME} · Administração SaaS</p>
           <h1 className="page-title">Gestao das consultorias</h1>
           <p className="page-lead">
             Ola, {userName}. Franquia, atacado, ocupacao e convite (e-mail e

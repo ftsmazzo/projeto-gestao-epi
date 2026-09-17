@@ -70,7 +70,10 @@ function bufferFromPdf(
       size: 'A4',
       margins: { top: 36, bottom: 44, left: 36, right: 36 },
       bufferPages: true,
-      info: { Title: 'ProntEPI — Documento SST', Author: 'ProntEPI' },
+      info: {
+        Title: 'ProntEPI – Plataforma de Gestão Digital de SST — Documento SST',
+        Author: 'ProntEPI',
+      },
     });
     const chunks: Buffer[] = [];
     doc.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -630,7 +633,7 @@ async function drawFaceEvidence(
 }
 
 function writeGeneratedNote(doc: PDFKit.PDFDocument, generatedAt: string) {
-  const note = `Documento gerado pelo ProntEPI em ${formatDateTimeBr(generatedAt)}.`;
+  const note = `Documento gerado pelo ProntEPI – Plataforma de Gestão Digital de SST em ${formatDateTimeBr(generatedAt)}.`;
   if (doc.y + 12 > doc.page.height - doc.page.margins.bottom) return;
   doc
     .font('Helvetica')

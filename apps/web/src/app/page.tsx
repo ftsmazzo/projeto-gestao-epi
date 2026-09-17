@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
+import { APP_DESCRIPTOR, APP_NAME, APP_PITCH, APP_TAGLINE } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { AppShell } from '../components/AppShell';
 import { BrandLockup } from '../components/BrandLockup';
@@ -38,7 +38,7 @@ export default function HomePage() {
           <BrandLockup
             onDark={false}
             className="hero-lockup"
-            subtitle="Gestao digital de EPI"
+            subtitle={APP_DESCRIPTOR}
           />
           <h1 className="hero-title">{APP_TAGLINE}</h1>
           <p className="hero-lead">{APP_PITCH}</p>

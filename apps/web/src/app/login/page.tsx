@@ -1,6 +1,6 @@
 'use client';
 
-import { APP_NAME } from '@gestao-epi/shared';
+import { APP_FULL_NAME, APP_NAME } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -35,7 +35,7 @@ export default function LoginPage() {
 
   return (
     <AuthLayout
-      kicker={`${APP_NAME} · Consultoria`}
+      kicker={`${APP_FULL_NAME} · Consultoria`}
       footer={
         <>
           Ainda nao tem acesso? A {APP_NAME} cria sua consultoria.

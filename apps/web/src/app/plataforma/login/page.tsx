@@ -1,6 +1,6 @@
 'use client';
 
-import { APP_NAME } from '@gestao-epi/shared';
+import { APP_FULL_NAME, APP_NAME } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -30,7 +30,7 @@ export default function PlatformLoginPage() {
 
   return (
     <AuthLayout
-      kicker={`${APP_NAME} · Plataforma`}
+      kicker={`${APP_FULL_NAME} · Administração SaaS`}
       footer={
         <>
           Consultoria? <Link href="/login">Entrar no painel do gestor</Link>
