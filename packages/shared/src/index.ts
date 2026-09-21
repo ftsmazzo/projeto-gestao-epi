@@ -7,6 +7,7 @@ export const APP_PITCH =
 
 export const API_DEFAULT_PORT = 3001;
 
+export * from './alert-copy';
 export * from './face-biometrics';
 export * from './life-pricing';
 export * from './caepi-need-query';

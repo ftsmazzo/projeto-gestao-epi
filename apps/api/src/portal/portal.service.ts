@@ -27,10 +27,15 @@ import {
   FACE_ENGINE,
   FACE_ENGINE_VERSION,
   assessNeedEquipmentCompatibility,
+  biometricAlertSentence,
+  caAlertSentence,
   isLivenessChallengeType,
   isLivenessRequired,
   isValidFaceDescriptor,
+  replacementAlertSentence,
   resolveFaceMatchThreshold,
+  stockAlertSentence,
+  summarizeAlertLines,
 } from '@gestao-epi/shared';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { existsSync } from 'fs';
@@ -277,7 +282,11 @@ export class PortalService {
           organizationId,
           stockLocation: { servedClientId, isActive: true },
         },
-        select: { quantity: true, minQuantity: true },
+        select: {
+          quantity: true,
+          minQuantity: true,
+          epiItem: { select: { name: true } },
+        },
       }),
       this.prisma.epiDeliveryItem.findMany({
         where: {
@@ -305,11 +314,13 @@ export class PortalService {
           cancelledQuantity: true,
           usefulLifeValue: true,
           usefulLifeUnit: true,
+          epiItem: { select: { name: true, caNumber: true } },
           delivery: {
             select: {
               id: true,
               workerId: true,
               deliveredAt: true,
+              worker: { select: { name: true } },
             },
           },
         },
@@ -340,17 +351,25 @@ export class PortalService {
       servedClientId,
     );
 
+    const stockFacts: Array<{ name: string; kind: 'zero' | 'low' }> = [];
     const stockAgg = stockBalances.reduce(
       (acc, row) => {
         acc.quantity += row.quantity;
-        if (row.quantity <= 0) acc.zero += 1;
-        else if (row.minQuantity != null && row.quantity <= row.minQuantity) {
+        if (row.quantity <= 0) {
+          acc.zero += 1;
+          stockFacts.push({ name: row.epiItem.name, kind: 'zero' });
+        } else if (row.minQuantity != null && row.quantity <= row.minQuantity) {
           acc.low += 1;
+          stockFacts.push({ name: row.epiItem.name, kind: 'low' });
         }
         return acc;
       },
       { quantity: 0, low: 0, zero: 0 },
     );
+    stockFacts.sort((a, b) => {
+      if (a.kind !== b.kind) return a.kind === 'zero' ? -1 : 1;
+      return a.name.localeCompare(b.name, 'pt-BR');
+    });
 
     const latestDeliveryByWorkerEpi = new Map<string, Date>();
     for (const item of replacementItems) {
@@ -361,7 +380,15 @@ export class PortalService {
       }
     }
 
-    const replacementAgg = new Map<string, Date>();
+    const replacementAgg = new Map<
+      string,
+      {
+        at: Date;
+        workerName: string;
+        epiName: string;
+        caNumber: string | null;
+      }
+    >();
     for (const item of replacementItems) {
       const workerEpiKey = `${item.delivery.workerId}:${item.epiItemId}`;
       const latest = latestDeliveryByWorkerEpi.get(workerEpiKey);
@@ -380,21 +407,42 @@ export class PortalService {
       const key = `${item.delivery.id}:${item.epiItemId}`;
       const current = replacementAgg.get(key);
       if (!current) {
-        replacementAgg.set(key, addUtcDays(item.delivery.deliveredAt, lineDays));
+        replacementAgg.set(key, {
+          at: addUtcDays(item.delivery.deliveredAt, lineDays),
+          workerName: item.delivery.worker.name,
+          epiName: item.epiItem.name,
+          caNumber: item.epiItem.caNumber,
+        });
         continue;
       }
-      replacementAgg.set(key, addUtcDays(current, lineDays));
+      replacementAgg.set(key, {
+        ...current,
+        at: addUtcDays(current.at, lineDays),
+      });
     }
 
     let replacementOverdue = 0;
     let replacementCritical = 0;
     let replacementWarn = 0;
-    for (const at of replacementAgg.values()) {
-      if (at.getTime() > warnHorizon.getTime()) continue;
-      if (at.getTime() < now.getTime()) replacementOverdue += 1;
-      else if (at.getTime() <= criticalHorizon.getTime()) replacementCritical += 1;
+    const replacementFacts: Array<{
+      workerName: string;
+      epiName: string;
+      caNumber: string | null;
+      dueAt: Date;
+    }> = [];
+    for (const row of replacementAgg.values()) {
+      if (row.at.getTime() > warnHorizon.getTime()) continue;
+      if (row.at.getTime() < now.getTime()) replacementOverdue += 1;
+      else if (row.at.getTime() <= criticalHorizon.getTime()) replacementCritical += 1;
       else replacementWarn += 1;
+      replacementFacts.push({
+        workerName: row.workerName,
+        epiName: row.epiName,
+        caNumber: row.caNumber,
+        dueAt: row.at,
+      });
     }
+    replacementFacts.sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime());
     const replacementTotal =
       replacementOverdue + replacementCritical + replacementWarn;
 
@@ -407,6 +455,40 @@ export class PortalService {
       0,
       workersActive - workersWithBiometrics.length,
     );
+    const bioIds = workersWithBiometrics.map((row) => row.workerId);
+    const missingWorkers =
+      biometricsMissing === 0
+        ? []
+        : await this.prisma.worker.findMany({
+            where: {
+              organizationId,
+              servedClientId,
+              status: WorkerStatus.ACTIVE,
+              ...(bioIds.length > 0 ? { id: { notIn: bioIds } } : {}),
+            },
+            select: { name: true },
+            orderBy: { name: 'asc' },
+          });
+    const replacementLines = replacementFacts.map((fact) =>
+      replacementAlertSentence(fact, now),
+    );
+    const caLines = validity
+      .filter((item) => item.bucket !== 'ok')
+      .map((item) =>
+        caAlertSentence({
+          epiName: item.epiName,
+          caNumber: item.caNumber,
+          expiresAt: item.caExpiresAt,
+          kind: item.bucket,
+          requiresCa: item.requiresCa,
+        }),
+      );
+    const stockLines = stockFacts.map((fact) =>
+      stockAlertSentence(fact.name, fact.kind),
+    );
+    const biometricLines = missingWorkers.map((worker) =>
+      biometricAlertSentence(worker.name),
+    );
 
     const attentionCards = this.buildAttentionCards({
       replacement: {
@@ -414,22 +496,27 @@ export class PortalService {
         critical: replacementCritical,
         warn: replacementWarn,
         total: replacementTotal,
-        warnDays: REPLACEMENT_WARN_DAYS,
-        criticalDays: REPLACEMENT_CRITICAL_DAYS,
+        lines: replacementLines,
       },
       caValidity: {
         expired,
         soon,
         missingCa,
         total: caTotal,
+        lines: caLines,
       },
       stock: {
         low: stockAgg.low,
         zero: stockAgg.zero,
         total: stockAlertTotal,
+        lines: stockLines,
       },
       deliveries: { last7Days: deliveriesLast7Days },
-      biometrics: { missing: biometricsMissing, workersActive },
+      biometrics: {
+        missing: biometricsMissing,
+        workersActive,
+        lines: biometricLines,
+      },
     });
 
     return {
@@ -512,18 +599,18 @@ export class PortalService {
       critical: number;
       warn: number;
       total: number;
-      warnDays: number;
-      criticalDays: number;
+      lines: string[];
     };
     caValidity: {
       expired: number;
       soon: number;
       missingCa: number;
       total: number;
+      lines: string[];
     };
-    stock: { low: number; zero: number; total: number };
+    stock: { low: number; zero: number; total: number; lines: string[] };
     deliveries: { last7Days: number };
-    biometrics: { missing: number; workersActive: number };
+    biometrics: { missing: number; workersActive: number; lines: string[] };
   }) {
     const replacementTone =
       input.replacement.overdue + input.replacement.critical > 0
@@ -549,46 +636,20 @@ export class PortalService {
     const replacementDetail =
       input.replacement.total === 0
         ? 'Nenhuma troca no horizonte de alerta.'
-        : [
-            input.replacement.overdue
-              ? `${input.replacement.overdue} vencida(s)`
-              : null,
-            input.replacement.critical
-              ? `${input.replacement.critical} em ate ${input.replacement.criticalDays}d`
-              : null,
-            input.replacement.warn
-              ? `${input.replacement.warn} em ate ${input.replacement.warnDays}d`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(' · ');
+        : summarizeAlertLines(input.replacement.lines) ||
+          'Há trocas no horizonte. Abra a lista e entregue primeiro o que já venceu.';
 
     const caDetail =
       input.caValidity.total === 0
-        ? 'Nenhum CA exigindo atencao.'
-        : [
-            input.caValidity.expired
-              ? `${input.caValidity.expired} vencido(s)`
-              : null,
-            input.caValidity.soon
-              ? `${input.caValidity.soon} a vencer`
-              : null,
-            input.caValidity.missingCa
-              ? `${input.caValidity.missingCa} sem CA`
-              : null,
-          ]
-            .filter(Boolean)
-            .join(' · ');
+        ? 'Nenhum CA exigindo atenção.'
+        : summarizeAlertLines(input.caValidity.lines) ||
+          'Há certificados que pedem decisão. Abra a validade e trate o que já venceu.';
 
     const stockDetail =
       input.stock.total === 0
-        ? 'Saldos dentro do minimo.'
-        : [
-            input.stock.zero ? `${input.stock.zero} zerado(s)` : null,
-            input.stock.low ? `${input.stock.low} baixo(s)` : null,
-          ]
-            .filter(Boolean)
-            .join(' · ');
+        ? 'Saldos dentro do mínimo.'
+        : summarizeAlertLines(input.stock.lines) ||
+          'Há itens sem saldo suficiente. Reponha antes da próxima entrega.';
 
     return [
       {
@@ -646,7 +707,9 @@ export class PortalService {
         detail:
           input.deliveries.last7Days === 0
             ? 'Nenhuma entrega recente.'
-            : `${input.deliveries.last7Days} entrega(s) nos ultimos 7 dias.`,
+            : input.deliveries.last7Days === 1
+              ? '1 entrega nos últimos 7 dias.'
+              : `${input.deliveries.last7Days} entregas nos últimos 7 dias.`,
         visible: true,
       },
       {
@@ -664,7 +727,8 @@ export class PortalService {
             : 'Biometria ok',
         detail:
           input.biometrics.missing > 0
-            ? `${input.biometrics.missing} trabalhador(es) ativo(s) sem template facial.`
+            ? summarizeAlertLines(input.biometrics.lines) ||
+              'Há trabalhadores ativos sem biometria facial. Envie o convite de cadastro.'
             : 'Todos os ativos com biometria.',
         visible: input.biometrics.missing > 0,
       },

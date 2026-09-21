@@ -1,11 +1,12 @@
 'use client';
 
-import type {
-  PortalEstruturaResponse,
-  PortalTrabalhadorReplacementDue,
-  PortalTrabalhadoresResponse,
-  SstDocumentListItem,
-  WorkerImportPreviewResponse,
+import {
+  replacementAlertSentence,
+  type PortalEstruturaResponse,
+  type PortalTrabalhadorReplacementDue,
+  type PortalTrabalhadoresResponse,
+  type SstDocumentListItem,
+  type WorkerImportPreviewResponse,
 } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -63,35 +64,21 @@ const emptyForm: WorkerFormState = {
   notes: '',
 };
 
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleDateString('pt-BR');
-  } catch {
-    return iso;
-  }
-}
-
-function daysLabel(daysRemaining: number) {
-  if (daysRemaining < 0) {
-    const n = Math.abs(daysRemaining);
-    return n === 1 ? 'Vencido ha 1 dia' : `Vencido ha ${n} dias`;
-  }
-  if (daysRemaining === 0) return 'Vence hoje';
-  if (daysRemaining === 1) return 'Vence amanha';
-  return `Vence em ${daysRemaining} dias`;
-}
-
-function actionHint(
-  due: PortalTrabalhadorReplacementDue,
-  criticalDays: number,
-) {
-  if (due.overdue > 0) {
-    return `Ha ${due.overdue} EPI(s) ja vencido(s). Registre a troca agora.`;
-  }
-  if (due.critical > 0) {
-    return `${due.critical} item(ns) critico(s) nos proximos ${criticalDays} dias. Priorize a entrega.`;
-  }
-  return `${due.warn} item(ns) no horizonte de alerta. Planeje a troca.`;
+function actionHint(due: PortalTrabalhadorReplacementDue) {
+  const first = due.items[0];
+  if (!first) return 'Abra a lista e programe a troca.';
+  const sentence = replacementAlertSentence({
+    epiName: first.epiName,
+    caNumber: first.caNumber,
+    dueAt: first.nextReplacementAt,
+  });
+  if (due.count <= 1) return sentence;
+  const rest = due.count - 1;
+  const tail =
+    rest === 1
+      ? 'Mais 1 EPI deste funcionário está na lista.'
+      : `Mais ${rest} EPIs deste funcionário estão na lista.`;
+  return `${sentence} ${tail}`;
 }
 
 function toDateInput(value: string | null) {
@@ -1146,7 +1133,6 @@ function PortalTrabalhadoresContent({
               workers.map((worker) => {
                 const due = worker.replacementDue;
                 const expanded = expandedId === worker.id;
-                const urgentCount = due ? due.overdue + due.critical : 0;
                 const bio = bioLabel(worker);
                 const sst = sstByWorker.get(worker.id);
 
@@ -1204,8 +1190,8 @@ function PortalTrabalhadoresContent({
                             }`}
                           >
                             {due.tone === 'critical'
-                              ? `Urgente · ${due.count}`
-                              : `Proxima · ${due.count}`}
+                              ? `Urgente: ${due.count}`
+                              : `Próxima: ${due.count}`}
                           </span>
                         ) : null}
                       </div>
@@ -1213,10 +1199,7 @@ function PortalTrabalhadoresContent({
 
                     {due ? (
                       <p className="portal-worker-card__hint" role="status">
-                        {actionHint(due, criticalDays)}
-                        {urgentCount > 0
-                          ? ` · ${urgentCount} prioritario(s)`
-                          : ''}
+                        {actionHint(due)}
                       </p>
                     ) : null}
 
@@ -1309,12 +1292,11 @@ function PortalTrabalhadoresContent({
                       <ul className="portal-worker-card__items">
                         {due.items.map((item) => (
                           <li key={item.id}>
-                            <strong>{item.epiName}</strong>
-                            {item.caNumber ? ` · CA ${item.caNumber}` : ''}
-                            {' · '}
-                            {daysLabel(item.daysRemaining)}
-                            {' · '}
-                            {formatDate(item.nextReplacementAt)}
+                            {replacementAlertSentence({
+                              epiName: item.epiName,
+                              caNumber: item.caNumber,
+                              dueAt: item.nextReplacementAt,
+                            })}
                           </li>
                         ))}
                       </ul>

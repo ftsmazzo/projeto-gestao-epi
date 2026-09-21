@@ -1,8 +1,9 @@
 'use client';
 
-import type {
-  PortalValidadeResponse,
-  PortalValidityBucket,
+import {
+  caAlertSentence,
+  type PortalValidadeResponse,
+  type PortalValidityBucket,
 } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
@@ -23,15 +24,6 @@ function bucketClass(bucket: PortalValidityBucket) {
   if (bucket === 'soon') return 'status-pill status-pill--warn';
   if (bucket === 'missing') return 'status-pill status-pill--inactive';
   return 'status-pill status-pill--active';
-}
-
-function formatDate(iso: string | null) {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleDateString('pt-BR');
-  } catch {
-    return '—';
-  }
 }
 
 function PortalValidadeContent() {
@@ -85,11 +77,13 @@ function PortalValidadeContent() {
           <p className="page-kicker">Dia a dia</p>
           <h1 className="page-title page-title--sm">Validade</h1>
           <p className="page-lead">
-            CAs e vinculos de EPI das funcoes. Horizonte:{' '}
-            {data?.summary.horizonDays ?? 90} dias
+            CAs e vínculos de EPI das funções. Horizonte de{' '}
+            {data?.summary.horizonDays ?? 90} dias.
             {attentionCount > 0
-              ? ` · ${attentionCount} item(ns) pedem atencao`
-              : ''}.
+              ? attentionCount === 1
+                ? ' Um certificado pede decisão.'
+                : ` ${attentionCount} certificados pedem decisão.`
+              : ''}
           </p>
         </div>
       </header>
@@ -196,18 +190,18 @@ function PortalValidadeContent() {
                             {item.needNames.join(', ')}
                           </p>
                         ) : null}
-                        <p className="stack-card__meta mono">
-                          CA {item.caNumber ?? '—'}
-                          {' · '}
-                          {formatDate(item.caExpiresAt)}
-                          {item.daysRemaining != null
-                            ? item.daysRemaining < 0
-                              ? ` · ${Math.abs(item.daysRemaining)} dia(s) atras`
-                              : ` · ${item.daysRemaining} dia(s)`
-                            : ''}
+                        <p className="stack-card__meta">
+                          {caAlertSentence({
+                            epiName: item.epiName,
+                            caNumber: item.caNumber,
+                            expiresAt: item.caExpiresAt,
+                            kind: item.bucket,
+                            requiresCa: item.requiresCa,
+                          })}
                         </p>
                         <p className="stack-card__meta">
-                          Funcoes: {item.jobNames.join(', ') || '—'}
+                          Funções:{' '}
+                          {item.jobNames.join(', ') || 'não informadas'}
                         </p>
                         <span
                           className={bucketClass(item.bucket)}

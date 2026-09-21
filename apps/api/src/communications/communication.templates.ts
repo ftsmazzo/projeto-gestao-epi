@@ -1,3 +1,9 @@
+import {
+  buildDailyAlertMessage,
+  type CaAlertFact,
+  type ReplacementAlertFact,
+} from '@gestao-epi/shared';
+
 export const COMM_TEMPLATE_CLIENT_ACCESS_INVITE = 'client_access_invite';
 export const COMM_TEMPLATE_CONSULTORIA_ACCESS_INVITE =
   'consultoria_access_invite';
@@ -30,16 +36,13 @@ export type ConsultoriaAccessInviteInput = {
 };
 
 export type DailyClientAlertsInput = {
-  organizationName: string;
   clientName: string;
   recipientName: string;
   portalUrl: string;
-  replacementTotal: number;
-  replacementUrgent: number;
-  caTotal: number;
-  biometricsMissing: number;
-  warnDays: number;
-  criticalDays: number;
+  replacements: ReplacementAlertFact[];
+  caAlerts: CaAlertFact[];
+  biometricNames: string[];
+  now?: Date;
 };
 
 export function buildClientAccessInviteEmail(input: ClientAccessInviteInput) {
@@ -114,50 +117,17 @@ export function buildConsultoriaAccessInviteWhatsapp(
 }
 
 export function buildDailyClientAlertsEmail(input: DailyClientAlertsInput) {
-  const subject = `Alertas do dia — ${input.clientName}`;
-  const lines = [
-    `Ola, ${input.recipientName}.`,
-    '',
-    `Resumo de atencao para ${input.clientName} (${input.organizationName}):`,
-    '',
-  ];
-  if (input.replacementTotal > 0) {
-    lines.push(
-      `• Vida util / trocas: ${input.replacementTotal} item(ns) (ate ${input.warnDays}d; ${input.replacementUrgent} urgente(s) em ate ${input.criticalDays}d ou vencido)`,
-    );
-  }
-  if (input.caTotal > 0) {
-    lines.push(`• Validade de CA: ${input.caTotal} alerta(s)`);
-  }
-  if (input.biometricsMissing > 0) {
-    lines.push(
-      `• Biometria pendente: ${input.biometricsMissing} trabalhador(es)`,
-    );
-  }
-  lines.push('', `Painel: ${input.portalUrl}`, '');
-  lines.push('Acesse o portal do cliente para agir. Suporte: ProntEPI.');
-  return { subject, text: lines.join('\n') };
+  return buildDailyAlertMessage({
+    ...input,
+    limitPerSection: 10,
+  });
 }
 
 export function buildDailyClientAlertsWhatsapp(input: DailyClientAlertsInput) {
-  const lines = [
-    `*Alertas — ${input.clientName}*`,
-    `Ola, ${input.recipientName}.`,
-  ];
-  if (input.replacementTotal > 0) {
-    lines.push(
-      `Trocas: ${input.replacementTotal} (urgentes: ${input.replacementUrgent})`,
-    );
-  }
-  if (input.caTotal > 0) {
-    lines.push(`CA em alerta: ${input.caTotal}`);
-  }
-  if (input.biometricsMissing > 0) {
-    lines.push(`Sem biometria: ${input.biometricsMissing}`);
-  }
-  lines.push(`Painel: ${input.portalUrl}`);
-  lines.push('Suporte: ProntEPI.');
-  return lines.join('\n');
+  return buildDailyAlertMessage({
+    ...input,
+    limitPerSection: 6,
+  }).text;
 }
 
 export type FacialEnrollmentInviteInput = {

@@ -18,8 +18,8 @@ import {
 import { CommunicationsService } from './communications.service';
 import {
   REPLACEMENT_WARN_DAYS,
-  REPLACEMENT_CRITICAL_DAYS,
 } from '../portal/replacement-schedule.utils';
+import type { CaAlertFact, ReplacementAlertFact } from '@gestao-epi/shared';
 
 const VALIDITY_SOON_DAYS = 90;
 
@@ -77,7 +77,6 @@ export class CommunicationAlertsService {
         tradeName: true,
         contactEmail: true,
         contactPhone: true,
-        organization: { select: { name: true } },
       },
     });
 
@@ -127,16 +126,15 @@ export class CommunicationAlertsService {
     tradeName: string | null;
     contactEmail: string | null;
     contactPhone: string | null;
-    organization: { name: string };
   }): Promise<{ queued: number; skipReason?: string }> {
     const metrics = await this.collectMetrics(
       client.organizationId,
       client.id,
     );
     if (
-      metrics.replacementTotal === 0 &&
-      metrics.caTotal === 0 &&
-      metrics.biometricsMissing === 0
+      metrics.replacements.length === 0 &&
+      metrics.caAlerts.length === 0 &&
+      metrics.biometricNames.length === 0
     ) {
       return { queued: 0, skipReason: 'no_alerts' };
     }
@@ -152,15 +150,11 @@ export class CommunicationAlertsService {
     const clientName = client.tradeName || client.legalName;
     const portalUrl = this.communications.resolvePortalUrl();
     const digestBase = {
-      organizationName: client.organization.name,
       clientName,
       portalUrl,
-      replacementTotal: metrics.replacementTotal,
-      replacementUrgent: metrics.replacementUrgent,
-      caTotal: metrics.caTotal,
-      biometricsMissing: metrics.biometricsMissing,
-      warnDays: REPLACEMENT_WARN_DAYS,
-      criticalDays: REPLACEMENT_CRITICAL_DAYS,
+      replacements: metrics.replacements,
+      caAlerts: metrics.caAlerts,
+      biometricNames: metrics.biometricNames,
     };
 
     let queued = 0;
@@ -252,15 +246,10 @@ export class CommunicationAlertsService {
     const warnHorizon = new Date(now);
     warnHorizon.setUTCDate(warnHorizon.getUTCDate() + REPLACEMENT_WARN_DAYS);
     warnHorizon.setUTCHours(23, 59, 59, 999);
-    const criticalHorizon = new Date(now);
-    criticalHorizon.setUTCDate(
-      criticalHorizon.getUTCDate() + REPLACEMENT_CRITICAL_DAYS,
-    );
-    criticalHorizon.setUTCHours(23, 59, 59, 999);
     const caSoon = new Date(now);
     caSoon.setUTCDate(caSoon.getUTCDate() + VALIDITY_SOON_DAYS);
 
-    const [replacementItems, workersActive, workersWithBio, caItems] =
+    const [replacementItems, activeWorkers, workersWithBio, caItems] =
       await Promise.all([
         this.prisma.epiDeliveryItem.findMany({
           where: {
@@ -282,14 +271,23 @@ export class CommunicationAlertsService {
               },
             },
           },
-          select: { nextReplacementAt: true },
+          select: {
+            nextReplacementAt: true,
+            epiItem: { select: { name: true, caNumber: true } },
+            delivery: {
+              select: { worker: { select: { name: true } } },
+            },
+          },
+          orderBy: { nextReplacementAt: 'asc' },
         }),
-        this.prisma.worker.count({
+        this.prisma.worker.findMany({
           where: {
             organizationId,
             servedClientId,
             status: WorkerStatus.ACTIVE,
           },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
         }),
         this.prisma.workerFacialReference.findMany({
           where: {
@@ -329,6 +327,7 @@ export class CommunicationAlertsService {
             ],
           },
           select: {
+            name: true,
             requiresCa: true,
             caNumber: true,
             caExpiresAt: true,
@@ -336,32 +335,55 @@ export class CommunicationAlertsService {
         }),
       ]);
 
-    let replacementUrgent = 0;
+    const replacements: ReplacementAlertFact[] = [];
     for (const item of replacementItems) {
       const at = item.nextReplacementAt;
       if (!at) continue;
-      if (at.getTime() <= criticalHorizon.getTime()) replacementUrgent += 1;
+      replacements.push({
+        workerName: item.delivery.worker.name,
+        epiName: item.epiItem.name,
+        caNumber: item.epiItem.caNumber,
+        dueAt: at,
+      });
     }
 
-    let caTotal = 0;
+    const caAlerts: CaAlertFact[] = [];
     for (const item of caItems) {
       if (item.requiresCa && !item.caNumber) {
-        caTotal += 1;
+        caAlerts.push({
+          epiName: item.name,
+          caNumber: null,
+          expiresAt: null,
+          kind: 'missing',
+          requiresCa: true,
+        });
         continue;
       }
       if (!item.caExpiresAt) continue;
       if (item.caExpiresAt.getTime() < now.getTime()) {
-        caTotal += 1;
+        caAlerts.push({
+          epiName: item.name,
+          caNumber: item.caNumber,
+          expiresAt: item.caExpiresAt,
+          kind: 'expired',
+          requiresCa: item.requiresCa,
+        });
       } else if (item.caExpiresAt.getTime() <= caSoon.getTime()) {
-        caTotal += 1;
+        caAlerts.push({
+          epiName: item.name,
+          caNumber: item.caNumber,
+          expiresAt: item.caExpiresAt,
+          kind: 'soon',
+          requiresCa: item.requiresCa,
+        });
       }
     }
 
-    return {
-      replacementTotal: replacementItems.length,
-      replacementUrgent,
-      caTotal,
-      biometricsMissing: Math.max(0, workersActive - workersWithBio.length),
-    };
+    const withBio = new Set(workersWithBio.map((row) => row.workerId));
+    const biometricNames = activeWorkers
+      .filter((worker) => !withBio.has(worker.id))
+      .map((worker) => worker.name);
+
+    return { replacements, caAlerts, biometricNames };
   }
 }

@@ -17,14 +17,16 @@ export function PortalDashboardCards({ cards }: Props) {
         <h2 id="portal-dash-title">Precisa de atencao</h2>
         <p>
           {alertCount === 0
-            ? 'Nenhum alerta critico no momento.'
-            : `${alertCount} ponto(s) pedindo decisao agora.`}
+            ? 'Nenhum alerta crítico no momento.'
+            : alertCount === 1
+              ? 'Um ponto pede decisão agora.'
+              : `${alertCount} pontos pedem decisão agora.`}
         </p>
       </div>
 
       {visible.length === 0 ? (
         <p className="notice" role="status">
-          Tudo em dia — sem trocas proximas, CA em alerta, estoque baixo ou
+          Tudo em dia. Sem trocas próximas, CA em alerta, estoque baixo ou
           biometria pendente.
         </p>
       ) : (
