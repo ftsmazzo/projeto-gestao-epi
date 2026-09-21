@@ -47,6 +47,7 @@ export class CommunicationsController {
     const result = await this.alerts.runDailyClientAlerts({
       organizationId: user.organizationId,
       servedClientId: dto.servedClientId?.trim() || undefined,
+      bypassDedupe: Boolean(dto.servedClientId?.trim()),
     });
 
     if (

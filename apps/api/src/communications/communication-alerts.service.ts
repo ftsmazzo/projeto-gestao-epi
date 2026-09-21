@@ -45,6 +45,8 @@ export class CommunicationAlertsService {
   async runDailyClientAlerts(options?: {
     organizationId?: string;
     servedClientId?: string;
+    /** Disparo manual de um cliente. Ignora o bloqueio do envio automatico do dia. */
+    bypassDedupe?: boolean;
   }) {
     if (!this.communications.isEnabled()) {
       this.logger.debug('Alertas diarios ignorados (comunicacoes off).');
@@ -92,7 +94,10 @@ export class CommunicationAlertsService {
     let lastSkip: string | undefined;
     for (const client of clients) {
       try {
-        const result = await this.processClient(client);
+        const result = await this.processClient(
+          client,
+          options?.bypassDedupe === true,
+        );
         messages += result.queued;
         if (result.skipReason) lastSkip = result.skipReason;
       } catch (err) {
@@ -119,14 +124,17 @@ export class CommunicationAlertsService {
     return { clients: clients.length, messages, skippedReason };
   }
 
-  private async processClient(client: {
-    id: string;
-    organizationId: string;
-    legalName: string;
-    tradeName: string | null;
-    contactEmail: string | null;
-    contactPhone: string | null;
-  }): Promise<{ queued: number; skipReason?: string }> {
+  private async processClient(
+    client: {
+      id: string;
+      organizationId: string;
+      legalName: string;
+      tradeName: string | null;
+      contactEmail: string | null;
+      contactPhone: string | null;
+    },
+    bypassDedupe = false,
+  ): Promise<{ queued: number; skipReason?: string }> {
     const metrics = await this.collectMetrics(
       client.organizationId,
       client.id,
@@ -177,7 +185,7 @@ export class CommunicationAlertsService {
           bodyText: emailBody.text,
           relatedType: 'ServedClient',
           relatedId: client.id,
-          dedupePerDay: true,
+          dedupePerDay: !bypassDedupe,
           payload: { kind: 'daily_alerts', clientId: client.id },
         });
         if (row?.created) queued += 1;
@@ -192,7 +200,7 @@ export class CommunicationAlertsService {
           bodyText: whatsappBody,
           relatedType: 'ServedClient',
           relatedId: client.id,
-          dedupePerDay: true,
+          dedupePerDay: !bypassDedupe,
           payload: { kind: 'daily_alerts', clientId: client.id },
         });
         if (row?.created) queued += 1;
