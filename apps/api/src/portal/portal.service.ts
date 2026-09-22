@@ -2644,7 +2644,7 @@ export class PortalService {
     }
   }
 
-  /** EPIs que ja tiveram saldo neste cliente (entrada/estoque local). */
+  /** EPIs com saldo positivo neste cliente (ainda entregaveis). */
   private async listClientStockedEpiItemIds(
     organizationId: string,
     servedClientId: string,
@@ -2654,6 +2654,7 @@ export class PortalService {
     const rows = await this.prisma.epiStockBalance.findMany({
       where: {
         organizationId,
+        quantity: { gt: 0 },
         ...(epiItemIds?.length ? { epiItemId: { in: epiItemIds } } : {}),
         stockLocation: { servedClientId, isActive: true },
       },
@@ -2941,10 +2942,14 @@ export class PortalService {
     );
 
     for (const req of requirements) {
-      const links = req.epiNeed.itemLinks.filter(
-        (l) => l.epiItem.isActive && clientStockedItemIds.has(l.epiItem.id),
+      if (!isDeliverableEpiNeed(req.epiNeed.name)) continue;
+      const activeLinks = req.epiNeed.itemLinks.filter((l) => l.epiItem.isActive);
+      const links = activeLinks.filter((l) =>
+        clientStockedItemIds.has(l.epiItem.id),
       );
       if (links.length === 0) {
+        // Ha EPI vinculado, mas sem saldo positivo: nao gera alerta de validade.
+        if (activeLinks.length > 0) continue;
         const key = `need:${req.epiNeedId}`;
         const existing = map.get(key);
         if (existing) {

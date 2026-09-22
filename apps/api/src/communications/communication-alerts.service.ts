@@ -341,27 +341,14 @@ export class CommunicationAlertsService {
           where: {
             organizationId,
             isActive: true,
-            OR: [
-              {
-                stockBalances: {
-                  some: { stockLocation: { servedClientId, isActive: true } },
-                },
+            // So alerta CA de item que ainda pode ser entregue.
+            // Saldo zerado ou so vinculo de PGR nao gera aviso de validade.
+            stockBalances: {
+              some: {
+                quantity: { gt: 0 },
+                stockLocation: { servedClientId, isActive: true },
               },
-              {
-                itemNeeds: {
-                  some: {
-                    epiNeed: {
-                      jobRequirements: {
-                        some: {
-                          isActive: true,
-                          jobFunction: { servedClientId, isActive: true },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            ],
+            },
           },
           select: {
             name: true,
