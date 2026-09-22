@@ -27,6 +27,10 @@ import {
 } from '../epi-needs/epi-need-canonical';
 import { resolveEpiNeedSeedByName } from '../epi-needs/epi-need-suggest';
 import { ServedClientsService } from '../served-clients/served-clients.service';
+import {
+  pickBestJobMatch,
+  reassignWorkersFromArchivedFunctions,
+} from '../workers/reassign-archived-job-workers';
 import type { ConfirmPgroImportDto } from './dto/pgro-import.dto';
 import {
   assessPgroCompanyMatch,
@@ -711,21 +715,41 @@ export class PgroService {
           warnings.push(`Funcao com dados incompletos de setor: ${name}`);
         }
 
-        const existing = await tx.clientJobFunction.findFirst({
+        const existingInSector = await tx.clientJobFunction.findFirst({
           where: {
             organizationId,
             sectorId,
             name: { equals: name, mode: 'insensitive' },
           },
+          include: { sector: { select: { name: true } } },
         });
+        const existingByName = existingInSector
+          ? null
+          : await tx.clientJobFunction.findMany({
+              where: {
+                organizationId,
+                servedClientId: servedClientId!,
+                name: { equals: name, mode: 'insensitive' },
+              },
+              include: { sector: { select: { name: true } } },
+            });
+        const existing =
+          existingInSector ??
+          pickBestJobMatch(
+            existingByName ?? [],
+            sectorId,
+            resolvedSectorName,
+          );
+
         if (existing) {
           rememberJob(name, resolvedSectorName, existing.id);
           keepFunctionKeys.add(functionKey(resolvedSectorName, name));
-          if (!existing.isActive) {
+          if (!existing.isActive || existing.sectorId !== sectorId) {
             await tx.clientJobFunction.update({
               where: { id: existing.id },
               data: {
                 isActive: true,
+                sectorId,
                 description:
                   fn.activityDescription?.trim() || existing.description,
                 environmentDescription:
@@ -733,7 +757,8 @@ export class PgroService {
                   existing.environmentDescription,
               },
             });
-            summary.functionsReactivated += 1;
+            if (!existing.isActive) summary.functionsReactivated += 1;
+            else summary.functionsExisting += 1;
           } else {
             summary.functionsExisting += 1;
             warnings.push(`Funcao ja existia: ${name}`);
@@ -1025,6 +1050,21 @@ export class PgroService {
           keepFunctionKeys,
           summary,
           warnings,
+        );
+      }
+
+      const healed = await reassignWorkersFromArchivedFunctions(
+        tx,
+        organizationId,
+        servedClientId!,
+      );
+      if (healed.reassigned > 0) {
+        summary.workersInArchivedFunctions = Math.max(
+          0,
+          (summary.workersInArchivedFunctions ?? 0) - healed.reassigned,
+        );
+        warnings.push(
+          `${healed.reassigned} trabalhador(es) religados automaticamente a funcao ativa de mesmo nome.`,
         );
       }
 

@@ -58,6 +58,7 @@ import {
 import { WorkerImportService } from '../workers/worker-import.service';
 import { WORKER_CSV_TEMPLATE } from '../workers/worker-import.utils';
 import { WorkersService } from '../workers/workers.service';
+import { reassignWorkersFromArchivedFunctions } from '../workers/reassign-archived-job-workers';
 import type { ConfirmWorkerImportDto } from '../workers/dto/worker-import.dto';
 import {
   FACIAL_EVIDENCE_CONSENT_TEXT,
@@ -857,6 +858,11 @@ export class PortalService {
 
   async getTrabalhadores(organizationId: string, servedClientId: string) {
     const client = await this.requireClient(organizationId, servedClientId);
+    await reassignWorkersFromArchivedFunctions(
+      this.prisma,
+      organizationId,
+      servedClientId,
+    );
     const now = new Date();
     const warnHorizon = new Date(now);
     warnHorizon.setUTCDate(warnHorizon.getUTCDate() + REPLACEMENT_WARN_DAYS);

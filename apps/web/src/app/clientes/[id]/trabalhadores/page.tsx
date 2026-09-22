@@ -235,7 +235,22 @@ export default function ClienteTrabalhadoresPage() {
     void listJobFunctionEpiRequirements(form.clientJobFunctionId)
       .then((rows) => {
         if (!cancelled) {
-          setEpiPreview(rows.filter((row) => row.isActive));
+          const seen = new Set<string>();
+          const unique = rows
+            .filter((row) => row.isActive)
+            .filter((row) => {
+              const key = row.epiNeed?.id ?? row.epiNeedId ?? row.id;
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            })
+            .sort((a, b) =>
+              (a.epiNeed?.name ?? '').localeCompare(
+                b.epiNeed?.name ?? '',
+                'pt-BR',
+              ),
+            );
+          setEpiPreview(unique);
         }
       })
       .catch(() => {

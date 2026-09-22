@@ -12,6 +12,7 @@ import type { CreateWorkerDto } from './dto/create-worker.dto';
 import type { UpdateWorkerDto } from './dto/update-worker.dto';
 import { evaluateWorkerBiometrics } from './worker-biometrics.utils';
 import { isDeliverableEpiNeed } from '../epi-needs/epi-need-canonical';
+import { reassignWorkersFromArchivedFunctions } from './reassign-archived-job-workers';
 
 @Injectable()
 export class WorkersService {
@@ -22,6 +23,11 @@ export class WorkersService {
 
   async listByServedClient(organizationId: string, servedClientId: string) {
     await this.assertServedClient(organizationId, servedClientId);
+    await reassignWorkersFromArchivedFunctions(
+      this.prisma,
+      organizationId,
+      servedClientId,
+    );
 
     const workers = await this.prisma.worker.findMany({
       where: { organizationId, servedClientId },
