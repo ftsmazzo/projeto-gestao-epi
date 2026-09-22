@@ -18,6 +18,7 @@ import {
 import { CommunicationsService } from './communications.service';
 import {
   REPLACEMENT_WARN_DAYS,
+  usefulLifeToBaseDays,
 } from '../portal/replacement-schedule.utils';
 import type { CaAlertFact, ReplacementAlertFact } from '@gestao-epi/shared';
 
@@ -28,6 +29,26 @@ type Recipient = {
   email: string | null;
   phone: string | null;
 };
+
+function addUtcDays(base: Date, days: number): Date {
+  const next = new Date(base);
+  next.setUTCDate(next.getUTCDate() + Math.max(1, Math.floor(days)));
+  return next;
+}
+
+function resolveLineLifeDays(input: {
+  usefulLifeValue: number | null | undefined;
+  usefulLifeUnit: string | null | undefined;
+  quantity: number | null | undefined;
+}): number | null {
+  const unitDays = usefulLifeToBaseDays(
+    input.usefulLifeValue,
+    input.usefulLifeUnit,
+  );
+  if (unitDays == null || unitDays <= 0) return null;
+  const qty = Math.max(1, Math.floor(input.quantity ?? 1));
+  return unitDays * qty;
+}
 
 @Injectable()
 export class CommunicationAlertsService {
@@ -257,7 +278,7 @@ export class CommunicationAlertsService {
     const caSoon = new Date(now);
     caSoon.setUTCDate(caSoon.getUTCDate() + VALIDITY_SOON_DAYS);
 
-    const [replacementItems, activeWorkers, workersWithBio, caItems] =
+    const [deliveryItems, activeWorkers, workersWithBio, caItems] =
       await Promise.all([
         this.prisma.epiDeliveryItem.findMany({
           where: {
@@ -267,7 +288,6 @@ export class CommunicationAlertsService {
                 EpiDeliveryItemStatus.PARTIALLY_RETURNED,
               ],
             },
-            nextReplacementAt: { not: null, lte: warnHorizon },
             delivery: {
               organizationId,
               servedClientId,
@@ -280,13 +300,22 @@ export class CommunicationAlertsService {
             },
           },
           select: {
-            nextReplacementAt: true,
+            epiItemId: true,
+            quantity: true,
+            returnedQuantity: true,
+            cancelledQuantity: true,
+            usefulLifeValue: true,
+            usefulLifeUnit: true,
             epiItem: { select: { name: true, caNumber: true } },
             delivery: {
-              select: { worker: { select: { name: true } } },
+              select: {
+                id: true,
+                deliveredAt: true,
+                workerId: true,
+                worker: { select: { name: true } },
+              },
             },
           },
-          orderBy: { nextReplacementAt: 'asc' },
         }),
         this.prisma.worker.findMany({
           where: {
@@ -343,17 +372,74 @@ export class CommunicationAlertsService {
         }),
       ]);
 
-    const replacements: ReplacementAlertFact[] = [];
-    for (const item of replacementItems) {
-      const at = item.nextReplacementAt;
-      if (!at) continue;
-      replacements.push({
-        workerName: item.delivery.worker.name,
-        epiName: item.epiItem.name,
-        caNumber: item.epiItem.caNumber,
-        dueAt: at,
+    // Mesma regra do painel/ficha: vida util unitaria × quantidade restante
+    // na ultima entrega do par trabalhador+EPI. Nao usar nextReplacementAt
+    // legado (pode ter sido gravado sem multiplicar a quantidade).
+    const latestByWorkerEpi = new Map<string, Date>();
+    for (const item of deliveryItems) {
+      const key = `${item.delivery.workerId}:${item.epiItemId}`;
+      const latest = latestByWorkerEpi.get(key);
+      if (!latest || item.delivery.deliveredAt.getTime() > latest.getTime()) {
+        latestByWorkerEpi.set(key, item.delivery.deliveredAt);
+      }
+    }
+
+    const replacementAgg = new Map<
+      string,
+      {
+        at: Date;
+        workerName: string;
+        epiName: string;
+        caNumber: string | null;
+      }
+    >();
+    for (const item of deliveryItems) {
+      const workerEpiKey = `${item.delivery.workerId}:${item.epiItemId}`;
+      const latest = latestByWorkerEpi.get(workerEpiKey);
+      if (!latest || item.delivery.deliveredAt.getTime() !== latest.getTime()) {
+        continue;
+      }
+      const remainingQty =
+        item.quantity - item.returnedQuantity - item.cancelledQuantity;
+      if (remainingQty <= 0) continue;
+      const lineDays = resolveLineLifeDays({
+        usefulLifeValue: item.usefulLifeValue,
+        usefulLifeUnit: item.usefulLifeUnit,
+        quantity: remainingQty,
+      });
+      if (lineDays == null) continue;
+      const aggKey = `${item.delivery.id}:${item.epiItemId}`;
+      const current = replacementAgg.get(aggKey);
+      if (!current) {
+        replacementAgg.set(aggKey, {
+          at: addUtcDays(item.delivery.deliveredAt, lineDays),
+          workerName: item.delivery.worker.name,
+          epiName: item.epiItem.name,
+          caNumber: item.epiItem.caNumber,
+        });
+        continue;
+      }
+      replacementAgg.set(aggKey, {
+        ...current,
+        at: addUtcDays(current.at, lineDays),
       });
     }
+
+    const replacements: ReplacementAlertFact[] = [];
+    for (const row of replacementAgg.values()) {
+      if (row.at.getTime() > warnHorizon.getTime()) continue;
+      replacements.push({
+        workerName: row.workerName,
+        epiName: row.epiName,
+        caNumber: row.caNumber,
+        dueAt: row.at,
+      });
+    }
+    replacements.sort(
+      (a, b) =>
+        (a.dueAt instanceof Date ? a.dueAt : new Date(a.dueAt)).getTime() -
+        (b.dueAt instanceof Date ? b.dueAt : new Date(b.dueAt)).getTime(),
+    );
 
     const caAlerts: CaAlertFact[] = [];
     for (const item of caItems) {

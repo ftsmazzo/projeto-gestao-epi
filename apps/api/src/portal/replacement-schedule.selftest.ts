@@ -78,6 +78,17 @@ function run() {
   assert.ok(pack);
   assert.strictEqual(pack.toISOString().slice(0, 10), '2026-01-31');
 
+  // Caso Amendo/PFF2: 61 un. × 3 dias = 183 dias a partir de 08/09/2026.
+  const amendo = computeNextReplacementAt({
+    deliveredAt: new Date('2026-09-08T18:31:47.000Z'),
+    usefulLifeValue: 3,
+    usefulLifeUnit: EpiUsefulLifeUnit.DIAS,
+    quantity: 61,
+  });
+  assert.ok(amendo);
+  assert.strictEqual(amendo.toISOString().slice(0, 10), '2027-03-10');
+  assert.notStrictEqual(amendo.toISOString().slice(0, 10), '2026-09-11');
+
   const singleShort = computeNextReplacementAt({
     deliveredAt: delivered,
     usefulLifeValue: 3,
