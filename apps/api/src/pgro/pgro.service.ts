@@ -54,10 +54,17 @@ import {
   type PgroExtractedEpiNeed,
   type PgroParseResult,
 } from './pgro-parser';
+import { parseConyEpiMatrixText } from './pgro-cony-matrix';
+import {
+  PGRO_EXTRACTION_PROFILE_CONY,
+  resolvePgroExtractionProfile,
+  type PgroExtractionProfileId,
+} from './pgro-extraction-profiles';
 import { extractPgroDocumentText } from './pgro-text-extract';
 
 type ConfirmOptions = {
   skipManagementRole?: boolean;
+  extractionProfile?: string | null;
 };
 
 @Injectable()
@@ -67,6 +74,17 @@ export class PgroService {
     private readonly audit: AuditService,
     private readonly servedClients: ServedClientsService,
   ) {}
+
+  private parseByProfile(
+    documentText: string,
+    profile: PgroExtractionProfileId,
+    extraAliases: ReturnType<typeof buildExtraAliasPack>,
+  ): PgroParseResult {
+    if (profile === PGRO_EXTRACTION_PROFILE_CONY) {
+      return parseConyEpiMatrixText(documentText, { extraAliases });
+    }
+    return parsePgroText(documentText, { extraAliases });
+  }
 
   private assertManagementRole(membershipRole: string) {
     if (
@@ -95,6 +113,10 @@ export class PgroService {
         'Envie um arquivo Word (.doc ou .docx) ou PDF.',
       );
     }
+
+    const extractionProfile = resolvePgroExtractionProfile(
+      options?.extractionProfile,
+    );
 
     let documentKind: 'PDF' | 'DOCX' | 'DOC';
     let documentText: string;
@@ -129,9 +151,18 @@ export class PgroService {
       });
       const extraAliases = buildExtraAliasPack(aliasRows);
 
-      parseResult = parsePgroText(documentText, { extraAliases });
+      parseResult = this.parseByProfile(
+        documentText,
+        extractionProfile,
+        extraAliases,
+      );
 
-      const wantsLlm = shouldUsePgroLlmFallback(parseResult);
+      // Perfil alternativo explicito: nao deixa LLM/GLiNER sobrescrever o motor dedicado.
+      const allowLlmFallback =
+        extractionProfile !== PGRO_EXTRACTION_PROFILE_CONY;
+
+      const wantsLlm =
+        allowLlmFallback && shouldUsePgroLlmFallback(parseResult);
       const hasGlinerEndpoint = Boolean(
         process.env.GLINER_PGR_ENDPOINT?.trim(),
       );
@@ -172,7 +203,8 @@ export class PgroService {
         }
       }
 
-      const stillWantsLlm = shouldUsePgroLlmFallback(parseResult);
+      const stillWantsLlm =
+        allowLlmFallback && shouldUsePgroLlmFallback(parseResult);
       const hasLlmKey = Boolean(
         process.env.OPENROUTER_API_KEY?.trim() ||
           process.env.OPENAI_API_KEY?.trim(),
@@ -282,6 +314,7 @@ export class PgroService {
       structureWeak: parseResult.structureWeak,
       textLength: parseResult.textLength,
       sourceFormat: documentKind,
+      extractionProfile,
       gheHeaderCount,
       ghesWithFunctions: parseResult.coverage?.ghesWithFunctions ?? null,
       functionsWithSector: parseResult.coverage?.functionsWithSector ?? null,
@@ -292,11 +325,14 @@ export class PgroService {
       sectorCount: parseResult.sectors.length,
       riskCount: parseResult.risks.length,
       epiNeedCount: parseResult.epiNeeds.length,
-      motor: parseResult.coverage
-        ? parseResult.coverage.coverageOk
-          ? 'TABULAR'
-          : 'TABULAR_PARTIAL'
-        : 'LEGACY',
+      motor:
+        extractionProfile === PGRO_EXTRACTION_PROFILE_CONY
+          ? 'CONY_MATRIX'
+          : parseResult.coverage
+            ? parseResult.coverage.coverageOk
+              ? 'TABULAR'
+              : 'TABULAR_PARTIAL'
+            : 'LEGACY',
     };
 
     const run = await this.prisma.pgroImportRun.create({

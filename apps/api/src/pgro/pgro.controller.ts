@@ -13,12 +13,25 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtPayload } from '../auth/types/jwt-payload';
 import { ConfirmPgroImportDto } from './dto/pgro-import.dto';
+import {
+  listAlternatePgroExtractionProfiles,
+  PGRO_EXTRACTION_PROFILES,
+} from './pgro-extraction-profiles';
 import { PgroService } from './pgro.service';
 
 @Controller('pgro')
 @UseGuards(JwtAuthGuard)
 export class PgroController {
   constructor(private readonly pgro: PgroService) {}
+
+  @Get('extraction-profiles')
+  listExtractionProfiles() {
+    return {
+      defaultProfileId: 'INSEG_OFFICIAL',
+      profiles: PGRO_EXTRACTION_PROFILES,
+      alternateProfiles: listAlternatePgroExtractionProfiles(),
+    };
+  }
 
   @Post('import/preview')
   @UseInterceptors(
@@ -30,6 +43,7 @@ export class PgroController {
     @CurrentUser() user: JwtPayload,
     @UploadedFile() file: Express.Multer.File,
     @Body('servedClientId') servedClientId?: string,
+    @Body('extractionProfile') extractionProfile?: string,
   ) {
     return this.pgro.preview(
       user.organizationId,
@@ -37,6 +51,7 @@ export class PgroController {
       user.membershipRole,
       file,
       servedClientId,
+      { extractionProfile },
     );
   }
 

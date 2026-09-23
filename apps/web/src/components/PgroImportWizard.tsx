@@ -10,6 +10,7 @@ import type {
   PgroExtractedFunction,
   PgroExtractedRisk,
   PgroExtractedSector,
+  PgroExtractionProfile,
   PgroImportConfirmSummary,
   PgroImportRun,
 } from '@gestao-epi/shared';
@@ -20,7 +21,11 @@ import { listOccupationalRisks } from '../lib/client-structure';
 import { storeClientAccessOnce } from '../lib/client-access-session';
 import { formatCnpj, formatCnpjInput } from '../lib/cnpj';
 import { listEpiNeeds } from '../lib/epi-needs';
-import { confirmPgroImport, previewPgroImport } from '../lib/pgro';
+import {
+  confirmPgroImport,
+  fetchPgroExtractionProfiles,
+  previewPgroImport,
+} from '../lib/pgro';
 import { listOperationalUnits } from '../lib/operational-units';
 import { getServedClient } from '../lib/served-clients';
 import { WizardSteps } from './ui/WizardSteps';
@@ -159,6 +164,30 @@ export function PgroImportWizard({
   const [summary, setSummary] = useState<PgroImportConfirmSummary | null>(null);
   const [forceConfirmWeakCoverage, setForceConfirmWeakCoverage] =
     useState(false);
+  const [useAlternateProfile, setUseAlternateProfile] = useState(false);
+  const [alternateProfiles, setAlternateProfiles] = useState<
+    PgroExtractionProfile[]
+  >([]);
+  const [extractionProfileId, setExtractionProfileId] = useState(
+    'CONY_EPI_MATRIX',
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchPgroExtractionProfiles()
+      .then((res) => {
+        if (cancelled) return;
+        setAlternateProfiles(res.alternateProfiles ?? []);
+        const first = res.alternateProfiles?.[0]?.id;
+        if (first) setExtractionProfileId(first);
+      })
+      .catch(() => {
+        // mantem fallback Cony hardcoded no estado inicial
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!lockedClientId) return;
@@ -368,6 +397,9 @@ export function PgroImportWizard({
       const run = await previewPgroImport({
         file,
         servedClientId: lockedClientId,
+        extractionProfile: useAlternateProfile
+          ? extractionProfileId
+          : 'INSEG_OFFICIAL',
       });
       await applyRun(run);
     } catch (err) {
@@ -665,6 +697,52 @@ export function PgroImportWizard({
                 required
               />
             </div>
+            <div className="field">
+              <label htmlFor="pgro-alternate-profile">
+                <input
+                  id="pgro-alternate-profile"
+                  type="checkbox"
+                  checked={useAlternateProfile}
+                  onChange={(e) => setUseAlternateProfile(e.target.checked)}
+                />{' '}
+                Usar perfil de extracao alternativo
+              </label>
+              <p className="field-hint">
+                Desligado = template oficial Inseg (padrao). Ligue apenas para
+                PGRs com layout diferente (ex.: matriz EPI por GHE).
+              </p>
+            </div>
+            {useAlternateProfile ? (
+              <div className="field">
+                <label htmlFor="pgro-extraction-profile">Perfil</label>
+                <select
+                  id="pgro-extraction-profile"
+                  value={extractionProfileId}
+                  onChange={(e) => setExtractionProfileId(e.target.value)}
+                >
+                  {(alternateProfiles.length > 0
+                    ? alternateProfiles
+                    : [
+                        {
+                          id: 'CONY_EPI_MATRIX',
+                          label: 'Cony – matriz EPI/GHE',
+                          description: '',
+                          isDefault: false,
+                        },
+                      ]
+                  ).map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="field-hint">
+                  {alternateProfiles.find((p) => p.id === extractionProfileId)
+                    ?.description ??
+                    'Extrai cargos por GHE e EPIs marcados com X na coluna do GHE.'}
+                </p>
+              </div>
+            ) : null}
             <div className="btn-row">
               <button
                 type="submit"

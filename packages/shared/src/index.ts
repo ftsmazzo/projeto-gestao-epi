@@ -1387,6 +1387,19 @@ export interface PgroImportConfirmSummary {
   epiRequirementsExisting: number;
 }
 
+export interface PgroExtractionProfile {
+  id: string;
+  label: string;
+  description: string;
+  isDefault: boolean;
+}
+
+export interface PgroExtractionProfilesResponse {
+  defaultProfileId: string;
+  profiles: PgroExtractionProfile[];
+  alternateProfiles: PgroExtractionProfile[];
+}
+
 export interface PgroImportRun {
   id: string;
   organizationId: string;
@@ -1409,6 +1422,8 @@ export interface PgroImportRun {
     textLength?: number;
     /** PDF, DOCX ou DOC (Word antigo) — origem do texto extraido. */
     sourceFormat?: 'PDF' | 'DOCX' | 'DOC' | string;
+    /** Perfil de extracao escolhido (default INSEG_OFFICIAL). */
+    extractionProfile?: string;
     gheHeaderCount?: number;
     ghesWithFunctions?: number | null;
     functionsWithSector?: number | null;
@@ -1419,7 +1434,7 @@ export interface PgroImportRun {
     sectorCount?: number;
     riskCount?: number;
     epiNeedCount?: number;
-    motor?: 'TABULAR' | 'TABULAR_PARTIAL' | 'LEGACY' | string;
+    motor?: 'TABULAR' | 'TABULAR_PARTIAL' | 'LEGACY' | 'CONY_MATRIX' | string;
   } | null;
   layout?: string | null;
   parseMethod?: string | null;

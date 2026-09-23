@@ -1,5 +1,6 @@
 import type {
   ConfirmPgroImportPayload,
+  PgroExtractionProfilesResponse,
   PgroImportConfirmResult,
   PgroImportRun,
 } from '@gestao-epi/shared';
@@ -8,11 +9,16 @@ import { apiFetch, getAccessToken, getApiUrl } from './auth';
 export async function previewPgroImport(input: {
   file: File;
   servedClientId?: string | null;
+  /** Default: INSEG_OFFICIAL. Alternativos so com toggle na UI. */
+  extractionProfile?: string | null;
 }): Promise<PgroImportRun> {
   const form = new FormData();
   form.append('file', input.file);
   if (input.servedClientId) {
     form.append('servedClientId', input.servedClientId);
+  }
+  if (input.extractionProfile) {
+    form.append('extractionProfile', input.extractionProfile);
   }
 
   const headers = new Headers();
@@ -43,6 +49,10 @@ export async function previewPgroImport(input: {
   }
 
   return (await response.json()) as PgroImportRun;
+}
+
+export function fetchPgroExtractionProfiles() {
+  return apiFetch<PgroExtractionProfilesResponse>('/pgro/extraction-profiles');
 }
 
 export function getPgroImportRun(id: string) {
