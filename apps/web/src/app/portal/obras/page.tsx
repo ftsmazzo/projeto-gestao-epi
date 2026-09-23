@@ -53,6 +53,9 @@ function PortalObrasContent({ user }: { user: ClientPortalUser }) {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [panel, setPanel] = useState<'list' | 'form' | 'import' | 'assign'>(
+    'list',
+  );
   const [saving, setSaving] = useState(false);
   const [assignWorkerId, setAssignWorkerId] = useState('');
   const [assignSiteId, setAssignSiteId] = useState('');
@@ -97,14 +100,52 @@ function PortalObrasContent({ user }: { user: ClientPortalUser }) {
     [sites],
   );
 
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setMessage(null);
+    setError(null);
+    setPanel('form');
+  }
+
+  function startEdit(site: ClientWorkSite) {
+    setEditingId(site.id);
+    setForm({
+      name: site.name,
+      description: site.description ?? '',
+      cnpj: site.cnpj ?? '',
+      addressLine: site.addressLine ?? '',
+      city: site.city ?? '',
+      state: site.state ?? '',
+      plannedStartAt: site.plannedStartAt?.slice(0, 10) ?? '',
+      plannedEndAt: site.plannedEndAt?.slice(0, 10) ?? '',
+    });
+    setMessage(null);
+    setError(null);
+    setPanel('form');
+  }
+
+  function closePanels() {
+    setPanel('list');
+    setEditingId(null);
+    setForm(emptyForm);
+    setImportPreview(null);
+    setAssignWorkerId('');
+    setAssignSiteId('');
+    setAssignStart('');
+  }
+
   if (!enabled) {
     return (
       <div className="portal-home">
-        <p className="page-kicker">Obras</p>
-        <h1 className="page-title">Modulo nao liberado</h1>
-        <p className="page-lead">
-          O Modo Obras nao esta ativo para este cliente. Solicite a liberacao a
-          consultoria.
+        <header className="portal-home-header portal-home-header--decision">
+          <div className="portal-home-brand">
+            <h1 className="portal-home-title">Obras</h1>
+            <p className="portal-home-cnpj">Modulo nao liberado para este cliente</p>
+          </div>
+        </header>
+        <p className="notice notice--warn" role="status">
+          O Modo Obras nao esta ativo. Solicite a liberacao a consultoria.
         </p>
       </div>
     );
@@ -128,34 +169,20 @@ function PortalObrasContent({ user }: { user: ClientPortalUser }) {
     try {
       if (editingId) {
         await updatePortalObra(editingId, payload);
-        setMessage('Obra atualizada. Se o ciclo atrasar, basta estender a data de fim.');
+        setMessage(
+          'Obra atualizada. Se o ciclo atrasar, basta estender a data de fim.',
+        );
       } else {
         await createPortalObra(payload);
         setMessage('Obra cadastrada.');
       }
-      setForm(emptyForm);
-      setEditingId(null);
+      closePanels();
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao salvar obra.');
     } finally {
       setSaving(false);
     }
-  }
-
-  function startEdit(site: ClientWorkSite) {
-    setEditingId(site.id);
-    setForm({
-      name: site.name,
-      description: site.description ?? '',
-      cnpj: site.cnpj ?? '',
-      addressLine: site.addressLine ?? '',
-      city: site.city ?? '',
-      state: site.state ?? '',
-      plannedStartAt: site.plannedStartAt?.slice(0, 10) ?? '',
-      plannedEndAt: site.plannedEndAt?.slice(0, 10) ?? '',
-    });
-    setMessage(null);
   }
 
   async function onFinish(id: string, name: string) {
@@ -190,8 +217,7 @@ function PortalObrasContent({ user }: { user: ClientPortalUser }) {
         startAt: assignStart || undefined,
       });
       setMessage('Trabalhador vinculado a obra (uma obra por vez).');
-      setAssignWorkerId('');
-      setAssignStart('');
+      closePanels();
       await load();
     } catch (err) {
       setError(
@@ -225,7 +251,6 @@ function PortalObrasContent({ user }: { user: ClientPortalUser }) {
     setImportBusy(true);
     setError(null);
     try {
-      // Reusa as linhas validas reconstruindo CSV minimo a partir do preview.
       const lines = [
         'nome,descricao,cnpj,endereco,cidade,uf,inicio,fim',
         ...importPreview.rows
@@ -250,6 +275,7 @@ function PortalObrasContent({ user }: { user: ClientPortalUser }) {
       });
       setMessage(`${result.created} obra(s) importada(s).`);
       setImportPreview(null);
+      closePanels();
       await load();
     } catch (err) {
       setError(
@@ -262,13 +288,57 @@ function PortalObrasContent({ user }: { user: ClientPortalUser }) {
 
   return (
     <div className="portal-home">
-      <p className="page-kicker">Obras</p>
-      <h1 className="page-title">Canteiros e obras</h1>
-      <p className="page-lead">
-        Cadastro informativo para vincular trabalhadores por periodo. A ficha de
-        EPI usa esses dados. O fim previsto nao encerra a obra sozinho — estenda
-        a data ou finalize manualmente.
-      </p>
+      <header className="portal-home-header portal-home-header--decision">
+        <div className="portal-home-brand">
+          <h1 className="portal-home-title">Obras</h1>
+          <p className="portal-home-cnpj">
+            Canteiros informativos para a ficha de EPI · fim previsto nao encerra
+            sozinho
+          </p>
+        </div>
+        {panel === 'list' ? (
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setImportPreview(null);
+                setPanel('import');
+              }}
+            >
+              Importar CSV
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setAssignWorkerId('');
+                setAssignSiteId('');
+                setAssignStart('');
+                setPanel('assign');
+              }}
+              disabled={activeSites.length === 0 || workers.length === 0}
+            >
+              Vincular trabalhador
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={openCreate}
+            >
+              Nova obra
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={closePanels}
+          >
+            Voltar a lista
+          </button>
+        )}
+      </header>
 
       {error ? (
         <p className="error" role="alert">
@@ -281,274 +351,417 @@ function PortalObrasContent({ user }: { user: ClientPortalUser }) {
         </p>
       ) : null}
 
-      {endingSoon.length > 0 ? (
-        <section className="surface" aria-labelledby="obras-ending-title">
-          <h2 id="obras-ending-title" className="page-title page-title--sm">
-            Lembrete: ciclo a menos de 15 dias
-          </h2>
-          <p className="page-lead">
-            Renove o periodo (editar data de fim) ou ignore se a obra vai
-            mesmo acabar — so finaliza com o botao Finalizar.
-          </p>
-          <ul>
-            {endingSoon.map((site) => (
-              <li key={site.id}>
-                <strong>{site.name}</strong> · fim previsto{' '}
-                {formatDay(site.plannedEndAt)}
-              </li>
-            ))}
-          </ul>
+      {panel === 'list' && endingSoon.length > 0 ? (
+        <p className="notice notice--warn" role="status">
+          <strong>Lembrete:</strong> {endingSoon.length} obra(s) com ciclo a
+          menos de 15 dias. Estenda a data de fim ou finalize manualmente — nada
+          encerra sozinho.
+          {' '}
+          {endingSoon.map((s) => s.name).join(', ')}.
+        </p>
+      ) : null}
+
+      {panel === 'form' ? (
+        <section className="surface" aria-labelledby="obras-form-title">
+          <div className="form-section-header">
+            <div>
+              <p className="page-kicker">
+                {editingId ? 'Editar' : 'Novo cadastro'}
+              </p>
+              <h2 id="obras-form-title" className="page-title page-title--sm">
+                {editingId ? 'Editar obra' : 'Nova obra'}
+              </h2>
+              <p className="page-lead">
+                Nome obrigatorio. CNPJ, endereco e datas sao opcionais. Para
+                atrasar o fim, edite a data prevista.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={closePanels}
+            >
+              Cancelar
+            </button>
+          </div>
+          <form
+            className="form-panel"
+            onSubmit={(e) => void onSubmit(e)}
+            noValidate
+          >
+            <div className="form-grid">
+              <div className="field">
+                <label htmlFor="obra-name">Nome</label>
+                <input
+                  id="obra-name"
+                  required
+                  minLength={2}
+                  value={form.name}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, name: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="obra-description">Descricao</label>
+                <input
+                  id="obra-description"
+                  value={form.description}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, description: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="obra-cnpj">CNPJ</label>
+                <input
+                  id="obra-cnpj"
+                  value={form.cnpj}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, cnpj: e.target.value }))
+                  }
+                  placeholder="Opcional"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="obra-address">Endereco</label>
+                <input
+                  id="obra-address"
+                  value={form.addressLine}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, addressLine: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="obra-city">Cidade</label>
+                <input
+                  id="obra-city"
+                  value={form.city}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, city: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="obra-state">UF</label>
+                <input
+                  id="obra-state"
+                  maxLength={2}
+                  value={form.state}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, state: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="obra-start">Inicio previsto</label>
+                <input
+                  id="obra-start"
+                  type="date"
+                  value={form.plannedStartAt}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, plannedStartAt: e.target.value }))
+                  }
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="obra-end">Fim previsto</label>
+                <input
+                  id="obra-end"
+                  type="date"
+                  value={form.plannedEndAt}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, plannedEndAt: e.target.value }))
+                  }
+                />
+                <p className="field-hint">
+                  So lembrete. Nao encerra a obra automaticamente.
+                </p>
+              </div>
+            </div>
+            <div className="btn-row">
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={saving}
+              >
+                {saving
+                  ? 'Salvando…'
+                  : editingId
+                    ? 'Salvar alteracoes'
+                    : 'Cadastrar obra'}
+              </button>
+            </div>
+          </form>
         </section>
       ) : null}
 
-      <section className="surface" aria-labelledby="obras-form-title">
-        <h2 id="obras-form-title" className="page-title page-title--sm">
-          {editingId ? 'Editar obra' : 'Nova obra'}
-        </h2>
-        <form className="form-grid" onSubmit={(e) => void onSubmit(e)}>
-          <label>
-            Nome *
-            <input
-              required
-              value={form.name}
-              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            />
-          </label>
-          <label>
-            Descricao
-            <input
-              value={form.description}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, description: e.target.value }))
-              }
-            />
-          </label>
-          <label>
-            CNPJ
-            <input
-              value={form.cnpj}
-              onChange={(e) => setForm((f) => ({ ...f, cnpj: e.target.value }))}
-            />
-          </label>
-          <label>
-            Endereco
-            <input
-              value={form.addressLine}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, addressLine: e.target.value }))
-              }
-            />
-          </label>
-          <label>
-            Cidade
-            <input
-              value={form.city}
-              onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-            />
-          </label>
-          <label>
-            UF
-            <input
-              maxLength={2}
-              value={form.state}
-              onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
-            />
-          </label>
-          <label>
-            Inicio previsto
-            <input
-              type="date"
-              value={form.plannedStartAt}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, plannedStartAt: e.target.value }))
-              }
-            />
-          </label>
-          <label>
-            Fim previsto
-            <input
-              type="date"
-              value={form.plannedEndAt}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, plannedEndAt: e.target.value }))
-              }
-            />
-          </label>
-          <div className="btn-row">
-            <button type="submit" className="btn btn-primary" disabled={saving}>
-              {saving ? 'Salvando…' : editingId ? 'Salvar' : 'Cadastrar'}
+      {panel === 'import' ? (
+        <section className="surface" aria-labelledby="obras-import-title">
+          <div className="form-section-header">
+            <div>
+              <p className="page-kicker">Planilha</p>
+              <h2 id="obras-import-title" className="page-title page-title--sm">
+                Importar obras
+              </h2>
+              <p className="page-lead">
+                Baixe o modelo, preencha e envie para previa antes de gravar.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={closePanels}
+            >
+              Cancelar
             </button>
-            {editingId ? (
+          </div>
+          <div className="form-panel">
+            <div className="btn-row">
               <button
                 type="button"
-                className="btn btn-ghost"
-                onClick={() => {
-                  setEditingId(null);
-                  setForm(emptyForm);
-                }}
+                className="btn btn-secondary"
+                onClick={() => void downloadPortalObrasImportTemplate()}
               >
-                Cancelar edicao
+                Baixar modelo CSV
               </button>
+              <label className="btn btn-primary" htmlFor="obras-import-file">
+                {importBusy ? 'Lendo…' : 'Selecionar arquivo'}
+              </label>
+              <input
+                id="obras-import-file"
+                type="file"
+                accept=".csv,text/csv"
+                hidden
+                disabled={importBusy}
+                onChange={(e) => {
+                  void onImportFile(e.target.files?.[0] ?? null);
+                  e.target.value = '';
+                }}
+              />
+            </div>
+            {importPreview ? (
+              <div className="field" style={{ marginTop: '1rem' }}>
+                <p className="page-lead">
+                  {importPreview.validRows} valida(s) ·{' '}
+                  {importPreview.invalidRows} com erro ·{' '}
+                  {importPreview.totalRows} no total
+                </p>
+                {importPreview.invalidRows > 0 ? (
+                  <div className="stack-list" role="list">
+                    {importPreview.rows
+                      .filter((r) => r.errors.length > 0)
+                      .slice(0, 8)
+                      .map((row) => (
+                        <article
+                          key={row.rowNumber}
+                          className="stack-card"
+                          role="listitem"
+                        >
+                          <div className="stack-card__body stack-card__body--stack">
+                            <div className="stack-card__main">
+                              <strong className="stack-card__title">
+                                Linha {row.rowNumber}
+                                {row.name ? `: ${row.name}` : ''}
+                              </strong>
+                              <p className="stack-card__meta">
+                                {row.errors.join(' · ')}
+                              </p>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="btn-row">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={importBusy || importPreview.validRows === 0}
+                      onClick={() => void onConfirmImport()}
+                    >
+                      Confirmar importacao
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : null}
           </div>
-        </form>
-      </section>
+        </section>
+      ) : null}
 
-      <section className="surface" aria-labelledby="obras-import-title">
-        <h2 id="obras-import-title" className="page-title page-title--sm">
-          Importar planilha
-        </h2>
-        <div className="btn-row">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => void downloadPortalObrasImportTemplate()}
-          >
-            Baixar modelo CSV
-          </button>
-          <label className="btn btn-secondary">
-            Selecionar arquivo
-            <input
-              type="file"
-              accept=".csv,text/csv"
-              hidden
-              onChange={(e) =>
-                void onImportFile(e.target.files?.[0] ?? null)
-              }
-            />
-          </label>
-        </div>
-        {importPreview ? (
-          <div>
-            <p className="page-lead">
-              {importPreview.validRows} valida(s) · {importPreview.invalidRows}{' '}
-              com erro
-            </p>
-            {importPreview.invalidRows === 0 ? (
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={importBusy}
-                onClick={() => void onConfirmImport()}
-              >
-                Confirmar importacao
-              </button>
-            ) : (
-              <p className="error" role="alert">
-                Corrija as linhas com erro na planilha e tente de novo.
+      {panel === 'assign' ? (
+        <section className="surface" aria-labelledby="obras-assign-title">
+          <div className="form-section-header">
+            <div>
+              <p className="page-kicker">Vinculo</p>
+              <h2 id="obras-assign-title" className="page-title page-title--sm">
+                Vincular trabalhador a obra
+              </h2>
+              <p className="page-lead">
+                Um trabalhador so pode estar em uma obra por vez. Ao vincular a
+                outra, a anterior e encerrada no dia anterior.
               </p>
-            )}
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={closePanels}
+            >
+              Cancelar
+            </button>
           </div>
-        ) : null}
-      </section>
-
-      <section className="surface" aria-labelledby="obras-assign-title">
-        <h2 id="obras-assign-title" className="page-title page-title--sm">
-          Vincular trabalhador
-        </h2>
-        <p className="page-lead">
-          Um trabalhador so pode estar em uma obra por vez. Ao vincular a outra,
-          a anterior e encerrada no dia anterior.
-        </p>
-        <form className="form-grid" onSubmit={(e) => void onAssign(e)}>
-          <label>
-            Trabalhador
-            <select
-              required
-              value={assignWorkerId}
-              onChange={(e) => setAssignWorkerId(e.target.value)}
-            >
-              <option value="">Selecione</option>
-              {workers.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Obra ativa
-            <select
-              required
-              value={assignSiteId}
-              onChange={(e) => setAssignSiteId(e.target.value)}
-            >
-              <option value="">Selecione</option>
-              {activeSites.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Inicio do vinculo
-            <input
-              type="date"
-              value={assignStart}
-              onChange={(e) => setAssignStart(e.target.value)}
-            />
-          </label>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            Vincular
-          </button>
-        </form>
-      </section>
-
-      <section className="surface" aria-labelledby="obras-list-title">
-        <h2 id="obras-list-title" className="page-title page-title--sm">
-          Lista de obras
-        </h2>
-        {loading ? <p className="page-lead">Carregando…</p> : null}
-        {!loading && sites.length === 0 ? (
-          <p className="page-lead">Nenhuma obra cadastrada.</p>
-        ) : null}
-        <ul className="stack-list">
-          {sites.map((site) => (
-            <li key={site.id} className="stack-list__item">
-              <div>
-                <strong>{site.name}</strong>
-                {site.endingSoon ? (
-                  <span className="badge"> ≤15 dias</span>
-                ) : null}
-                <p className="page-lead">
-                  {site.status === 'ACTIVE' ? 'Ativa' : 'Finalizada'}
-                  {site.cnpj ? ` · CNPJ ${formatCnpj(site.cnpj)}` : ''}
-                  {' · '}
-                  {formatDay(site.plannedStartAt)} a{' '}
-                  {formatDay(site.plannedEndAt)}
-                  {site.openAssignmentsCount
-                    ? ` · ${site.openAssignmentsCount} vinculo(s) aberto(s)`
-                    : ''}
+          <form
+            className="form-panel"
+            onSubmit={(e) => void onAssign(e)}
+            noValidate
+          >
+            <div className="form-grid">
+              <div className="field">
+                <label htmlFor="obra-assign-worker">Trabalhador</label>
+                <select
+                  id="obra-assign-worker"
+                  required
+                  value={assignWorkerId}
+                  onChange={(e) => setAssignWorkerId(e.target.value)}
+                >
+                  <option value="">Selecione</option>
+                  {workers.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                      {w.registration ? ` · ${w.registration}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="obra-assign-site">Obra ativa</label>
+                <select
+                  id="obra-assign-site"
+                  required
+                  value={assignSiteId}
+                  onChange={(e) => setAssignSiteId(e.target.value)}
+                >
+                  <option value="">Selecione</option>
+                  {activeSites.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="obra-assign-start">Inicio do vinculo</label>
+                <input
+                  id="obra-assign-start"
+                  type="date"
+                  value={assignStart}
+                  onChange={(e) => setAssignStart(e.target.value)}
+                />
+                <p className="field-hint">
+                  Vazio = hoje. Use para registrar periodo retroativo.
                 </p>
-                {site.description ? (
-                  <p className="page-lead">{site.description}</p>
-                ) : null}
               </div>
-              <div className="btn-row">
-                {site.status === 'ACTIVE' ? (
-                  <>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => startEdit(site)}
-                    >
-                      Editar / estender
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={() => void onFinish(site.id, site.name)}
-                    >
-                      Finalizar
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
+            </div>
+            <div className="btn-row">
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={saving}
+              >
+                {saving ? 'Vinculando…' : 'Vincular'}
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
+      {panel === 'list' ? (
+        <section className="surface" aria-labelledby="obras-list-title">
+          <div className="form-section-header">
+            <div>
+              <p className="page-kicker">Cadastro</p>
+              <h2 id="obras-list-title" className="page-title page-title--sm">
+                Lista de obras
+              </h2>
+            </div>
+          </div>
+          {loading ? <p className="page-lead">Carregando…</p> : null}
+          {!loading && sites.length === 0 ? (
+            <p className="page-lead">
+              Nenhuma obra cadastrada. Use Nova obra ou Importar CSV.
+            </p>
+          ) : null}
+          {!loading && sites.length > 0 ? (
+            <div className="stack-list" role="list">
+              {sites.map((site) => (
+                <article key={site.id} className="stack-card" role="listitem">
+                  <div className="stack-card__body stack-card__body--stack">
+                    <div className="stack-card__main">
+                      <strong className="stack-card__title">{site.name}</strong>
+                      <p className="stack-card__meta">
+                        <span
+                          className={`status-pill ${
+                            site.status === 'ACTIVE'
+                              ? site.endingSoon
+                                ? 'status-pill--warn'
+                                : 'status-pill--active'
+                              : 'status-pill--inactive'
+                          }`}
+                        >
+                          <span className="dot" aria-hidden />
+                          {site.status === 'ACTIVE'
+                            ? site.endingSoon
+                              ? 'Ativa · ≤15 dias'
+                              : 'Ativa'
+                            : 'Finalizada'}
+                        </span>
+                        {site.cnpj ? ` · CNPJ ${formatCnpj(site.cnpj)}` : ''}
+                      </p>
+                      <p className="stack-card__meta">
+                        {formatDay(site.plannedStartAt)} a{' '}
+                        {formatDay(site.plannedEndAt)}
+                        {site.openAssignmentsCount
+                          ? ` · ${site.openAssignmentsCount} vinculo(s) aberto(s)`
+                          : ''}
+                      </p>
+                      {site.description ? (
+                        <p className="stack-card__meta">{site.description}</p>
+                      ) : null}
+                      {site.city || site.addressLine ? (
+                        <p className="stack-card__meta">
+                          {[site.addressLine, site.city, site.state]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
+                      ) : null}
+                    </div>
+                    {site.status === 'ACTIVE' ? (
+                      <div className="stack-card__actions">
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => startEdit(site)}
+                        >
+                          Editar / estender
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => void onFinish(site.id, site.name)}
+                        >
+                          Finalizar
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
     </div>
   );
 }
