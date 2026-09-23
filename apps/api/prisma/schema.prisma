@@ -141,6 +141,8 @@ model Organization {
   trainingTemplates TrainingTemplate[]
   trainingTemplateAssets TrainingTemplateAsset[]
   trainingIssuances TrainingIssuance[]
+  workSites         ClientWorkSite[]
+  workAssignments   WorkerWorkAssignment[]
 }
 
 /// Contato oficial da consultoria usado nas comunicacoes com clientes
@@ -359,6 +361,8 @@ model ServedClient {
   notes              String?
   /// Modulo pago: Documentos SST no menu do portal do cliente.
   sstDocumentsEnabled Boolean @default(false)
+  /// Modulo pago: Obras (canteiros) no portal — vinculo temporal na ficha de EPI.
+  obrasModeEnabled Boolean @default(false)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
@@ -385,6 +389,8 @@ model ServedClient {
   sstDocumentLinks SstDocumentLink[]
   trainingIssuances TrainingIssuance[]
   groupMember      ClientGroupMember?
+  workSites        ClientWorkSite[]
+  workAssignments  WorkerWorkAssignment[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])
@@ -724,6 +730,7 @@ model Worker {
   deliverySignLinks EpiDeliverySignLink[]
   sstDocuments          SstDocument[]
   sstDocumentLinks      SstDocumentLink[]
+  workAssignments       WorkerWorkAssignment[]
 
   @@unique([organizationId, cpf])
   @@unique([servedClientId, registration])
@@ -733,6 +740,66 @@ model Worker {
   @@index([clientSectorId])
   @@index([clientJobFunctionId])
   @@index([status])
+}
+
+enum ClientWorkSiteStatus {
+  ACTIVE
+  FINISHED
+}
+
+/// Obra/canteiro informativo do cliente (Modo Obras). Nao gera PGR.
+model ClientWorkSite {
+  id             String               @id @default(cuid())
+  organizationId String
+  servedClientId String
+  name           String
+  description    String?
+  /// CNPJ opcional da obra (digitos). Nao precisa ser unico.
+  cnpj           String?
+  addressLine    String?
+  city           String?
+  state          String?
+  plannedStartAt DateTime?
+  /// Previsao de fim — NAO encerra automaticamente; cliente pode estender.
+  plannedEndAt   DateTime?
+  status         ClientWorkSiteStatus @default(ACTIVE)
+  /// Preenchido apenas ao finalizar manualmente.
+  finishedAt     DateTime?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient           @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  assignments  WorkerWorkAssignment[]
+
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([status])
+  @@index([plannedEndAt])
+}
+
+/// Vinculo temporal trabalhador ↔ obra. No maximo uma assignment aberta por trabalhador.
+model WorkerWorkAssignment {
+  id             String    @id @default(cuid())
+  organizationId String
+  servedClientId String
+  workerId       String
+  workSiteId     String
+  startAt        DateTime
+  endAt          DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  servedClient ServedClient  @relation(fields: [servedClientId], references: [id], onDelete: Cascade)
+  worker       Worker        @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  workSite     ClientWorkSite @relation(fields: [workSiteId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([servedClientId])
+  @@index([workerId, endAt])
+  @@index([workSiteId])
+  @@index([startAt, endAt])
 }
 
 /// Item do catalogo mestre de EPI do tenant (ainda sem estoque/entrega).

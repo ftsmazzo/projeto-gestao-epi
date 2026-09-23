@@ -608,6 +608,8 @@ export class PortalController {
     @Query('scope') scope?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('headerMode') headerMode?: string,
+    @Query('includeWorkHistory') includeWorkHistory?: string,
   ) {
     this.assertClient(user);
     const normalized =
@@ -618,6 +620,11 @@ export class PortalController {
       id,
       normalized,
       { from, to },
+      {
+        headerMode: headerMode === 'worksite' ? 'worksite' : 'company',
+        includeWorkHistory:
+          includeWorkHistory === '1' || includeWorkHistory === 'true',
+      },
     );
   }
 
@@ -629,6 +636,8 @@ export class PortalController {
     @Query('scope') scope?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('headerMode') headerMode?: string,
+    @Query('includeWorkHistory') includeWorkHistory?: string,
   ) {
     this.assertClient(user);
     const normalized =
@@ -639,6 +648,11 @@ export class PortalController {
       id,
       normalized,
       { from, to },
+      {
+        headerMode: headerMode === 'worksite' ? 'worksite' : 'company',
+        includeWorkHistory:
+          includeWorkHistory === '1' || includeWorkHistory === 'true',
+      },
     );
     const pdf = await this.portalPdf.buildWorkerEpiSheetPdf(sheet);
     const safeName = sheet.worker.name

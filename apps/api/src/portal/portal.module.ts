@@ -10,6 +10,7 @@ import { PortalPdfService } from './portal-pdf.service';
 import { PortalReportsService } from './portal-reports.service';
 import { PublicPortalDeliverySignController } from './public-portal-delivery-sign.controller';
 import { PortalService } from './portal.service';
+import { WorkSitesModule } from '../work-sites/work-sites.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { PortalService } from './portal.service';
     WorkersModule,
     PgroModule,
     CommunicationsModule,
+    WorkSitesModule,
   ],
   controllers: [PortalController, PublicPortalDeliverySignController],
   providers: [PortalService, PortalReportsService, PortalPdfService],

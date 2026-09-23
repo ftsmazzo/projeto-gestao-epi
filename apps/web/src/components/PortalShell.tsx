@@ -51,6 +51,8 @@ function portalIcon(href: string) {
       return <IconChart />;
     case '/portal/estrutura':
       return <IconBuilding />;
+    case '/portal/obras':
+      return <IconBuilding />;
     case '/portal/documentos-sst':
       return <IconShield />;
     case '/portal/custos':
@@ -93,12 +95,25 @@ export function PortalShell({ children, user, onLogout, onSwitchCompany }: Props
 
   const portalNav = useMemo(
     () =>
-      PORTAL_NAV.filter(
-        (item) =>
-          item.href !== '/portal/documentos-sst' ||
-          user?.servedClient.sstDocumentsEnabled === true,
-      ),
-    [user?.servedClient.sstDocumentsEnabled],
+      PORTAL_NAV.filter((item) => {
+        if (
+          item.href === '/portal/documentos-sst' &&
+          user?.servedClient.sstDocumentsEnabled !== true
+        ) {
+          return false;
+        }
+        if (
+          item.href === '/portal/obras' &&
+          user?.servedClient.obrasModeEnabled !== true
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [
+      user?.servedClient.sstDocumentsEnabled,
+      user?.servedClient.obrasModeEnabled,
+    ],
   );
 
   const primaryItems = portalNav.filter((item) =>

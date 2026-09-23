@@ -32,6 +32,9 @@ import type {
   PortalTrabalhadoresResponse,
   PortalValidadeResponse,
   PortalWorkerEpiSheetResponse,
+  ClientWorkSite,
+  ClientWorkSiteImportPreview,
+  WorkerWorkAssignment,
   SupportThreadView,
   WorkerFacialEnrollmentLinkGenerated,
   WorkerFacialEnrollmentLinkStatusResponse,
@@ -321,11 +324,17 @@ export async function fetchPortalWorkerEpiSheet(
   workerId: string,
   scope: 'history' | 'open' = 'history',
   period?: { from?: string; to?: string },
+  works?: {
+    headerMode?: 'company' | 'worksite';
+    includeWorkHistory?: boolean;
+  },
 ) {
   const params = new URLSearchParams();
   if (scope === 'open') params.set('scope', 'open');
   if (period?.from?.trim()) params.set('from', period.from.trim());
   if (period?.to?.trim()) params.set('to', period.to.trim());
+  if (works?.headerMode === 'worksite') params.set('headerMode', 'worksite');
+  if (works?.includeWorkHistory) params.set('includeWorkHistory', '1');
   const query = params.toString();
   return clientApiFetch<PortalWorkerEpiSheetResponse>(
     `/portal/trabalhadores/${workerId}/ficha-epi${query ? `?${query}` : ''}`,
@@ -466,11 +475,17 @@ export async function downloadPortalWorkerEpiSheetPdf(
   workerId: string,
   scope: 'history' | 'open' = 'history',
   period?: { from?: string; to?: string },
+  works?: {
+    headerMode?: 'company' | 'worksite';
+    includeWorkHistory?: boolean;
+  },
 ) {
   const params = new URLSearchParams();
   if (scope === 'open') params.set('scope', 'open');
   if (period?.from?.trim()) params.set('from', period.from.trim());
   if (period?.to?.trim()) params.set('to', period.to.trim());
+  if (works?.headerMode === 'worksite') params.set('headerMode', 'worksite');
+  if (works?.includeWorkHistory) params.set('includeWorkHistory', '1');
   const query = params.toString();
   const blob = await clientApiFetchBlob(
     `/portal/trabalhadores/${workerId}/ficha-epi/pdf${query ? `?${query}` : ''}`,
@@ -764,4 +779,91 @@ export async function escalatePortalSupport(reason?: string, currentPath?: strin
     method: 'POST',
     body: JSON.stringify({ reason, currentPath }),
   });
+}
+
+export async function fetchPortalObras() {
+  return clientApiFetch<ClientWorkSite[]>('/portal/obras');
+}
+
+export async function createPortalObra(input: {
+  name: string;
+  description?: string | null;
+  cnpj?: string | null;
+  addressLine?: string | null;
+  city?: string | null;
+  state?: string | null;
+  plannedStartAt?: string | null;
+  plannedEndAt?: string | null;
+}) {
+  return clientApiFetch<ClientWorkSite>('/portal/obras', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updatePortalObra(
+  id: string,
+  input: {
+    name: string;
+    description?: string | null;
+    cnpj?: string | null;
+    addressLine?: string | null;
+    city?: string | null;
+    state?: string | null;
+    plannedStartAt?: string | null;
+    plannedEndAt?: string | null;
+  },
+) {
+  return clientApiFetch<ClientWorkSite>(`/portal/obras/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function finishPortalObra(id: string) {
+  return clientApiFetch<ClientWorkSite>(`/portal/obras/${id}/finalizar`, {
+    method: 'POST',
+  });
+}
+
+export async function assignPortalWorkerToObra(input: {
+  workerId: string;
+  workSiteId: string;
+  startAt?: string;
+}) {
+  return clientApiFetch<WorkerWorkAssignment>('/portal/obras/assignments', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function previewPortalObrasImport(input: {
+  csvText?: string;
+  csvBase64?: string;
+}) {
+  return clientApiFetch<ClientWorkSiteImportPreview>(
+    '/portal/obras/import/preview',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function confirmPortalObrasImport(input: {
+  csvText?: string;
+  csvBase64?: string;
+}) {
+  return clientApiFetch<{ created: number; sites: ClientWorkSite[] }>(
+    '/portal/obras/import/confirm',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function downloadPortalObrasImportTemplate() {
+  const blob = await clientApiFetchBlob('/portal/obras/import/template');
+  triggerBrowserDownload(blob, 'modelo-obras.csv');
 }

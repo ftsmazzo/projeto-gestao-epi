@@ -21,6 +21,7 @@ export type ServedClientInput = {
   contactPhone?: string;
   notes?: string;
   sstDocumentsEnabled?: boolean;
+  obrasModeEnabled?: boolean;
   initialManagerName?: string;
   initialManagerEmail?: string;
   initialManagerPhone?: string;
@@ -133,6 +134,7 @@ export type ServedClientUpdateInput = {
   contactPhone?: string | null;
   notes?: string | null;
   sstDocumentsEnabled?: boolean;
+  obrasModeEnabled?: boolean;
 };
 
 export function updateServedClient(id: string, input: ServedClientUpdateInput) {

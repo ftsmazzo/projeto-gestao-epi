@@ -270,11 +270,45 @@ export class PortalPdfService {
       );
 
       sectionTitle(doc, 'Empresa');
-      kv(doc, 'Razao social', sheet.client.legalName);
-      if (sheet.client.tradeName) {
-        kv(doc, 'Nome fantasia', sheet.client.tradeName);
+      if (sheet.works?.enabled && sheet.works.headerMode === 'worksite' && sheet.works.primary) {
+        kv(doc, 'Obra (cabecalho)', sheet.works.primary.name);
+        if (sheet.works.primary.cnpj) {
+          kv(doc, 'CNPJ da obra', formatCnpj(sheet.works.primary.cnpj));
+        }
+        kv(doc, 'Empresa', sheet.client.legalName);
+        kv(doc, 'CNPJ da empresa', formatCnpj(sheet.client.cnpj));
+      } else {
+        kv(doc, 'Razao social', sheet.client.legalName);
+        if (sheet.client.tradeName) {
+          kv(doc, 'Nome fantasia', sheet.client.tradeName);
+        }
+        kv(doc, 'CNPJ', formatCnpj(sheet.client.cnpj));
+        if (sheet.works?.enabled && sheet.works.primary) {
+          kv(doc, 'Obra', sheet.works.primary.name);
+          if (sheet.works.primary.cnpj) {
+            kv(doc, 'CNPJ da obra', formatCnpj(sheet.works.primary.cnpj));
+          }
+        }
       }
-      kv(doc, 'CNPJ', formatCnpj(sheet.client.cnpj));
+
+      if (
+        sheet.works?.enabled &&
+        sheet.works.includeHistory &&
+        sheet.works.history.length > 0
+      ) {
+        sectionTitle(doc, 'Obras no periodo');
+        for (const site of sheet.works.history) {
+          const period = [
+            formatDate(site.startAt),
+            site.endAt ? formatDate(site.endAt) : 'atual',
+          ].join(' a ');
+          kv(
+            doc,
+            site.name,
+            `${site.cnpj ? `CNPJ ${formatCnpj(site.cnpj)} · ` : ''}${period}`,
+          );
+        }
+      }
 
       sectionTitle(doc, 'Trabalhador');
       kv(doc, 'Nome', sheet.worker.name);

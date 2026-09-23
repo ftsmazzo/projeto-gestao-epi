@@ -44,6 +44,10 @@ export function WorkerEpiSheetView({
   onApplyPeriod,
   onClearPeriod,
   periodLoading = false,
+  headerMode = 'company',
+  onHeaderModeChange,
+  includeWorkHistory = false,
+  onIncludeWorkHistoryChange,
 }: {
   data: PortalWorkerEpiSheetResponse;
   scope: 'history' | 'open';
@@ -55,10 +59,26 @@ export function WorkerEpiSheetView({
   onApplyPeriod?: () => void;
   onClearPeriod?: () => void;
   periodLoading?: boolean;
+  headerMode?: 'company' | 'worksite';
+  onHeaderModeChange?: (mode: 'company' | 'worksite') => void;
+  includeWorkHistory?: boolean;
+  onIncludeWorkHistoryChange?: (value: boolean) => void;
 }) {
   const hasPeriodFilter = Boolean(data.period?.from || data.period?.to);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const works = data.works;
+  const useWorksiteHeader =
+    works?.enabled && headerMode === 'worksite' && works.primary;
+  const mastheadTitle = useWorksiteHeader
+    ? works.primary!.name
+    : data.client.legalName;
+  const mastheadCnpj = useWorksiteHeader
+    ? works.primary!.cnpj
+    : data.client.cnpj;
+  const mastheadExtra = useWorksiteHeader
+    ? data.client.legalName
+    : data.client.tradeName;
 
   async function downloadPdf() {
     setPdfBusy(true);
@@ -67,7 +87,9 @@ export function WorkerEpiSheetView({
       await downloadPortalWorkerEpiSheetPdf(data.worker.id, scope, {
         from: periodFrom || data.period.from || undefined,
         to: periodTo || data.period.to || undefined,
-      });
+      }, works?.enabled
+        ? { headerMode, includeWorkHistory }
+        : undefined);
     } catch (err) {
       setPdfError(
         err instanceof Error ? err.message : 'Falha ao baixar o PDF.',
@@ -158,17 +180,75 @@ export function WorkerEpiSheetView({
         </div>
       ) : null}
 
+      {works?.enabled && onHeaderModeChange ? (
+        <div className="btn-row no-print portal-epi-sheet__period">
+          <label className="portal-epi-sheet__scope">
+            <span className="field-hint">Cabecalho</span>
+            <select
+              value={headerMode}
+              onChange={(e) =>
+                onHeaderModeChange(
+                  e.target.value === 'worksite' ? 'worksite' : 'company',
+                )
+              }
+            >
+              <option value="company">Empresa + obra adicional</option>
+              <option value="worksite">Obra como cabecalho</option>
+            </select>
+          </label>
+          {works.hasMultipleInPeriod && onIncludeWorkHistoryChange ? (
+            <label className="portal-epi-sheet__scope">
+              <span className="field-hint">Historico de obras</span>
+              <select
+                value={includeWorkHistory ? 'yes' : 'no'}
+                onChange={(e) =>
+                  onIncludeWorkHistoryChange(e.target.value === 'yes')
+                }
+              >
+                <option value="no">So a ultima obra do periodo</option>
+                <option value="yes">Incluir historico no periodo</option>
+              </select>
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+
+      {works?.enabled && works.hasMultipleInPeriod && !includeWorkHistory ? (
+        <p className="notice notice--info no-print" role="status">
+          Trabalhador com historico de outras obras no periodo. Inclua o
+          historico se quiser listar todas abaixo do cabecalho.
+        </p>
+      ) : null}
+
       <article className="epi-doc" aria-labelledby="epi-sheet-heading">
         <header className="epi-doc__masthead">
           <div className="epi-doc__brand">
             <p className="epi-doc__doc-type">Ficha de controle de EPI</p>
             <h1 id="epi-sheet-heading" className="epi-doc__title">
-              {data.client.legalName}
+              {mastheadTitle}
             </h1>
             <p className="epi-doc__meta">
-              CNPJ {formatCnpj(data.client.cnpj)}
-              {data.client.tradeName ? ` · ${data.client.tradeName}` : ''}
+              {mastheadCnpj
+                ? `CNPJ ${formatCnpj(mastheadCnpj)}`
+                : 'CNPJ nao informado'}
+              {mastheadExtra ? ` · ${mastheadExtra}` : ''}
             </p>
+            {works?.enabled &&
+            headerMode === 'company' &&
+            works.primary ? (
+              <p className="epi-doc__meta">
+                Obra: {works.primary.name}
+                {works.primary.cnpj
+                  ? ` · CNPJ ${formatCnpj(works.primary.cnpj)}`
+                  : ''}
+              </p>
+            ) : null}
+            {works?.enabled && headerMode === 'worksite' ? (
+              <p className="epi-doc__meta">
+                Empresa: {data.client.legalName} · CNPJ{' '}
+                {formatCnpj(data.client.cnpj)}
+              </p>
+            ) : null}
           </div>
           <div className="epi-doc__receipt-box">
             <p className="epi-doc__receipt-label">Trabalhador</p>
@@ -189,6 +269,28 @@ export function WorkerEpiSheetView({
             </p>
           </div>
         </header>
+
+        {works?.enabled &&
+        includeWorkHistory &&
+        works.history.length > 0 ? (
+          <section className="epi-doc__section epi-doc__section--keep">
+            <h2 className="epi-doc__section-title">Obras no periodo</h2>
+            <div className="epi-doc__grid">
+              {works.history.map((site) => (
+                <div key={`${site.id}-${site.startAt}`}>
+                  <span className="epi-doc__label">{site.name}</span>
+                  <span>
+                    {site.cnpj ? `CNPJ ${formatCnpj(site.cnpj)} · ` : ''}
+                    {formatPeriodLabel(
+                      site.startAt.slice(0, 10),
+                      site.endAt ? site.endAt.slice(0, 10) : null,
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <section className="epi-doc__section epi-doc__section--keep">
           <h2 className="epi-doc__section-title">Identificacao</h2>

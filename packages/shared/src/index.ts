@@ -195,6 +195,8 @@ export interface ServedClient {
   notes: string | null;
   /** Quando false, Documentos SST some do menu do portal. */
   sstDocumentsEnabled: boolean;
+  /** Quando false, Obras some do menu do portal. */
+  obrasModeEnabled: boolean;
   createdAt: string;
   updatedAt: string;
   group?: { id: string; name: string } | null;
@@ -500,6 +502,7 @@ export interface ClientPortalClient {
   cnpj: string;
   status: ServedClientStatus;
   sstDocumentsEnabled: boolean;
+  obrasModeEnabled: boolean;
 }
 
 export interface ClientPortalUser {
@@ -2641,6 +2644,84 @@ export interface PortalWorkerEpiSheetResponse {
     version: string;
     text: string;
   };
+  /** Presente apenas com Modo Obras ativo. */
+  works?: {
+    enabled: true;
+    headerMode: 'company' | 'worksite';
+    includeHistory: boolean;
+    /** Obra usada no cabecalho (ultima do periodo ou vigente). */
+    primary: PortalWorkerEpiSheetWorkSite | null;
+    /** Historico no periodo (quando includeHistory). */
+    history: PortalWorkerEpiSheetWorkSite[];
+    /** Mais de uma obra no periodo — UI deve perguntar se inclui historico. */
+    hasMultipleInPeriod: boolean;
+  };
+}
+
+export interface PortalWorkerEpiSheetWorkSite {
+  id: string;
+  name: string;
+  cnpj: string | null;
+  startAt: string;
+  endAt: string | null;
+}
+
+export type ClientWorkSiteStatus = 'ACTIVE' | 'FINISHED';
+
+export interface ClientWorkSite {
+  id: string;
+  organizationId: string;
+  servedClientId: string;
+  name: string;
+  description: string | null;
+  cnpj: string | null;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  plannedStartAt: string | null;
+  plannedEndAt: string | null;
+  status: ClientWorkSiteStatus;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Lembrete: plannedEndAt em ≤15 dias e ainda ACTIVE (nao encerra sozinho). */
+  endingSoon?: boolean;
+  openAssignmentsCount?: number;
+}
+
+export interface WorkerWorkAssignment {
+  id: string;
+  workerId: string;
+  workSiteId: string;
+  startAt: string;
+  endAt: string | null;
+  worker?: { id: string; name: string; registration: string | null };
+  workSite?: {
+    id: string;
+    name: string;
+    cnpj: string | null;
+    status: ClientWorkSiteStatus;
+  };
+}
+
+export interface ClientWorkSiteImportPreviewRow {
+  rowNumber: number;
+  name: string;
+  description: string | null;
+  cnpj: string | null;
+  addressLine: string | null;
+  city: string | null;
+  state: string | null;
+  plannedStartAt: string | null;
+  plannedEndAt: string | null;
+  errors: string[];
+}
+
+export interface ClientWorkSiteImportPreview {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  rows: ClientWorkSiteImportPreviewRow[];
 }
 
 export interface PortalCreateDeliveryItemInput {

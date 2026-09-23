@@ -55,6 +55,10 @@ export class CreateServedClientDto {
   @IsBoolean()
   sstDocumentsEnabled?: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  obrasModeEnabled?: boolean;
+
   /** Se informado junto com e-mail, cria gestor inicial com senha temporaria. */
   @IsOptional()
   @ValidateIf((o: CreateServedClientDto) => !!o.initialManagerEmail)

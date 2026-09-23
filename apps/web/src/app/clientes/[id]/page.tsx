@@ -32,6 +32,8 @@ export default function ClienteVisaoGeralPage() {
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const [savingSst, setSavingSst] = useState(false);
   const [sstMessage, setSstMessage] = useState<string | null>(null);
+  const [savingObras, setSavingObras] = useState(false);
+  const [obrasMessage, setObrasMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!clientId) return;
@@ -131,6 +133,30 @@ export default function ClienteVisaoGeralPage() {
       );
     } finally {
       setSavingSst(false);
+    }
+  }
+
+  async function onToggleObrasModule(next: boolean) {
+    if (!clientId) return;
+    setSavingObras(true);
+    setObrasMessage(null);
+    setError(null);
+    try {
+      await updateServedClient(clientId, { obrasModeEnabled: next });
+      setObrasMessage(
+        next
+          ? 'Modo Obras liberado no menu do portal.'
+          : 'Modo Obras removido do menu do portal.',
+      );
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel atualizar o modulo Obras.',
+      );
+    } finally {
+      setSavingObras(false);
     }
   }
 
@@ -253,6 +279,37 @@ export default function ClienteVisaoGeralPage() {
             onChange={(e) => void onToggleSstModule(e.target.checked)}
           />{' '}
           Liberar Documentos SST no portal deste cliente
+        </label>
+      </section>
+
+      <section className="surface" aria-labelledby="obras-module-title">
+        <div className="form-section-header">
+          <div>
+            <p className="page-kicker">Modulos</p>
+            <h2 id="obras-module-title" className="page-title page-title--sm">
+              Modo Obras
+            </h2>
+            <p className="page-lead">
+              Modulo pago. Libera cadastro de obras, vinculo temporal de
+              trabalhadores e dados de obra na ficha de EPI. A obra nao encerra
+              sozinha — o cliente estende o periodo ou finaliza manualmente.
+            </p>
+          </div>
+        </div>
+        {obrasMessage ? (
+          <p className="notice notice--info" role="status">
+            {obrasMessage}
+          </p>
+        ) : null}
+        <label htmlFor="obras-module-toggle">
+          <input
+            id="obras-module-toggle"
+            type="checkbox"
+            checked={overview.client.obrasModeEnabled === true}
+            disabled={savingObras || !operational}
+            onChange={(e) => void onToggleObrasModule(e.target.checked)}
+          />{' '}
+          Liberar Modo Obras no portal deste cliente
         </label>
       </section>
 

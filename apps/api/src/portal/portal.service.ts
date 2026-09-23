@@ -60,6 +60,7 @@ import { WORKER_CSV_TEMPLATE } from '../workers/worker-import.utils';
 import { WorkersService } from '../workers/workers.service';
 import { reassignWorkersFromArchivedFunctions } from '../workers/reassign-archived-job-workers';
 import type { ConfirmWorkerImportDto } from '../workers/dto/worker-import.dto';
+import { WorkSitesService } from '../work-sites/work-sites.service';
 import {
   FACIAL_EVIDENCE_CONSENT_TEXT,
   FACIAL_EVIDENCE_CONSENT_VERSION,
@@ -224,6 +225,7 @@ export class PortalService {
     private readonly workers: WorkersService,
     private readonly facialEnrollment: WorkerFacialEnrollmentService,
     private readonly workerImport: WorkerImportService,
+    private readonly workSites: WorkSitesService,
   ) {}
 
   async getDashboard(organizationId: string, servedClientId: string) {
@@ -3968,6 +3970,10 @@ export class PortalService {
     workerId: string,
     scope: 'history' | 'open' = 'history',
     period?: { from?: string; to?: string },
+    worksOptions?: {
+      headerMode?: 'company' | 'worksite';
+      includeWorkHistory?: boolean;
+    },
   ) {
     const client = await this.requireClient(organizationId, servedClientId);
 
@@ -4204,6 +4210,58 @@ export class PortalService {
       declaration: {
         version: EPI_SHEET_DECLARATION_VERSION,
         text: EPI_SHEET_DECLARATION_TEXT,
+      },
+      ...(await this.buildEpiSheetWorksBlock(
+        client.obrasModeEnabled,
+        organizationId,
+        servedClientId,
+        worker.id,
+        fromDate,
+        toDate,
+        worksOptions,
+      )),
+    };
+  }
+
+  private async buildEpiSheetWorksBlock(
+    obrasModeEnabled: boolean,
+    organizationId: string,
+    servedClientId: string,
+    workerId: string,
+    fromDate: Date | null,
+    toDate: Date | null,
+    worksOptions?: {
+      headerMode?: 'company' | 'worksite';
+      includeWorkHistory?: boolean;
+    },
+  ) {
+    if (!obrasModeEnabled) return {};
+    const assignments = await this.workSites.assignmentsInPeriod(
+      organizationId,
+      servedClientId,
+      workerId,
+      fromDate,
+      toDate,
+    );
+    const history = assignments.map((row) => ({
+      id: row.workSite.id,
+      name: row.workSite.name,
+      cnpj: row.workSite.cnpj,
+      startAt: row.startAt.toISOString(),
+      endAt: row.endAt?.toISOString() ?? null,
+    }));
+    const includeHistory = worksOptions?.includeWorkHistory === true;
+    const headerMode: 'company' | 'worksite' =
+      worksOptions?.headerMode === 'worksite' ? 'worksite' : 'company';
+    const primary = history.length > 0 ? history[history.length - 1] : null;
+    return {
+      works: {
+        enabled: true as const,
+        headerMode,
+        includeHistory,
+        primary,
+        history: includeHistory ? history : primary ? [primary] : [],
+        hasMultipleInPeriod: history.length > 1,
       },
     };
   }

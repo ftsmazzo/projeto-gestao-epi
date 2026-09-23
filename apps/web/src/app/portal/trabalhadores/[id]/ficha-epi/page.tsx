@@ -13,6 +13,10 @@ function PortalWorkerEpiSheetContent({ workerId }: { workerId: string }) {
   const [to, setTo] = useState('');
   const [appliedFrom, setAppliedFrom] = useState('');
   const [appliedTo, setAppliedTo] = useState('');
+  const [headerMode, setHeaderMode] = useState<'company' | 'worksite'>(
+    'company',
+  );
+  const [includeWorkHistory, setIncludeWorkHistory] = useState(false);
   const [data, setData] = useState<PortalWorkerEpiSheetResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -22,13 +26,23 @@ function PortalWorkerEpiSheetContent({ workerId }: { workerId: string }) {
       nextScope: 'history' | 'open',
       nextFrom: string,
       nextTo: string,
+      nextHeaderMode: 'company' | 'worksite',
+      nextIncludeHistory: boolean,
     ) => {
       setLoading(true);
       setError(null);
-      void fetchPortalWorkerEpiSheet(workerId, nextScope, {
-        from: nextFrom || undefined,
-        to: nextTo || undefined,
-      })
+      void fetchPortalWorkerEpiSheet(
+        workerId,
+        nextScope,
+        {
+          from: nextFrom || undefined,
+          to: nextTo || undefined,
+        },
+        {
+          headerMode: nextHeaderMode,
+          includeWorkHistory: nextIncludeHistory,
+        },
+      )
         .then((res) => {
           setData(res);
           setLoading(false);
@@ -46,8 +60,8 @@ function PortalWorkerEpiSheetContent({ workerId }: { workerId: string }) {
   );
 
   useEffect(() => {
-    load(scope, appliedFrom, appliedTo);
-  }, [load, scope, appliedFrom, appliedTo]);
+    load(scope, appliedFrom, appliedTo, headerMode, includeWorkHistory);
+  }, [load, scope, appliedFrom, appliedTo, headerMode, includeWorkHistory]);
 
   const applyPeriod = () => {
     setAppliedFrom(from.trim());
@@ -83,6 +97,14 @@ function PortalWorkerEpiSheetContent({ workerId }: { workerId: string }) {
           onApplyPeriod={applyPeriod}
           onClearPeriod={clearPeriod}
           periodLoading={loading}
+          headerMode={headerMode}
+          onHeaderModeChange={
+            data.works?.enabled ? setHeaderMode : undefined
+          }
+          includeWorkHistory={includeWorkHistory}
+          onIncludeWorkHistoryChange={
+            data.works?.enabled ? setIncludeWorkHistory : undefined
+          }
         />
       ) : null}
     </div>
@@ -90,23 +112,12 @@ function PortalWorkerEpiSheetContent({ workerId }: { workerId: string }) {
 }
 
 export default function PortalWorkerEpiSheetPage() {
-  const params = useParams();
-  const workerId =
-    typeof params.id === 'string'
-      ? params.id
-      : Array.isArray(params.id)
-        ? params.id[0]
-        : '';
-
+  const params = useParams<{ id: string }>();
+  const workerId = params.id;
+  if (!workerId) return null;
   return (
     <RequireClientAuth>
-      {() =>
-        workerId ? (
-          <PortalWorkerEpiSheetContent workerId={workerId} />
-        ) : (
-          <p className="error">Trabalhador invalido.</p>
-        )
-      }
+      {() => <PortalWorkerEpiSheetContent workerId={workerId} />}
     </RequireClientAuth>
   );
 }

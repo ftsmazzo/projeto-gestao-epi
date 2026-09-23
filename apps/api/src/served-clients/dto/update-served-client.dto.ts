@@ -58,4 +58,8 @@ export class UpdateServedClientDto {
   @IsOptional()
   @IsBoolean()
   sstDocumentsEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  obrasModeEnabled?: boolean;
 }

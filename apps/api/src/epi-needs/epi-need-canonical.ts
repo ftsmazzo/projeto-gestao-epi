@@ -99,13 +99,25 @@ const FAMILY_SPLIT_RE =
   /(?=\b(?:Botinas?|Botas?|Capacete|Oculos|Óculos|Luvas?|Protetor|Respirador|Mascara|Máscara|Avental|Viseira|Creme|Uniforme|Cinto|Talabarte|Mangote|Macac[aã]o|Touca|Perneira|Cal[cç]ado)\b)/i;
 
 const JUNK_EPI_NAME_RE =
-  /^(?:(?:sempre\s+)?(?:realizar|efetuar|executar|fazer|operar|manter|garantir|promover|adotar|usar|utilizar|respeitar|obedecer|seguir|substituir|desligar|proibir|fechar|esperar|verificar|inspecionar|eliminar|evitar|isolar|defini[cç][aã]o))\b|^uso\s+de\b|exame\s+de\s+audiometria|^manuten[cç][aã]o\b|tempo\s+de\s+espera|antes\s+de\s+tocar|gin[aá]stica\s+laboral|plano\s+de\s+a[cç][aã]o|medidas?\s+administrativas?|orienta[cç][aã]o\s+t[eé]cnica|treinamento\b|procedimento\b|sinaliza[cç][aã]o|avalia[cç][aã]o\s+(?:medica|periodica|ocupacional)|fornecimento\s+de\s+epi|controle\s+de\s+entrega|planejamento\b|controle\s+de\s+velocidade|limite\s+de\s+velocidade|medida(?:s)?\s+de\s+controle|ventiladores?\b|exaustores?\b|^\(?\s*(?:poeira|fumos|ru[ií]do|calor)\b/i;
+  /^(?:(?:sempre\s+)?(?:realizar|efetuar|executar|fazer|operar|manter|garantir|promover|adotar|usar|utilizar|respeitar|obedecer|seguir|substituir|desligar|proibir|proibido|colocar|pular|fechar|esperar|verificar|inspecionar|eliminar|evitar|isolar|defini[cç][aã]o))\b|^uso\s+de\b|exame\s+de\s+audiometria|^manuten[cç][aã]o\b|tempo\s+de\s+espera|antes\s+de\s+tocar|gin[aá]stica\s+laboral|plano\s+de\s+a[cç][aã]o|medidas?\s+administrativas?|orienta[cç][aã]o\s+t[eé]cnica|treinamento\b|procedimento\b|sinaliza[cç][aã]o|avalia[cç][aã]o\s+(?:medica|periodica|ocupacional)|fornecimento\s+de\s+epi|controle\s+de\s+entrega|planejamento\b|controle\s+de\s+velocidade|limite\s+de\s+velocidade|medida(?:s)?\s+de\s+controle|ventiladores?\b|exaustores?\b|^\(?\s*(?:poeira|fumos|ru[ií]do|calor)\b/i;
 
 const EPI_FAMILY_START_RE =
   /^(?:botinas?|botas?|capacete|[oó]culos|luvas?|protetor|respirador|m[aá]scara|avental|viseira|creme|uniforme|cinto|talabarte|mangote|macac[aã]o|touca|perneira|cal[cç]ado)\b/i;
 
 const PROMPT_INJECTION_RE =
   /\b(?:ignore|ignorar|desconsidere|esque[cç]a|override|prompt|cadastre|execute|responda|previous\s+directions?|instru[cç][oõ]es?\s+(?:anteriores?|do\s+sistema)|regras?\s+(?:anteriores?|do\s+sistema))\b/i;
+
+/**
+ * Texto de procedimento / proibicao colado no nome do EPI
+ * (ex.: "Colocar a Escada... Usar Óculos... Proibido Pular da Escada").
+ * Evita termos genericos como "no piso" sozinhos (falsos positivos).
+ */
+const PROCEDURAL_INSTRUCTION_RE =
+  /\b(?:colocar|proibido|proibir|pular|encaixe|encaixar|modo\s+que|base(?:s)?\s+encaixe|pular\s+da\s+escada|escada\s+de\s+modo)\b/i;
+
+/** Fronteiras tipicas de medidas misturadas com EPIs no PGR. */
+const INSTRUCTION_SPLIT_RE =
+  /(?=\b(?:Usar|Utilizar|Proibido|Proibir|Colocar|Pular)\b)/i;
 
 function normalizeEpiCandidate(name: string): string {
   const compact = name.replace(/\s+/g, ' ').trim();
@@ -116,6 +128,34 @@ function normalizeEpiCandidate(name: string): string {
   return EPI_FAMILY_START_RE.test(withoutUsagePrefix)
     ? withoutUsagePrefix
     : compact;
+}
+
+/**
+ * Remove verbos comportamentais quando o restante ja e um EPI
+ * ("Usar Óculos de Segurança" → "Óculos de Segurança").
+ * "Uso de X" continua em normalizeEpiCandidate.
+ */
+function peelBehavioralEpiPrefix(name: string): string | null {
+  const match = name
+    .replace(/\s+/g, ' ')
+    .trim()
+    .match(/^(?:usar|utilizar)\s+(.+)$/i);
+  if (!match?.[1]) return null;
+  const rest = match[1].trim();
+  if (!EPI_FAMILY_START_RE.test(rest)) return null;
+  if (PROCEDURAL_INSTRUCTION_RE.test(rest)) return null;
+  return rest;
+}
+
+/** Corta rastro de procedimento colado apos o nome do EPI. */
+function stripTrailingProcedural(name: string): string {
+  return name
+    .replace(
+      /\s+(?:proibido|proibir|colocar|pular|usar|utilizar)\b[\s\S]*$/i,
+      '',
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Nivel de risco APRHO colado na coluna EPI (ex.: "Moderado"). */
@@ -189,12 +229,16 @@ export function isJunkEpiNeedName(name: string): boolean {
   if (ADMIN_MEASURE_RE.test(trimmed)) return true;
   if (JUNK_EPI_NAME_RE.test(trimmed)) return true;
   if (PROMPT_INJECTION_RE.test(trimmed)) return true;
+  // Procedimento / proibicao misturado no nome (mesmo com familia de EPI).
+  if (PROCEDURAL_INSTRUCTION_RE.test(trimmed)) return true;
   if (/\b(?:de|da|do|das|dos|com|para|tipo)$/i.test(trimmed)) return true;
   const key = canonicalEpiNeedKey(trimmed);
   if (!key) return true;
   const tokens = key.split(' ');
   if (tokens.length === 1 && tokens[0].length < 6) return true;
   const hasFamily = tokens.some((token) => FAMILY_HEADS.has(token));
+  // Frase longa com varios tokens e familia costuma ser texto colado do PGR.
+  if (hasFamily && tokens.length >= 12) return true;
   if (!hasFamily && tokens.length >= 6) return true;
   return false;
 }
@@ -249,9 +293,14 @@ export function splitGluedEpiPhrases(raw: string): string[] {
   const cleaned = raw.replace(/\s+/g, ' ').trim();
   if (!cleaned) return [];
   const parts = cleaned
-    .split(/\n|;|,(?=\s*[A-ZÀ-Ú])/)
+    .split(/\n|;|,(?=\s*[A-ZÀ-ÚUu])/)
+    .flatMap((part) => part.split(INSTRUCTION_SPLIT_RE))
     .flatMap((part) => part.split(FAMILY_SPLIT_RE))
-    .map((part) => part.replace(/^[\s,.;:/-]+|[\s,.;:/-]+$/g, '').trim())
+    .map((part) =>
+      stripTrailingProcedural(
+        part.replace(/^[\s,.;:/-]+|[\s,.;:/-]+$/g, '').trim(),
+      ),
+    )
     .filter((part) => part.length >= 3);
   return [...new Set(parts)];
 }
@@ -298,11 +347,16 @@ export function epiNeedsAreSame(left: string, right: string): boolean {
 }
 
 export function canonicalizeEpiNeedLabel(name: string): string | null {
-  const trimmed = normalizeEpiCandidate(name);
-  if (!trimmed || isJunkEpiNeedName(trimmed)) return null;
-  const seed = resolveEpiNeedSeedForIdentity(trimmed);
+  let candidate = stripTrailingProcedural(normalizeEpiCandidate(name));
+  if (!candidate || isJunkEpiNeedName(candidate)) {
+    const peeled = peelBehavioralEpiPrefix(name);
+    if (!peeled) return null;
+    candidate = stripTrailingProcedural(normalizeEpiCandidate(peeled));
+  }
+  if (!candidate || isJunkEpiNeedName(candidate)) return null;
+  const seed = resolveEpiNeedSeedForIdentity(candidate);
   if (seed) return seed.name;
-  return trimmed
+  return candidate
     .replace(/\([^)]*\)/g, ' ')
     .replace(/\s+,/g, ',')
     .replace(/,+$/g, '')
@@ -311,7 +365,22 @@ export function canonicalizeEpiNeedLabel(name: string): string | null {
 }
 
 export function collapseExtractedEpiLabels(rawNames: string[]): string[] {
-  const exploded = rawNames.flatMap((name) => splitGluedEpiPhrases(name));
+  const exploded = rawNames.flatMap((name) => {
+    const parts = splitGluedEpiPhrases(name);
+    // Blob procedural com EPIs embutidos: tenta recuperar familias conhecidas.
+    if (
+      parts.length <= 1 &&
+      PROCEDURAL_INSTRUCTION_RE.test(name) &&
+      name.length > 40
+    ) {
+      const suggested = suggestNeedNamesFromText({
+        name,
+        description: name,
+      });
+      if (suggested.length > 0) return [...parts, ...suggested];
+    }
+    return parts;
+  });
   const labels: string[] = [];
   for (const part of exploded) {
     const label = canonicalizeEpiNeedLabel(part);

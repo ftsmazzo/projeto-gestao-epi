@@ -265,5 +265,50 @@ assert.deepEqual(
   0,
 );
 
+assert.equal(
+  isJunkEpiNeedName(
+    'Colocar e Escada de Modo que as 02 Base Encaixe no Piso, Usar Óculos de Segurança, Usar Luva de Segurança Proibido Pular da Escada',
+  ),
+  true,
+);
+assert.equal(isJunkEpiNeedName('Proibido Pular da Escada'), true);
+assert.equal(
+  isJunkEpiNeedName('Colocar e Escada de Modo que as 02 Base Encaixe no Piso'),
+  true,
+);
+assert.equal(
+  isJunkEpiNeedName('Botina de Segurança para trabalho no piso molhado'),
+  false,
+);
+assert.equal(
+  canonicalizeEpiNeedLabel('Usar Óculos de Segurança'),
+  'Oculos de Seguranca',
+);
+assert.equal(
+  canonicalizeEpiNeedLabel('Usar Luva de Segurança'),
+  'Luva de Segurança',
+);
+
+const colhedorCollapsed = collapseExtractedEpiLabels([
+  'Colocar e Escada de Modo que as 02 Base Encaixe no Piso, Usar Óculos de Segurança, Usar Luva de Segurança Proibido Pular da Escada',
+]);
+assert.ok(
+  colhedorCollapsed.some((name) => /oculos/i.test(name)),
+  `faltou oculos: ${colhedorCollapsed.join(' | ')}`,
+);
+assert.ok(
+  colhedorCollapsed.some((name) => /luva/i.test(name)),
+  `faltou luva: ${colhedorCollapsed.join(' | ')}`,
+);
+assert.equal(
+  colhedorCollapsed.some((name) => /escada|pular|colocar|encaixe|piso/i.test(name)),
+  false,
+  `procedimento vazou: ${colhedorCollapsed.join(' | ')}`,
+);
+assert.ok(
+  colhedorCollapsed.length <= 3,
+  `excessos Colhedor: ${colhedorCollapsed.join(' | ')}`,
+);
+
 console.log(`epi-need-canonical.selftest: ok (${collapsed.length} nomes)`);
 console.log(collapsed.sort((a, b) => a.localeCompare(b, 'pt-BR')).join('\n'));
