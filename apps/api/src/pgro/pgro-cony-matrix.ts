@@ -126,7 +126,8 @@ export function parseConyEpiMatrixText(
 
     epiNeeds.push({
       tempId: randomUUID(),
-      extractedText: row.raw,
+      // Sem CA no texto exibido — CA e escolha de estoque do cliente, nao do PGR.
+      extractedText: suggested,
       suggestedName: suggested,
       matchedEpiNeedId: null,
       matchedEpiNeedName: null,
@@ -258,12 +259,69 @@ function emptyCompany() {
     riskGrade: null as string | null,
     employeeCount: null as number | null,
     rawText: null as string | null,
+    contactEmail: null as string | null,
+    contactPhone: null as string | null,
   };
+}
+
+const BR_UFS = new Set([
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+]);
+
+function isLikelyTocLine(text: string, index: number): boolean {
+  const newline = text.indexOf('\n', index);
+  const line = text.slice(index, newline === -1 ? index + 180 : newline);
+  return /\.{6,}|…{2,}|\.{3,}\s*\d+\s*$/.test(line);
+}
+
+function findNonTocCompanyHead(text: string): number {
+  const re = /II\.?\s*IDENTIFICA[CÇ][AÃ]O\s+DA\s+EMPRESA|IDENTIFICA[CÇ][AÃ]O\s+DA\s+EMPRESA(?!\s+ELABORADORA)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) != null) {
+    if (isLikelyTocLine(text, match.index)) continue;
+    return match.index;
+  }
+  // Fallback: bloco com Razao Social + CNPJ (conteudo real, nao sumario).
+  const razao = text.search(/Raz[aã]o\s+Social\s+[A-ZÁÉÍÓÚ]/i);
+  return razao >= 0 ? Math.max(0, razao - 80) : -1;
+}
+
+function sliceConyCompanyBlock(text: string): string {
+  const start = findNonTocCompanyHead(text);
+  if (start < 0) return text.slice(0, 4500);
+  const after = text.slice(start);
+  const endRel = after.search(
+    /\bSETOR\s+CARGO\b|\bIII\.?\s+[A-ZÁÉÍÓÚ]|\bGHE\s*0*1\s*[–\-—]/i,
+  );
+  return endRel > 80 ? after.slice(0, endRel) : after.slice(0, 3500);
+}
+
+function fieldAfterLabel(
+  scope: string,
+  labels: string[],
+  stopLabels: string[],
+): string | null {
+  for (const label of labels) {
+    const stop = stopLabels.map((s) => s.replace(/\s+/g, '\\s+')).join('|');
+    const re = new RegExp(
+      `${label.replace(/\s+/g, '\\s+')}\\s*[:\\-–]?\\s*([^\\n]{1,200}?)(?=\\s*(?:${stop})|$)`,
+      'i',
+    );
+    const match = scope.match(re);
+    if (match?.[1]) {
+      const value = match[1].replace(/\s+/g, ' ').trim();
+      if (value.length >= 2) return value;
+    }
+  }
+  return null;
 }
 
 function extractConyCompany(text: string, warnings: string[]) {
   const company = emptyCompany();
-  const cnpjMatch = text.match(
+  const scope = sliceConyCompanyBlock(text);
+
+  const cnpjMatch = scope.match(
     /\b(\d{2}[.\s]?\d{3}[.\s]?\d{3}[/\s]?\d{4}[-.\s]?\d{2})\b/,
   );
   if (cnpjMatch) {
@@ -275,17 +333,92 @@ function extractConyCompany(text: string, warnings: string[]) {
       if (digits.length === 14) company.cnpj = digits;
     }
   }
-  const ltda = text.match(
-    /([A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9\s\.\&\-]{3,80}(?:LTDA|S\.?A\.?|EIRELI|ME|EPP))/,
+
+  company.legalName = fieldAfterLabel(
+    scope,
+    ['Razao Social', 'Razão Social', 'Nome Empresarial'],
+    ['Nome Fantasia', 'Nome de Fantasia', 'CNPJ', 'Endereco', 'Endereço'],
   );
-  if (ltda) {
-    company.legalName = ltda[1].replace(/\s+/g, ' ').trim();
-    company.rawText = company.legalName;
+  company.tradeName = fieldAfterLabel(
+    scope,
+    ['Nome Fantasia', 'Nome de Fantasia', 'Fantasia'],
+    ['Endereco', 'Endereço', 'CNPJ', 'Bairro', 'CEP'],
+  );
+
+  let address = fieldAfterLabel(
+    scope,
+    ['Endereco', 'Endereço', 'Logradouro'],
+    ['CEP', 'Bairro', 'Cidade', 'Municipio', 'Município', 'CNPJ'],
+  );
+  if (address) {
+    address = address.replace(/\s*CEP\b.*$/i, '').replace(/\s+/g, ' ').trim();
+    company.addressLine = address || null;
+  }
+
+  const cityStateInline = scope.match(
+    /Cidade\s+([A-Za-zÀ-ÿ' .\-]+?)\s+Estado\s+([A-Za-z]{2})\b/i,
+  );
+  if (cityStateInline) {
+    company.city = cityStateInline[1].replace(/\s+/g, ' ').trim();
+    company.state = cityStateInline[2].toUpperCase();
+  } else {
+    company.city = fieldAfterLabel(
+      scope,
+      ['Cidade', 'Municipio', 'Município'],
+      ['Estado', 'UF', 'CEP', 'CNPJ', 'CNAE'],
+    );
+    const uf = scope.match(/\b(?:Estado|UF)\s*[:\-]?\s*([A-Za-z]{2})\b/i);
+    if (uf) company.state = uf[1].toUpperCase();
+  }
+  if (company.state && !BR_UFS.has(company.state)) {
+    warnings.push(
+      `UF extraida "${company.state}" e invalida e foi descartada.`,
+    );
+    company.state = null;
+  }
+
+  const cnaeMatch = scope.match(
+    /CNAE\s*(?:Principal)?\s*[:\-]?\s*(\d{2}\.?\d{2}-?\d(?:-\d{2})?)/i,
+  );
+  if (cnaeMatch) company.cnae = cnaeMatch[1].replace(/\s+/g, '');
+
+  const riskMatch = scope.match(
+    /Grau\s+de\s+[Rr]isco\s*[:\-]?\s*0*([1-4])\b/,
+  );
+  if (riskMatch) company.riskGrade = riskMatch[1];
+
+  const emp =
+    scope.match(/N[°º]?\s*Funcion[aá]rios?\s*[:\-]?\s*(\d{1,5})/i) ??
+    text.match(/N[°º]?\s*Funcion[aá]rios?\s*[:\-]?\s*(\d{1,5})/i);
+  if (emp) company.employeeCount = Number(emp[1]);
+
+  const emailMatch = scope.match(
+    /E-?mails?\s*[:\-]?\s*([A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})/i,
+  );
+  if (emailMatch) company.contactEmail = emailMatch[1].trim().toLowerCase();
+
+  const phoneMatch = scope.match(
+    /Telefone[s]?\s*[:\-]?\s*(\(?\d{2}\)?\s*\d{4,5}[-.\s]?\d{4})/i,
+  );
+  if (phoneMatch) {
+    company.contactPhone = phoneMatch[1].replace(/[^\d]/g, '');
+  }
+
+  // Fallback: razao com sufixo societario (nunca usar ME solto — casa em GERENCIAMENTO).
+  if (!company.legalName) {
+    const ltda = scope.match(
+      /([A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9\s\.\&\-]{2,80}(?:LTDA\.?|S\.\/?A\.?|EIRELI|EPP))\b/,
+    );
+    if (ltda) {
+      company.legalName = ltda[1].replace(/\s+/g, ' ').trim();
+    }
+  }
+  if (company.legalName && !company.tradeName) {
     const trade = company.legalName.replace(/\s+LTDA\.?$/i, '').trim();
     if (trade && trade !== company.legalName) company.tradeName = trade;
   }
-  const emp = text.match(/N[°º]?\s*Funcion[aá]rios?\s+(\d+)/i);
-  if (emp) company.employeeCount = Number(emp[1]);
+  company.rawText = company.legalName;
+
   if (!company.cnpj) warnings.push('CNPJ da empresa nao encontrado com confianca.');
   if (!company.legalName) {
     warnings.push('Razao social nao encontrada com confianca.');
@@ -408,6 +541,17 @@ function cleanCargoName(raw: string): string | null {
   return name;
 }
 
+/** Remove numeros de CA e marcas X/- do nome do EPI. */
+function cleanConyEpiName(raw: string): string {
+  return raw
+    .replace(/\b\d{1,2}[.\s]\d{3}(?:[.\s/-]?\d{0,2})?\b/g, ' ')
+    .replace(/\b\d{4,5}\b/g, ' ')
+    .replace(/\s*[-–—]\s*[Xx-]?\s*$/g, '')
+    .replace(/\s*[-–—]\s*[Xx]\b.*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function extractConyEpiMatrix(
   text: string,
   knownGheCodes: string[],
@@ -462,11 +606,7 @@ function extractConyEpiMatrix(
 
     if (epiStartRe.test(line)) {
       flush();
-      const name = line
-        .replace(/\s+\d{1,2}([.\s]\d{3}){0,2}.*$/, '')
-        .replace(/\s*[-–—]\s*[X\-].*$/i, '')
-        .replace(/\s+/g, ' ')
-        .trim();
+      const name = cleanConyEpiName(line);
       current = { name: name || line, buf: [line] };
       continue;
     }

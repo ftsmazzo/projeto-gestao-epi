@@ -1310,6 +1310,9 @@ export interface PgroCompanyData {
   riskGrade: string | null;
   employeeCount: number | null;
   rawText: string | null;
+  /** Contato institucional extraido do documento (opcional). */
+  contactEmail?: string | null;
+  contactPhone?: string | null;
 }
 
 export interface PgroExtractedSector {

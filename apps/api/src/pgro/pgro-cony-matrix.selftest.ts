@@ -46,6 +46,62 @@ assert.ok(
 );
 assert.ok(cony.epiNeeds.length >= 5, `epis: ${cony.epiNeeds.length}`);
 
+assert.match(
+  cony.company.legalName ?? '',
+  /CONY\s+ENGENHARIA\s+LTDA/i,
+  `razao: ${cony.company.legalName}`,
+);
+assert.match(
+  cony.company.tradeName ?? '',
+  /CONY\s+ENGENHARIA/i,
+  `fantasia: ${cony.company.tradeName}`,
+);
+assert.equal(cony.company.cnpj, '41167347000100');
+assert.match(
+  cony.company.addressLine ?? '',
+  /Luiz\s+Ramalho/i,
+  `endereco: ${cony.company.addressLine}`,
+);
+assert.match(cony.company.city ?? '', /Macei[oó]/i, `cidade: ${cony.company.city}`);
+assert.equal(cony.company.state, 'AL');
+assert.ok(cony.company.cnae, `cnae: ${cony.company.cnae}`);
+assert.equal(cony.company.riskGrade, '3');
+assert.match(
+  cony.company.contactEmail ?? '',
+  /engenhariasstcony@gmail\.com/i,
+);
+assert.ok(
+  (cony.company.contactPhone ?? '').includes('8233344099') ||
+    (cony.company.contactPhone ?? '').includes('33344099'),
+  `fone: ${cony.company.contactPhone}`,
+);
+
+for (const epi of cony.epiNeeds) {
+  assert.ok(
+    !/\d{2}\.\d{3}|\b\d{4,5}\b/.test(epi.extractedText),
+    `EPI com CA no texto: ${epi.extractedText}`,
+  );
+  assert.ok(
+    !/\d{2}\.\d{3}|\b\d{4,5}\b/.test(epi.suggestedName),
+    `EPI com CA no nome: ${epi.suggestedName}`,
+  );
+}
+assert.ok(
+  cony.epiNeeds.some((e) => /bota de borracha/i.test(e.suggestedName)),
+);
+assert.ok(
+  cony.epiNeeds.some((e) =>
+    /cal[cç]a de seguran[cç]a|calca de seguranca/i.test(e.suggestedName),
+  ),
+  `calca: ${cony.epiNeeds.map((e) => e.suggestedName).join('|')}`,
+);
+assert.ok(
+  cony.epiNeeds.some((e) => /capa de chuva/i.test(e.suggestedName)),
+);
+assert.ok(
+  cony.epiNeeds.some((e) => /luva latex|luva látex/i.test(e.suggestedName)),
+  `latex: ${cony.epiNeeds.map((e) => e.suggestedName).join('|')}`,
+);
 const limpezaFns = new Set(
   cony.functions
     .filter((f) => /GHE\s*02/i.test(f.gheName ?? ''))

@@ -40,6 +40,8 @@ export type PgroCompanyData = {
   riskGrade: string | null;
   employeeCount: number | null;
   rawText: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
 };
 
 export type PgroCoverageStats = {

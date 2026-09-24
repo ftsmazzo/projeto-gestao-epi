@@ -316,6 +316,12 @@ export function PgroImportWizard({
     const clientId = run.servedClientId ?? lockedClientId ?? null;
     setServedClientId(clientId);
     let nextCompany = run.company ?? emptyCompany();
+    if (nextCompany.contactEmail?.trim()) {
+      setContactEmail(nextCompany.contactEmail.trim());
+    }
+    if (nextCompany.contactPhone?.trim()) {
+      setContactPhone(nextCompany.contactPhone.trim());
+    }
     if (clientId) {
       try {
         const units = await listOperationalUnits(clientId);
