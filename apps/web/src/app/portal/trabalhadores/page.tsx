@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  canAccessSstDocuments,
   replacementAlertSentence,
   type PortalEstruturaResponse,
   type PortalTrabalhadorReplacementDue,
@@ -1320,7 +1321,11 @@ export default function PortalTrabalhadoresPage() {
           fallback={<p className="page-lead">Carregando trabalhadores...</p>}
         >
           <PortalTrabalhadoresContent
-            sstEnabled={user.servedClient.sstDocumentsEnabled}
+            sstEnabled={canAccessSstDocuments({
+              enabled: user.servedClient.sstDocumentsEnabled === true,
+              scope: user.servedClient.sstDocumentsAccessScope,
+              role: user.role,
+            })}
             isManager={user.role === 'CLIENT_MANAGER'}
           />
         </Suspense>

@@ -1,6 +1,10 @@
 'use client';
 
-import type { QuotaSummary, ServedClient } from '@gestao-epi/shared';
+import type {
+  QuotaSummary,
+  ServedClient,
+  SstDocumentsAccessScope,
+} from '@gestao-epi/shared';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
@@ -38,6 +42,7 @@ type ClientFormState = {
   initialManagerEmail: string;
   initialManagerPhone: string;
   sstDocumentsEnabled: boolean;
+  sstDocumentsAccessScope: SstDocumentsAccessScope;
 };
 
 const emptyForm: ClientFormState = {
@@ -52,6 +57,7 @@ const emptyForm: ClientFormState = {
   initialManagerEmail: '',
   initialManagerPhone: '',
   sstDocumentsEnabled: false,
+  sstDocumentsAccessScope: 'MANAGERS_ONLY',
 };
 
 function statusLabel(status: ServedClient['status']) {
@@ -169,6 +175,8 @@ function ClientesContent() {
       initialManagerEmail: '',
       initialManagerPhone: '',
       sstDocumentsEnabled: client.sstDocumentsEnabled,
+      sstDocumentsAccessScope:
+        client.sstDocumentsAccessScope ?? 'MANAGERS_ONLY',
     });
     setFormError(null);
   }
@@ -212,6 +220,9 @@ function ClientesContent() {
       contactPhone: form.contactPhone.trim() || undefined,
       notes: form.notes.trim() || undefined,
       sstDocumentsEnabled: form.sstDocumentsEnabled,
+      sstDocumentsAccessScope: form.sstDocumentsEnabled
+        ? form.sstDocumentsAccessScope
+        : undefined,
       ...(listTab === 'create' && managerName && managerEmail
         ? {
             initialManagerName: managerName,
@@ -242,6 +253,9 @@ function ClientesContent() {
           contactPhone: form.contactPhone.trim() || null,
           notes: payload.notes ?? null,
           sstDocumentsEnabled: form.sstDocumentsEnabled,
+          sstDocumentsAccessScope: form.sstDocumentsEnabled
+            ? form.sstDocumentsAccessScope
+            : undefined,
         });
         closeEditForm();
         await load();
@@ -788,15 +802,63 @@ function ClientFormFields({
                   setForm((prev) => ({
                     ...prev,
                     sstDocumentsEnabled: e.target.checked,
+                    sstDocumentsAccessScope: e.target.checked
+                      ? prev.sstDocumentsAccessScope || 'MANAGERS_ONLY'
+                      : prev.sstDocumentsAccessScope,
                   }))
                 }
               />{' '}
               Liberar Documentos SST no menu do portal
             </label>
             <p className="field-hint">
-              Modulo pago. Sem esta chave, o gestor da empresa nao ve Documentos
-              SST.
+              Modulo pago. A chave libera o modulo; o perfil define quem ve no
+              portal.
             </p>
+            {form.sstDocumentsEnabled ? (
+              <div style={{ marginTop: '0.75rem' }}>
+                <p className="field-hint" style={{ marginBottom: '0.35rem' }}>
+                  Quem acessa no portal
+                </p>
+                <label htmlFor="sstAccessManagersOnly">
+                  <input
+                    id="sstAccessManagersOnly"
+                    type="radio"
+                    name="sstDocumentsAccessScope"
+                    checked={
+                      form.sstDocumentsAccessScope === 'MANAGERS_ONLY'
+                    }
+                    onChange={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        sstDocumentsAccessScope: 'MANAGERS_ONLY',
+                      }))
+                    }
+                  />{' '}
+                  Apenas gestores
+                </label>
+                <label
+                  htmlFor="sstAccessManagersAndOperators"
+                  style={{ display: 'block' }}
+                >
+                  <input
+                    id="sstAccessManagersAndOperators"
+                    type="radio"
+                    name="sstDocumentsAccessScope"
+                    checked={
+                      form.sstDocumentsAccessScope ===
+                      'MANAGERS_AND_OPERATORS'
+                    }
+                    onChange={() =>
+                      setForm((prev) => ({
+                        ...prev,
+                        sstDocumentsAccessScope: 'MANAGERS_AND_OPERATORS',
+                      }))
+                    }
+                  />{' '}
+                  Gestores e operadores
+                </label>
+              </div>
+            ) : null}
           </div>
         </div>
       </fieldset>

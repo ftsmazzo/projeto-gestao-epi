@@ -77,13 +77,21 @@ export class PortalSstDocumentsController {
   @Get()
   list(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);
-    return this.sst.list(user.organizationId, user.servedClientId);
+    return this.sst.list(
+      user.organizationId,
+      user.servedClientId,
+      user.clientRole,
+    );
   }
 
   @Get('profile')
   profile(@CurrentUser() user: ClientJwtPayload) {
     this.assertClient(user);
-    return this.sst.getProfile(user.organizationId, user.servedClientId);
+    return this.sst.getProfile(
+      user.organizationId,
+      user.servedClientId,
+      user.clientRole,
+    );
   }
 
   @Get('profile/logo')
@@ -93,6 +101,7 @@ export class PortalSstDocumentsController {
       user.organizationId,
       user.servedClientId,
       res,
+      user.clientRole,
     );
   }
 
@@ -113,6 +122,7 @@ export class PortalSstDocumentsController {
       user.servedClientId,
       user.sub,
       file,
+      user.clientRole,
     );
   }
 
@@ -123,6 +133,7 @@ export class PortalSstDocumentsController {
       user.organizationId,
       user.servedClientId,
       user.sub,
+      user.clientRole,
     );
   }
 
@@ -137,6 +148,7 @@ export class PortalSstDocumentsController {
       user.servedClientId,
       user.sub,
       dto,
+      user.clientRole,
     );
   }
 
@@ -151,6 +163,7 @@ export class PortalSstDocumentsController {
       user.servedClientId,
       user.sub,
       dto,
+      user.clientRole,
     );
   }
 
@@ -165,6 +178,7 @@ export class PortalSstDocumentsController {
       user.servedClientId,
       user.sub,
       id,
+      user.clientRole,
     );
   }
 
@@ -179,6 +193,7 @@ export class PortalSstDocumentsController {
       user.organizationId,
       user.servedClientId,
       id,
+      user.clientRole,
     );
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader(

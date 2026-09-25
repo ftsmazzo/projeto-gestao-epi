@@ -8,6 +8,7 @@ import type {
   ServedClient,
   ServedClientOverview,
   ServedClientStatus,
+  SstDocumentsAccessScope,
 } from '@gestao-epi/shared';
 import { apiFetch } from './auth';
 
@@ -21,6 +22,7 @@ export type ServedClientInput = {
   contactPhone?: string;
   notes?: string;
   sstDocumentsEnabled?: boolean;
+  sstDocumentsAccessScope?: SstDocumentsAccessScope;
   obrasModeEnabled?: boolean;
   initialManagerName?: string;
   initialManagerEmail?: string;
@@ -134,6 +136,7 @@ export type ServedClientUpdateInput = {
   contactPhone?: string | null;
   notes?: string | null;
   sstDocumentsEnabled?: boolean;
+  sstDocumentsAccessScope?: SstDocumentsAccessScope;
   obrasModeEnabled?: boolean;
 };
 

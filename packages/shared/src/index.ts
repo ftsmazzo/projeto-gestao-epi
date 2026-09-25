@@ -195,6 +195,8 @@ export interface ServedClient {
   notes: string | null;
   /** Quando false, Documentos SST some do menu do portal. */
   sstDocumentsEnabled: boolean;
+  /** Quem acessa Documentos SST: so gestores ou gestores+operadores. */
+  sstDocumentsAccessScope: SstDocumentsAccessScope;
   /** Quando false, Obras some do menu do portal. */
   obrasModeEnabled: boolean;
   createdAt: string;
@@ -480,12 +482,28 @@ export type ClientUserRole =
   | 'STOCK_OPERATOR'
   | 'WORKER';
 
+/** Quem no portal acessa Documentos SST quando o modulo esta liberado. */
+export type SstDocumentsAccessScope =
+  | 'MANAGERS_ONLY'
+  | 'MANAGERS_AND_OPERATORS';
+
 export type ClientUserAccessStatus =
   | 'PREPARED'
   | 'INVITED'
   | 'ACTIVE'
   | 'DISABLED';
 
+/** Portal: Documentos SST liberado e perfil do usuario permitido pelo scope. */
+export function canAccessSstDocuments(input: {
+  enabled: boolean;
+  scope?: SstDocumentsAccessScope | null;
+  role: ClientUserRole | string;
+}): boolean {
+  if (!input.enabled) return false;
+  if (input.role === 'CLIENT_MANAGER') return true;
+  if (input.role !== 'STOCK_OPERATOR') return false;
+  return (input.scope ?? 'MANAGERS_ONLY') === 'MANAGERS_AND_OPERATORS';
+}
 export interface ClientPortalAccessibleClient {
   id: string;
   legalName: string;
@@ -502,6 +520,7 @@ export interface ClientPortalClient {
   cnpj: string;
   status: ServedClientStatus;
   sstDocumentsEnabled: boolean;
+  sstDocumentsAccessScope: SstDocumentsAccessScope;
   obrasModeEnabled: boolean;
 }
 

@@ -29,6 +29,12 @@ enum ClientUserAccessStatus {
   DISABLED
 }
 
+/// Quem no portal do cliente pode ver Documentos SST (quando o modulo esta liberado).
+enum SstDocumentsAccessScope {
+  MANAGERS_ONLY
+  MANAGERS_AND_OPERATORS
+}
+
 enum ServedClientStatus {
   ACTIVE
   INACTIVE
@@ -361,6 +367,8 @@ model ServedClient {
   notes              String?
   /// Modulo pago: Documentos SST no menu do portal do cliente.
   sstDocumentsEnabled Boolean @default(false)
+  /// Quem acessa Documentos SST no portal (gestores ou gestores+operadores).
+  sstDocumentsAccessScope SstDocumentsAccessScope @default(MANAGERS_ONLY)
   /// Modulo pago: Obras (canteiros) no portal — vinculo temporal na ficha de EPI.
   obrasModeEnabled Boolean @default(false)
   createdAt          DateTime           @default(now())

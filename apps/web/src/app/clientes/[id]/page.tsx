@@ -3,6 +3,7 @@
 import type {
   QuotaSummary,
   ServedClientOverview,
+  SstDocumentsAccessScope,
 } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
@@ -118,7 +119,15 @@ export default function ClienteVisaoGeralPage() {
     setSstMessage(null);
     setError(null);
     try {
-      await updateServedClient(clientId, { sstDocumentsEnabled: next });
+      await updateServedClient(clientId, {
+        sstDocumentsEnabled: next,
+        ...(next
+          ? {
+              sstDocumentsAccessScope:
+                overview?.client.sstDocumentsAccessScope ?? 'MANAGERS_ONLY',
+            }
+          : {}),
+      });
       setSstMessage(
         next
           ? 'Documentos SST liberado no menu do portal.'
@@ -130,6 +139,32 @@ export default function ClienteVisaoGeralPage() {
         err instanceof Error
           ? err.message
           : 'Nao foi possivel atualizar o modulo SST.',
+      );
+    } finally {
+      setSavingSst(false);
+    }
+  }
+
+  async function onSstAccessScopeChange(next: SstDocumentsAccessScope) {
+    if (!clientId || !overview?.client.sstDocumentsEnabled) return;
+    setSavingSst(true);
+    setSstMessage(null);
+    setError(null);
+    try {
+      await updateServedClient(clientId, {
+        sstDocumentsAccessScope: next,
+      });
+      setSstMessage(
+        next === 'MANAGERS_ONLY'
+          ? 'Documentos SST: acesso apenas para gestores.'
+          : 'Documentos SST: acesso para gestores e operadores.',
+      );
+      await load();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nao foi possivel atualizar o acesso SST.',
       );
     } finally {
       setSavingSst(false);
@@ -260,8 +295,8 @@ export default function ClienteVisaoGeralPage() {
               Documentos SST
             </h2>
             <p className="page-lead">
-              Modulo pago. Com a chave ligada, o gestor da empresa ve Documentos
-              SST no menu do portal.
+              Modulo pago. A chave libera o modulo no portal; o perfil define
+              quem ve o menu (apenas gestores ou gestores e operadores).
             </p>
           </div>
         </div>
@@ -280,6 +315,43 @@ export default function ClienteVisaoGeralPage() {
           />{' '}
           Liberar Documentos SST no portal deste cliente
         </label>
+        {overview.client.sstDocumentsEnabled ? (
+          <fieldset
+            className="epi-form-section"
+            style={{ marginTop: '1rem' }}
+            disabled={savingSst || !operational}
+          >
+            <legend>Quem acessa no portal</legend>
+            <label htmlFor="sst-access-managers">
+              <input
+                id="sst-access-managers"
+                type="radio"
+                name="sstDocumentsAccessScope"
+                checked={
+                  (overview.client.sstDocumentsAccessScope ??
+                    'MANAGERS_ONLY') === 'MANAGERS_ONLY'
+                }
+                onChange={() => void onSstAccessScopeChange('MANAGERS_ONLY')}
+              />{' '}
+              Apenas gestores
+            </label>
+            <label htmlFor="sst-access-both" style={{ display: 'block' }}>
+              <input
+                id="sst-access-both"
+                type="radio"
+                name="sstDocumentsAccessScope"
+                checked={
+                  overview.client.sstDocumentsAccessScope ===
+                  'MANAGERS_AND_OPERATORS'
+                }
+                onChange={() =>
+                  void onSstAccessScopeChange('MANAGERS_AND_OPERATORS')
+                }
+              />{' '}
+              Gestores e operadores
+            </label>
+          </fieldset>
+        ) : null}
       </section>
 
       <section className="surface" aria-labelledby="obras-module-title">

@@ -13,7 +13,7 @@ import {
   WorkerStatus,
 } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
-import { isValidFaceDescriptor } from '@gestao-epi/shared';
+import { isValidFaceDescriptor, canAccessSstDocuments } from '@gestao-epi/shared';
 import { AuditService } from '../audit/audit.service';
 import { CommunicationsService } from '../communications/communications.service';
 import { stripCpf } from '../common/cpf';
@@ -106,8 +106,12 @@ export class SstDocumentsService {
     private readonly pdf: SstDocumentPdfService,
   ) {}
 
-  async getProfile(organizationId: string, servedClientId: string) {
-    await this.requireClient(organizationId, servedClientId);
+  async getProfile(
+    organizationId: string,
+    servedClientId: string,
+    clientRole?: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId, clientRole);
     const row = await this.prisma.sstClientProfile.findUnique({
       where: { servedClientId },
     });
@@ -132,8 +136,9 @@ export class SstDocumentsService {
       integrationDurationHours?: number;
       integrationTime?: string;
     },
+    clientRole?: string,
   ) {
-    await this.requireClient(organizationId, servedClientId);
+    await this.requireClient(organizationId, servedClientId, clientRole);
     const hours = dto.integrationDurationHours;
     if (hours != null && (!Number.isFinite(hours) || hours < 1 || hours > 24)) {
       throw new BadRequestException('Duracao da integracao deve ser entre 1 e 24 horas.');
@@ -172,7 +177,7 @@ export class SstDocumentsService {
       entityId: row.id,
       metadata: { servedClientId },
     });
-    return this.getProfile(organizationId, servedClientId);
+    return this.getProfile(organizationId, servedClientId, clientRole);
   }
 
   async uploadCompanyLogo(
@@ -180,8 +185,9 @@ export class SstDocumentsService {
     servedClientId: string,
     userId: string,
     file: { buffer: Buffer; mimetype?: string; originalname?: string } | undefined,
+    clientRole?: string,
   ) {
-    await this.requireClient(organizationId, servedClientId);
+    await this.requireClient(organizationId, servedClientId, clientRole);
     if (!file?.buffer?.length) {
       throw new BadRequestException('Envie um arquivo de logo.');
     }
@@ -226,8 +232,9 @@ export class SstDocumentsService {
     organizationId: string,
     servedClientId: string,
     userId: string,
+    clientRole?: string,
   ) {
-    await this.requireClient(organizationId, servedClientId);
+    await this.requireClient(organizationId, servedClientId, clientRole);
     const row = await this.prisma.sstClientProfile.findUnique({
       where: { servedClientId },
       select: { logoPath: true },
@@ -253,8 +260,9 @@ export class SstDocumentsService {
     organizationId: string,
     servedClientId: string,
     res: Response,
+    clientRole?: string,
   ) {
-    await this.requireClient(organizationId, servedClientId);
+    await this.requireClient(organizationId, servedClientId, clientRole);
     const row = await this.prisma.sstClientProfile.findUnique({
       where: { servedClientId },
       select: { logoPath: true, logoMimeType: true },
@@ -292,8 +300,12 @@ export class SstDocumentsService {
     };
   }
 
-  async list(organizationId: string, servedClientId: string) {
-    await this.requireClient(organizationId, servedClientId);
+  async list(
+    organizationId: string,
+    servedClientId: string,
+    clientRole?: string,
+  ) {
+    await this.requireClient(organizationId, servedClientId, clientRole);
     const rows = await this.prisma.sstDocument.findMany({
       where: { organizationId, servedClientId },
       orderBy: { createdAt: 'desc' },
@@ -324,8 +336,9 @@ export class SstDocumentsService {
     servedClientId: string,
     userId: string,
     dto: { workerId: string; type: SstDocumentType; documentDate?: string },
+    clientRole?: string,
   ) {
-    await this.requireClient(organizationId, servedClientId);
+    await this.requireClient(organizationId, servedClientId, clientRole);
     const worker = await this.requireWorker(
       organizationId,
       servedClientId,
@@ -404,8 +417,9 @@ export class SstDocumentsService {
     servedClientId: string,
     userId: string,
     documentId: string,
+    clientRole?: string,
   ) {
-    await this.requireClient(organizationId, servedClientId);
+    await this.requireClient(organizationId, servedClientId, clientRole);
     const document = await this.requireDocument(
       organizationId,
       servedClientId,
@@ -424,8 +438,9 @@ export class SstDocumentsService {
     organizationId: string,
     servedClientId: string,
     documentId: string,
+    clientRole?: string,
   ) {
-    await this.requireClient(organizationId, servedClientId);
+    await this.requireClient(organizationId, servedClientId, clientRole);
     const document = await this.prisma.sstDocument.findFirst({
       where: { id: documentId, organizationId, servedClientId },
       include: { evidence: true },
@@ -726,15 +741,35 @@ export class SstDocumentsService {
     };
   }
 
-  private async requireClient(organizationId: string, servedClientId: string) {
+  private async requireClient(
+    organizationId: string,
+    servedClientId: string,
+    clientRole?: string,
+  ) {
     const client = await this.prisma.servedClient.findFirst({
       where: { id: servedClientId, organizationId },
-      select: { id: true, sstDocumentsEnabled: true },
+      select: {
+        id: true,
+        sstDocumentsEnabled: true,
+        sstDocumentsAccessScope: true,
+      },
     });
     if (!client) throw new NotFoundException('Cliente nao encontrado.');
     if (!client.sstDocumentsEnabled) {
       throw new ForbiddenException(
         'Documentos SST nao esta liberado para este cliente.',
+      );
+    }
+    if (
+      clientRole &&
+      !canAccessSstDocuments({
+        enabled: true,
+        scope: client.sstDocumentsAccessScope,
+        role: clientRole,
+      })
+    ) {
+      throw new ForbiddenException(
+        'Documentos SST esta liberado apenas para gestores deste cliente.',
       );
     }
   }

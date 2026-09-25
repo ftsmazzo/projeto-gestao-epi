@@ -7,6 +7,7 @@ import type {
   SstDocumentSendResult,
   SstDocumentType,
 } from '@gestao-epi/shared';
+import { canAccessSstDocuments } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { RequireClientAuth } from '../../../components/RequireClientAuth';
@@ -539,7 +540,11 @@ export default function PortalDocumentosSstPage() {
   return (
     <RequireClientAuth>
       {(user) =>
-        user.servedClient.sstDocumentsEnabled ? (
+        canAccessSstDocuments({
+          enabled: user.servedClient.sstDocumentsEnabled === true,
+          scope: user.servedClient.sstDocumentsAccessScope,
+          role: user.role,
+        }) ? (
           <PortalSstContent />
         ) : (
           <SstModuleLocked user={user} />
@@ -550,6 +555,12 @@ export default function PortalDocumentosSstPage() {
 }
 
 function SstModuleLocked({ user }: { user: ClientPortalUser }) {
+  const enabled = user.servedClient.sstDocumentsEnabled === true;
+  const managersOnly =
+    enabled &&
+    user.role === 'STOCK_OPERATOR' &&
+    (user.servedClient.sstDocumentsAccessScope ?? 'MANAGERS_ONLY') ===
+      'MANAGERS_ONLY';
   return (
     <div className="module-page">
       <header className="module-header">
@@ -557,9 +568,11 @@ function SstModuleLocked({ user }: { user: ClientPortalUser }) {
           <p className="page-kicker">Painel do Cliente</p>
           <h1 className="page-title">Documentos SST</h1>
           <p className="page-lead">
-            Este modulo nao esta liberado para{' '}
-            {user.servedClient.tradeName || user.servedClient.legalName}. A
-            consultoria precisa ativar a chave no cadastro do cliente.
+            {managersOnly
+              ? 'Documentos SST esta liberado apenas para gestores desta empresa.'
+              : `Este modulo nao esta liberado para ${
+                  user.servedClient.tradeName || user.servedClient.legalName
+                }. A consultoria precisa ativar a chave no cadastro do cliente.`}
           </p>
         </div>
       </header>

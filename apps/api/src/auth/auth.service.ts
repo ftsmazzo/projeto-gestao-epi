@@ -11,6 +11,7 @@ import {
   MembershipRole,
   OrganizationStatus,
   ServedClientStatus,
+  SstDocumentsAccessScope,
 } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
@@ -612,6 +613,7 @@ export class AuthService {
       cnpj: string;
       status: ServedClientStatus;
       sstDocumentsEnabled: boolean;
+      sstDocumentsAccessScope: SstDocumentsAccessScope;
       obrasModeEnabled: boolean;
     };
     user?: { id: string; email: string; name: string } | null;
@@ -636,6 +638,8 @@ export class AuthService {
         cnpj: membership.servedClient.cnpj,
         status: membership.servedClient.status,
         sstDocumentsEnabled: membership.servedClient.sstDocumentsEnabled,
+        sstDocumentsAccessScope:
+          membership.servedClient.sstDocumentsAccessScope,
         obrasModeEnabled: membership.servedClient.obrasModeEnabled,
       },
       accessibleClients: await this.listAccessibleClients({

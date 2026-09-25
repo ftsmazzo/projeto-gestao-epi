@@ -1,6 +1,7 @@
 'use client';
 
 import type { ClientPortalUser } from '@gestao-epi/shared';
+import { canAccessSstDocuments } from '@gestao-epi/shared';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useId, useMemo, useState } from 'react';
@@ -96,11 +97,17 @@ export function PortalShell({ children, user, onLogout, onSwitchCompany }: Props
   const portalNav = useMemo(
     () =>
       PORTAL_NAV.filter((item) => {
-        if (
-          item.href === '/portal/documentos-sst' &&
-          user?.servedClient.sstDocumentsEnabled !== true
-        ) {
-          return false;
+        if (item.href === '/portal/documentos-sst') {
+          if (
+            !user ||
+            !canAccessSstDocuments({
+              enabled: user.servedClient.sstDocumentsEnabled === true,
+              scope: user.servedClient.sstDocumentsAccessScope,
+              role: user.role,
+            })
+          ) {
+            return false;
+          }
         }
         if (
           item.href === '/portal/obras' &&
@@ -111,7 +118,10 @@ export function PortalShell({ children, user, onLogout, onSwitchCompany }: Props
         return true;
       }),
     [
+      user,
+      user?.role,
       user?.servedClient.sstDocumentsEnabled,
+      user?.servedClient.sstDocumentsAccessScope,
       user?.servedClient.obrasModeEnabled,
     ],
   );

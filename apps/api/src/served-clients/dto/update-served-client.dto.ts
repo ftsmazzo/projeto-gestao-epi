@@ -10,7 +10,7 @@ import {
   MinLength,
   ValidateIf,
 } from 'class-validator';
-import { ServedClientStatus } from '@prisma/client';
+import { ServedClientStatus, SstDocumentsAccessScope } from '@prisma/client';
 
 export class UpdateServedClientDto {
   @IsOptional()
@@ -58,6 +58,10 @@ export class UpdateServedClientDto {
   @IsOptional()
   @IsBoolean()
   sstDocumentsEnabled?: boolean;
+
+  @IsOptional()
+  @IsEnum(SstDocumentsAccessScope)
+  sstDocumentsAccessScope?: SstDocumentsAccessScope;
 
   @IsOptional()
   @IsBoolean()
