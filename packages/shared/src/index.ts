@@ -645,8 +645,8 @@ export interface ServedClientOverview {
       note: string;
     };
     users: {
-      managers: { active: number; total: number; limit: number };
-      stockOperators: { active: number; total: number; limit: number };
+      managers: { active: number; total: number; limit: number | null };
+      stockOperators: { active: number; total: number; limit: number | null };
     };
   };
   lastPgroImport: {
@@ -659,9 +659,6 @@ export interface ServedClientOverview {
     createdByName: string | null;
   } | null;
 }
-
-export const CLIENT_MANAGER_LIMIT = 2;
-export const STOCK_OPERATOR_LIMIT = 4;
 
 export type EpiUnitOfMeasure = 'UNIDADE' | 'PAR' | 'CAIXA' | 'KIT';
 

@@ -29,9 +29,6 @@ import type {
 const REACTIVATE_QUOTA_ERROR =
   'Nao ha vidas disponiveis suficientes para reativar esta empresa.';
 
-export const CLIENT_MANAGER_LIMIT = 2;
-export const STOCK_OPERATOR_LIMIT = 4;
-
 export type ClientInitialAccessPayload = {
   membershipId: string;
   managerName: string;
@@ -342,12 +339,6 @@ export class ServedClientsService {
     if (!email || !name) {
       throw new BadRequestException('Nome e e-mail do gestor sao obrigatorios.');
     }
-
-    await this.assertClientUserRoleLimit(
-      organizationId,
-      servedClientId,
-      ClientUserRole.CLIENT_MANAGER,
-    );
 
     const duplicate = await this.prisma.clientUserMembership.findFirst({
       where: { servedClientId, email },
@@ -922,12 +913,12 @@ export class ServedClientsService {
           managers: {
             active: managersActive,
             total: managersTotal,
-            limit: CLIENT_MANAGER_LIMIT,
+            limit: null,
           },
           stockOperators: {
             active: stockOpsActive,
             total: stockOpsTotal,
-            limit: STOCK_OPERATOR_LIMIT,
+            limit: null,
           },
         },
       },
@@ -1196,38 +1187,13 @@ export class ServedClientsService {
   }
 
   private async assertClientUserRoleLimit(
-    organizationId: string,
-    servedClientId: string,
-    role: ClientUserRole,
-    excludeId?: string,
+    _organizationId: string,
+    _servedClientId: string,
+    _role: ClientUserRole,
+    _excludeId?: string,
   ) {
-    const limit =
-      role === ClientUserRole.CLIENT_MANAGER
-        ? CLIENT_MANAGER_LIMIT
-        : role === ClientUserRole.STOCK_OPERATOR
-          ? STOCK_OPERATOR_LIMIT
-          : null;
-    if (limit == null) return;
-
-    const activeCount = await this.prisma.clientUserMembership.count({
-      where: {
-        organizationId,
-        servedClientId,
-        role,
-        isActive: true,
-        ...(excludeId ? { NOT: { id: excludeId } } : {}),
-      },
-    });
-
-    if (activeCount >= limit) {
-      const label =
-        role === ClientUserRole.CLIENT_MANAGER
-          ? 'gestores do cliente'
-          : 'operadores de estoque';
-      throw new BadRequestException(
-        `Limite de ${limit} ${label} ativos atingido neste cliente.`,
-      );
-    }
+    // Sem teto de gestores nem de operadores por cliente.
+    return;
   }
 
   private normalizeAndValidateCnpj(value: string): string {

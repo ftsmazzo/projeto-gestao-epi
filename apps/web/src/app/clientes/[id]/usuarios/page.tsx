@@ -6,11 +6,7 @@ import type {
   ClientUserRole,
   ServedClientOverview,
 } from '@gestao-epi/shared';
-import {
-  CLIENT_MANAGER_LIMIT,
-  STOCK_OPERATOR_LIMIT,
-} from '@gestao-epi/shared';
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ClientAccessCredentials } from '../../../../components/ClientAccessCredentials';
 import { ClientPortalLaunchLink } from '../../../../components/ClientPortalLaunchLink';
@@ -82,24 +78,11 @@ export default function ClienteUsuariosPage() {
 
   const managersActive = overview?.counts.users.managers.active ?? 0;
   const stockActive = overview?.counts.users.stockOperators.active ?? 0;
-  const canAddManager = managersActive < CLIENT_MANAGER_LIMIT;
-  const canAddStock = stockActive < STOCK_OPERATOR_LIMIT;
   const canOperate = overview?.operational === true;
-
-  useEffect(() => {
-    if (!canAddManager && canAddStock && role === 'CLIENT_MANAGER') {
-      setRole('STOCK_OPERATOR');
-    }
-  }, [canAddManager, canAddStock, role]);
-
-  const roleBlocked = useMemo(() => {
-    if (role === 'CLIENT_MANAGER') return !canAddManager;
-    return !canAddStock;
-  }, [role, canAddManager, canAddStock]);
 
   async function onCreateUser(event: FormEvent) {
     event.preventDefault();
-    if (!clientId || !canOperate || roleBlocked) return;
+    if (!clientId || !canOperate) return;
     setUserError(null);
     setSaving(true);
     try {
@@ -237,22 +220,17 @@ export default function ClienteUsuariosPage() {
             <p className="page-lead">
               Gestores acessam o <strong>portal do cliente</strong> em{' '}
               <span className="mono">/portal/login</span>. Nao usam o login da
-              Consultoria. Limites: {CLIENT_MANAGER_LIMIT} gestores e{' '}
-              {STOCK_OPERATOR_LIMIT} operadores.
+              Consultoria. Sem limite de gestores nem de operadores.
             </p>
           </div>
-          <div className="quota-summary" aria-label="Limites">
+          <div className="quota-summary" aria-label="Usuarios ativos">
             <div className="quota-summary-item">
               <span className="quota-summary-label">Gestores</span>
-              <strong className="quota-summary-value">
-                {managersActive}/{CLIENT_MANAGER_LIMIT}
-              </strong>
+              <strong className="quota-summary-value">{managersActive}</strong>
             </div>
             <div className="quota-summary-item">
               <span className="quota-summary-label">Estoque</span>
-              <strong className="quota-summary-value">
-                {stockActive}/{STOCK_OPERATOR_LIMIT}
-              </strong>
+              <strong className="quota-summary-value">{stockActive}</strong>
             </div>
           </div>
         </div>
@@ -309,10 +287,10 @@ export default function ClienteUsuariosPage() {
                     )
                   }
                 >
-                  <option value="CLIENT_MANAGER" disabled={!canAddManager}>
+                  <option value="CLIENT_MANAGER">
                     Gestor do cliente
                   </option>
-                  <option value="STOCK_OPERATOR" disabled={!canAddStock}>
+                  <option value="STOCK_OPERATOR">
                     Operador de estoque
                   </option>
                 </select>
@@ -338,15 +316,13 @@ export default function ClienteUsuariosPage() {
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={saving || roleBlocked}
+                disabled={saving}
               >
                 {saving
                   ? 'Salvando...'
-                  : roleBlocked
-                    ? 'Limite atingido'
-                    : role === 'CLIENT_MANAGER'
-                      ? 'Cadastrar gestor'
-                      : 'Cadastrar operador'}
+                  : role === 'CLIENT_MANAGER'
+                    ? 'Cadastrar gestor'
+                    : 'Cadastrar operador'}
               </button>
             </div>
           </form>

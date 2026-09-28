@@ -279,10 +279,8 @@ export default function ClienteVisaoGeralPage() {
           <p className="action-tile__kicker">Portal</p>
           <h2 className="action-tile__title">Usuarios do cliente</h2>
           <p className="action-tile__desc">
-            Gestores {counts.users.managers.active}/
-            {counts.users.managers.limit} · Estoque{' '}
-            {counts.users.stockOperators.active}/
-            {counts.users.stockOperators.limit}
+            Gestores {counts.users.managers.active} · Estoque{' '}
+            {counts.users.stockOperators.active}
           </p>
         </Link>
       </section>
@@ -456,14 +454,13 @@ export default function ClienteVisaoGeralPage() {
           <div className="overview-metric">
             <span className="overview-metric__label">Gestores</span>
             <strong className="overview-metric__value">
-              {counts.users.managers.active}/{counts.users.managers.limit}
+              {counts.users.managers.active}
             </strong>
           </div>
           <div className="overview-metric">
             <span className="overview-metric__label">Op. estoque</span>
             <strong className="overview-metric__value">
-              {counts.users.stockOperators.active}/
-              {counts.users.stockOperators.limit}
+              {counts.users.stockOperators.active}
             </strong>
           </div>
         </div>
