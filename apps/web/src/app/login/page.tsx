@@ -23,6 +23,8 @@ export default function LoginPage() {
       const data = await loginAccount({ email, password });
       if (data.user.mustChangePassword) {
         router.push('/conta?obrigatorio=1');
+      } else if (data.user.organization.kind === 'DISTRIBUIDORA') {
+        router.push('/distribuidora');
       } else {
         router.push('/dashboard');
       }
@@ -35,10 +37,10 @@ export default function LoginPage() {
 
   return (
     <AuthLayout
-      kicker={`${APP_FULL_NAME} · Consultoria`}
+      kicker={`${APP_FULL_NAME} · Gestao`}
       footer={
         <>
-          Ainda nao tem acesso? A {APP_NAME} cria sua consultoria.
+          Ainda nao tem acesso? A {APP_NAME} cria sua conta.
           <br />
           Empresa cliente? <Link href="/portal/login">Entrar no portal</Link>
         </>

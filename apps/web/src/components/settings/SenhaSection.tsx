@@ -43,7 +43,11 @@ export function SenhaSection({
       setNewPassword('');
       setConfirmPassword('');
       if (obrigatorio) {
-        router.replace('/dashboard');
+        router.replace(
+          user.organization.kind === 'DISTRIBUIDORA'
+            ? '/distribuidora'
+            : '/dashboard',
+        );
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao trocar senha.');

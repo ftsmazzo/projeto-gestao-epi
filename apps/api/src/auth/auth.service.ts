@@ -9,6 +9,7 @@ import {
   ClientUserAccessStatus,
   ClientUserRole,
   MembershipRole,
+  OrganizationKind,
   OrganizationStatus,
   ServedClientStatus,
   SstDocumentsAccessScope,
@@ -888,6 +889,7 @@ export class AuthService {
       id: string;
       name: string;
       slug: string;
+      kind: OrganizationKind;
       contractedLifeQuota: number;
       status: OrganizationStatus;
       logoPath?: string | null;
@@ -904,6 +906,7 @@ export class AuthService {
         id: organization.id,
         name: organization.name,
         slug: organization.slug,
+        kind: organization.kind,
         contractedLifeQuota: organization.contractedLifeQuota,
         status: organization.status,
         hasLogo: Boolean(organization.logoPath),

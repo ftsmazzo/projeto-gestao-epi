@@ -25,6 +25,7 @@ import { ClientGroupsModule } from './client-groups/client-groups.module';
 import { McpApiModule } from './mcp-api/mcp-api.module';
 import { SupportModule } from './support/support.module';
 import { WorkSitesModule } from './work-sites/work-sites.module';
+import { DistributorModule } from './distributor/distributor.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { WorkSitesModule } from './work-sites/work-sites.module';
     SupportModule,
     WorkSitesModule,
     McpApiModule,
+    DistributorModule,
     PlatformModule,
     HealthModule,
   ],

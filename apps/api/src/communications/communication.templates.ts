@@ -32,6 +32,7 @@ export type ConsultoriaAccessInviteInput = {
   accessUrl: string;
   membershipId: string;
   roleLabel: string;
+  panelNoun?: string;
   replyToEmail?: string | null;
 };
 
@@ -84,7 +85,7 @@ export function buildConsultoriaAccessInviteEmail(
   const text = [
     `Ola, ${input.recipientName}.`,
     '',
-    `A ProntEPI liberou o painel de gestao da consultoria ${input.organizationName}.`,
+    `A ProntEPI liberou o painel de gestao da ${input.panelNoun ?? 'consultoria'} ${input.organizationName}.`,
     `Papel: ${input.roleLabel}`,
     '',
     `Link: ${input.accessUrl}`,
@@ -93,7 +94,7 @@ export function buildConsultoriaAccessInviteEmail(
     '',
     'No primeiro acesso, o sistema pede para trocar a senha.',
     'Depois, use Minha conta no canto superior do painel.',
-    'Este e o login da consultoria — nao o portal do cliente.',
+    'Este e o login da gestao — nao o portal do cliente.',
     'Dúvidas: fale com a ProntEPI. Este canal atende consultorias e empresas clientes.',
   ].join('\n');
 
@@ -106,13 +107,13 @@ export function buildConsultoriaAccessInviteWhatsapp(
   return [
     `*ProntEPI* — acesso a gestao`,
     `Ola, ${input.recipientName}.`,
-    `Consultoria: ${input.organizationName}`,
+    `${(input.panelNoun ?? 'consultoria') === 'distribuidora' ? 'Distribuidora' : 'Consultoria'}: ${input.organizationName}`,
     `Papel: ${input.roleLabel}`,
     `Link: ${input.accessUrl}`,
     `E-mail: ${input.recipientEmail ?? '—'}`,
     `Senha temporaria: ${input.temporaryPassword}`,
     'No primeiro acesso, troque a senha. Depois: Minha conta no painel.',
-    'Login da consultoria (nao o portal do cliente). Suporte: ProntEPI.',
+    'Login da gestao (nao o portal do cliente). Suporte: ProntEPI.',
   ].join('\n');
 }
 

@@ -5,18 +5,16 @@ import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import { clearAccessToken, fetchMe, getAccessToken } from '../lib/auth';
 import { DistributorShell } from './DistributorShell';
-import { OpsShell } from './OpsShell';
 
-type RequireAuthProps = {
-  children: (user: AuthUser) => ReactNode;
+type RequireDistributorProps = {
+  children: ReactNode;
 };
 
-export function RequireAuth({ children }: RequireAuthProps) {
+export function RequireDistributor({ children }: RequireDistributorProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -24,43 +22,28 @@ export function RequireAuth({ children }: RequireAuthProps) {
       router.replace('/login');
       return;
     }
-
     void fetchMe()
       .then((me) => {
         if (me.mustChangePassword && pathname !== '/conta') {
           router.replace('/conta?obrigatorio=1');
           return;
         }
-        if (
-          me.organization.kind === 'DISTRIBUIDORA' &&
-          !pathname.startsWith('/distribuidora') &&
-          pathname !== '/conta'
-        ) {
-          router.replace('/distribuidora');
+        if (me.organization.kind !== 'DISTRIBUIDORA') {
+          router.replace('/dashboard');
           return;
         }
         setUser(me);
-        setLoading(false);
       })
       .catch((err: unknown) => {
         clearAccessToken();
         setError(err instanceof Error ? err.message : 'Sessao invalida');
-        setLoading(false);
         router.replace('/login');
       });
   }, [router, pathname]);
 
-  function logout() {
-    clearAccessToken();
-    router.push('/login');
-  }
-
-  const Shell =
-    user?.organization.kind === 'DISTRIBUIDORA' ? DistributorShell : OpsShell;
-
-  if (loading || !user) {
+  if (!user) {
     return (
-      <Shell>
+      <DistributorShell>
         <section className="surface" aria-live="polite">
           <p className="page-kicker">Sessao</p>
           <h1 className="page-title">Carregando...</h1>
@@ -69,16 +52,19 @@ export function RequireAuth({ children }: RequireAuthProps) {
               {error}
             </p>
           ) : (
-            <p className="page-lead">Validando autenticacao e organizacao.</p>
+            <p className="page-lead">Validando a conta da distribuidora.</p>
           )}
         </section>
-      </Shell>
+      </DistributorShell>
     );
   }
 
   return (
-    <Shell user={user} onLogout={logout}>
-      {children(user)}
-    </Shell>
+    <DistributorShell user={user} onLogout={() => {
+      clearAccessToken();
+      router.push('/login');
+    }}>
+      {children}
+    </DistributorShell>
   );
 }

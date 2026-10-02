@@ -26,10 +26,13 @@ export type MembershipRole = 'OWNER' | 'ADMIN' | 'MEMBER';
 
 export type OrganizationStatus = 'ACTIVE' | 'SUSPENDED';
 
+export type OrganizationKind = 'CONSULTORIA' | 'DISTRIBUIDORA';
+
 export interface AuthOrganization {
   id: string;
   name: string;
   slug: string;
+  kind: OrganizationKind;
   contractedLifeQuota: number;
   status: OrganizationStatus;
   hasLogo: boolean;
@@ -83,6 +86,7 @@ export interface PlatformTenantRow {
   id: string;
   name: string;
   slug: string;
+  kind: OrganizationKind;
   status: OrganizationStatus;
   contractedLifeQuota: number;
   allocatedLives: number;

@@ -1,5 +1,13 @@
 import { Type } from 'class-transformer';
-import { IsEmail, IsInt, IsString, Min, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreatePlatformTenantDto {
   @IsString()
@@ -26,4 +34,8 @@ export class CreatePlatformTenantDto {
   @IsInt()
   @Min(0)
   wholesaleUnitPriceCents!: number;
+
+  @IsOptional()
+  @IsIn(['CONSULTORIA', 'DISTRIBUIDORA'])
+  kind?: 'CONSULTORIA' | 'DISTRIBUIDORA';
 }

@@ -55,6 +55,9 @@ function PlataformaContent({ userName }: { userName: string }) {
   const [ownerPhone, setOwnerPhone] = useState('');
   const [quota, setQuota] = useState('1000');
   const [wholesale, setWholesale] = useState('0,00');
+  const [kind, setKind] = useState<'CONSULTORIA' | 'DISTRIBUIDORA'>(
+    'CONSULTORIA',
+  );
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editQuota, setEditQuota] = useState('');
@@ -88,11 +91,12 @@ function PlataformaContent({ userName }: { userName: string }) {
     setCreatedAccess(null);
     const lives = Number(quota);
     const cents = reaisToCents(wholesale);
-    if (!Number.isInteger(lives) || lives < 0) {
+    const distributor = kind === 'DISTRIBUIDORA';
+    if (!distributor && (!Number.isInteger(lives) || lives < 0)) {
       setError('Informe a franquia de vidas.');
       return;
     }
-    if (cents == null) {
+    if (!distributor && cents == null) {
       setError('Informe o preco de atacado por vida.');
       return;
     }
@@ -103,17 +107,21 @@ function PlataformaContent({ userName }: { userName: string }) {
         ownerName,
         ownerEmail,
         ownerPhone,
-        contractedLifeQuota: lives,
-        wholesaleUnitPriceCents: cents,
+        kind,
+        contractedLifeQuota: distributor ? 0 : lives,
+        wholesaleUnitPriceCents: distributor ? 0 : (cents ?? 0),
       });
       setCreatedAccess(result.owner);
-      setSuccess(`Consultoria ${result.tenant.name} criada.`);
+      setSuccess(
+        `${distributor ? 'Distribuidora' : 'Consultoria'} ${result.tenant.name} criada.`,
+      );
       setName('');
       setOwnerName('');
       setOwnerEmail('');
       setOwnerPhone('');
       setQuota('1000');
       setWholesale('0,00');
+      setKind('CONSULTORIA');
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao criar consultoria.');
@@ -317,6 +325,9 @@ function PlataformaContent({ userName }: { userName: string }) {
                             {tenant.owner?.phone
                               ? ` · ${tenant.owner.phone}`
                               : ''}
+                            {tenant.kind === 'DISTRIBUIDORA'
+                              ? ' · Distribuidora'
+                              : ' · Consultoria'}
                             {tenant.activeClients
                               ? ` · ${tenant.activeClients} cliente(s)`
                               : ''}
@@ -550,15 +561,32 @@ function PlataformaContent({ userName }: { userName: string }) {
 
         <section className="dash-panel" aria-labelledby="nova-consultoria">
           <h2 id="nova-consultoria" className="dash-panel__title">
-            Nova consultoria
+            Nova conta
           </h2>
           <p className="page-lead">
-            A ProntEPI envia e-mail e WhatsApp com o acesso. Sem telefone o
-            Zap nao sai.
+            Consultoria de SST ou distribuidora de EPI. A ProntEPI envia e-mail
+            e WhatsApp com o acesso.
           </p>
           <form className="form" onSubmit={onCreate}>
             <div className="field">
-              <label htmlFor="tenant-name">Nome da consultoria</label>
+              <label htmlFor="tenant-kind">Tipo</label>
+              <select
+                id="tenant-kind"
+                value={kind}
+                onChange={(e) =>
+                  setKind(e.target.value as 'CONSULTORIA' | 'DISTRIBUIDORA')
+                }
+              >
+                <option value="CONSULTORIA">Consultoria de SST</option>
+                <option value="DISTRIBUIDORA">Distribuidora de EPI</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="tenant-name">
+                {kind === 'DISTRIBUIDORA'
+                  ? 'Nome da distribuidora'
+                  : 'Nome da consultoria'}
+              </label>
               <input
                 id="tenant-name"
                 required
@@ -599,6 +627,8 @@ function PlataformaContent({ userName }: { userName: string }) {
                 placeholder="11999999999"
               />
             </div>
+            {kind === 'CONSULTORIA' ? (
+              <>
             <div className="field">
               <label htmlFor="tenant-quota">Franquia de vidas</label>
               <input
@@ -620,6 +650,12 @@ function PlataformaContent({ userName }: { userName: string }) {
                 onChange={(e) => setWholesale(e.target.value)}
               />
             </div>
+              </>
+            ) : (
+              <p className="field-hint">
+                Distribuidora nao consome franquia de vidas.
+              </p>
+            )}
             <button className="btn btn-primary" type="submit" disabled={saving}>
               {saving ? 'Criando...' : 'Criar e enviar acesso'}
             </button>

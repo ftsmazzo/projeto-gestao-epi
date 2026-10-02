@@ -17,6 +17,7 @@ export function createPlatformTenant(input: {
   ownerPhone: string;
   contractedLifeQuota: number;
   wholesaleUnitPriceCents: number;
+  kind?: 'CONSULTORIA' | 'DISTRIBUIDORA';
 }) {
   return platformFetch<CreatePlatformTenantResult>('/platform/tenants', {
     method: 'POST',

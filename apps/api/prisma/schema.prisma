@@ -46,6 +46,27 @@ enum OrganizationStatus {
   SUSPENDED
 }
 
+enum OrganizationKind {
+  CONSULTORIA
+  DISTRIBUIDORA
+}
+
+enum DistributorMovementDirection {
+  IN
+  OUT
+}
+
+enum DistributorMovementSource {
+  MANUAL
+  INVOICE
+}
+
+enum DistributorInboundStatus {
+  DRAFT
+  CONFIRMED
+  DISCARDED
+}
+
 /// Estado comercial da assinatura do cliente atendido (CNPJ).
 enum ClientSubscriptionStatus {
   TRIAL
@@ -89,11 +110,12 @@ enum EpiCategory {
   OUTROS
 }
 
-/// Empresa usuaria do software (tenant / consultoria). Cliente da ProntEPI.
+/// Empresa usuaria do software. Consultoria de SST ou distribuidora de EPI.
 model Organization {
   id                      String             @id @default(cuid())
   name                    String
   slug                    String             @unique
+  kind                    OrganizationKind   @default(CONSULTORIA)
   /// Franquia de vidas vendida pela ProntEPI a esta consultoria.
   contractedLifeQuota     Int                @default(0)
   /// Preco de atacado mensal por vida (centavos BRL) cobrado pela ProntEPI.
@@ -149,6 +171,108 @@ model Organization {
   trainingIssuances TrainingIssuance[]
   workSites         ClientWorkSite[]
   workAssignments   WorkerWorkAssignment[]
+  distributorProducts DistributorProduct[]
+  distributorInboundDocuments DistributorInboundDocument[]
+}
+
+/// Produto do deposito da distribuidora. Nao reutiliza o catalogo da consultoria.
+model DistributorProduct {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  supplierSku    String?
+  internalSku    String
+  ncm            String?
+  minQuantity    Int?
+  /// Sugestao da base CAEPI. Nao e chave estrangeira: CA ausente nao bloqueia o cadastro.
+  caNumber       String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  variants     DistributorVariant[]
+
+  @@unique([organizationId, internalSku])
+  @@index([organizationId])
+}
+
+model DistributorVariant {
+  id        String   @id @default(cuid())
+  productId String
+  label     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product   DistributorProduct    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  balance   DistributorBalance?
+  movements DistributorMovement[]
+  inboundLines DistributorInboundLine[]
+
+  @@unique([productId, label])
+  @@index([productId])
+}
+
+model DistributorBalance {
+  id        String   @id @default(cuid())
+  variantId String   @unique
+  quantity  Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  variant DistributorVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+}
+
+model DistributorMovement {
+  id              String                        @id @default(cuid())
+  variantId       String
+  direction       DistributorMovementDirection
+  quantity        Int
+  source          DistributorMovementSource
+  createdByUserId String
+  documentId      String?
+  createdAt       DateTime                      @default(now())
+
+  variant  DistributorVariant          @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  document DistributorInboundDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  @@index([variantId, createdAt])
+  @@index([documentId])
+}
+
+model DistributorInboundDocument {
+  id              String                    @id @default(cuid())
+  organizationId  String
+  status          DistributorInboundStatus  @default(DRAFT)
+  supplierName    String?
+  invoiceNumber   String?
+  filePath        String
+  fileName        String
+  mimeType        String
+  extraction      Json
+  createdByUserId String
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lines        DistributorInboundLine[]
+  movements    DistributorMovement[]
+
+  @@index([organizationId, status])
+}
+
+model DistributorInboundLine {
+  id             String  @id @default(cuid())
+  documentId     String
+  description    String
+  quantity       Int
+  unitCostCents  Int?
+  caNumber       String?
+  variantId      String?
+
+  document DistributorInboundDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  variant  DistributorVariant?        @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([variantId])
 }
 
 /// Contato oficial da consultoria usado nas comunicacoes com clientes

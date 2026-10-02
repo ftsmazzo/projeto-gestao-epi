@@ -8,6 +8,7 @@ import {
 import {
   MembershipRole,
   OrganizationContactRole,
+  OrganizationKind,
   OrganizationStatus,
   ServedClientStatus,
   WorkerStatus,
@@ -173,7 +174,7 @@ export class PlatformService {
     const ownerEmail = dto.ownerEmail.trim().toLowerCase();
     const ownerPhone = normalizeWhatsappNumber(dto.ownerPhone);
     if (!name || !ownerName || !ownerEmail) {
-      throw new BadRequestException('Informe consultoria, gestor e e-mail.');
+      throw new BadRequestException('Informe o nome, o gestor e o e-mail.');
     }
     if (!ownerPhone) {
       throw new BadRequestException(
@@ -186,12 +187,18 @@ export class PlatformService {
       include: { memberships: { take: 1 } },
     });
     if (existingUser && existingUser.memberships.length > 0) {
-      throw new ConflictException(
-        'Este e-mail ja e gestor de outra consultoria.',
-      );
+      throw new ConflictException('Este e-mail ja e gestor de outra conta.');
     }
 
-    const slug = await this.ensureUniqueSlug(slugify(name) || 'consultoria');
+    const kind =
+      dto.kind === 'DISTRIBUIDORA'
+        ? OrganizationKind.DISTRIBUIDORA
+        : OrganizationKind.CONSULTORIA;
+    const contractedLifeQuota =
+      kind === OrganizationKind.DISTRIBUIDORA ? 0 : dto.contractedLifeQuota;
+    const wholesaleUnitPriceCents =
+      kind === OrganizationKind.DISTRIBUIDORA ? 0 : dto.wholesaleUnitPriceCents;
+    const slug = await this.ensureUniqueSlug(slugify(name) || 'conta');
     const reuseUser = Boolean(existingUser);
     const temporaryPassword = reuseUser
       ? null
@@ -205,8 +212,9 @@ export class PlatformService {
         data: {
           name,
           slug,
-          contractedLifeQuota: dto.contractedLifeQuota,
-          wholesaleUnitPriceCents: dto.wholesaleUnitPriceCents,
+          kind,
+          contractedLifeQuota,
+          wholesaleUnitPriceCents,
           status: OrganizationStatus.ACTIVE,
         },
       });
@@ -273,6 +281,8 @@ export class PlatformService {
       accessUrl,
       membershipId: created.membership.id,
       roleLabel: 'Administrador geral',
+      panelNoun:
+        kind === OrganizationKind.DISTRIBUIDORA ? 'distribuidora' : 'consultoria',
     });
 
     await this.audit.log({
@@ -283,8 +293,9 @@ export class PlatformService {
       entityId: created.organization.id,
       metadata: {
         ownerEmail,
-        contractedLifeQuota: dto.contractedLifeQuota,
-        wholesaleUnitPriceCents: dto.wholesaleUnitPriceCents,
+        kind,
+        contractedLifeQuota,
+        wholesaleUnitPriceCents,
       },
     });
 
@@ -794,6 +805,7 @@ export class PlatformService {
       id: string;
       name: string;
       slug: string;
+      kind: OrganizationKind;
       status: OrganizationStatus;
       contractedLifeQuota: number;
       wholesaleUnitPriceCents: number;
@@ -839,6 +851,7 @@ export class PlatformService {
       id: org.id,
       name: org.name,
       slug: org.slug,
+      kind: org.kind,
       status: org.status,
       contractedLifeQuota: org.contractedLifeQuota,
       allocatedLives,
