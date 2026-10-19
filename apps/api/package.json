@@ -27,6 +27,7 @@
     "test:lot": "npx --yes tsx src/distributor/lot.rules.selftest.ts",
     "test:nfe-xml": "npx --yes tsx src/distributor/nfe-xml.rules.selftest.ts",
     "test:nfe-outbound": "npx --yes tsx src/distributor/nfe-outbound.rules.selftest.ts",
+    "test:payable": "npx --yes tsx src/distributor/payable.rules.selftest.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",

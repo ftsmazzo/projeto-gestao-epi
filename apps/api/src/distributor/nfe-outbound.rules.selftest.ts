@@ -5,6 +5,7 @@ import {
   NfeOutboundError,
   OUTBOUND_EMISSION_ENABLED,
   assertOutboundAuthorize,
+  assertOutboundConfirm,
   buildOutboundLines,
   lineNetUnitCents,
   outboundBlockers,
@@ -84,10 +85,33 @@ const blockers = outboundBlockers({
 assert(blockers.includes('CNPJ do emitente'), 'bloqueia sem CNPJ');
 assert(blockers.includes('Certificado A1'), 'bloqueia sem A1');
 
-let gated = false;
+assertOutboundConfirm('DRAFT');
+let notDraft = false;
+try {
+  assertOutboundConfirm('CONFIRMED');
+} catch (error) {
+  notDraft = error instanceof NfeOutboundError;
+}
+assert(notDraft, 'confirm so no rascunho');
+
+let needsConfirm = false;
 try {
   assertOutboundAuthorize({
     status: 'DRAFT',
+    blockers: [],
+    emissionEnabled: true,
+  });
+} catch (error) {
+  needsConfirm =
+    error instanceof NfeOutboundError &&
+    error.message.includes('Confirme a saida');
+}
+assert(needsConfirm, 'autorizacao exige confirmacao');
+
+let gated = false;
+try {
+  assertOutboundAuthorize({
+    status: 'CONFIRMED',
     blockers: [],
     emissionEnabled: OUTBOUND_EMISSION_ENABLED,
   });

@@ -427,7 +427,7 @@ export type DistributorFiscalProfile = {
   note: string;
 };
 
-export type OutboundStatus = 'DRAFT' | 'CANCELLED' | 'AUTHORIZED';
+export type OutboundStatus = 'DRAFT' | 'CONFIRMED' | 'CANCELLED' | 'AUTHORIZED';
 
 export type OutboundLine = {
   id: string;
@@ -461,11 +461,28 @@ export type OutboundInvoice = {
   accessKey: string | null;
   protocol: string | null;
   createdAt: string;
+  confirmedAt: string | null;
   cancelledAt: string | null;
   readyToAuthorize: boolean;
   blockers: string[];
   emissionEnabled: boolean;
   lines: OutboundLine[];
+};
+
+export type PayableStatus = 'OPEN' | 'PAID' | 'CANCELLED';
+
+export type DistributorPayable = {
+  id: string;
+  status: PayableStatus;
+  description: string;
+  supplierName: string;
+  amountCents: number;
+  dueOn: string | null;
+  purchaseOrderId: string | null;
+  inboundDocumentId: string | null;
+  paidAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
 };
 
 export function listOutboundInvoices() {
@@ -483,6 +500,12 @@ export function createOutboundFromQuote(input: {
   });
 }
 
+export function confirmOutboundInvoice(invoiceId: string) {
+  return apiFetch<OutboundInvoice>(`/distributor/outbound/${invoiceId}/confirm`, {
+    method: 'POST',
+  });
+}
+
 export function authorizeOutboundInvoice(invoiceId: string) {
   return apiFetch<OutboundInvoice>(`/distributor/outbound/${invoiceId}/authorize`, {
     method: 'POST',
@@ -491,6 +514,34 @@ export function authorizeOutboundInvoice(invoiceId: string) {
 
 export function cancelOutboundInvoice(invoiceId: string) {
   return apiFetch<OutboundInvoice>(`/distributor/outbound/${invoiceId}/cancel`, {
+    method: 'POST',
+  });
+}
+
+export function listPayables() {
+  return apiFetch<DistributorPayable[]>('/distributor/payables');
+}
+
+export function createPayable(input: {
+  description: string;
+  supplierName: string;
+  amountCents: number;
+  dueOn?: string | null;
+}) {
+  return apiFetch<DistributorPayable>('/distributor/payables', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function markPayablePaid(payableId: string) {
+  return apiFetch<DistributorPayable>(`/distributor/payables/${payableId}/pay`, {
+    method: 'POST',
+  });
+}
+
+export function cancelPayable(payableId: string) {
+  return apiFetch<DistributorPayable>(`/distributor/payables/${payableId}/cancel`, {
     method: 'POST',
   });
 }

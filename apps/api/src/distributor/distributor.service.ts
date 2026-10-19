@@ -20,6 +20,7 @@ import type {
   AddDistributorVariantDto,
   CreateDistributorProductDto,
   CreateOutboundFromQuoteDto,
+  CreatePayableDto,
   CreatePurchaseOrderDto,
   CreateQuoteDto,
   ManualDistributorMovementDto,
@@ -38,10 +39,19 @@ import {
   NfeOutboundError,
   OUTBOUND_EMISSION_ENABLED,
   assertOutboundAuthorize,
+  assertOutboundConfirm,
   buildOutboundLines,
   outboundBlockers,
 } from './nfe-outbound.rules';
 import { NfeXmlError, parseNfeXml } from './nfe-xml.rules';
+import {
+  PayableRuleError,
+  assertCancelPayable,
+  assertMarkPayablePaid,
+  assertPayableAmount,
+  parseDueDay,
+  sumCostLines,
+} from './payable.rules';
 import {
   PurchaseOrderRuleError,
   receivePurchaseOrder,
@@ -575,12 +585,34 @@ export class DistributorService {
             source: DistributorMovementSource.INVOICE,
             documentId: document.id,
             purchaseOrderId: null,
+            outboundInvoiceId: null,
             lotCode: line.lotCode,
             expiresOn: formatExpiryDay(line.expiresOn),
           },
           tx,
         );
       }
+      let amountCents = 0;
+      try {
+        amountCents = sumCostLines(
+          ready.map((line) => ({
+            quantity: line.quantity,
+            unitCostCents: line.unitCostCents,
+          })),
+        );
+      } catch (error) {
+        throw this.asPayableError(error);
+      }
+      await tx.distributorPayable.create({
+        data: {
+          organizationId,
+          description: `Nota de entrada ${document.invoiceNumber ?? document.id.slice(0, 8)}`,
+          supplierName: document.supplierName?.trim() || 'Fornecedor',
+          amountCents,
+          inboundDocumentId: document.id,
+          createdByUserId: userId,
+        },
+      });
       const updated = await tx.distributorInboundDocument.findFirstOrThrow({
         where: { id: document.id },
         include: documentInclude,
@@ -766,12 +798,34 @@ export class DistributorService {
             source: DistributorMovementSource.PURCHASE_ORDER,
             documentId: null,
             purchaseOrderId: current.id,
+            outboundInvoiceId: null,
             lotCode: line.lotCode,
             expiresOn: formatExpiryDay(line.expiresOn),
           },
           tx,
         );
       }
+      let amountCents = 0;
+      try {
+        amountCents = sumCostLines(
+          current.lines.map((line) => ({
+            quantity: line.quantity,
+            unitCostCents: line.unitCostCents,
+          })),
+        );
+      } catch (error) {
+        throw this.asPayableError(error);
+      }
+      await tx.distributorPayable.create({
+        data: {
+          organizationId,
+          description: `Pedido de compra ${current.id.slice(0, 8)}`,
+          supplierName: current.supplierName,
+          amountCents,
+          purchaseOrderId: current.id,
+          createdByUserId: userId,
+        },
+      });
       const updated = await tx.distributorPurchaseOrder.findFirstOrThrow({
         where: { id: current.id },
         include: purchaseOrderInclude,
@@ -800,6 +854,7 @@ export class DistributorService {
       source: DistributorMovementSource;
       documentId: string | null;
       purchaseOrderId: string | null;
+      outboundInvoiceId?: string | null;
       lotCode?: string | null;
       expiresOn?: string | null;
     },
@@ -850,6 +905,7 @@ export class DistributorService {
           createdByUserId: input.userId,
           documentId: input.documentId,
           purchaseOrderId: input.purchaseOrderId,
+          outboundInvoiceId: input.outboundInvoiceId ?? null,
         },
       });
     } else if (input.direction === 'IN') {
@@ -883,6 +939,7 @@ export class DistributorService {
           createdByUserId: input.userId,
           documentId: input.documentId,
           purchaseOrderId: input.purchaseOrderId,
+          outboundInvoiceId: input.outboundInvoiceId ?? null,
           lotId: lot.id,
         },
       });
@@ -926,6 +983,7 @@ export class DistributorService {
             createdByUserId: input.userId,
             documentId: input.documentId,
             purchaseOrderId: input.purchaseOrderId,
+            outboundInvoiceId: input.outboundInvoiceId ?? null,
             lotId: lot.id,
           },
         });
@@ -1392,6 +1450,64 @@ export class DistributorService {
     }
   }
 
+  async confirmOutboundInvoice(
+    organizationId: string,
+    role: string,
+    userId: string,
+    invoiceId: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    return this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.distributorOutboundInvoice.findFirst({
+        where: { id: invoiceId, organizationId },
+        include: outboundInclude,
+      });
+      if (!invoice) throw new NotFoundException('Nota de saida nao encontrada.');
+      try {
+        assertOutboundConfirm(invoice.status);
+      } catch (error) {
+        throw this.asOutboundError(error);
+      }
+      const claimed = await tx.distributorOutboundInvoice.updateMany({
+        where: { id: invoice.id, organizationId, status: 'DRAFT' },
+        data: {
+          status: 'CONFIRMED',
+          confirmedAt: new Date(),
+          confirmedByUserId: userId,
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new ConflictException('Esta nota de saida ja foi confirmada.');
+      }
+      for (const line of invoice.lines) {
+        await this.applyMovement(
+          {
+            organizationId,
+            userId,
+            variantId: line.variantId,
+            direction: 'OUT',
+            quantity: line.quantity,
+            source: DistributorMovementSource.OUTBOUND,
+            documentId: null,
+            purchaseOrderId: null,
+            outboundInvoiceId: invoice.id,
+          },
+          tx,
+        );
+      }
+      const profile = await tx.distributorFiscalProfile.findUnique({
+        where: { organizationId },
+      });
+      const updated = await tx.distributorOutboundInvoice.findFirstOrThrow({
+        where: { id: invoice.id },
+        include: outboundInclude,
+      });
+      return toOutboundView(updated, {
+        certificateUploaded: Boolean(profile?.certificateCipher),
+      });
+    });
+  }
+
   async authorizeOutboundInvoice(
     organizationId: string,
     role: string,
@@ -1439,6 +1555,105 @@ export class DistributorService {
     return this.getOutboundInvoice(organizationId, role, invoiceId);
   }
 
+  async listPayables(organizationId: string, role: string) {
+    await this.requireDistributor(organizationId, role);
+    const rows = await this.prisma.distributorPayable.findMany({
+      where: { organizationId },
+      orderBy: [{ status: 'asc' }, { dueOn: 'asc' }, { createdAt: 'desc' }],
+    });
+    return rows.map(toPayableView);
+  }
+
+  async createPayable(
+    organizationId: string,
+    role: string,
+    userId: string,
+    dto: CreatePayableDto,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    let amountCents: number;
+    let dueOn: Date | null;
+    try {
+      amountCents = assertPayableAmount(dto.amountCents);
+      dueOn = parseDueDay(dto.dueOn);
+    } catch (error) {
+      throw this.asPayableError(error);
+    }
+    const description = dto.description.trim();
+    const supplierName = dto.supplierName.trim();
+    if (description.length < 2 || supplierName.length < 2) {
+      throw new BadRequestException('Informe descricao e fornecedor.');
+    }
+    const created = await this.prisma.distributorPayable.create({
+      data: {
+        organizationId,
+        description,
+        supplierName,
+        amountCents,
+        dueOn,
+        createdByUserId: userId,
+      },
+    });
+    return toPayableView(created);
+  }
+
+  async markPayablePaid(
+    organizationId: string,
+    role: string,
+    userId: string,
+    payableId: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const payable = await this.prisma.distributorPayable.findFirst({
+      where: { id: payableId, organizationId },
+    });
+    if (!payable) throw new NotFoundException('Conta a pagar nao encontrada.');
+    try {
+      assertMarkPayablePaid(payable.status);
+    } catch (error) {
+      throw this.asPayableError(error);
+    }
+    const claimed = await this.prisma.distributorPayable.updateMany({
+      where: { id: payable.id, organizationId, status: 'OPEN' },
+      data: { status: 'PAID', paidAt: new Date(), paidByUserId: userId },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException('Esta conta ja foi paga ou cancelada.');
+    }
+    const updated = await this.prisma.distributorPayable.findFirstOrThrow({
+      where: { id: payable.id },
+    });
+    return toPayableView(updated);
+  }
+
+  async cancelPayable(
+    organizationId: string,
+    role: string,
+    payableId: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const payable = await this.prisma.distributorPayable.findFirst({
+      where: { id: payableId, organizationId },
+    });
+    if (!payable) throw new NotFoundException('Conta a pagar nao encontrada.');
+    try {
+      assertCancelPayable(payable.status);
+    } catch (error) {
+      throw this.asPayableError(error);
+    }
+    const claimed = await this.prisma.distributorPayable.updateMany({
+      where: { id: payable.id, organizationId, status: 'OPEN' },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException('Esta conta ja foi paga ou cancelada.');
+    }
+    const updated = await this.prisma.distributorPayable.findFirstOrThrow({
+      where: { id: payable.id },
+    });
+    return toPayableView(updated);
+  }
+
   private async getOutboundInvoice(
     organizationId: string,
     role: string,
@@ -1460,6 +1675,13 @@ export class DistributorService {
 
   private asOutboundError(error: unknown): BadRequestException {
     if (error instanceof NfeOutboundError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
+  private asPayableError(error: unknown): BadRequestException {
+    if (error instanceof PayableRuleError) {
       return new BadRequestException(error.message);
     }
     throw error;
@@ -1734,7 +1956,7 @@ function toOutboundView(
   opts: { certificateUploaded: boolean },
 ) {
   const blockers =
-    invoice.status === 'DRAFT'
+    invoice.status === 'DRAFT' || invoice.status === 'CONFIRMED'
       ? outboundBlockers({
           emitterCnpj: invoice.emitterCnpj,
           emitterUf: invoice.emitterUf,
@@ -1757,8 +1979,10 @@ function toOutboundView(
     accessKey: invoice.accessKey,
     protocol: invoice.protocol,
     createdAt: invoice.createdAt,
+    confirmedAt: invoice.confirmedAt,
     cancelledAt: invoice.cancelledAt,
-    readyToAuthorize: invoice.status === 'DRAFT' && blockers.length === 0,
+    readyToAuthorize:
+      invoice.status === 'CONFIRMED' && blockers.length === 0,
     blockers,
     emissionEnabled: OUTBOUND_EMISSION_ENABLED,
     lines: invoice.lines.map((line) => ({
@@ -1777,6 +2001,34 @@ function toOutboundView(
       icmsSt: line.icmsSt,
       totalCents: line.unitPriceCents * line.quantity,
     })),
+  };
+}
+
+function toPayableView(payable: {
+  id: string;
+  status: string;
+  description: string;
+  supplierName: string;
+  amountCents: number;
+  dueOn: Date | null;
+  purchaseOrderId: string | null;
+  inboundDocumentId: string | null;
+  paidAt: Date | null;
+  cancelledAt: Date | null;
+  createdAt: Date;
+}) {
+  return {
+    id: payable.id,
+    status: payable.status,
+    description: payable.description,
+    supplierName: payable.supplierName,
+    amountCents: payable.amountCents,
+    dueOn: payable.dueOn ? payable.dueOn.toISOString().slice(0, 10) : null,
+    purchaseOrderId: payable.purchaseOrderId,
+    inboundDocumentId: payable.inboundDocumentId,
+    paidAt: payable.paidAt,
+    cancelledAt: payable.cancelledAt,
+    createdAt: payable.createdAt,
   };
 }
 

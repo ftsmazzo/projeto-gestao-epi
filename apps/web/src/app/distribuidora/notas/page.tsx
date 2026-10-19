@@ -5,6 +5,7 @@ import { fetchMe } from '../../../lib/auth';
 import {
   authorizeOutboundInvoice,
   cancelOutboundInvoice,
+  confirmOutboundInvoice,
   createOutboundFromQuote,
   isDistributorManager,
   listOutboundInvoices,
@@ -16,6 +17,7 @@ import {
 
 const STATUS_LABEL: Record<OutboundStatus, string> = {
   DRAFT: 'Rascunho',
+  CONFIRMED: 'Confirmada (estoque)',
   CANCELLED: 'Cancelada',
   AUTHORIZED: 'Autorizada',
 };
@@ -115,6 +117,21 @@ export default function DistribuidoraNotasPage() {
     }
   }
 
+  async function onConfirm(invoiceId: string) {
+    setError(null);
+    setNotice(null);
+    setSaving(true);
+    try {
+      await confirmOutboundInvoice(invoiceId);
+      setNotice('Saída confirmada. O estoque já baixou.');
+      await reload();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha ao confirmar.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onAuthorize(invoiceId: string) {
     setError(null);
     setNotice(null);
@@ -152,8 +169,8 @@ export default function DistribuidoraNotasPage() {
           <p className="page-kicker">Comercial</p>
           <h1 className="page-title">Notas de saída</h1>
           <p className="page-lead">
-            Monta o rascunho fiscal a partir do orçamento aprovado. A autorização
-            na SEFAZ fica desligada até a homologação.
+            Monta o rascunho, confirma a baixa no estoque e deixa a autorização
+            na SEFAZ para a homologação.
           </p>
         </div>
       </header>
@@ -258,25 +275,29 @@ export default function DistribuidoraNotasPage() {
                     <td>{money(invoice.totalCents)}</td>
                     <td>{STATUS_LABEL[invoice.status]}</td>
                     <td>
-                      {invoice.status === 'DRAFT'
+                      {invoice.status === 'DRAFT' || invoice.status === 'CONFIRMED'
                         ? invoice.blockers.length > 0
                           ? invoice.blockers.join(', ')
-                          : invoice.emissionEnabled
-                            ? 'Pronta'
-                            : 'Aguardando homologação SEFAZ'
+                          : invoice.status === 'DRAFT'
+                            ? 'Confirme a saída para baixar estoque'
+                            : invoice.emissionEnabled
+                              ? 'Pronta para SEFAZ'
+                              : 'Aguardando homologação SEFAZ'
                         : '—'}
                     </td>
                     <td>
-                      {invoice.status === 'DRAFT' && manager ? (
-                        <div className="form-actions">
+                      <div className="form-actions">
+                        {invoice.status === 'DRAFT' ? (
                           <button
                             type="button"
                             className="btn btn-primary"
                             disabled={saving}
-                            onClick={() => void onAuthorize(invoice.id)}
+                            onClick={() => void onConfirm(invoice.id)}
                           >
-                            Autorizar
+                            Confirmar saída
                           </button>
+                        ) : null}
+                        {invoice.status === 'DRAFT' && manager ? (
                           <button
                             type="button"
                             className="btn btn-ghost"
@@ -285,8 +306,18 @@ export default function DistribuidoraNotasPage() {
                           >
                             Cancelar
                           </button>
-                        </div>
-                      ) : null}
+                        ) : null}
+                        {invoice.status === 'CONFIRMED' && manager ? (
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={saving}
+                            onClick={() => void onAuthorize(invoice.id)}
+                          >
+                            Autorizar SEFAZ
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -294,7 +325,9 @@ export default function DistribuidoraNotasPage() {
             </table>
           </div>
         )}
-        {invoices.some((invoice) => invoice.status === 'DRAFT') ? (
+        {invoices.some(
+          (invoice) => invoice.status === 'DRAFT' || invoice.status === 'CONFIRMED',
+        ) ? (
           <div className="table-wrap" style={{ marginTop: '1rem' }}>
             <table className="data-table">
               <thead>
@@ -309,7 +342,10 @@ export default function DistribuidoraNotasPage() {
               </thead>
               <tbody>
                 {invoices
-                  .filter((invoice) => invoice.status === 'DRAFT')
+                  .filter(
+                    (invoice) =>
+                      invoice.status === 'DRAFT' || invoice.status === 'CONFIRMED',
+                  )
                   .flatMap((invoice) =>
                     invoice.lines.map((line) => (
                       <tr key={line.id}>

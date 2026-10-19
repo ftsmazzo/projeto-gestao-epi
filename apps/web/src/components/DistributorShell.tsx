@@ -36,6 +36,10 @@ const NAV = [
       { href: '/distribuidora/notas', label: 'Notas', exact: false },
     ],
   },
+  {
+    label: 'Financeiro',
+    items: [{ href: '/distribuidora/financeiro', label: 'Contas a pagar', exact: false }],
+  },
 ];
 
 type DistributorShellProps = {

@@ -134,13 +134,21 @@ export function outboundBlockers(input: {
   return [...new Set(missing)];
 }
 
+export function assertOutboundConfirm(status: string): void {
+  if (status !== 'DRAFT') {
+    throw new NfeOutboundError('So o rascunho pode confirmar a saida no estoque.');
+  }
+}
+
 export function assertOutboundAuthorize(input: {
   status: string;
   blockers: string[];
   emissionEnabled?: boolean;
 }): void {
-  if (input.status !== 'DRAFT') {
-    throw new NfeOutboundError('So o rascunho pode seguir para autorizacao.');
+  if (input.status !== 'CONFIRMED') {
+    throw new NfeOutboundError(
+      'Confirme a saida no estoque antes de autorizar a NF-e na SEFAZ.',
+    );
   }
   if (input.blockers.length > 0) {
     throw new NfeOutboundError(

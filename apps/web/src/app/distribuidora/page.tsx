@@ -6,9 +6,11 @@ import {
   listDistributorLowStock,
   listDistributorProducts,
   listOutboundInvoices,
+  listPayables,
   listPurchaseOrders,
   listQuotes,
   type DistributorBalanceRow,
+  type DistributorPayable,
   type DistributorProduct,
   type OutboundInvoice,
   type PurchaseOrder,
@@ -25,6 +27,7 @@ export default function DistribuidoraHomePage() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [quotes, setQuotes] = useState<DistributorQuote[]>([]);
   const [outbounds, setOutbounds] = useState<OutboundInvoice[]>([]);
+  const [payables, setPayables] = useState<DistributorPayable[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,13 +37,15 @@ export default function DistribuidoraHomePage() {
       listPurchaseOrders(),
       listQuotes(),
       listOutboundInvoices(),
+      listPayables(),
     ])
-      .then(([productRows, lowRows, orderRows, quoteRows, outboundRows]) => {
+      .then(([productRows, lowRows, orderRows, quoteRows, outboundRows, payableRows]) => {
         setProducts(productRows);
         setLow(lowRows);
         setOrders(orderRows);
         setQuotes(quoteRows);
         setOutbounds(outboundRows);
+        setPayables(payableRows);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Falha ao carregar.'),
@@ -57,6 +62,8 @@ export default function DistribuidoraHomePage() {
   );
   const waitingQuotes = quotes.filter((quote) => quote.status === 'PENDING_APPROVAL');
   const draftNotes = outbounds.filter((invoice) => invoice.status === 'DRAFT');
+  const openPayables = payables.filter((row) => row.status === 'OPEN');
+  const openPayableCents = openPayables.reduce((sum, row) => sum + row.amountCents, 0);
 
   return (
     <div className="module-page">
@@ -100,6 +107,20 @@ export default function DistribuidoraHomePage() {
           <p className="dash-kpi__value">{draftNotes.length}</p>
           <p className="dash-kpi__hint">
             <Link href="/distribuidora/notas">abrir notas</Link>
+          </p>
+        </article>
+        <article className="dash-kpi">
+          <p className="dash-kpi__label">A pagar</p>
+          <p className="dash-kpi__value">
+            {(openPayableCents / 100).toLocaleString('pt-BR', {
+              style: 'currency',
+              currency: 'BRL',
+            })}
+          </p>
+          <p className="dash-kpi__hint">
+            <Link href="/distribuidora/financeiro">
+              {openPayables.length} em aberto
+            </Link>
           </p>
         </article>
       </section>

@@ -432,6 +432,25 @@ export class CreateOutboundFromQuoteDto {
   customerUf!: string;
 }
 
+export class CreatePayableDto {
+  @IsString()
+  @MinLength(2)
+  description!: string;
+
+  @IsString()
+  @MinLength(2)
+  supplierName!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  amountCents!: number;
+
+  @IsOptional()
+  @IsString()
+  dueOn?: string | null;
+}
+
 export class LinkInboundLineDto {
   @IsOptional()
   @IsString()

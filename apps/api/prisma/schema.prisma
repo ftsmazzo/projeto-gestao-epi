@@ -60,6 +60,7 @@ enum DistributorMovementSource {
   MANUAL
   INVOICE
   PURCHASE_ORDER
+  OUTBOUND
 }
 
 enum DistributorPurchaseOrderStatus {
@@ -90,8 +91,15 @@ enum DistributorInboundStatus {
 
 enum DistributorOutboundStatus {
   DRAFT
+  CONFIRMED
   CANCELLED
   AUTHORIZED
+}
+
+enum DistributorPayableStatus {
+  OPEN
+  PAID
+  CANCELLED
 }
 
 /// Estado comercial da assinatura do cliente atendido (CNPJ).
@@ -204,6 +212,7 @@ model Organization {
   distributorSellerCeilings DistributorSellerCeiling[]
   distributorQuotes DistributorQuote[]
   distributorOutboundInvoices DistributorOutboundInvoice[]
+  distributorPayables DistributorPayable[]
   distributorFiscalProfile DistributorFiscalProfile?
   distributorDfeCursor DistributorDfeCursor?
 }
@@ -293,17 +302,20 @@ model DistributorMovement {
   createdByUserId String
   documentId      String?
   purchaseOrderId String?
+  outboundInvoiceId String?
   lotId           String?
   createdAt       DateTime                      @default(now())
 
   variant       DistributorVariant          @relation(fields: [variantId], references: [id], onDelete: Cascade)
   document      DistributorInboundDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
   purchaseOrder DistributorPurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  outboundInvoice DistributorOutboundInvoice? @relation(fields: [outboundInvoiceId], references: [id], onDelete: SetNull)
   lot           DistributorLot?             @relation(fields: [lotId], references: [id], onDelete: SetNull)
 
   @@index([variantId, createdAt])
   @@index([documentId])
   @@index([purchaseOrderId])
+  @@index([outboundInvoiceId])
   @@index([lotId])
 }
 
@@ -344,6 +356,7 @@ model DistributorInboundDocument {
   organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lines        DistributorInboundLine[]
   movements    DistributorMovement[]
+  payable      DistributorPayable?
 
   @@unique([organizationId, accessKey])
   @@index([organizationId, status])
@@ -418,6 +431,7 @@ model DistributorPurchaseOrder {
   organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lines        DistributorPurchaseLine[]
   movements    DistributorMovement[]
+  payable      DistributorPayable?
 
   @@index([organizationId, status])
 }
@@ -490,6 +504,8 @@ model DistributorOutboundInvoice {
   accessKey       String?
   protocol        String?
   createdByUserId String
+  confirmedAt     DateTime?
+  confirmedByUserId String?
   cancelledAt     DateTime?
   createdAt       DateTime                  @default(now())
   updatedAt       DateTime                  @updatedAt
@@ -497,9 +513,35 @@ model DistributorOutboundInvoice {
   organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quote        DistributorQuote?         @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   lines        DistributorOutboundLine[]
+  movements    DistributorMovement[]
 
   @@unique([organizationId, series, number])
   @@index([organizationId, status])
+}
+
+/// Conta a pagar da distribuidora. Compra recebida e nota de entrada confirmada geram OPEN.
+model DistributorPayable {
+  id                String                   @id @default(cuid())
+  organizationId    String
+  status            DistributorPayableStatus @default(OPEN)
+  description       String
+  supplierName      String
+  amountCents       Int
+  dueOn             DateTime?
+  purchaseOrderId   String?                  @unique
+  inboundDocumentId String?                  @unique
+  createdByUserId   String
+  paidAt            DateTime?
+  paidByUserId      String?
+  cancelledAt       DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseOrder   DistributorPurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  inboundDocument DistributorInboundDocument? @relation(fields: [inboundDocumentId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, dueOn])
 }
 
 model DistributorOutboundLine {

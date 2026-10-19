@@ -22,6 +22,7 @@ import {
   LinkInboundLineDto,
   SaveDistributorFiscalDto,
   CreateOutboundFromQuoteDto,
+  CreatePayableDto,
   CreatePurchaseOrderDto,
   CreateQuoteDto,
   ManualDistributorMovementDto,
@@ -377,6 +378,19 @@ export class DistributorController {
     );
   }
 
+  @Post('outbound/:invoiceId/confirm')
+  confirmOutbound(
+    @CurrentUser() user: JwtPayload,
+    @Param('invoiceId') invoiceId: string,
+  ) {
+    return this.distributor.confirmOutboundInvoice(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      invoiceId,
+    );
+  }
+
   @Post('outbound/:invoiceId/authorize')
   authorizeOutbound(
     @CurrentUser() user: JwtPayload,
@@ -398,6 +412,52 @@ export class DistributorController {
       user.organizationId,
       user.membershipRole,
       invoiceId,
+    );
+  }
+
+  @Get('payables')
+  listPayables(@CurrentUser() user: JwtPayload) {
+    return this.distributor.listPayables(
+      user.organizationId,
+      user.membershipRole,
+    );
+  }
+
+  @Post('payables')
+  createPayable(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreatePayableDto,
+  ) {
+    return this.distributor.createPayable(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      dto,
+    );
+  }
+
+  @Post('payables/:payableId/pay')
+  markPayablePaid(
+    @CurrentUser() user: JwtPayload,
+    @Param('payableId') payableId: string,
+  ) {
+    return this.distributor.markPayablePaid(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      payableId,
+    );
+  }
+
+  @Post('payables/:payableId/cancel')
+  cancelPayable(
+    @CurrentUser() user: JwtPayload,
+    @Param('payableId') payableId: string,
+  ) {
+    return this.distributor.cancelPayable(
+      user.organizationId,
+      user.membershipRole,
+      payableId,
     );
   }
 
