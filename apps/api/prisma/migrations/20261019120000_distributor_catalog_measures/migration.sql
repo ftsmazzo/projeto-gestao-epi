@@ -1,0 +1,22 @@
+-- AlterTable
+ALTER TABLE "DistributorProduct" ADD COLUMN "unitCode" TEXT NOT NULL DEFAULT 'UN';
+ALTER TABLE "DistributorProduct" ADD COLUMN "itemsPerBox" INTEGER;
+ALTER TABLE "DistributorProduct" ADD COLUMN "gtin" TEXT;
+ALTER TABLE "DistributorProduct" ADD COLUMN "warehouseLocation" TEXT;
+ALTER TABLE "DistributorProduct" ADD COLUMN "costCents" INTEGER;
+ALTER TABLE "DistributorProduct" ADD COLUMN "lengthMm" INTEGER;
+ALTER TABLE "DistributorProduct" ADD COLUMN "widthMm" INTEGER;
+ALTER TABLE "DistributorProduct" ADD COLUMN "heightMm" INTEGER;
+ALTER TABLE "DistributorProduct" ADD COLUMN "netWeightG" INTEGER;
+ALTER TABLE "DistributorProduct" ADD COLUMN "grossWeightG" INTEGER;
+ALTER TABLE "DistributorProduct" ADD COLUMN "boxLengthMm" INTEGER;
+ALTER TABLE "DistributorProduct" ADD COLUMN "boxWidthMm" INTEGER;
+ALTER TABLE "DistributorProduct" ADD COLUMN "boxHeightMm" INTEGER;
+ALTER TABLE "DistributorProduct" ADD COLUMN "freightDivisor" INTEGER NOT NULL DEFAULT 6000;
+ALTER TABLE "DistributorProduct" ADD COLUMN "originCode" INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE "DistributorProduct" ADD COLUMN "cest" TEXT;
+ALTER TABLE "DistributorProduct" ADD COLUMN "saleCfopIn" TEXT NOT NULL DEFAULT '5102';
+ALTER TABLE "DistributorProduct" ADD COLUMN "saleCfopOut" TEXT NOT NULL DEFAULT '6102';
+ALTER TABLE "DistributorProduct" ADD COLUMN "buyCfopIn" TEXT NOT NULL DEFAULT '1102';
+ALTER TABLE "DistributorProduct" ADD COLUMN "buyCfopOut" TEXT NOT NULL DEFAULT '2102';
+ALTER TABLE "DistributorProduct" ADD COLUMN "icmsSt" BOOLEAN NOT NULL DEFAULT false;

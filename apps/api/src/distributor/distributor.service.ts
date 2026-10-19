@@ -18,9 +18,31 @@ import { saveDistributorInboundFile } from './distributor-document.storage';
 import type {
   AddDistributorVariantDto,
   CreateDistributorProductDto,
+  CreatePurchaseOrderDto,
+  CreateQuoteDto,
   ManualDistributorMovementDto,
+  SetSellerCeilingDto,
   UpdateDistributorProductDto,
 } from './dto/distributor.dto';
+import {
+  CatalogRuleError,
+  measureCubage,
+  normalizeCatalog,
+  normalizeCatalogPatch,
+  type CatalogInput,
+} from './catalog.rules';
+import {
+  PurchaseOrderRuleError,
+  receivePurchaseOrder,
+  rejectPurchaseOrder,
+  releasePurchaseOrder,
+} from './purchase-order.rules';
+import {
+  QuoteRuleError,
+  decideQuote,
+  percentToBps,
+  sumGrantedCents,
+} from './quote.rules';
 
 const productInclude = {
   variants: {
@@ -54,6 +76,12 @@ export class DistributorService {
     if (!internalSku || labels.length === 0) {
       throw new BadRequestException('Informe o codigo interno e ao menos uma variante.');
     }
+    let catalog;
+    try {
+      catalog = normalizeCatalog(catalogInput(dto));
+    } catch (error) {
+      throw this.asCatalogError(error);
+    }
     try {
       const created = await this.prisma.distributorProduct.create({
         data: {
@@ -61,9 +89,9 @@ export class DistributorService {
           name: dto.name.trim(),
           internalSku,
           supplierSku: emptyToNull(dto.supplierSku),
-          ncm: emptyToNull(dto.ncm),
           caNumber: normalizeCa(dto.caNumber),
           minQuantity: dto.minQuantity ?? null,
+          ...catalog,
           variants: {
             create: labels.map((label) => ({
               label,
@@ -96,6 +124,11 @@ export class DistributorService {
     if (dto.name != null) data.name = dto.name.trim();
     if (dto.minQuantity !== undefined) data.minQuantity = dto.minQuantity;
     if (dto.caNumber !== undefined) data.caNumber = normalizeCa(dto.caNumber);
+    try {
+      Object.assign(data, normalizeCatalogPatch(catalogInput(dto)));
+    } catch (error) {
+      throw this.asCatalogError(error);
+    }
     const updated = await this.prisma.distributorProduct.update({
       where: { id: productId },
       data,
@@ -193,6 +226,7 @@ export class DistributorService {
       quantity: dto.quantity,
       source: DistributorMovementSource.MANUAL,
       documentId: null,
+      purchaseOrderId: null,
     });
   }
 
@@ -324,6 +358,7 @@ export class DistributorService {
             quantity: line.quantity,
             source: DistributorMovementSource.INVOICE,
             documentId: document.id,
+            purchaseOrderId: null,
           },
           tx,
         );
@@ -357,6 +392,184 @@ export class DistributorService {
     return toDocumentView(updated);
   }
 
+  async listPurchaseOrders(organizationId: string, role: string) {
+    await this.requireDistributor(organizationId, role);
+    const orders = await this.prisma.distributorPurchaseOrder.findMany({
+      where: { organizationId },
+      include: purchaseOrderInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+    return orders.map(toPurchaseOrderView);
+  }
+
+  async createPurchaseOrder(
+    organizationId: string,
+    role: string,
+    userId: string,
+    dto: CreatePurchaseOrderDto,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const supplierName = dto.supplierName.trim();
+    const lines = mergePurchaseLines(dto.lines);
+    if (!supplierName || lines.length === 0) {
+      throw new BadRequestException(
+        'Informe o fornecedor e ao menos um item com quantidade.',
+      );
+    }
+    for (const line of lines) {
+      await this.requireVariant(organizationId, line.variantId);
+    }
+    const created = await this.prisma.distributorPurchaseOrder.create({
+      data: {
+        organizationId,
+        supplierName,
+        createdByUserId: userId,
+        lines: { create: lines },
+      },
+      include: purchaseOrderInclude,
+    });
+    return toPurchaseOrderView(created);
+  }
+
+  async releasePurchaseOrder(
+    organizationId: string,
+    role: string,
+    userId: string,
+    orderId: string,
+    step: 1 | 2,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const current = await this.requirePurchaseOrder(organizationId, orderId);
+    let next: 'AWAITING_SECOND' | 'APPROVED';
+    try {
+      next = releasePurchaseOrder({
+        status: current.status,
+        step,
+        actorUserId: userId,
+        firstApproverUserId: current.firstApprovedByUserId,
+      });
+    } catch (error) {
+      throw this.asPurchaseConflict(error);
+    }
+    const now = new Date();
+    const claimed = await this.prisma.distributorPurchaseOrder.updateMany({
+      where: { id: current.id, organizationId, status: current.status },
+      data:
+        step === 1
+          ? {
+              status: next,
+              firstApprovedByUserId: userId,
+              firstApprovedAt: now,
+            }
+          : {
+              status: next,
+              secondApprovedByUserId: userId,
+              secondApprovedAt: now,
+            },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException('Este pedido ja mudou de etapa.');
+    }
+    return this.getPurchaseOrder(organizationId, role, orderId);
+  }
+
+  async rejectPurchaseOrder(
+    organizationId: string,
+    role: string,
+    userId: string,
+    orderId: string,
+    note?: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const current = await this.requirePurchaseOrder(organizationId, orderId);
+    try {
+      rejectPurchaseOrder(current.status);
+    } catch (error) {
+      throw this.asPurchaseConflict(error);
+    }
+    const claimed = await this.prisma.distributorPurchaseOrder.updateMany({
+      where: {
+        id: current.id,
+        organizationId,
+        status: current.status,
+      },
+      data: {
+        status: 'REJECTED',
+        rejectedByUserId: userId,
+        rejectedAt: new Date(),
+        rejectionNote: emptyToNull(note),
+      },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException('Este pedido ja mudou de etapa.');
+    }
+    return this.getPurchaseOrder(organizationId, role, orderId);
+  }
+
+  async receivePurchaseOrder(
+    organizationId: string,
+    role: string,
+    userId: string,
+    orderId: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    return this.prisma.$transaction(async (tx) => {
+      const current = await tx.distributorPurchaseOrder.findFirst({
+        where: { id: orderId, organizationId },
+        include: { lines: true },
+      });
+      if (!current) {
+        throw new NotFoundException('Pedido nao encontrado.');
+      }
+      try {
+        receivePurchaseOrder(current.status);
+      } catch (error) {
+        throw this.asPurchaseConflict(error);
+      }
+      const claimed = await tx.distributorPurchaseOrder.updateMany({
+        where: { id: current.id, organizationId, status: 'APPROVED' },
+        data: {
+          status: 'RECEIVED',
+          receivedByUserId: userId,
+          receivedAt: new Date(),
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new ConflictException('Este pedido ja entrou no estoque.');
+      }
+      for (const line of current.lines) {
+        await this.applyMovement(
+          {
+            organizationId,
+            userId,
+            variantId: line.variantId,
+            direction: 'IN',
+            quantity: line.quantity,
+            source: DistributorMovementSource.PURCHASE_ORDER,
+            documentId: null,
+            purchaseOrderId: current.id,
+          },
+          tx,
+        );
+      }
+      const updated = await tx.distributorPurchaseOrder.findFirstOrThrow({
+        where: { id: current.id },
+        include: purchaseOrderInclude,
+      });
+      return toPurchaseOrderView(updated);
+    });
+  }
+
+  private async getPurchaseOrder(
+    organizationId: string,
+    role: string,
+    orderId: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const order = await this.requirePurchaseOrder(organizationId, orderId);
+    return toPurchaseOrderView(order);
+  }
+
   private async applyMovement(
     input: {
       organizationId: string;
@@ -366,6 +579,7 @@ export class DistributorService {
       quantity: number;
       source: DistributorMovementSource;
       documentId: string | null;
+      purchaseOrderId: string | null;
     },
     tx: Prisma.TransactionClient | PrismaService = this.prisma,
   ) {
@@ -406,6 +620,7 @@ export class DistributorService {
         source: input.source,
         createdByUserId: input.userId,
         documentId: input.documentId,
+        purchaseOrderId: input.purchaseOrderId,
       },
     });
     return {
@@ -472,11 +687,303 @@ export class DistributorService {
     }
     return document;
   }
+
+  private async requirePurchaseOrder(organizationId: string, orderId: string) {
+    const order = await this.prisma.distributorPurchaseOrder.findFirst({
+      where: { id: orderId, organizationId },
+      include: purchaseOrderInclude,
+    });
+    if (!order) {
+      throw new NotFoundException('Pedido nao encontrado.');
+    }
+    return order;
+  }
+
+  private asPurchaseConflict(error: unknown): ConflictException {
+    if (error instanceof PurchaseOrderRuleError) {
+      return new ConflictException(error.message);
+    }
+    if (error instanceof ConflictException) return error;
+    throw error;
+  }
+
+  async listSellers(organizationId: string, role: string) {
+    await this.requireDistributor(organizationId, role);
+    const [members, ceilings] = await Promise.all([
+      this.prisma.membership.findMany({
+        where: { organizationId },
+        include: { user: { select: { id: true, name: true } } },
+        orderBy: { user: { name: 'asc' } },
+      }),
+      this.prisma.distributorSellerCeiling.findMany({
+        where: { organizationId },
+      }),
+    ]);
+    const byUser = new Map(ceilings.map((row) => [row.userId, row.maxDiscountBps]));
+    return members.map((member) => ({
+      userId: member.userId,
+      name: member.user.name,
+      role: member.role,
+      maxDiscountBps: byUser.get(member.userId) ?? 0,
+    }));
+  }
+
+  async setSellerCeiling(
+    organizationId: string,
+    role: string,
+    dto: SetSellerCeilingDto,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const member = await this.prisma.membership.findFirst({
+      where: { organizationId, userId: dto.userId },
+    });
+    if (!member) {
+      throw new NotFoundException('Vendedor nao encontrado nesta distribuidora.');
+    }
+    let maxDiscountBps: number;
+    try {
+      maxDiscountBps = percentToBps(dto.maxDiscountPercent);
+    } catch (error) {
+      throw this.asQuoteError(error);
+    }
+    await this.prisma.distributorSellerCeiling.upsert({
+      where: {
+        organizationId_userId: {
+          organizationId,
+          userId: dto.userId,
+        },
+      },
+      create: { organizationId, userId: dto.userId, maxDiscountBps },
+      update: { maxDiscountBps },
+    });
+    return this.listSellers(organizationId, role);
+  }
+
+  async listQuotes(organizationId: string, role: string) {
+    await this.requireDistributor(organizationId, role);
+    const quotes = await this.prisma.distributorQuote.findMany({
+      where: { organizationId },
+      include: quoteInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+    return quotes.map(toQuoteView);
+  }
+
+  async createQuote(
+    organizationId: string,
+    role: string,
+    userId: string,
+    dto: CreateQuoteDto,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const customerName = dto.customerName.trim();
+    if (customerName.length < 2) {
+      throw new BadRequestException('Informe o cliente do orcamento.');
+    }
+    let lines: Array<{
+      variantId: string;
+      quantity: number;
+      unitPriceCents: number;
+      discountBps: number;
+    }>;
+    try {
+      lines = dto.lines.map((line) => ({
+        variantId: line.variantId,
+        quantity: line.quantity,
+        unitPriceCents: line.unitPriceCents,
+        discountBps: percentToBps(line.discountPercent),
+      }));
+    } catch (error) {
+      throw this.asQuoteError(error);
+    }
+    for (const line of lines) {
+      await this.requireVariant(organizationId, line.variantId);
+    }
+    const ceiling = await this.prisma.distributorSellerCeiling.findUnique({
+      where: { organizationId_userId: { organizationId, userId } },
+    });
+    let decision: ReturnType<typeof decideQuote>;
+    try {
+      decision = decideQuote({
+        lines,
+        sellerMaxDiscountBps: ceiling?.maxDiscountBps ?? 0,
+      });
+    } catch (error) {
+      throw this.asQuoteError(error);
+    }
+    const now = new Date();
+    const created = await this.prisma.distributorQuote.create({
+      data: {
+        organizationId,
+        customerName,
+        sellerUserId: userId,
+        status: decision.status,
+        grantedCents: decision.grantedCents,
+        approvedByUserId: decision.status === 'APPROVED' ? userId : null,
+        approvedAt: decision.status === 'APPROVED' ? now : null,
+        lines: { create: lines },
+      },
+      include: quoteInclude,
+    });
+    return toQuoteView(created);
+  }
+
+  async approveQuote(
+    organizationId: string,
+    role: string,
+    userId: string,
+    quoteId: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const claimed = await this.prisma.distributorQuote.updateMany({
+      where: { id: quoteId, organizationId, status: 'PENDING_APPROVAL' },
+      data: {
+        status: 'APPROVED',
+        approvedByUserId: userId,
+        approvedAt: new Date(),
+      },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException(
+        'Este orcamento nao esta esperando aprovacao.',
+      );
+    }
+    return this.getQuote(organizationId, role, quoteId);
+  }
+
+  async rejectQuote(
+    organizationId: string,
+    role: string,
+    userId: string,
+    quoteId: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const claimed = await this.prisma.distributorQuote.updateMany({
+      where: { id: quoteId, organizationId, status: 'PENDING_APPROVAL' },
+      data: {
+        status: 'REJECTED',
+        rejectedByUserId: userId,
+        rejectedAt: new Date(),
+      },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException(
+        'Este orcamento nao esta esperando aprovacao.',
+      );
+    }
+    return this.getQuote(organizationId, role, quoteId);
+  }
+
+  async discountReport(
+    organizationId: string,
+    role: string,
+    from: string | undefined,
+    to: string | undefined,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const start = parseReportDay(from, 'inicio');
+    const end = parseReportDay(to, 'fim');
+    if (end.getTime() < start.getTime()) {
+      throw new BadRequestException('A data final precisa ser igual ou posterior a inicial.');
+    }
+    const endInclusive = new Date(end);
+    endInclusive.setUTCHours(23, 59, 59, 999);
+    const quotes = await this.prisma.distributorQuote.findMany({
+      where: {
+        organizationId,
+        status: 'APPROVED',
+        approvedAt: { gte: start, lte: endInclusive },
+      },
+      include: quoteInclude,
+      orderBy: { approvedAt: 'asc' },
+    });
+    const rows = quotes.map(toQuoteView);
+    return {
+      from: from?.trim(),
+      to: to?.trim(),
+      grantedCents: sumGrantedCents(rows),
+      quotes: rows,
+    };
+  }
+
+  private async getQuote(organizationId: string, role: string, quoteId: string) {
+    await this.requireDistributor(organizationId, role);
+    const quote = await this.prisma.distributorQuote.findFirst({
+      where: { id: quoteId, organizationId },
+      include: quoteInclude,
+    });
+    if (!quote) throw new NotFoundException('Orcamento nao encontrado.');
+    return toQuoteView(quote);
+  }
+
+  private asQuoteError(error: unknown): BadRequestException {
+    if (error instanceof QuoteRuleError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
+  private asCatalogError(error: unknown): BadRequestException {
+    if (error instanceof CatalogRuleError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
+  }
+}
+
+const CATALOG_KEYS = [
+  'unitCode',
+  'itemsPerBox',
+  'gtin',
+  'warehouseLocation',
+  'costCents',
+  'lengthCm',
+  'widthCm',
+  'heightCm',
+  'netWeightKg',
+  'grossWeightKg',
+  'boxLengthCm',
+  'boxWidthCm',
+  'boxHeightCm',
+  'originCode',
+  'cest',
+  'ncm',
+  'saleCfopIn',
+  'saleCfopOut',
+  'buyCfopIn',
+  'buyCfopOut',
+  'icmsSt',
+] as const satisfies readonly (keyof CatalogInput)[];
+
+function catalogInput(dto: Partial<CatalogInput>): CatalogInput {
+  const input: CatalogInput = {};
+  for (const key of CATALOG_KEYS) {
+    if (dto[key] !== undefined) {
+      input[key] = dto[key] as never;
+    }
+  }
+  return input;
 }
 
 const documentInclude = {
   lines: { orderBy: { description: 'asc' as const } },
 } satisfies Prisma.DistributorInboundDocumentInclude;
+
+const purchaseOrderInclude = {
+  lines: {
+    orderBy: { id: 'asc' as const },
+    include: {
+      variant: { include: { product: true } },
+    },
+  },
+} satisfies Prisma.DistributorPurchaseOrderInclude;
+
+const quoteInclude = {
+  lines: {
+    orderBy: { id: 'asc' as const },
+    include: { variant: { include: { product: true } } },
+  },
+} satisfies Prisma.DistributorQuoteInclude;
 
 type ProductRow = Prisma.DistributorProductGetPayload<{
   include: typeof productInclude;
@@ -487,6 +994,18 @@ type DocumentRow = Prisma.DistributorInboundDocumentGetPayload<{
 }>;
 
 function toProductView(product: ProductRow) {
+  const item = measureCubage(
+    product.lengthMm,
+    product.widthMm,
+    product.heightMm,
+    product.freightDivisor,
+  );
+  const box = measureCubage(
+    product.boxLengthMm,
+    product.boxWidthMm,
+    product.boxHeightMm,
+    product.freightDivisor,
+  );
   return {
     id: product.id,
     name: product.name,
@@ -495,12 +1014,45 @@ function toProductView(product: ProductRow) {
     ncm: product.ncm,
     caNumber: product.caNumber,
     minQuantity: product.minQuantity,
+    unitCode: product.unitCode,
+    itemsPerBox: product.itemsPerBox,
+    gtin: product.gtin,
+    warehouseLocation: product.warehouseLocation,
+    costCents: product.costCents,
+    lengthCm: mmToCm(product.lengthMm),
+    widthCm: mmToCm(product.widthMm),
+    heightCm: mmToCm(product.heightMm),
+    netWeightKg: gramsToKg(product.netWeightG),
+    grossWeightKg: gramsToKg(product.grossWeightG),
+    boxLengthCm: mmToCm(product.boxLengthMm),
+    boxWidthCm: mmToCm(product.boxWidthMm),
+    boxHeightCm: mmToCm(product.boxHeightMm),
+    freightDivisor: product.freightDivisor,
+    originCode: product.originCode,
+    cest: product.cest,
+    saleCfopIn: product.saleCfopIn,
+    saleCfopOut: product.saleCfopOut,
+    buyCfopIn: product.buyCfopIn,
+    buyCfopOut: product.buyCfopOut,
+    icmsSt: product.icmsSt,
+    itemCubageM3: item?.cubageM3 ?? null,
+    itemVolumetricWeightG: item?.volumetricWeightG ?? null,
+    boxCubageM3: box?.cubageM3 ?? null,
+    boxVolumetricWeightG: box?.volumetricWeightG ?? null,
     variants: product.variants.map((variant) => ({
       id: variant.id,
       label: variant.label,
       quantity: variant.balance?.quantity ?? 0,
     })),
   };
+}
+
+function mmToCm(mm: number | null): number | null {
+  return mm == null ? null : mm / 10;
+}
+
+function gramsToKg(grams: number | null): number | null {
+  return grams == null ? null : grams / 1000;
 }
 
 function toBalanceRow(
@@ -543,6 +1095,93 @@ function toDocumentView(document: DocumentRow) {
       variantId: line.variantId,
     })),
   };
+}
+
+type PurchaseOrderRow = Prisma.DistributorPurchaseOrderGetPayload<{
+  include: typeof purchaseOrderInclude;
+}>;
+
+function toPurchaseOrderView(order: PurchaseOrderRow) {
+  return {
+    id: order.id,
+    supplierName: order.supplierName,
+    status: order.status,
+    createdAt: order.createdAt,
+    firstApprovedByUserId: order.firstApprovedByUserId,
+    secondApprovedByUserId: order.secondApprovedByUserId,
+    rejectionNote: order.rejectionNote,
+    lines: order.lines.map((line) => ({
+      id: line.id,
+      variantId: line.variantId,
+      productName: line.variant.product.name,
+      label: line.variant.label,
+      quantity: line.quantity,
+      unitCostCents: line.unitCostCents,
+    })),
+  };
+}
+
+type QuoteRow = Prisma.DistributorQuoteGetPayload<{
+  include: typeof quoteInclude;
+}>;
+
+function toQuoteView(quote: QuoteRow) {
+  return {
+    id: quote.id,
+    customerName: quote.customerName,
+    sellerUserId: quote.sellerUserId,
+    status: quote.status,
+    grantedCents: quote.grantedCents,
+    approvedAt: quote.approvedAt,
+    createdAt: quote.createdAt,
+    lines: quote.lines.map((line) => ({
+      id: line.id,
+      variantId: line.variantId,
+      productName: line.variant.product.name,
+      label: line.variant.label,
+      quantity: line.quantity,
+      unitPriceCents: line.unitPriceCents,
+      discountBps: line.discountBps,
+    })),
+  };
+}
+
+function parseReportDay(value: string | undefined, label: string) {
+  const trimmed = value?.trim() ?? '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    throw new BadRequestException(`Informe a data de ${label} como AAAA-MM-DD.`);
+  }
+  const day = new Date(`${trimmed}T00:00:00.000Z`);
+  if (Number.isNaN(day.getTime())) {
+    throw new BadRequestException(`Data de ${label} invalida.`);
+  }
+  return day;
+}
+
+function mergePurchaseLines(
+  lines: CreatePurchaseOrderDto['lines'],
+) {
+  const byVariant = new Map<
+    string,
+    { variantId: string; quantity: number; unitCostCents: number | null }
+  >();
+  for (const line of lines) {
+    if (!Number.isInteger(line.quantity) || line.quantity < 1) continue;
+    const current = byVariant.get(line.variantId);
+    const cost =
+      line.unitCostCents == null ? null : Math.round(line.unitCostCents);
+    if (!current) {
+      byVariant.set(line.variantId, {
+        variantId: line.variantId,
+        quantity: line.quantity,
+        unitCostCents: cost,
+      });
+      continue;
+    }
+    current.quantity += line.quantity;
+    if (cost != null) current.unitCostCents = cost;
+  }
+  return [...byVariant.values()];
 }
 
 function uniqueLabels(labels: string[]) {

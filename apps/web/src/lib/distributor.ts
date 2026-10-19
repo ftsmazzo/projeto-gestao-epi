@@ -14,7 +14,56 @@ export type DistributorProduct = {
   ncm: string | null;
   caNumber: string | null;
   minQuantity: number | null;
+  unitCode: string;
+  itemsPerBox: number | null;
+  gtin: string | null;
+  warehouseLocation: string | null;
+  costCents: number | null;
+  lengthCm: number | null;
+  widthCm: number | null;
+  heightCm: number | null;
+  netWeightKg: number | null;
+  grossWeightKg: number | null;
+  boxLengthCm: number | null;
+  boxWidthCm: number | null;
+  boxHeightCm: number | null;
+  freightDivisor: number;
+  originCode: number;
+  cest: string | null;
+  saleCfopIn: string;
+  saleCfopOut: string;
+  buyCfopIn: string;
+  buyCfopOut: string;
+  icmsSt: boolean;
+  itemCubageM3: number | null;
+  itemVolumetricWeightG: number | null;
+  boxCubageM3: number | null;
+  boxVolumetricWeightG: number | null;
   variants: DistributorVariant[];
+};
+
+export type DistributorCatalogInput = {
+  unitCode?: string;
+  itemsPerBox?: number | null;
+  gtin?: string | null;
+  warehouseLocation?: string | null;
+  costCents?: number | null;
+  lengthCm?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  netWeightKg?: number | null;
+  grossWeightKg?: number | null;
+  boxLengthCm?: number | null;
+  boxWidthCm?: number | null;
+  boxHeightCm?: number | null;
+  originCode?: number;
+  cest?: string | null;
+  ncm?: string | null;
+  saleCfopIn?: string;
+  saleCfopOut?: string;
+  buyCfopIn?: string;
+  buyCfopOut?: string;
+  icmsSt?: boolean;
 };
 
 export type DistributorBalanceRow = {
@@ -60,25 +109,38 @@ export function listDistributorProducts() {
   return apiFetch<DistributorProduct[]>('/distributor/products');
 }
 
-export function createDistributorProduct(input: {
-  name: string;
-  internalSku: string;
-  supplierSku?: string;
-  caNumber?: string;
-  minQuantity?: number;
-  variants: string[];
-}) {
+export function createDistributorProduct(
+  input: DistributorCatalogInput & {
+    name: string;
+    internalSku: string;
+    supplierSku?: string;
+    caNumber?: string;
+    minQuantity?: number;
+    variants: string[];
+  },
+) {
   return apiFetch<DistributorProduct>('/distributor/products', {
     method: 'POST',
     body: JSON.stringify(input),
   });
 }
 
-export function updateDistributorMin(productId: string, minQuantity: number | null) {
+export function updateDistributorProduct(
+  productId: string,
+  input: DistributorCatalogInput & {
+    name?: string;
+    caNumber?: string | null;
+    minQuantity?: number | null;
+  },
+) {
   return apiFetch<DistributorProduct>(`/distributor/products/${productId}`, {
     method: 'PATCH',
-    body: JSON.stringify({ minQuantity }),
+    body: JSON.stringify(input),
   });
+}
+
+export function updateDistributorMin(productId: string, minQuantity: number | null) {
+  return updateDistributorProduct(productId, { minQuantity });
 }
 
 export function listDistributorBalances() {
@@ -161,6 +223,154 @@ export function discardDistributorInbound(documentId: string) {
     `/distributor/inbound/${documentId}/discard`,
     { method: 'POST' },
   );
+}
+
+export type PurchaseOrderStatus =
+  | 'AWAITING_FIRST'
+  | 'AWAITING_SECOND'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'RECEIVED';
+
+export type PurchaseOrderLine = {
+  id: string;
+  variantId: string;
+  productName: string;
+  label: string;
+  quantity: number;
+  unitCostCents: number | null;
+};
+
+export type PurchaseOrder = {
+  id: string;
+  supplierName: string;
+  status: PurchaseOrderStatus;
+  createdAt: string;
+  firstApprovedByUserId: string | null;
+  secondApprovedByUserId: string | null;
+  rejectionNote: string | null;
+  lines: PurchaseOrderLine[];
+};
+
+export function listPurchaseOrders() {
+  return apiFetch<PurchaseOrder[]>('/distributor/purchase-orders');
+}
+
+export function createPurchaseOrder(input: {
+  supplierName: string;
+  lines: Array<{ variantId: string; quantity: number; unitCostCents?: number }>;
+}) {
+  return apiFetch<PurchaseOrder>('/distributor/purchase-orders', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function releasePurchaseOrder(orderId: string, step: 1 | 2) {
+  const action = step === 1 ? 'first-release' : 'second-release';
+  return apiFetch<PurchaseOrder>(
+    `/distributor/purchase-orders/${orderId}/${action}`,
+    { method: 'POST' },
+  );
+}
+
+export function rejectPurchaseOrder(orderId: string, note?: string) {
+  return apiFetch<PurchaseOrder>(
+    `/distributor/purchase-orders/${orderId}/reject`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    },
+  );
+}
+
+export function receivePurchaseOrder(orderId: string) {
+  return apiFetch<PurchaseOrder>(
+    `/distributor/purchase-orders/${orderId}/receive`,
+    { method: 'POST' },
+  );
+}
+
+export type SellerCeiling = {
+  userId: string;
+  name: string;
+  role: string;
+  maxDiscountBps: number;
+};
+
+export type QuoteStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+
+export type QuoteLine = {
+  id: string;
+  variantId: string;
+  productName: string;
+  label: string;
+  quantity: number;
+  unitPriceCents: number;
+  discountBps: number;
+};
+
+export type DistributorQuote = {
+  id: string;
+  customerName: string;
+  sellerUserId: string;
+  status: QuoteStatus;
+  grantedCents: number;
+  approvedAt: string | null;
+  createdAt: string;
+  lines: QuoteLine[];
+};
+
+export function listSellers() {
+  return apiFetch<SellerCeiling[]>('/distributor/sellers');
+}
+
+export function setSellerCeiling(userId: string, maxDiscountPercent: number) {
+  return apiFetch<SellerCeiling[]>('/distributor/sellers/ceiling', {
+    method: 'POST',
+    body: JSON.stringify({ userId, maxDiscountPercent }),
+  });
+}
+
+export function listQuotes() {
+  return apiFetch<DistributorQuote[]>('/distributor/quotes');
+}
+
+export function createQuote(input: {
+  customerName: string;
+  lines: Array<{
+    variantId: string;
+    quantity: number;
+    unitPriceCents: number;
+    discountPercent: number;
+  }>;
+}) {
+  return apiFetch<DistributorQuote>('/distributor/quotes', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function approveQuote(quoteId: string) {
+  return apiFetch<DistributorQuote>(`/distributor/quotes/${quoteId}/approve`, {
+    method: 'POST',
+  });
+}
+
+export function rejectQuote(quoteId: string) {
+  return apiFetch<DistributorQuote>(`/distributor/quotes/${quoteId}/reject`, {
+    method: 'POST',
+  });
+}
+
+export function discountReport(from: string, to: string) {
+  const query = new URLSearchParams({ from, to });
+  return apiFetch<{
+    from: string;
+    to: string;
+    grantedCents: number;
+    quotes: DistributorQuote[];
+  }>(`/distributor/quotes/discount-report?${query.toString()}`);
 }
 
 export function isDistributorManager(role: string) {

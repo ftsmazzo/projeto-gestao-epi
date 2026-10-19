@@ -64,6 +64,10 @@ export default function DistribuidoraHomePage() {
         </div>
       ) : null}
       <p className="field-hint">
+        <Link href="/distribuidora/orcamentos">Orcamento</Link>
+        {' · '}
+        <Link href="/distribuidora/compras">Pedido de compra</Link>
+        {' · '}
         <Link href="/distribuidora/entrada">Registrar entrada</Link>
         {' · '}
         <Link href="/distribuidora/saida">Registrar saida</Link>

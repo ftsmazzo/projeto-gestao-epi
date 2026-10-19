@@ -14,6 +14,8 @@ const NAV = [
   { href: '/distribuidora/saldo', label: 'Saldo', exact: false },
   { href: '/distribuidora/entrada', label: 'Entrada', exact: false },
   { href: '/distribuidora/saida', label: 'Saida', exact: false },
+  { href: '/distribuidora/compras', label: 'Compras', exact: false },
+  { href: '/distribuidora/orcamentos', label: 'Orcamentos', exact: false },
 ];
 
 type DistributorShellProps = {
@@ -79,8 +81,8 @@ export function DistributorShell({
         </nav>
         <div className="ops-sidebar-note">
           <p className="field-hint">
-            Estoque da distribuidora. A nota de compra so entra depois da
-            confirmacao.
+            Pedido de compra so entra no saldo depois das duas liberacoes e do
+            recebimento.
           </p>
           <PoweredBy compact />
         </div>

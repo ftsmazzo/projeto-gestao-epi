@@ -59,6 +59,21 @@ enum DistributorMovementDirection {
 enum DistributorMovementSource {
   MANUAL
   INVOICE
+  PURCHASE_ORDER
+}
+
+enum DistributorPurchaseOrderStatus {
+  AWAITING_FIRST
+  AWAITING_SECOND
+  APPROVED
+  REJECTED
+  RECEIVED
+}
+
+enum DistributorQuoteStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
 }
 
 enum DistributorInboundStatus {
@@ -173,6 +188,9 @@ model Organization {
   workAssignments   WorkerWorkAssignment[]
   distributorProducts DistributorProduct[]
   distributorInboundDocuments DistributorInboundDocument[]
+  distributorPurchaseOrders DistributorPurchaseOrder[]
+  distributorSellerCeilings DistributorSellerCeiling[]
+  distributorQuotes DistributorQuote[]
 }
 
 /// Produto do deposito da distribuidora. Nao reutiliza o catalogo da consultoria.
@@ -186,6 +204,30 @@ model DistributorProduct {
   minQuantity    Int?
   /// Sugestao da base CAEPI. Nao e chave estrangeira: CA ausente nao bloqueia o cadastro.
   caNumber       String?
+  /// UN, PAR ou CX. A caixa de expedicao fica nas medidas da caixa.
+  unitCode       String   @default("UN")
+  itemsPerBox    Int?
+  gtin           String?
+  warehouseLocation String?
+  costCents      Int?
+  lengthMm       Int?
+  widthMm        Int?
+  heightMm       Int?
+  netWeightG     Int?
+  grossWeightG   Int?
+  boxLengthMm    Int?
+  boxWidthMm     Int?
+  boxHeightMm    Int?
+  /// Divisor do peso cubado rodoviario: C x L x A em cm, dividido por este valor, em kg.
+  freightDivisor Int      @default(6000)
+  /// Origem da mercadoria (tabela NF-e, 0 a 8). 0 = nacional.
+  originCode     Int      @default(0)
+  cest           String?
+  saleCfopIn     String   @default("5102")
+  saleCfopOut    String   @default("6102")
+  buyCfopIn      String   @default("1102")
+  buyCfopOut     String   @default("2102")
+  icmsSt         Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -207,6 +249,8 @@ model DistributorVariant {
   balance   DistributorBalance?
   movements DistributorMovement[]
   inboundLines DistributorInboundLine[]
+  purchaseLines DistributorPurchaseLine[]
+  quoteLines DistributorQuoteLine[]
 
   @@unique([productId, label])
   @@index([productId])
@@ -229,13 +273,16 @@ model DistributorMovement {
   source          DistributorMovementSource
   createdByUserId String
   documentId      String?
+  purchaseOrderId String?
   createdAt       DateTime                      @default(now())
 
-  variant  DistributorVariant          @relation(fields: [variantId], references: [id], onDelete: Cascade)
-  document DistributorInboundDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  variant       DistributorVariant          @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  document      DistributorInboundDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  purchaseOrder DistributorPurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
 
   @@index([variantId, createdAt])
   @@index([documentId])
+  @@index([purchaseOrderId])
 }
 
 model DistributorInboundDocument {
@@ -272,6 +319,95 @@ model DistributorInboundLine {
   variant  DistributorVariant?        @relation(fields: [variantId], references: [id], onDelete: SetNull)
 
   @@index([documentId])
+  @@index([variantId])
+}
+
+/// Pedido de compra da distribuidora. O saldo so muda no recebimento, depois das duas liberacoes.
+model DistributorPurchaseOrder {
+  id                     String                         @id @default(cuid())
+  organizationId         String
+  supplierName           String
+  status                 DistributorPurchaseOrderStatus @default(AWAITING_FIRST)
+  createdByUserId        String
+  firstApprovedByUserId  String?
+  firstApprovedAt        DateTime?
+  secondApprovedByUserId String?
+  secondApprovedAt       DateTime?
+  rejectedByUserId       String?
+  rejectedAt             DateTime?
+  rejectionNote          String?
+  receivedByUserId       String?
+  receivedAt             DateTime?
+  createdAt              DateTime                       @default(now())
+  updatedAt              DateTime                       @updatedAt
+
+  organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lines        DistributorPurchaseLine[]
+  movements    DistributorMovement[]
+
+  @@index([organizationId, status])
+}
+
+model DistributorPurchaseLine {
+  id            String @id @default(cuid())
+  orderId       String
+  variantId     String
+  quantity      Int
+  unitCostCents Int?
+
+  order   DistributorPurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant DistributorVariant       @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([variantId])
+}
+
+/// Teto de desconto do vendedor, em basis points (100 = 1%). Sem linha, o teto e zero.
+model DistributorSellerCeiling {
+  id               String @id @default(cuid())
+  organizationId   String
+  userId           String
+  maxDiscountBps   Int
+  updatedAt        DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+}
+
+model DistributorQuote {
+  id               String                 @id @default(cuid())
+  organizationId   String
+  customerName     String
+  sellerUserId     String
+  status           DistributorQuoteStatus
+  grantedCents     Int
+  approvedByUserId String?
+  approvedAt       DateTime?
+  rejectedByUserId String?
+  rejectedAt       DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lines        DistributorQuoteLine[]
+
+  @@index([organizationId, status, approvedAt])
+}
+
+model DistributorQuoteLine {
+  id             String @id @default(cuid())
+  quoteId        String
+  variantId      String
+  quantity       Int
+  unitPriceCents Int
+  discountBps    Int
+
+  quote   DistributorQuote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  variant DistributorVariant  @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([quoteId])
   @@index([variantId])
 }
 
