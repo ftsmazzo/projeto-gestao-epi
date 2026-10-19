@@ -228,6 +228,8 @@ model DistributorProduct {
   buyCfopIn      String   @default("1102")
   buyCfopOut     String   @default("2102")
   icmsSt         Boolean  @default(false)
+  /// Quando ligado, cada entrada informa lote e a saida consome o que vence primeiro.
+  tracksLot      Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -251,6 +253,7 @@ model DistributorVariant {
   inboundLines DistributorInboundLine[]
   purchaseLines DistributorPurchaseLine[]
   quoteLines DistributorQuoteLine[]
+  lots       DistributorLot[]
 
   @@unique([productId, label])
   @@index([productId])
@@ -274,15 +277,35 @@ model DistributorMovement {
   createdByUserId String
   documentId      String?
   purchaseOrderId String?
+  lotId           String?
   createdAt       DateTime                      @default(now())
 
   variant       DistributorVariant          @relation(fields: [variantId], references: [id], onDelete: Cascade)
   document      DistributorInboundDocument? @relation(fields: [documentId], references: [id], onDelete: SetNull)
   purchaseOrder DistributorPurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  lot           DistributorLot?             @relation(fields: [lotId], references: [id], onDelete: SetNull)
 
   @@index([variantId, createdAt])
   @@index([documentId])
   @@index([purchaseOrderId])
+  @@index([lotId])
+}
+
+/// Saldo de um lote dentro da variante. A validade vazia sai por ultimo.
+model DistributorLot {
+  id        String    @id @default(cuid())
+  variantId String
+  code      String
+  expiresOn DateTime?
+  quantity  Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  variant   DistributorVariant    @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  movements DistributorMovement[]
+
+  @@unique([variantId, code])
+  @@index([variantId, expiresOn])
 }
 
 model DistributorInboundDocument {
@@ -314,6 +337,8 @@ model DistributorInboundLine {
   unitCostCents  Int?
   caNumber       String?
   variantId      String?
+  lotCode        String?
+  expiresOn      DateTime?
 
   document DistributorInboundDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
   variant  DistributorVariant?        @relation(fields: [variantId], references: [id], onDelete: SetNull)
@@ -354,6 +379,8 @@ model DistributorPurchaseLine {
   variantId     String
   quantity      Int
   unitCostCents Int?
+  lotCode       String?
+  expiresOn     DateTime?
 
   order   DistributorPurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   variant DistributorVariant       @relation(fields: [variantId], references: [id], onDelete: Restrict)

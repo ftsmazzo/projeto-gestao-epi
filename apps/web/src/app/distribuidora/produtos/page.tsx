@@ -47,6 +47,7 @@ type Draft = {
   saleCfopOut: string;
   buyCfopIn: string;
   buyCfopOut: string;
+  tracksLot: boolean;
 };
 
 const emptyDraft = (): Draft => ({
@@ -71,6 +72,7 @@ const emptyDraft = (): Draft => ({
   saleCfopOut: '6102',
   buyCfopIn: '1102',
   buyCfopOut: '2102',
+  tracksLot: false,
 });
 
 function showDecimal(value: number | null) {
@@ -104,6 +106,7 @@ function draftFromProduct(product: DistributorProduct): Draft {
     saleCfopOut: product.saleCfopOut,
     buyCfopIn: product.buyCfopIn,
     buyCfopOut: product.buyCfopOut,
+    tracksLot: product.tracksLot,
   };
 }
 
@@ -266,6 +269,7 @@ export default function DistribuidoraProdutosPage() {
           name,
           caNumber: caNumber || null,
           minQuantity: min ?? null,
+          tracksLot: draft.tracksLot,
         });
         setNotice('Ficha atualizada.');
       } else {
@@ -281,6 +285,7 @@ export default function DistribuidoraProdutosPage() {
           caNumber: caNumber || undefined,
           minQuantity: min,
           variants: labels,
+          tracksLot: draft.tracksLot,
         });
         setNotice('Produto cadastrado.');
       }
@@ -539,6 +544,15 @@ export default function DistribuidoraProdutosPage() {
                   </option>
                 ))}
               </select>
+            </div>
+            <div className="field">
+              <label htmlFor="lote">Controla lote e validade</label>
+              <input
+                id="lote"
+                type="checkbox"
+                checked={draft.tracksLot}
+                onChange={(e) => setField('tracksLot', e.target.checked)}
+              />
             </div>
             <div className="field">
               <label htmlFor="st">Substituicao tributaria</label>

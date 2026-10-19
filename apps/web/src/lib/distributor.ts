@@ -1,9 +1,17 @@
 import { apiFetch, getAccessToken, getApiUrl } from './auth';
 
+export type DistributorLot = {
+  id: string;
+  code: string;
+  quantity: number;
+  expiresOn: string | null;
+};
+
 export type DistributorVariant = {
   id: string;
   label: string;
   quantity: number;
+  lots: DistributorLot[];
 };
 
 export type DistributorProduct = {
@@ -35,6 +43,7 @@ export type DistributorProduct = {
   buyCfopIn: string;
   buyCfopOut: string;
   icmsSt: boolean;
+  tracksLot: boolean;
   itemCubageM3: number | null;
   itemVolumetricWeightG: number | null;
   boxCubageM3: number | null;
@@ -84,6 +93,8 @@ export type DistributorInboundLine = {
   unitCostCents: number | null;
   caNumber: string | null;
   variantId: string | null;
+  lotCode: string | null;
+  expiresOn: string | null;
 };
 
 export type DistributorInboundDocument = {
@@ -117,6 +128,7 @@ export function createDistributorProduct(
     caNumber?: string;
     minQuantity?: number;
     variants: string[];
+    tracksLot?: boolean;
   },
 ) {
   return apiFetch<DistributorProduct>('/distributor/products', {
@@ -131,6 +143,7 @@ export function updateDistributorProduct(
     name?: string;
     caNumber?: string | null;
     minQuantity?: number | null;
+    tracksLot?: boolean;
   },
 ) {
   return apiFetch<DistributorProduct>(`/distributor/products/${productId}`, {
@@ -161,11 +174,14 @@ export function moveDistributorStock(input: {
   variantId: string;
   direction: 'IN' | 'OUT';
   quantity: number;
+  lotCode?: string;
+  expiresOn?: string;
 }) {
   return apiFetch<{
     productName: string;
     label: string;
     balance: number;
+    lotSummary: string | null;
   }>('/distributor/movements', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -201,12 +217,13 @@ export function linkDistributorLine(
   documentId: string,
   lineId: string,
   variantId: string | null,
+  lot?: { lotCode?: string | null; expiresOn?: string | null },
 ) {
   return apiFetch<DistributorInboundDocument>(
     `/distributor/inbound/${documentId}/lines/${lineId}`,
     {
       method: 'PATCH',
-      body: JSON.stringify({ variantId }),
+      body: JSON.stringify({ variantId, ...lot }),
     },
   );
 }
@@ -239,6 +256,8 @@ export type PurchaseOrderLine = {
   label: string;
   quantity: number;
   unitCostCents: number | null;
+  lotCode: string | null;
+  expiresOn: string | null;
 };
 
 export type PurchaseOrder = {
@@ -258,7 +277,13 @@ export function listPurchaseOrders() {
 
 export function createPurchaseOrder(input: {
   supplierName: string;
-  lines: Array<{ variantId: string; quantity: number; unitCostCents?: number }>;
+  lines: Array<{
+    variantId: string;
+    quantity: number;
+    unitCostCents?: number;
+    lotCode?: string;
+    expiresOn?: string;
+  }>;
 }) {
   return apiFetch<PurchaseOrder>('/distributor/purchase-orders', {
     method: 'POST',

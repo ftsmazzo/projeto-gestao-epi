@@ -154,6 +154,10 @@ export class CreateDistributorProductDto {
   @IsOptional()
   @IsBoolean()
   icmsSt?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  tracksLot?: boolean;
 }
 
 export class UpdateDistributorProductDto {
@@ -284,6 +288,10 @@ export class UpdateDistributorProductDto {
   @IsOptional()
   @IsBoolean()
   icmsSt?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  tracksLot?: boolean;
 }
 
 export class AddDistributorVariantDto {
@@ -303,6 +311,14 @@ export class ManualDistributorMovementDto {
   @IsInt()
   @Min(1)
   quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  lotCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  expiresOn?: string | null;
 }
 
 export class PurchaseOrderLineDto {
@@ -319,6 +335,14 @@ export class PurchaseOrderLineDto {
   @IsInt()
   @Min(0)
   unitCostCents?: number;
+
+  @IsOptional()
+  @IsString()
+  lotCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  expiresOn?: string | null;
 }
 
 export class CreatePurchaseOrderDto {
@@ -381,4 +405,12 @@ export class LinkInboundLineDto {
   @IsOptional()
   @IsString()
   variantId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  lotCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  expiresOn?: string | null;
 }

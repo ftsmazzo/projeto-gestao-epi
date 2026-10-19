@@ -24,6 +24,7 @@
     "test:purchase-order": "npx --yes tsx src/distributor/purchase-order.rules.selftest.ts",
     "test:quote": "npx --yes tsx src/distributor/quote.rules.selftest.ts",
     "test:catalog": "npx --yes tsx src/distributor/catalog.rules.selftest.ts",
+    "test:lot": "npx --yes tsx src/distributor/lot.rules.selftest.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",

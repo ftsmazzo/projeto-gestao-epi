@@ -38,6 +38,13 @@ import {
   releasePurchaseOrder,
 } from './purchase-order.rules';
 import {
+  LotRuleError,
+  allocateFefo,
+  formatExpiryDay,
+  normalizeLotCode,
+  parseExpiryDay,
+} from './lot.rules';
+import {
   QuoteRuleError,
   decideQuote,
   percentToBps,
@@ -47,7 +54,12 @@ import {
 const productInclude = {
   variants: {
     orderBy: { label: 'asc' as const },
-    include: { balance: true },
+    include: {
+      balance: true,
+      lots: {
+        orderBy: [{ expiresOn: 'asc' as const }, { createdAt: 'asc' as const }],
+      },
+    },
   },
 };
 
@@ -91,6 +103,7 @@ export class DistributorService {
           supplierSku: emptyToNull(dto.supplierSku),
           caNumber: normalizeCa(dto.caNumber),
           minQuantity: dto.minQuantity ?? null,
+          tracksLot: dto.tracksLot === true,
           ...catalog,
           variants: {
             create: labels.map((label) => ({
@@ -124,6 +137,31 @@ export class DistributorService {
     if (dto.name != null) data.name = dto.name.trim();
     if (dto.minQuantity !== undefined) data.minQuantity = dto.minQuantity;
     if (dto.caNumber !== undefined) data.caNumber = normalizeCa(dto.caNumber);
+    if (dto.tracksLot !== undefined) {
+      const current = await this.prisma.distributorProduct.findFirst({
+        where: { id: productId, organizationId },
+        include: { variants: { include: { balance: true, lots: true } } },
+      });
+      if (dto.tracksLot && current && !current.tracksLot) {
+        const stocked = current.variants.some(
+          (variant) => (variant.balance?.quantity ?? 0) > 0,
+        );
+        if (stocked) {
+          throw new ConflictException(
+            'Zere o saldo antes de ligar o controle de lote.',
+          );
+        }
+      }
+      if (!dto.tracksLot && current?.tracksLot) {
+        const stocked = current.variants.some((variant) =>
+          variant.lots.some((lot) => lot.quantity > 0),
+        );
+        if (stocked) {
+          throw new ConflictException('Ainda ha saldo em lote.');
+        }
+      }
+      data.tracksLot = dto.tracksLot;
+    }
     try {
       Object.assign(data, normalizeCatalogPatch(catalogInput(dto)));
     } catch (error) {
@@ -227,6 +265,8 @@ export class DistributorService {
       source: DistributorMovementSource.MANUAL,
       documentId: null,
       purchaseOrderId: null,
+      lotCode: dto.lotCode,
+      expiresOn: dto.expiresOn,
     });
   }
 
@@ -288,6 +328,7 @@ export class DistributorService {
     documentId: string,
     lineId: string,
     variantId: string | null | undefined,
+    lot?: { lotCode?: string | null; expiresOn?: string | null },
   ) {
     await this.requireDistributor(organizationId, role);
     const document = await this.requireDocument(organizationId, documentId);
@@ -301,9 +342,23 @@ export class DistributorService {
     if (variantId) {
       await this.requireVariant(organizationId, variantId);
     }
+    let lotCode: string | null | undefined;
+    let expiresOn: Date | null | undefined;
+    if (lot && ('lotCode' in lot || 'expiresOn' in lot)) {
+      try {
+        lotCode = normalizeLotCode(lot.lotCode);
+        expiresOn = parseExpiryDay(lot.expiresOn);
+      } catch (error) {
+        throw this.asLotError(error);
+      }
+    }
     await this.prisma.distributorInboundLine.update({
       where: { id: lineId },
-      data: { variantId: variantId || null },
+      data: {
+        variantId: variantId || null,
+        ...(lotCode !== undefined ? { lotCode } : {}),
+        ...(expiresOn !== undefined ? { expiresOn } : {}),
+      },
     });
     return this.getInbound(organizationId, role, documentId);
   }
@@ -359,6 +414,8 @@ export class DistributorService {
             source: DistributorMovementSource.INVOICE,
             documentId: document.id,
             purchaseOrderId: null,
+            lotCode: line.lotCode,
+            expiresOn: formatExpiryDay(line.expiresOn),
           },
           tx,
         );
@@ -548,6 +605,8 @@ export class DistributorService {
             source: DistributorMovementSource.PURCHASE_ORDER,
             documentId: null,
             purchaseOrderId: current.id,
+            lotCode: line.lotCode,
+            expiresOn: formatExpiryDay(line.expiresOn),
           },
           tx,
         );
@@ -580,6 +639,8 @@ export class DistributorService {
       source: DistributorMovementSource;
       documentId: string | null;
       purchaseOrderId: string | null;
+      lotCode?: string | null;
+      expiresOn?: string | null;
     },
     tx: Prisma.TransactionClient | PrismaService = this.prisma,
   ) {
@@ -591,7 +652,7 @@ export class DistributorService {
         id: input.variantId,
         product: { organizationId: input.organizationId },
       },
-      include: { balance: true, product: true },
+      include: { balance: true, product: true, lots: true },
     });
     if (!variant?.balance) {
       throw new NotFoundException('Variante nao encontrada nesta distribuidora.');
@@ -605,23 +666,117 @@ export class DistributorService {
         `Saida maior que o saldo de ${variant.product.name} (${variant.label}).`,
       );
     }
+    let lotCode: string | null = null;
+    let expiresOn: Date | null = null;
+    try {
+      lotCode = normalizeLotCode(input.lotCode);
+      expiresOn = parseExpiryDay(input.expiresOn);
+    } catch (error) {
+      throw this.asLotError(error);
+    }
+    const direction =
+      input.direction === 'OUT'
+        ? DistributorMovementDirection.OUT
+        : DistributorMovementDirection.IN;
+    let lotSummary: string | null = null;
+    if (!variant.product.tracksLot) {
+      await tx.distributorMovement.create({
+        data: {
+          variantId: variant.id,
+          direction,
+          quantity: input.quantity,
+          source: input.source,
+          createdByUserId: input.userId,
+          documentId: input.documentId,
+          purchaseOrderId: input.purchaseOrderId,
+        },
+      });
+    } else if (input.direction === 'IN') {
+      if (!lotCode) {
+        throw new BadRequestException('Informe o lote desta entrada.');
+      }
+      const existing = variant.lots.find((lot) => lot.code === lotCode);
+      const lot = existing
+        ? await tx.distributorLot.update({
+            where: { id: existing.id },
+            data: {
+              quantity: existing.quantity + input.quantity,
+              ...(expiresOn ? { expiresOn } : {}),
+            },
+          })
+        : await tx.distributorLot.create({
+            data: {
+              variantId: variant.id,
+              code: lotCode,
+              expiresOn,
+              quantity: input.quantity,
+            },
+          });
+      lotSummary = lot.code;
+      await tx.distributorMovement.create({
+        data: {
+          variantId: variant.id,
+          direction,
+          quantity: input.quantity,
+          source: input.source,
+          createdByUserId: input.userId,
+          documentId: input.documentId,
+          purchaseOrderId: input.purchaseOrderId,
+          lotId: lot.id,
+        },
+      });
+    } else {
+      let allocations: { id: string; quantity: number }[];
+      try {
+        if (lotCode) {
+          const lot = variant.lots.find((item) => item.code === lotCode);
+          if (!lot || lot.quantity < input.quantity) {
+            throw new LotRuleError('Este lote nao tem saldo para a saida.');
+          }
+          allocations = [{ id: lot.id, quantity: input.quantity }];
+        } else {
+          allocations = allocateFefo(
+            variant.lots.map((lot) => ({
+              id: lot.id,
+              code: lot.code,
+              quantity: lot.quantity,
+              expiresOn: formatExpiryDay(lot.expiresOn),
+              createdAt: lot.createdAt.toISOString(),
+            })),
+            input.quantity,
+          );
+        }
+      } catch (error) {
+        throw this.asLotError(error);
+      }
+      for (const allocation of allocations) {
+        const lot = variant.lots.find((item) => item.id === allocation.id);
+        if (!lot) throw new ConflictException('Lote nao encontrado.');
+        await tx.distributorLot.update({
+          where: { id: lot.id },
+          data: { quantity: lot.quantity - allocation.quantity },
+        });
+        await tx.distributorMovement.create({
+          data: {
+            variantId: variant.id,
+            direction,
+            quantity: allocation.quantity,
+            source: input.source,
+            createdByUserId: input.userId,
+            documentId: input.documentId,
+            purchaseOrderId: input.purchaseOrderId,
+            lotId: lot.id,
+          },
+        });
+      }
+      lotSummary = allocations
+        .map((allocation) => variant.lots.find((lot) => lot.id === allocation.id)?.code)
+        .filter((code): code is string => Boolean(code))
+        .join(', ');
+    }
     await tx.distributorBalance.update({
       where: { id: variant.balance.id },
       data: { quantity: next },
-    });
-    await tx.distributorMovement.create({
-      data: {
-        variantId: variant.id,
-        direction:
-          input.direction === 'OUT'
-            ? DistributorMovementDirection.OUT
-            : DistributorMovementDirection.IN,
-        quantity: input.quantity,
-        source: input.source,
-        createdByUserId: input.userId,
-        documentId: input.documentId,
-        purchaseOrderId: input.purchaseOrderId,
-      },
     });
     return {
       variantId: variant.id,
@@ -630,6 +785,7 @@ export class DistributorService {
       direction: input.direction,
       quantity: input.quantity,
       balance: next,
+      lotSummary,
     };
   }
 
@@ -923,6 +1079,13 @@ export class DistributorService {
     throw error;
   }
 
+  private asLotError(error: unknown): BadRequestException {
+    if (error instanceof LotRuleError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
   private asCatalogError(error: unknown): BadRequestException {
     if (error instanceof CatalogRuleError) {
       return new BadRequestException(error.message);
@@ -1035,6 +1198,7 @@ function toProductView(product: ProductRow) {
     buyCfopIn: product.buyCfopIn,
     buyCfopOut: product.buyCfopOut,
     icmsSt: product.icmsSt,
+    tracksLot: product.tracksLot,
     itemCubageM3: item?.cubageM3 ?? null,
     itemVolumetricWeightG: item?.volumetricWeightG ?? null,
     boxCubageM3: box?.cubageM3 ?? null,
@@ -1043,6 +1207,12 @@ function toProductView(product: ProductRow) {
       id: variant.id,
       label: variant.label,
       quantity: variant.balance?.quantity ?? 0,
+      lots: variant.lots.map((lot) => ({
+        id: lot.id,
+        code: lot.code,
+        quantity: lot.quantity,
+        expiresOn: formatExpiryDay(lot.expiresOn),
+      })),
     })),
   };
 }
@@ -1093,6 +1263,8 @@ function toDocumentView(document: DocumentRow) {
       unitCostCents: line.unitCostCents,
       caNumber: line.caNumber,
       variantId: line.variantId,
+      lotCode: line.lotCode,
+      expiresOn: formatExpiryDay(line.expiresOn),
     })),
   };
 }
@@ -1117,6 +1289,8 @@ function toPurchaseOrderView(order: PurchaseOrderRow) {
       label: line.variant.label,
       quantity: line.quantity,
       unitCostCents: line.unitCostCents,
+      lotCode: line.lotCode,
+      expiresOn: formatExpiryDay(line.expiresOn),
     })),
   };
 }
@@ -1163,23 +1337,44 @@ function mergePurchaseLines(
 ) {
   const byVariant = new Map<
     string,
-    { variantId: string; quantity: number; unitCostCents: number | null }
+    {
+      variantId: string;
+      quantity: number;
+      unitCostCents: number | null;
+      lotCode: string | null;
+      expiresOn: Date | null;
+    }
   >();
   for (const line of lines) {
     if (!Number.isInteger(line.quantity) || line.quantity < 1) continue;
-    const current = byVariant.get(line.variantId);
+    let lotCode: string | null = null;
+    let expiresOn: Date | null = null;
+    try {
+      lotCode = normalizeLotCode(line.lotCode);
+      expiresOn = parseExpiryDay(line.expiresOn);
+    } catch (error) {
+      if (error instanceof LotRuleError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+    const key = `${line.variantId}::${lotCode ?? ''}`;
+    const current = byVariant.get(key);
     const cost =
       line.unitCostCents == null ? null : Math.round(line.unitCostCents);
     if (!current) {
-      byVariant.set(line.variantId, {
+      byVariant.set(key, {
         variantId: line.variantId,
         quantity: line.quantity,
         unitCostCents: cost,
+        lotCode,
+        expiresOn,
       });
       continue;
     }
     current.quantity += line.quantity;
     if (cost != null) current.unitCostCents = cost;
+    if (expiresOn) current.expiresOn = expiresOn;
   }
   return [...byVariant.values()];
 }

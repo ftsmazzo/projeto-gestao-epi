@@ -16,6 +16,8 @@ export default function DistribuidoraEntradaPage() {
   const [products, setProducts] = useState<DistributorProduct[]>([]);
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('1');
+  const [lotCode, setLotCode] = useState('');
+  const [expiresOn, setExpiresOn] = useState('');
   const [document, setDocument] = useState<DistributorInboundDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -42,16 +44,26 @@ export default function DistribuidoraEntradaPage() {
       setError('Escolha a variante e uma quantidade inteira.');
       return;
     }
+    const selected = products.find((product) =>
+      product.variants.some((variant) => variant.id === variantId),
+    );
+    if (selected?.tracksLot && !lotCode.trim()) {
+      setError('Este produto controla lote. Informe o codigo do lote.');
+      return;
+    }
     setSaving(true);
     try {
       const result = await moveDistributorStock({
         variantId,
         direction: 'IN',
         quantity: amount,
+        lotCode: lotCode.trim() || undefined,
+        expiresOn: expiresOn || undefined,
       });
       setNotice(
-        `Entrada registrada. Saldo de ${result.productName} ${result.label}: ${result.balance}.`,
+        `Entrada registrada. Saldo de ${result.productName} ${result.label}: ${result.balance}${result.lotSummary ? `. Lote ${result.lotSummary}` : ''}.`,
       );
+      setProducts(await listDistributorProducts());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha na entrada.');
     } finally {
@@ -75,7 +87,11 @@ export default function DistribuidoraEntradaPage() {
     }
   }
 
-  async function onLink(lineId: string, nextVariantId: string) {
+  async function onLink(
+    lineId: string,
+    nextVariantId: string,
+    lot?: { lotCode?: string | null; expiresOn?: string | null },
+  ) {
     if (!document) return;
     setError(null);
     try {
@@ -83,6 +99,7 @@ export default function DistribuidoraEntradaPage() {
         document.id,
         lineId,
         nextVariantId || null,
+        lot,
       );
       setDocument(updated);
     } catch (err) {
@@ -120,6 +137,10 @@ export default function DistribuidoraEntradaPage() {
     }
   }
 
+  const tracksLot = products.some(
+    (product) =>
+      product.tracksLot && product.variants.some((variant) => variant.id === variantId),
+  );
   const options = products.flatMap((product) =>
     product.variants.map((variant) => ({
       id: variant.id,
@@ -161,6 +182,23 @@ export default function DistribuidoraEntradaPage() {
             ))}
           </select>
         </div>
+        {tracksLot ? (
+          <>
+            <div className="field">
+              <label htmlFor="lote">Lote</label>
+              <input id="lote" value={lotCode} onChange={(e) => setLotCode(e.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="validade">Validade</label>
+              <input
+                id="validade"
+                type="date"
+                value={expiresOn}
+                onChange={(e) => setExpiresOn(e.target.value)}
+              />
+            </div>
+          </>
+        ) : null}
         <div className="field">
           <label htmlFor="qtd">Quantidade</label>
           <input
@@ -199,6 +237,7 @@ export default function DistribuidoraEntradaPage() {
                     <th scope="col">Item lido</th>
                     <th scope="col">Qtd</th>
                     <th scope="col">Variante</th>
+                    <th scope="col">Lote</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -225,6 +264,31 @@ export default function DistribuidoraEntradaPage() {
                             </option>
                           ))}
                         </select>
+                      </td>
+                      <td>
+                        <input
+                          aria-label={`Lote de ${line.description}`}
+                          defaultValue={line.lotCode ?? ''}
+                          disabled={document.status !== 'DRAFT'}
+                          onBlur={(e) =>
+                            onLink(line.id, line.variantId ?? '', {
+                              lotCode: e.target.value,
+                              expiresOn: line.expiresOn,
+                            })
+                          }
+                        />
+                        <input
+                          aria-label={`Validade de ${line.description}`}
+                          type="date"
+                          defaultValue={line.expiresOn ?? ''}
+                          disabled={document.status !== 'DRAFT'}
+                          onBlur={(e) =>
+                            onLink(line.id, line.variantId ?? '', {
+                              lotCode: line.lotCode,
+                              expiresOn: e.target.value,
+                            })
+                          }
+                        />
                       </td>
                     </tr>
                   ))}

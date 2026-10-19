@@ -11,6 +11,7 @@ export default function DistribuidoraSaidaPage() {
   const [products, setProducts] = useState<DistributorProduct[]>([]);
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('1');
+  const [lotCode, setLotCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -42,9 +43,10 @@ export default function DistribuidoraSaidaPage() {
         variantId,
         direction: 'OUT',
         quantity: amount,
+        lotCode: lotCode || undefined,
       });
       setNotice(
-        `Saida registrada. Saldo de ${result.productName} ${result.label}: ${result.balance}.`,
+        `Saida registrada. Saldo de ${result.productName} ${result.label}: ${result.balance}${result.lotSummary ? `. Lote ${result.lotSummary}` : ''}.`,
       );
       const rows = await listDistributorProducts();
       setProducts(rows);
@@ -55,6 +57,13 @@ export default function DistribuidoraSaidaPage() {
     }
   }
 
+  const selectedProduct = products.find((product) =>
+    product.variants.some((variant) => variant.id === variantId),
+  );
+  const selectedLots =
+    selectedProduct?.variants.find((variant) => variant.id === variantId)?.lots.filter(
+      (lot) => lot.quantity > 0,
+    ) ?? [];
   const options = products.flatMap((product) =>
     product.variants.map((variant) => ({
       id: variant.id,
@@ -94,6 +103,20 @@ export default function DistribuidoraSaidaPage() {
             ))}
           </select>
         </div>
+        {selectedProduct?.tracksLot ? (
+          <div className="field">
+            <label htmlFor="lote">Lote</label>
+            <select id="lote" value={lotCode} onChange={(e) => setLotCode(e.target.value)}>
+              <option value="">O que vence primeiro</option>
+              {selectedLots.map((lot) => (
+                <option key={lot.id} value={lot.code}>
+                  {lot.code} · {lot.quantity}
+                  {lot.expiresOn ? ` · vence ${lot.expiresOn}` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div className="field">
           <label htmlFor="qtd">Quantidade</label>
           <input

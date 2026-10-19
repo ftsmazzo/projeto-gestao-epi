@@ -153,6 +153,9 @@ export class DistributorController {
       documentId,
       lineId,
       dto.variantId,
+      dto.lotCode !== undefined || dto.expiresOn !== undefined
+        ? { lotCode: dto.lotCode, expiresOn: dto.expiresOn }
+        : undefined,
     );
   }
 

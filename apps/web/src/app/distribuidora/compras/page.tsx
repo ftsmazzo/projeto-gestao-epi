@@ -25,6 +25,8 @@ const STATUS_LABEL: Record<PurchaseOrderStatus, string> = {
 type DraftLine = {
   variantId: string;
   quantity: string;
+  lotCode: string;
+  expiresOn: string;
 };
 
 export default function DistribuidoraComprasPage() {
@@ -34,6 +36,8 @@ export default function DistribuidoraComprasPage() {
   const [supplierName, setSupplierName] = useState('');
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('1');
+  const [lotCode, setLotCode] = useState('');
+  const [expiresOn, setExpiresOn] = useState('');
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -43,8 +47,10 @@ export default function DistribuidoraComprasPage() {
     product.variants.map((variant) => ({
       id: variant.id,
       label: `${product.name} · ${variant.label}`,
+      tracksLot: product.tracksLot,
     })),
   );
+  const selected = options.find((option) => option.id === variantId);
 
   async function reload() {
     const rows = await listPurchaseOrders();
@@ -72,12 +78,24 @@ export default function DistribuidoraComprasPage() {
       setError('Escolha a variante e uma quantidade inteira.');
       return;
     }
+    if (selected?.tracksLot && !lotCode.trim()) {
+      setError('Este produto controla lote. Informe o codigo do lote.');
+      return;
+    }
+    const code = lotCode.trim();
     setDraftLines((current) => {
-      const existing = current.find((line) => line.variantId === variantId);
-      if (!existing) return [...current, { variantId, quantity: String(amount) }];
+      const existing = current.find(
+        (line) => line.variantId === variantId && line.lotCode === code,
+      );
+      if (!existing) {
+        return [
+          ...current,
+          { variantId, quantity: String(amount), lotCode: code, expiresOn },
+        ];
+      }
       return current.map((line) =>
-        line.variantId === variantId
-          ? { ...line, quantity: String(Number(line.quantity) + amount) }
+        line.variantId === variantId && line.lotCode === code
+          ? { ...line, quantity: String(Number(line.quantity) + amount), expiresOn: expiresOn || line.expiresOn }
           : line,
       );
     });
@@ -98,6 +116,8 @@ export default function DistribuidoraComprasPage() {
         lines: draftLines.map((line) => ({
           variantId: line.variantId,
           quantity: Number(line.quantity),
+          lotCode: line.lotCode || undefined,
+          expiresOn: line.expiresOn || undefined,
         })),
       });
       setSupplierName('');
@@ -191,15 +211,37 @@ export default function DistribuidoraComprasPage() {
             onChange={(event) => setQuantity(event.target.value)}
           />
         </div>
+        {selected?.tracksLot ? (
+          <>
+            <div className="field">
+              <label htmlFor="lote-compra">Lote</label>
+              <input
+                id="lote-compra"
+                value={lotCode}
+                onChange={(event) => setLotCode(event.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="validade-compra">Validade</label>
+              <input
+                id="validade-compra"
+                type="date"
+                value={expiresOn}
+                onChange={(event) => setExpiresOn(event.target.value)}
+              />
+            </div>
+          </>
+        ) : null}
         <button className="btn" type="button" onClick={addLine}>
           Incluir item
         </button>
         {draftLines.length > 0 ? (
           <ul>
             {draftLines.map((line) => (
-              <li key={line.variantId}>
+              <li key={`${line.variantId}-${line.lotCode}`}>
                 {options.find((option) => option.id === line.variantId)?.label}{' '}
                 · {line.quantity}
+                {line.lotCode ? ` · lote ${line.lotCode}` : ''}
               </li>
             ))}
           </ul>
@@ -221,6 +263,7 @@ export default function DistribuidoraComprasPage() {
                 {order.lines.map((line) => (
                   <li key={line.id}>
                     {line.productName} · {line.label} · {line.quantity}
+                    {line.lotCode ? ` · lote ${line.lotCode}` : ''}
                   </li>
                 ))}
               </ul>
