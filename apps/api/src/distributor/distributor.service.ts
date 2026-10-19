@@ -12,6 +12,7 @@ import {
   OrganizationKind,
   Prisma,
 } from '@prisma/client';
+import { validateCnpj } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import { extractInvoiceFromFile } from '../portal/invoice-extract';
 import { saveDistributorInboundFile } from './distributor-document.storage';
@@ -31,6 +32,8 @@ import {
   normalizeCatalogPatch,
   type CatalogInput,
 } from './catalog.rules';
+import { FiscalCertificateError, sealCertificate } from './fiscal-certificate';
+import { NfeXmlError, parseNfeXml } from './nfe-xml.rules';
 import {
   PurchaseOrderRuleError,
   receivePurchaseOrder,
@@ -280,6 +283,9 @@ export class DistributorService {
     if (!file?.buffer?.byteLength) {
       throw new BadRequestException('Envie o arquivo da nota de compra.');
     }
+    if (file.buffer.toString('utf8').includes('<infNFe')) {
+      return this.importNfeXml(organizationId, userId, file);
+    }
     const saved = await saveDistributorInboundFile({
       organizationId,
       buffer: file.buffer,
@@ -314,6 +320,153 @@ export class DistributorService {
       include: documentInclude,
     });
     return toDocumentView(document);
+  }
+
+  private async importNfeXml(
+    organizationId: string,
+    userId: string,
+    file: Express.Multer.File,
+  ) {
+    let parsed;
+    try {
+      parsed = parseNfeXml(file.buffer.toString('utf8'));
+    } catch (error) {
+      throw this.asNfeError(error);
+    }
+    const profile = await this.prisma.distributorFiscalProfile.findUnique({
+      where: { organizationId },
+    });
+    if (profile && profile.cnpj !== parsed.recipientCnpj) {
+      throw new BadRequestException(
+        'Esta nota nao foi emitida para o CNPJ cadastrado da distribuidora.',
+      );
+    }
+    const saved = await saveDistributorInboundFile({
+      organizationId,
+      buffer: file.buffer,
+      mimeType: 'application/xml',
+      originalName: file.originalname,
+    });
+    try {
+      const document = await this.prisma.distributorInboundDocument.create({
+        data: {
+          organizationId,
+          status: DistributorInboundStatus.DRAFT,
+          supplierName: parsed.supplierName,
+          supplierCnpj: parsed.supplierCnpj,
+          invoiceNumber: parsed.invoiceNumber,
+          accessKey: parsed.accessKey,
+          filePath: saved.relativePath,
+          fileName: saved.fileName,
+          mimeType: 'application/xml',
+          extraction: {
+            method: 'NFE_XML',
+            message: profile
+              ? 'XML lido. O estoque ainda nao mudou.'
+              : 'XML lido. Cadastre o CNPJ fiscal para conferir o destinatario. O estoque ainda nao mudou.',
+          },
+          createdByUserId: userId,
+          lines: {
+            create: parsed.lines.map((line) => ({
+              description: line.description,
+              quantity: line.quantity,
+              unitCostCents: line.unitCostCents,
+              ncm: line.ncm,
+              cfop: line.cfop,
+            })),
+          },
+        },
+        include: documentInclude,
+      });
+      return toDocumentView(document);
+    } catch (error) {
+      if (isUniqueConflict(error)) {
+        throw new ConflictException('Esta chave de acesso ja foi importada.');
+      }
+      throw error;
+    }
+  }
+
+  async getFiscalProfile(organizationId: string, role: string) {
+    await this.requireDistributor(organizationId, role);
+    return this.fiscalView(organizationId);
+  }
+
+  async saveFiscalProfile(
+    organizationId: string,
+    role: string,
+    dto: { cnpj: string; uf: string; stateRegistration?: string | null; regime?: 'PRESUMIDO' | 'SIMPLES' | 'REAL' },
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const cnpj = validateCnpj(dto.cnpj);
+    if (!cnpj.ok) throw new BadRequestException(cnpj.message);
+    const uf = dto.uf.trim().toUpperCase();
+    if (!BRAZIL_UFS.has(uf)) {
+      throw new BadRequestException('Informe a UF da distribuidora.');
+    }
+    const regime = dto.regime ?? 'PRESUMIDO';
+    await this.prisma.distributorFiscalProfile.upsert({
+      where: { organizationId },
+      create: {
+        organizationId,
+        cnpj: cnpj.normalized,
+        uf,
+        stateRegistration: emptyToNull(dto.stateRegistration),
+        regime,
+      },
+      update: {
+        cnpj: cnpj.normalized,
+        uf,
+        stateRegistration: emptyToNull(dto.stateRegistration),
+        regime,
+      },
+    });
+    await this.prisma.distributorDfeCursor.upsert({
+      where: { organizationId },
+      create: { organizationId, lastNsu: '0' },
+      update: {},
+    });
+    return this.fiscalView(organizationId);
+  }
+
+  async storeFiscalCertificate(
+    organizationId: string,
+    role: string,
+    file: Express.Multer.File | undefined,
+    password: string | undefined,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const profile = await this.prisma.distributorFiscalProfile.findUnique({
+      where: { organizationId },
+    });
+    if (!profile) {
+      throw new BadRequestException('Cadastre o CNPJ e a UF antes do certificado.');
+    }
+    if (!file?.buffer?.byteLength || file.buffer.byteLength > 1_000_000) {
+      throw new BadRequestException('Envie o arquivo A1 (.pfx) do certificado.');
+    }
+    if (!password?.trim()) {
+      throw new BadRequestException('Informe a senha do certificado.');
+    }
+    let sealed;
+    try {
+      sealed = sealCertificate(file.buffer, password.trim());
+    } catch (error) {
+      if (error instanceof FiscalCertificateError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+    await this.prisma.distributorFiscalProfile.update({
+      where: { organizationId },
+      data: {
+        certificateCipher: new Uint8Array(sealed.cipher),
+        certificateIv: new Uint8Array(sealed.iv),
+        certificateTag: new Uint8Array(sealed.tag),
+        certificateUpdatedAt: new Date(),
+      },
+    });
+    return this.fiscalView(organizationId);
   }
 
   async getInbound(organizationId: string, role: string, documentId: string) {
@@ -1079,6 +1232,36 @@ export class DistributorService {
     throw error;
   }
 
+  private async fiscalView(organizationId: string) {
+    const [profile, cursor] = await Promise.all([
+      this.prisma.distributorFiscalProfile.findUnique({ where: { organizationId } }),
+      this.prisma.distributorDfeCursor.findUnique({ where: { organizationId } }),
+    ]);
+    const missing: string[] = [];
+    if (!profile?.cnpj) missing.push('CNPJ');
+    if (!profile?.uf) missing.push('UF');
+    if (!profile?.certificateCipher) missing.push('Certificado A1');
+    return {
+      cnpj: profile?.cnpj ?? null,
+      uf: profile?.uf ?? null,
+      stateRegistration: profile?.stateRegistration ?? null,
+      regime: profile?.regime ?? 'PRESUMIDO',
+      certificateUploaded: Boolean(profile?.certificateCipher),
+      lastNsu: cursor?.lastNsu ?? '0',
+      signedQueryEnabled: false,
+      missing,
+      note:
+        'A nota de compra entra pelo XML e pela chave de 44 digitos. A busca assinada na SEFAZ permanece desligada para nao consultar o Ambiente Nacional sem homologacao.',
+    };
+  }
+
+  private asNfeError(error: unknown): BadRequestException {
+    if (error instanceof NfeXmlError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
   private asLotError(error: unknown): BadRequestException {
     if (error instanceof LotRuleError) {
       return new BadRequestException(error.message);
@@ -1249,7 +1432,9 @@ function toDocumentView(document: DocumentRow) {
     id: document.id,
     status: document.status,
     supplierName: document.supplierName,
+    supplierCnpj: document.supplierCnpj,
     invoiceNumber: document.invoiceNumber,
+    accessKey: document.accessKey,
     fileName: document.fileName,
     message:
       typeof document.extraction === 'object' &&
@@ -1263,6 +1448,8 @@ function toDocumentView(document: DocumentRow) {
       quantity: line.quantity,
       unitCostCents: line.unitCostCents,
       caNumber: line.caNumber,
+      ncm: line.ncm,
+      cfop: line.cfop,
       variantId: line.variantId,
       lotCode: line.lotCode,
       expiresOn: formatExpiryDay(line.expiresOn),
@@ -1379,6 +1566,11 @@ function mergePurchaseLines(
   }
   return [...byVariant.values()];
 }
+
+const BRAZIL_UFS = new Set([
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO',
+]);
 
 function uniqueLabels(labels: string[]) {
   const seen = new Set<string>();

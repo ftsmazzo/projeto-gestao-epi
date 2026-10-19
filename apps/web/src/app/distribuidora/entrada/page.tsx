@@ -215,11 +215,11 @@ export default function DistribuidoraEntradaPage() {
       <section className="dash-panel">
         <h2 className="dash-panel__title">Nota de compra</h2>
         <div className="field">
-          <label htmlFor="nota">Arquivo PDF ou imagem</label>
+          <label htmlFor="nota">XML da NF-e, PDF ou imagem</label>
           <input
             id="nota"
             type="file"
-            accept="application/pdf,image/jpeg,image/png,image/webp"
+            accept="application/pdf,image/jpeg,image/png,image/webp,.xml,text/xml,application/xml"
             onChange={(e) => onFile(e.target.files?.[0])}
           />
         </div>
@@ -228,6 +228,7 @@ export default function DistribuidoraEntradaPage() {
             <p className="field-hint">
               {document.supplierName ?? 'Fornecedor nao lido'}
               {document.invoiceNumber ? ` · Nota ${document.invoiceNumber}` : ''}
+              {document.accessKey ? ` · Chave ${document.accessKey}` : ''}
               {` · ${document.status}`}
             </p>
             <div className="table-wrap">

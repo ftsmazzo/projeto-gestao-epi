@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   UploadedFile,
   UseGuards,
@@ -19,6 +20,7 @@ import {
   AddDistributorVariantDto,
   CreateDistributorProductDto,
   LinkInboundLineDto,
+  SaveDistributorFiscalDto,
   CreatePurchaseOrderDto,
   CreateQuoteDto,
   ManualDistributorMovementDto,
@@ -109,6 +111,38 @@ export class DistributorController {
       user.membershipRole,
       user.sub,
       dto,
+    );
+  }
+
+  @Get('fiscal')
+  fiscalProfile(@CurrentUser() user: JwtPayload) {
+    return this.distributor.getFiscalProfile(user.organizationId, user.membershipRole);
+  }
+
+  @Put('fiscal')
+  saveFiscal(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: SaveDistributorFiscalDto,
+  ) {
+    return this.distributor.saveFiscalProfile(
+      user.organizationId,
+      user.membershipRole,
+      dto,
+    );
+  }
+
+  @Post('fiscal/certificate')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 1_000_000 } }))
+  storeCertificate(
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('password') password?: string,
+  ) {
+    return this.distributor.storeFiscalCertificate(
+      user.organizationId,
+      user.membershipRole,
+      file,
+      password,
     );
   }
 

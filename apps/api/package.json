@@ -25,6 +25,7 @@
     "test:quote": "npx --yes tsx src/distributor/quote.rules.selftest.ts",
     "test:catalog": "npx --yes tsx src/distributor/catalog.rules.selftest.ts",
     "test:lot": "npx --yes tsx src/distributor/lot.rules.selftest.ts",
+    "test:nfe-xml": "npx --yes tsx src/distributor/nfe-xml.rules.selftest.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",

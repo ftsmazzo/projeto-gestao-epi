@@ -93,6 +93,8 @@ export type DistributorInboundLine = {
   quantity: number;
   unitCostCents: number | null;
   caNumber: string | null;
+  ncm: string | null;
+  cfop: string | null;
   variantId: string | null;
   lotCode: string | null;
   expiresOn: string | null;
@@ -102,7 +104,9 @@ export type DistributorInboundDocument = {
   id: string;
   status: 'DRAFT' | 'CONFIRMED' | 'DISCARDED';
   supplierName: string | null;
+  supplierCnpj: string | null;
   invoiceNumber: string | null;
+  accessKey: string | null;
   fileName: string;
   message: string;
   lines: DistributorInboundLine[];
@@ -408,4 +412,58 @@ export function discountReport(from: string, to: string) {
 
 export function isDistributorManager(role: string) {
   return role === 'OWNER' || role === 'ADMIN';
+}
+
+export type DistributorFiscalProfile = {
+  cnpj: string | null;
+  uf: string | null;
+  stateRegistration: string | null;
+  regime: 'PRESUMIDO' | 'SIMPLES' | 'REAL';
+  certificateUploaded: boolean;
+  lastNsu: string;
+  signedQueryEnabled: boolean;
+  missing: string[];
+  note: string;
+};
+
+export function getDistributorFiscal() {
+  return apiFetch<DistributorFiscalProfile>('/distributor/fiscal');
+}
+
+export function saveDistributorFiscal(input: {
+  cnpj: string;
+  uf: string;
+  stateRegistration?: string;
+  regime?: 'PRESUMIDO' | 'SIMPLES' | 'REAL';
+}) {
+  return apiFetch<DistributorFiscalProfile>('/distributor/fiscal', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function uploadDistributorCertificate(file: File, password: string) {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('password', password);
+  const headers = new Headers();
+  const token = getAccessToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(`${getApiUrl()}/distributor/fiscal/certificate`, {
+    method: 'POST',
+    headers,
+    body: form,
+  });
+  if (!response.ok) {
+    let message = `Erro HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as { message?: string | string[] };
+      if (Array.isArray(body.message)) message = body.message.join(', ');
+      else if (body.message) message = body.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as DistributorFiscalProfile;
 }

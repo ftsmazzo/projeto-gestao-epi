@@ -76,6 +76,12 @@ enum DistributorQuoteStatus {
   REJECTED
 }
 
+enum DistributorTaxRegime {
+  PRESUMIDO
+  SIMPLES
+  REAL
+}
+
 enum DistributorInboundStatus {
   DRAFT
   CONFIRMED
@@ -191,6 +197,8 @@ model Organization {
   distributorPurchaseOrders DistributorPurchaseOrder[]
   distributorSellerCeilings DistributorSellerCeiling[]
   distributorQuotes DistributorQuote[]
+  distributorFiscalProfile DistributorFiscalProfile?
+  distributorDfeCursor DistributorDfeCursor?
 }
 
 /// Produto do deposito da distribuidora. Nao reutiliza o catalogo da consultoria.
@@ -313,7 +321,10 @@ model DistributorInboundDocument {
   organizationId  String
   status          DistributorInboundStatus  @default(DRAFT)
   supplierName    String?
+  supplierCnpj    String?
   invoiceNumber   String?
+  /// Chave de acesso da NF-e, 44 digitos. O numero da nota sozinho nao identifica o documento.
+  accessKey       String?
   filePath        String
   fileName        String
   mimeType        String
@@ -326,7 +337,35 @@ model DistributorInboundDocument {
   lines        DistributorInboundLine[]
   movements    DistributorMovement[]
 
+  @@unique([organizationId, accessKey])
   @@index([organizationId, status])
+}
+
+/// Identidade fiscal da distribuidora. A consulta na SEFAZ usa este CNPJ e o certificado A1.
+model DistributorFiscalProfile {
+  id                   String               @id @default(cuid())
+  organizationId       String               @unique
+  cnpj                 String
+  stateRegistration    String?
+  uf                   String
+  regime               DistributorTaxRegime @default(PRESUMIDO)
+  certificateCipher    Bytes?
+  certificateIv        Bytes?
+  certificateTag       Bytes?
+  certificateUpdatedAt DateTime?
+  updatedAt            DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+/// Ultimo NSU recebido na distribuicao de DF-e. A consulta assinada parte daqui.
+model DistributorDfeCursor {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  lastNsu        String   @default("0")
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 model DistributorInboundLine {
@@ -336,6 +375,8 @@ model DistributorInboundLine {
   quantity       Int
   unitCostCents  Int?
   caNumber       String?
+  ncm            String?
+  cfop           String?
   variantId      String?
   lotCode        String?
   expiresOn      DateTime?

@@ -15,7 +15,10 @@ const NAV = [
   },
   {
     label: 'Cadastro',
-    items: [{ href: '/distribuidora/produtos', label: 'Produtos', exact: false }],
+    items: [
+      { href: '/distribuidora/produtos', label: 'Produtos', exact: false },
+      { href: '/distribuidora/fiscal', label: 'Fiscal', exact: false },
+    ],
   },
   {
     label: 'Estoque',

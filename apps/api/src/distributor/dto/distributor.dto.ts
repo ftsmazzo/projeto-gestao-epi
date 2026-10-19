@@ -401,6 +401,24 @@ export class SetSellerCeilingDto {
   maxDiscountPercent!: number;
 }
 
+export class SaveDistributorFiscalDto {
+  @IsString()
+  @MinLength(14)
+  cnpj!: string;
+
+  @IsString()
+  @MinLength(2)
+  uf!: string;
+
+  @IsOptional()
+  @IsString()
+  stateRegistration?: string | null;
+
+  @IsOptional()
+  @IsIn(['PRESUMIDO', 'SIMPLES', 'REAL'])
+  regime?: 'PRESUMIDO' | 'SIMPLES' | 'REAL';
+}
+
 export class LinkInboundLineDto {
   @IsOptional()
   @IsString()
