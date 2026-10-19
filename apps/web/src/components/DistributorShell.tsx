@@ -9,13 +9,29 @@ import { TenantBrand } from './TenantBrand';
 import { IconHome, IconMenu, IconPackage } from './ui/NavIcons';
 
 const NAV = [
-  { href: '/distribuidora', label: 'Inicio', exact: true },
-  { href: '/distribuidora/produtos', label: 'Produtos', exact: false },
-  { href: '/distribuidora/saldo', label: 'Saldo', exact: false },
-  { href: '/distribuidora/entrada', label: 'Entrada', exact: false },
-  { href: '/distribuidora/saida', label: 'Saida', exact: false },
-  { href: '/distribuidora/compras', label: 'Compras', exact: false },
-  { href: '/distribuidora/orcamentos', label: 'Orcamentos', exact: false },
+  {
+    label: 'Visão',
+    items: [{ href: '/distribuidora', label: 'Painel', exact: true }],
+  },
+  {
+    label: 'Cadastro',
+    items: [{ href: '/distribuidora/produtos', label: 'Produtos', exact: false }],
+  },
+  {
+    label: 'Estoque',
+    items: [
+      { href: '/distribuidora/saldo', label: 'Saldo', exact: false },
+      { href: '/distribuidora/entrada', label: 'Entrada', exact: false },
+      { href: '/distribuidora/saida', label: 'Saida', exact: false },
+    ],
+  },
+  {
+    label: 'Comercial',
+    items: [
+      { href: '/distribuidora/compras', label: 'Compras', exact: false },
+      { href: '/distribuidora/orcamentos', label: 'Orcamentos', exact: false },
+    ],
+  },
 ];
 
 type DistributorShellProps = {
@@ -32,7 +48,7 @@ export function DistributorShell({
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const current =
-    NAV.find((item) =>
+    NAV.flatMap((group) => group.items).find((item) =>
       item.exact ? pathname === item.href : pathname.startsWith(item.href),
     )?.label ?? (pathname.startsWith('/conta') ? 'Minha conta' : 'Distribuidora');
 
@@ -56,28 +72,32 @@ export function DistributorShell({
             hasLogo={user?.organization.hasLogo}
           />
         </div>
-        <p className="ops-nav-label">Deposito</p>
         <nav className="ops-nav">
-          {NAV.map((item) => {
-            const active = item.exact
-              ? pathname === item.href
-              : pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`ops-nav-link ${active ? 'is-active' : ''}`}
-                onClick={() => setMenuOpen(false)}
-              >
-                <span className="ops-nav-link__row">
-                  <span className="ops-nav-link__icon">
-                    {item.href === '/distribuidora' ? <IconHome /> : <IconPackage />}
-                  </span>
-                  <span>{item.label}</span>
-                </span>
-              </Link>
-            );
-          })}
+          {NAV.map((group) => (
+            <div key={group.label}>
+              <p className="ops-nav-label">{group.label}</p>
+              {group.items.map((item) => {
+                const active = item.exact
+                  ? pathname === item.href
+                  : pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`ops-nav-link ${active ? 'is-active' : ''}`}
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    <span className="ops-nav-link__row">
+                      <span className="ops-nav-link__icon">
+                        {item.href === '/distribuidora' ? <IconHome /> : <IconPackage />}
+                      </span>
+                      <span>{item.label}</span>
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
         <div className="ops-sidebar-note">
           <p className="field-hint">

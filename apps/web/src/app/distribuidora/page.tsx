@@ -4,30 +4,62 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   listDistributorLowStock,
+  listDistributorProducts,
+  listPurchaseOrders,
+  listQuotes,
   type DistributorBalanceRow,
+  type DistributorProduct,
+  type PurchaseOrder,
+  type DistributorQuote,
 } from '../../lib/distributor';
 
+function sizeName(label: string) {
+  return label.trim() || 'Único';
+}
+
 export default function DistribuidoraHomePage() {
-  const [rows, setRows] = useState<DistributorBalanceRow[] | null>(null);
+  const [products, setProducts] = useState<DistributorProduct[]>([]);
+  const [low, setLow] = useState<DistributorBalanceRow[]>([]);
+  const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [quotes, setQuotes] = useState<DistributorQuote[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void listDistributorLowStock()
-      .then(setRows)
+    void Promise.all([
+      listDistributorProducts(),
+      listDistributorLowStock(),
+      listPurchaseOrders(),
+      listQuotes(),
+    ])
+      .then(([productRows, lowRows, orderRows, quoteRows]) => {
+        setProducts(productRows);
+        setLow(lowRows);
+        setOrders(orderRows);
+        setQuotes(quoteRows);
+      })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Falha ao carregar.'),
       );
   }, []);
+
+  const units = products.reduce(
+    (sum, product) =>
+      sum + product.variants.reduce((inner, variant) => inner + variant.quantity, 0),
+    0,
+  );
+  const openOrders = orders.filter(
+    (order) => order.status !== 'RECEIVED' && order.status !== 'REJECTED',
+  );
+  const waitingQuotes = quotes.filter((quote) => quote.status === 'PENDING_APPROVAL');
 
   return (
     <div className="module-page">
       <header className="dash-page-header">
         <div>
           <p className="page-kicker">Distribuidora</p>
-          <h1 className="page-title">Inicio</h1>
+          <h1 className="page-title">Painel</h1>
           <p className="page-lead">
-            Itens no minimo ou abaixo dele. O minimo e definido no cadastro do
-            produto.
+            Estoque, compras em aberto e orçamentos que ainda pedem liberação.
           </p>
         </div>
       </header>
@@ -36,42 +68,64 @@ export default function DistribuidoraHomePage() {
           {error}
         </p>
       ) : null}
-      {rows && rows.length === 0 ? (
-        <p className="field-hint">Nenhum item abaixo do minimo.</p>
-      ) : null}
-      {rows && rows.length > 0 ? (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th scope="col">Produto</th>
-                <th scope="col">Variante</th>
-                <th scope="col">Saldo</th>
-                <th scope="col">Minimo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.variantId}>
-                  <td>{row.productName}</td>
-                  <td>{row.label}</td>
-                  <td>{row.quantity}</td>
-                  <td>{row.minQuantity}</td>
+      <section className="dash-kpi-grid" aria-label="Resumo da operação">
+        <article className="dash-kpi">
+          <p className="dash-kpi__label">Produtos</p>
+          <p className="dash-kpi__value">{products.length}</p>
+          <p className="dash-kpi__hint">cadastro do depósito</p>
+        </article>
+        <article className="dash-kpi">
+          <p className="dash-kpi__label">Peças em estoque</p>
+          <p className="dash-kpi__value">{units}</p>
+          <p className="dash-kpi__hint">soma de todos os tamanhos</p>
+        </article>
+        <article className={`dash-kpi ${low.length > 0 ? 'dash-kpi--warn' : 'dash-kpi--ok'}`}>
+          <p className="dash-kpi__label">Abaixo do mínimo</p>
+          <p className="dash-kpi__value">{low.length}</p>
+          <p className="dash-kpi__hint">tamanhos para repor</p>
+        </article>
+        <article className="dash-kpi">
+          <p className="dash-kpi__label">Compras abertas</p>
+          <p className="dash-kpi__value">{openOrders.length}</p>
+          <p className="dash-kpi__hint">{waitingQuotes.length} orçamentos na fila</p>
+        </article>
+      </section>
+      <section className="dash-panel">
+        <h2 className="dash-panel__title">Repor agora</h2>
+        {low.length === 0 ? (
+          <p className="field-hint">Nenhum tamanho está no mínimo ou abaixo dele.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">Produto</th>
+                  <th scope="col">Tamanho</th>
+                  <th scope="col">Saldo</th>
+                  <th scope="col">Mínimo</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-      <p className="field-hint">
-        <Link href="/distribuidora/orcamentos">Orcamento</Link>
-        {' · '}
-        <Link href="/distribuidora/compras">Pedido de compra</Link>
-        {' · '}
-        <Link href="/distribuidora/entrada">Registrar entrada</Link>
-        {' · '}
-        <Link href="/distribuidora/saida">Registrar saida</Link>
-      </p>
+              </thead>
+              <tbody>
+                {low.map((row) => (
+                  <tr key={row.variantId}>
+                    <td>{row.productName}</td>
+                    <td>{sizeName(row.label)}</td>
+                    <td>{row.quantity}</td>
+                    <td>{row.minQuantity}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="field-hint">
+          <Link href="/distribuidora/produtos">Abrir cadastro</Link>
+          {' · '}
+          <Link href="/distribuidora/compras">Abrir compras</Link>
+          {' · '}
+          <Link href="/distribuidora/orcamentos">Abrir orçamentos</Link>
+        </p>
+      </section>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { fetchMe } from '../../../lib/auth';
 import {
+  addDistributorVariant,
   createDistributorProduct,
   isDistributorManager,
   listDistributorProducts,
@@ -165,9 +166,8 @@ function formatM3(value: number | null) {
   return `${value.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m3`;
 }
 
-function formatKg(grams: number | null) {
-  if (grams == null) return '—';
-  return `${(grams / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} kg`;
+function sizeName(label: string) {
+  return label.trim() || 'Único';
 }
 
 export default function DistribuidoraProdutosPage() {
@@ -179,7 +179,10 @@ export default function DistribuidoraProdutosPage() {
   const [internalSku, setInternalSku] = useState('');
   const [supplierSku, setSupplierSku] = useState('');
   const [caNumber, setCaNumber] = useState('');
-  const [variants, setVariants] = useState('');
+  const [variantRows, setVariantRows] = useState<string[]>(['Único']);
+  const [newSize, setNewSize] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const [minQuantity, setMinQuantity] = useState('');
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -206,10 +209,12 @@ export default function DistribuidoraProdutosPage() {
     setInternalSku('');
     setSupplierSku('');
     setCaNumber('');
-    setVariants('');
+    setVariantRows(['Único']);
+    setNewSize('');
     setMinQuantity('');
     setDraft(emptyDraft());
     setEditingId(null);
+    setFormOpen(false);
   }
 
   async function onLookupCa() {
@@ -240,7 +245,8 @@ export default function DistribuidoraProdutosPage() {
     setInternalSku(product.internalSku);
     setSupplierSku(product.supplierSku ?? '');
     setCaNumber(product.caNumber ?? '');
-    setVariants(product.variants.map((variant) => variant.label).join(', '));
+    setVariantRows(product.variants.map((variant) => sizeName(variant.label)));
+    setFormOpen(true);
     setMinQuantity(product.minQuantity == null ? '' : String(product.minQuantity));
     setDraft(draftFromProduct(product));
   }
@@ -263,6 +269,7 @@ export default function DistribuidoraProdutosPage() {
     }
     setSaving(true);
     try {
+      const labels = variantRows.map((item) => item.trim()).filter(Boolean);
       if (editingId) {
         await updateDistributorProduct(editingId, {
           ...catalog,
@@ -273,10 +280,6 @@ export default function DistribuidoraProdutosPage() {
         });
         setNotice('Ficha atualizada.');
       } else {
-        const labels = variants
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean);
         await createDistributorProduct({
           ...catalog,
           name,
@@ -284,7 +287,7 @@ export default function DistribuidoraProdutosPage() {
           supplierSku: supplierSku || undefined,
           caNumber: caNumber || undefined,
           minQuantity: min,
-          variants: labels,
+          variants: labels.length > 0 ? labels : ['Único'],
           tracksLot: draft.tracksLot,
         });
         setNotice('Produto cadastrado.');
@@ -293,6 +296,25 @@ export default function DistribuidoraProdutosPage() {
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao salvar.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onAddSize() {
+    if (!editingId || !newSize.trim()) {
+      setError('Informe o tamanho que falta.');
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      await addDistributorVariant(editingId, newSize.trim());
+      setNewSize('');
+      setNotice('Tamanho incluido.');
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao incluir o tamanho.');
     } finally {
       setSaving(false);
     }
@@ -317,11 +339,21 @@ export default function DistribuidoraProdutosPage() {
           <p className="page-kicker">Distribuidora</p>
           <h1 className="page-title">Produtos</h1>
           <p className="page-lead">
-            Cada produto tem codigo interno, variantes e a ficha de cubagem.
-            O regime padrao da revenda e Lucro Presumido, com CFOP 5102 e 6102.
-            O CA so sugere o nome.
+            O catálogo lista cada tamanho em uma linha. Sem numeração, o item fica como Único.
           </p>
         </div>
+        {manager ? (
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              resetForm();
+              setFormOpen(true);
+            }}
+          >
+            Novo produto
+          </button>
+        ) : null}
       </header>
       {error ? (
         <p className="error" role="alert">
@@ -329,7 +361,7 @@ export default function DistribuidoraProdutosPage() {
         </p>
       ) : null}
       {notice ? <p className="field-hint">{notice}</p> : null}
-      {manager ? (
+      {manager && formOpen ? (
         <form className="form dash-panel" onSubmit={onCreate}>
           <h2 className="dash-panel__title">
             {editingId ? 'Editar ficha' : 'Novo produto'}
@@ -375,16 +407,40 @@ export default function DistribuidoraProdutosPage() {
                 onChange={(e) => setSupplierSku(e.target.value)}
               />
             </div>
-            <div className="field">
-              <label htmlFor="variantes">Variantes (separadas por virgula)</label>
-              <input
-                id="variantes"
-                required={!editingId}
-                disabled={editingId != null}
-                value={variants}
-                onChange={(e) => setVariants(e.target.value)}
-                placeholder="P, M, G"
-              />
+            <div className="field field--span-2">
+              <label>Tamanhos</label>
+              {variantRows.map((row, index) => (
+                <input
+                  key={index}
+                  aria-label={`Tamanho ${index + 1}`}
+                  value={row}
+                  disabled={editingId != null}
+                  placeholder="Único, 40, M"
+                  onChange={(event) =>
+                    setVariantRows((current) =>
+                      current.map((item, itemIndex) =>
+                        itemIndex === index ? event.target.value : item,
+                      ),
+                    )
+                  }
+                />
+              ))}
+              {editingId ? (
+                <input
+                  aria-label="Novo tamanho"
+                  value={newSize}
+                  placeholder="Novo tamanho"
+                  onChange={(event) => setNewSize(event.target.value)}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setVariantRows((current) => [...current, ''])}
+                >
+                  Adicionar tamanho
+                </button>
+              )}
             </div>
             <div className="field">
               <label htmlFor="minimo">Minimo (opcional)</label>
@@ -604,86 +660,100 @@ export default function DistribuidoraProdutosPage() {
             {saving ? 'Salvando...' : editingId ? 'Salvar ficha' : 'Cadastrar produto'}
           </button>
           {editingId ? (
-            <button type="button" className="btn btn-secondary" onClick={resetForm}>
-              Cancelar
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void onAddSize()}
+            >
+              Incluir tamanho
             </button>
           ) : null}
+          <button type="button" className="btn btn-secondary" onClick={resetForm}>
+            Fechar
+          </button>
         </form>
-      ) : (
-        <p className="field-hint">O cadastro de produto e do gestor.</p>
-      )}
+      ) : null}
+      <div className="field">
+        <label htmlFor="busca-produto">Buscar no catálogo</label>
+        <input
+          id="busca-produto"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Nome, código ou tamanho"
+        />
+      </div>
       <div className="table-wrap">
         <table className="data-table">
           <thead>
             <tr>
               <th scope="col">Produto</th>
-              <th scope="col">Codigo</th>
-              <th scope="col">Variantes</th>
+              <th scope="col">Código</th>
+              <th scope="col">Tamanho</th>
+              <th scope="col">Saldo</th>
+              <th scope="col">Unidade</th>
               <th scope="col">Cubagem</th>
-              <th scope="col">Peso cubado</th>
-              <th scope="col">Fiscal</th>
-              <th scope="col">Minimo</th>
+              <th scope="col">NCM</th>
+              <th scope="col">Mínimo</th>
               {manager ? <th scope="col">Ficha</th> : null}
             </tr>
           </thead>
           <tbody>
-            {products.map((product) => (
-              <tr key={product.id}>
+            {products
+              .filter((product) => {
+                const text = `${product.name} ${product.internalSku} ${product.variants
+                  .map((variant) => variant.label)
+                  .join(' ')}`.toLocaleLowerCase('pt-BR');
+                return text.includes(query.trim().toLocaleLowerCase('pt-BR'));
+              })
+              .flatMap((product) => {
+                const sizes = product.variants.length > 0 ? product.variants : [];
+                const rows = sizes.length > 0 ? sizes : [{ id: `${product.id}-vazio`, label: 'Único', quantity: 0, lots: [] }];
+                return rows.map((variant, index) => (
+              <tr key={variant.id}>
                 <td>
-                  {product.name}
-                  {product.caNumber ? (
+                  {index === 0 ? product.name : ''}
+                  {index === 0 && product.caNumber ? (
                     <span className="table-sub">CA {product.caNumber}</span>
                   ) : null}
                 </td>
-                <td>{product.internalSku}</td>
+                <td>{index === 0 ? product.internalSku : ''}</td>
+                <td>{sizeName(variant.label)}</td>
+                <td>{variant.quantity}</td>
+                <td>{index === 0 ? product.unitCode : ''}</td>
                 <td>
-                  {product.variants
-                    .map((variant) => `${variant.label} (${variant.quantity})`)
-                    .join(', ')}
+                  {index === 0 ? formatM3(product.boxCubageM3 ?? product.itemCubageM3) : ''}
                 </td>
+                <td>{index === 0 ? (product.ncm ?? '—') : ''}</td>
                 <td>
-                  {formatM3(product.boxCubageM3 ?? product.itemCubageM3)}
-                  {product.boxCubageM3 != null || product.itemCubageM3 != null ? (
-                    <span className="table-sub">
-                      {product.boxCubageM3 != null ? 'caixa' : 'item'}
-                    </span>
-                  ) : null}
-                </td>
-                <td>
-                  {formatKg(product.boxVolumetricWeightG ?? product.itemVolumetricWeightG)}
-                </td>
-                <td>
-                  {product.ncm ?? 'sem NCM'}
-                  <span className="table-sub">
-                    {product.saleCfopIn}/{product.saleCfopOut}
-                    {product.icmsSt ? ' · ST' : ''}
-                  </span>
-                </td>
-                <td>
-                  {manager ? (
+                  {index === 0 && manager ? (
                     <input
-                      aria-label={`Minimo de ${product.name}`}
+                      aria-label={`Mínimo de ${product.name}`}
                       defaultValue={product.minQuantity ?? ''}
                       inputMode="numeric"
-                      onBlur={(e) => onMin(product, e.target.value)}
+                      onBlur={(event) => onMin(product, event.target.value)}
                     />
-                  ) : (
+                  ) : index === 0 ? (
                     (product.minQuantity ?? '—')
+                  ) : (
+                    ''
                   )}
                 </td>
                 {manager ? (
                   <td>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => startEdit(product)}
-                    >
-                      Editar
-                    </button>
+                    {index === 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => startEdit(product)}
+                      >
+                        Ficha
+                      </button>
+                    ) : null}
                   </td>
                 ) : null}
               </tr>
-            ))}
+                ));
+              })}
           </tbody>
         </table>
       </div>

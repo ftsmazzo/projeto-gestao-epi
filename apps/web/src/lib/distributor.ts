@@ -84,6 +84,7 @@ export type DistributorBalanceRow = {
   quantity: number;
   minQuantity: number | null;
   low: boolean;
+  unitCode: string;
 };
 
 export type DistributorInboundLine = {
@@ -149,6 +150,13 @@ export function updateDistributorProduct(
   return apiFetch<DistributorProduct>(`/distributor/products/${productId}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
+  });
+}
+
+export function addDistributorVariant(productId: string, label: string) {
+  return apiFetch<DistributorProduct>(`/distributor/products/${productId}/variants`, {
+    method: 'POST',
+    body: JSON.stringify({ label }),
   });
 }
 

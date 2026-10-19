@@ -1205,7 +1205,7 @@ function toProductView(product: ProductRow) {
     boxVolumetricWeightG: box?.volumetricWeightG ?? null,
     variants: product.variants.map((variant) => ({
       id: variant.id,
-      label: variant.label,
+      label: variant.label.trim() || 'Único',
       quantity: variant.balance?.quantity ?? 0,
       lots: variant.lots.map((lot) => ({
         id: lot.id,
@@ -1235,9 +1235,10 @@ function toBalanceRow(
     productName: product.name,
     internalSku: product.internalSku,
     variantId: variant.id,
-    label: variant.label,
+    label: variant.label.trim() || 'Único',
     quantity,
     minQuantity: product.minQuantity,
+    unitCode: product.unitCode,
     low:
       product.minQuantity != null && quantity <= product.minQuantity,
   };
