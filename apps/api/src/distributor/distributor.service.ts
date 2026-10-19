@@ -19,6 +19,7 @@ import { saveDistributorInboundFile } from './distributor-document.storage';
 import type {
   AddDistributorVariantDto,
   CreateDistributorProductDto,
+  CreateOutboundFromQuoteDto,
   CreatePurchaseOrderDto,
   CreateQuoteDto,
   ManualDistributorMovementDto,
@@ -33,6 +34,13 @@ import {
   type CatalogInput,
 } from './catalog.rules';
 import { FiscalCertificateError, sealCertificate } from './fiscal-certificate';
+import {
+  NfeOutboundError,
+  OUTBOUND_EMISSION_ENABLED,
+  assertOutboundAuthorize,
+  buildOutboundLines,
+  outboundBlockers,
+} from './nfe-outbound.rules';
 import { NfeXmlError, parseNfeXml } from './nfe-xml.rules';
 import {
   PurchaseOrderRuleError,
@@ -1250,9 +1258,211 @@ export class DistributorService {
       lastNsu: cursor?.lastNsu ?? '0',
       signedQueryEnabled: false,
       missing,
+      emissionEnabled: OUTBOUND_EMISSION_ENABLED,
       note:
-        'A nota de compra entra pelo XML e pela chave de 44 digitos. A busca assinada na SEFAZ permanece desligada para nao consultar o Ambiente Nacional sem homologacao.',
+        'A nota de compra entra pelo XML e pela chave de 44 digitos. A nota de saida nasce do orcamento aprovado. A busca e a autorizacao assinadas na SEFAZ permanecem desligadas sem homologacao.',
     };
+  }
+
+  async listOutboundInvoices(organizationId: string, role: string) {
+    await this.requireDistributor(organizationId, role);
+    const [rows, profile] = await Promise.all([
+      this.prisma.distributorOutboundInvoice.findMany({
+        where: { organizationId },
+        include: outboundInclude,
+        orderBy: [{ createdAt: 'desc' }],
+      }),
+      this.prisma.distributorFiscalProfile.findUnique({ where: { organizationId } }),
+    ]);
+    return rows.map((row) =>
+      toOutboundView(row, {
+        certificateUploaded: Boolean(profile?.certificateCipher),
+      }),
+    );
+  }
+
+  async createOutboundFromQuote(
+    organizationId: string,
+    role: string,
+    userId: string,
+    dto: CreateOutboundFromQuoteDto,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const profile = await this.prisma.distributorFiscalProfile.findUnique({
+      where: { organizationId },
+    });
+    if (!profile?.cnpj || !profile.uf) {
+      throw new BadRequestException(
+        'Cadastre o CNPJ e a UF da distribuidora em Fiscal antes de montar a nota de saida.',
+      );
+    }
+    const customer = validateCnpj(dto.customerCnpj);
+    if (!customer.ok) throw new BadRequestException(customer.message);
+    const customerUf = dto.customerUf.trim().toUpperCase();
+    if (!BRAZIL_UFS.has(customerUf)) {
+      throw new BadRequestException('Informe a UF do destinatario.');
+    }
+    const quote = await this.prisma.distributorQuote.findFirst({
+      where: { id: dto.quoteId, organizationId, status: 'APPROVED' },
+      include: quoteInclude,
+    });
+    if (!quote) {
+      throw new NotFoundException('Orcamento aprovado nao encontrado.');
+    }
+    const existing = await this.prisma.distributorOutboundInvoice.findUnique({
+      where: { quoteId: quote.id },
+    });
+    if (existing) {
+      throw new ConflictException('Este orcamento ja gerou uma nota de saida.');
+    }
+    let built;
+    try {
+      built = buildOutboundLines({
+        emitterUf: profile.uf,
+        customerUf,
+        lines: quote.lines.map((line) => ({
+          variantId: line.variantId,
+          quantity: line.quantity,
+          unitPriceCents: line.unitPriceCents,
+          discountBps: line.discountBps,
+          product: {
+            name: line.variant.product.name,
+            sizeLabel: line.variant.label,
+            ncm: line.variant.product.ncm,
+            originCode: line.variant.product.originCode,
+            cest: line.variant.product.cest,
+            saleCfopIn: line.variant.product.saleCfopIn,
+            saleCfopOut: line.variant.product.saleCfopOut,
+            icmsSt: line.variant.product.icmsSt,
+          },
+        })),
+      });
+    } catch (error) {
+      throw this.asOutboundError(error);
+    }
+    const last = await this.prisma.distributorOutboundInvoice.findFirst({
+      where: { organizationId, series: '1' },
+      orderBy: { number: 'desc' },
+      select: { number: true },
+    });
+    const number = (last?.number ?? 0) + 1;
+    const totalCents = built.reduce((sum, line) => sum + line.totalCents, 0);
+    try {
+      const created = await this.prisma.distributorOutboundInvoice.create({
+        data: {
+          organizationId,
+          quoteId: quote.id,
+          series: '1',
+          number,
+          customerName: quote.customerName,
+          customerCnpj: customer.normalized,
+          customerUf,
+          emitterCnpj: profile.cnpj,
+          emitterUf: profile.uf,
+          totalCents,
+          createdByUserId: userId,
+          lines: {
+            create: built.map((line) => ({
+              variantId: line.variantId,
+              description: line.description,
+              quantity: line.quantity,
+              unitPriceCents: line.unitPriceCents,
+              discountBps: line.discountBps,
+              ncm: line.ncm,
+              cfop: line.cfop,
+              originCode: line.originCode,
+              cest: line.cest,
+              icmsSt: line.icmsSt,
+            })),
+          },
+        },
+        include: outboundInclude,
+      });
+      return toOutboundView(created, {
+        certificateUploaded: Boolean(profile.certificateCipher),
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Este orcamento ja gerou uma nota de saida.');
+      }
+      throw error;
+    }
+  }
+
+  async authorizeOutboundInvoice(
+    organizationId: string,
+    role: string,
+    invoiceId: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const [invoice, profile] = await Promise.all([
+      this.prisma.distributorOutboundInvoice.findFirst({
+        where: { id: invoiceId, organizationId },
+        include: outboundInclude,
+      }),
+      this.prisma.distributorFiscalProfile.findUnique({ where: { organizationId } }),
+    ]);
+    if (!invoice) throw new NotFoundException('Nota de saida nao encontrada.');
+    const view = toOutboundView(invoice, {
+      certificateUploaded: Boolean(profile?.certificateCipher),
+    });
+    try {
+      assertOutboundAuthorize({
+        status: invoice.status,
+        blockers: view.blockers,
+        emissionEnabled: OUTBOUND_EMISSION_ENABLED,
+      });
+    } catch (error) {
+      throw this.asOutboundError(error);
+    }
+    throw new BadRequestException(
+      'A autorizacao na SEFAZ ainda nao esta ligada. Cadastre o certificado e aguarde a homologacao.',
+    );
+  }
+
+  async cancelOutboundInvoice(
+    organizationId: string,
+    role: string,
+    invoiceId: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const claimed = await this.prisma.distributorOutboundInvoice.updateMany({
+      where: { id: invoiceId, organizationId, status: 'DRAFT' },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+    });
+    if (claimed.count === 0) {
+      throw new BadRequestException('So o rascunho da nota de saida pode ser cancelado.');
+    }
+    return this.getOutboundInvoice(organizationId, role, invoiceId);
+  }
+
+  private async getOutboundInvoice(
+    organizationId: string,
+    role: string,
+    invoiceId: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const [invoice, profile] = await Promise.all([
+      this.prisma.distributorOutboundInvoice.findFirst({
+        where: { id: invoiceId, organizationId },
+        include: outboundInclude,
+      }),
+      this.prisma.distributorFiscalProfile.findUnique({ where: { organizationId } }),
+    ]);
+    if (!invoice) throw new NotFoundException('Nota de saida nao encontrada.');
+    return toOutboundView(invoice, {
+      certificateUploaded: Boolean(profile?.certificateCipher),
+    });
+  }
+
+  private asOutboundError(error: unknown): BadRequestException {
+    if (error instanceof NfeOutboundError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
   }
 
   private asNfeError(error: unknown): BadRequestException {
@@ -1330,6 +1540,13 @@ const quoteInclude = {
     include: { variant: { include: { product: true } } },
   },
 } satisfies Prisma.DistributorQuoteInclude;
+
+const outboundInclude = {
+  lines: {
+    orderBy: { id: 'asc' as const },
+    include: { variant: { include: { product: true } } },
+  },
+} satisfies Prisma.DistributorOutboundInvoiceInclude;
 
 type ProductRow = Prisma.DistributorProductGetPayload<{
   include: typeof productInclude;
@@ -1504,6 +1721,61 @@ function toQuoteView(quote: QuoteRow) {
       quantity: line.quantity,
       unitPriceCents: line.unitPriceCents,
       discountBps: line.discountBps,
+    })),
+  };
+}
+
+type OutboundRow = Prisma.DistributorOutboundInvoiceGetPayload<{
+  include: typeof outboundInclude;
+}>;
+
+function toOutboundView(
+  invoice: OutboundRow,
+  opts: { certificateUploaded: boolean },
+) {
+  const blockers =
+    invoice.status === 'DRAFT'
+      ? outboundBlockers({
+          emitterCnpj: invoice.emitterCnpj,
+          emitterUf: invoice.emitterUf,
+          certificateUploaded: opts.certificateUploaded,
+          lines: invoice.lines,
+        })
+      : [];
+  return {
+    id: invoice.id,
+    quoteId: invoice.quoteId,
+    status: invoice.status,
+    series: invoice.series,
+    number: invoice.number,
+    customerName: invoice.customerName,
+    customerCnpj: invoice.customerCnpj,
+    customerUf: invoice.customerUf,
+    emitterCnpj: invoice.emitterCnpj,
+    emitterUf: invoice.emitterUf,
+    totalCents: invoice.totalCents,
+    accessKey: invoice.accessKey,
+    protocol: invoice.protocol,
+    createdAt: invoice.createdAt,
+    cancelledAt: invoice.cancelledAt,
+    readyToAuthorize: invoice.status === 'DRAFT' && blockers.length === 0,
+    blockers,
+    emissionEnabled: OUTBOUND_EMISSION_ENABLED,
+    lines: invoice.lines.map((line) => ({
+      id: line.id,
+      variantId: line.variantId,
+      description: line.description,
+      productName: line.variant.product.name,
+      label: line.variant.label,
+      quantity: line.quantity,
+      unitPriceCents: line.unitPriceCents,
+      discountBps: line.discountBps,
+      ncm: line.ncm,
+      cfop: line.cfop,
+      originCode: line.originCode,
+      cest: line.cest,
+      icmsSt: line.icmsSt,
+      totalCents: line.unitPriceCents * line.quantity,
     })),
   };
 }

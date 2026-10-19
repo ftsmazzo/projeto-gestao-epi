@@ -422,9 +422,78 @@ export type DistributorFiscalProfile = {
   certificateUploaded: boolean;
   lastNsu: string;
   signedQueryEnabled: boolean;
+  emissionEnabled: boolean;
   missing: string[];
   note: string;
 };
+
+export type OutboundStatus = 'DRAFT' | 'CANCELLED' | 'AUTHORIZED';
+
+export type OutboundLine = {
+  id: string;
+  variantId: string;
+  description: string;
+  productName: string;
+  label: string;
+  quantity: number;
+  unitPriceCents: number;
+  discountBps: number;
+  ncm: string;
+  cfop: string;
+  originCode: number;
+  cest: string | null;
+  icmsSt: boolean;
+  totalCents: number;
+};
+
+export type OutboundInvoice = {
+  id: string;
+  quoteId: string | null;
+  status: OutboundStatus;
+  series: string;
+  number: number;
+  customerName: string;
+  customerCnpj: string;
+  customerUf: string;
+  emitterCnpj: string;
+  emitterUf: string;
+  totalCents: number;
+  accessKey: string | null;
+  protocol: string | null;
+  createdAt: string;
+  cancelledAt: string | null;
+  readyToAuthorize: boolean;
+  blockers: string[];
+  emissionEnabled: boolean;
+  lines: OutboundLine[];
+};
+
+export function listOutboundInvoices() {
+  return apiFetch<OutboundInvoice[]>('/distributor/outbound');
+}
+
+export function createOutboundFromQuote(input: {
+  quoteId: string;
+  customerCnpj: string;
+  customerUf: string;
+}) {
+  return apiFetch<OutboundInvoice>('/distributor/outbound/from-quote', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function authorizeOutboundInvoice(invoiceId: string) {
+  return apiFetch<OutboundInvoice>(`/distributor/outbound/${invoiceId}/authorize`, {
+    method: 'POST',
+  });
+}
+
+export function cancelOutboundInvoice(invoiceId: string) {
+  return apiFetch<OutboundInvoice>(`/distributor/outbound/${invoiceId}/cancel`, {
+    method: 'POST',
+  });
+}
 
 export function getDistributorFiscal() {
   return apiFetch<DistributorFiscalProfile>('/distributor/fiscal');

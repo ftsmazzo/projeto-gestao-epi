@@ -419,6 +419,19 @@ export class SaveDistributorFiscalDto {
   regime?: 'PRESUMIDO' | 'SIMPLES' | 'REAL';
 }
 
+export class CreateOutboundFromQuoteDto {
+  @IsString()
+  quoteId!: string;
+
+  @IsString()
+  @MinLength(14)
+  customerCnpj!: string;
+
+  @IsString()
+  @MinLength(2)
+  customerUf!: string;
+}
+
 export class LinkInboundLineDto {
   @IsOptional()
   @IsString()

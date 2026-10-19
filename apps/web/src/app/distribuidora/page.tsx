@@ -5,10 +5,12 @@ import Link from 'next/link';
 import {
   listDistributorLowStock,
   listDistributorProducts,
+  listOutboundInvoices,
   listPurchaseOrders,
   listQuotes,
   type DistributorBalanceRow,
   type DistributorProduct,
+  type OutboundInvoice,
   type PurchaseOrder,
   type DistributorQuote,
 } from '../../lib/distributor';
@@ -22,6 +24,7 @@ export default function DistribuidoraHomePage() {
   const [low, setLow] = useState<DistributorBalanceRow[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [quotes, setQuotes] = useState<DistributorQuote[]>([]);
+  const [outbounds, setOutbounds] = useState<OutboundInvoice[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -30,12 +33,14 @@ export default function DistribuidoraHomePage() {
       listDistributorLowStock(),
       listPurchaseOrders(),
       listQuotes(),
+      listOutboundInvoices(),
     ])
-      .then(([productRows, lowRows, orderRows, quoteRows]) => {
+      .then(([productRows, lowRows, orderRows, quoteRows, outboundRows]) => {
         setProducts(productRows);
         setLow(lowRows);
         setOrders(orderRows);
         setQuotes(quoteRows);
+        setOutbounds(outboundRows);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Falha ao carregar.'),
@@ -51,6 +56,7 @@ export default function DistribuidoraHomePage() {
     (order) => order.status !== 'RECEIVED' && order.status !== 'REJECTED',
   );
   const waitingQuotes = quotes.filter((quote) => quote.status === 'PENDING_APPROVAL');
+  const draftNotes = outbounds.filter((invoice) => invoice.status === 'DRAFT');
 
   return (
     <div className="module-page">
@@ -59,7 +65,7 @@ export default function DistribuidoraHomePage() {
           <p className="page-kicker">Distribuidora</p>
           <h1 className="page-title">Painel</h1>
           <p className="page-lead">
-            Estoque, compras em aberto e orçamentos que ainda pedem liberação.
+            Estoque, compras, orçamentos e rascunhos de nota de saída.
           </p>
         </div>
       </header>
@@ -88,6 +94,13 @@ export default function DistribuidoraHomePage() {
           <p className="dash-kpi__label">Compras abertas</p>
           <p className="dash-kpi__value">{openOrders.length}</p>
           <p className="dash-kpi__hint">{waitingQuotes.length} orçamentos na fila</p>
+        </article>
+        <article className="dash-kpi">
+          <p className="dash-kpi__label">Notas em rascunho</p>
+          <p className="dash-kpi__value">{draftNotes.length}</p>
+          <p className="dash-kpi__hint">
+            <Link href="/distribuidora/notas">abrir notas</Link>
+          </p>
         </article>
       </section>
       <section className="dash-panel">

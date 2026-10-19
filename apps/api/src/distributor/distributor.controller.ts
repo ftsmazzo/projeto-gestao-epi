@@ -21,6 +21,7 @@ import {
   CreateDistributorProductDto,
   LinkInboundLineDto,
   SaveDistributorFiscalDto,
+  CreateOutboundFromQuoteDto,
   CreatePurchaseOrderDto,
   CreateQuoteDto,
   ManualDistributorMovementDto,
@@ -352,6 +353,51 @@ export class DistributorController {
       user.membershipRole,
       from,
       to,
+    );
+  }
+
+  @Get('outbound')
+  listOutbound(@CurrentUser() user: JwtPayload) {
+    return this.distributor.listOutboundInvoices(
+      user.organizationId,
+      user.membershipRole,
+    );
+  }
+
+  @Post('outbound/from-quote')
+  createOutboundFromQuote(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateOutboundFromQuoteDto,
+  ) {
+    return this.distributor.createOutboundFromQuote(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      dto,
+    );
+  }
+
+  @Post('outbound/:invoiceId/authorize')
+  authorizeOutbound(
+    @CurrentUser() user: JwtPayload,
+    @Param('invoiceId') invoiceId: string,
+  ) {
+    return this.distributor.authorizeOutboundInvoice(
+      user.organizationId,
+      user.membershipRole,
+      invoiceId,
+    );
+  }
+
+  @Post('outbound/:invoiceId/cancel')
+  cancelOutbound(
+    @CurrentUser() user: JwtPayload,
+    @Param('invoiceId') invoiceId: string,
+  ) {
+    return this.distributor.cancelOutboundInvoice(
+      user.organizationId,
+      user.membershipRole,
+      invoiceId,
     );
   }
 

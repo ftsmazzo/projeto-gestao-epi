@@ -88,6 +88,12 @@ enum DistributorInboundStatus {
   DISCARDED
 }
 
+enum DistributorOutboundStatus {
+  DRAFT
+  CANCELLED
+  AUTHORIZED
+}
+
 /// Estado comercial da assinatura do cliente atendido (CNPJ).
 enum ClientSubscriptionStatus {
   TRIAL
@@ -197,6 +203,7 @@ model Organization {
   distributorPurchaseOrders DistributorPurchaseOrder[]
   distributorSellerCeilings DistributorSellerCeiling[]
   distributorQuotes DistributorQuote[]
+  distributorOutboundInvoices DistributorOutboundInvoice[]
   distributorFiscalProfile DistributorFiscalProfile?
   distributorDfeCursor DistributorDfeCursor?
 }
@@ -261,6 +268,7 @@ model DistributorVariant {
   inboundLines DistributorInboundLine[]
   purchaseLines DistributorPurchaseLine[]
   quoteLines DistributorQuoteLine[]
+  outboundLines DistributorOutboundLine[]
   lots       DistributorLot[]
 
   @@unique([productId, label])
@@ -460,8 +468,59 @@ model DistributorQuote {
 
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lines        DistributorQuoteLine[]
+  outboundInvoice DistributorOutboundInvoice?
 
   @@index([organizationId, status, approvedAt])
+}
+
+/// Rascunho de NF-e de saida. A autorizacao na SEFAZ so dispara com homologacao e certificado.
+model DistributorOutboundInvoice {
+  id              String                    @id @default(cuid())
+  organizationId  String
+  quoteId         String?                   @unique
+  status          DistributorOutboundStatus @default(DRAFT)
+  series          String                    @default("1")
+  number          Int
+  customerName    String
+  customerCnpj    String
+  customerUf      String
+  emitterCnpj     String
+  emitterUf       String
+  totalCents      Int
+  accessKey       String?
+  protocol        String?
+  createdByUserId String
+  cancelledAt     DateTime?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quote        DistributorQuote?         @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  lines        DistributorOutboundLine[]
+
+  @@unique([organizationId, series, number])
+  @@index([organizationId, status])
+}
+
+model DistributorOutboundLine {
+  id             String  @id @default(cuid())
+  invoiceId      String
+  variantId      String
+  description    String
+  quantity       Int
+  unitPriceCents Int
+  discountBps    Int     @default(0)
+  ncm            String
+  cfop           String
+  originCode     Int     @default(0)
+  cest           String?
+  icmsSt         Boolean @default(false)
+
+  invoice DistributorOutboundInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  variant DistributorVariant         @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([invoiceId])
+  @@index([variantId])
 }
 
 model DistributorQuoteLine {

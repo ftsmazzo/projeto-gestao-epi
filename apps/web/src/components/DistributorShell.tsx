@@ -33,6 +33,7 @@ const NAV = [
     items: [
       { href: '/distribuidora/compras', label: 'Compras', exact: false },
       { href: '/distribuidora/orcamentos', label: 'Orcamentos', exact: false },
+      { href: '/distribuidora/notas', label: 'Notas', exact: false },
     ],
   },
 ];
