@@ -34,7 +34,7 @@ export default function DistribuidoraSaidaPage() {
     setNotice(null);
     const amount = Number(quantity);
     if (!variantId || !Number.isInteger(amount) || amount < 1) {
-      setError('Escolha a variante e uma quantidade inteira.');
+      setError('Escolha o tamanho e uma quantidade inteira.');
       return;
     }
     setSaving(true);
@@ -90,9 +90,9 @@ export default function DistribuidoraSaidaPage() {
       {notice ? <p className="field-hint">{notice}</p> : null}
       <form className="form dash-panel" onSubmit={onSubmit}>
         <div className="field">
-          <label htmlFor="variante">Variante</label>
+          <label htmlFor="tamanho">Produto e tamanho</label>
           <select
-            id="variante"
+            id="tamanho"
             value={variantId}
             onChange={(e) => setVariantId(e.target.value)}
           >

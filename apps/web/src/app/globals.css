@@ -8821,6 +8821,20 @@ a.btn-primary:hover {
   }
 }
 
+.scan-panel__input {
+  width: 100%;
+  min-height: 52px;
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+  padding: 0.75rem 0.9rem;
+  margin-top: 0.35rem;
+}
+
+.scan-panel__hit {
+  margin: 0.65rem 0 0;
+  font-weight: 650;
+}
+
 /* Cadastro de produto: essencial primeiro, resto recolhido. */
 .product-form__section {
   margin: 0 0 1rem;
@@ -8885,6 +8899,17 @@ a.btn-primary:hover {
   flex-wrap: wrap;
   gap: 0.65rem;
   margin-top: 0.35rem;
+}
+
+.product-form__steps {
+  margin: 0.35rem 0 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.product-form__next {
+  border-color: color-mix(in srgb, var(--accent, #1d6b4f) 35%, transparent);
 }
 
 /* Tablet do representante: alvos grandes, empilhado. */

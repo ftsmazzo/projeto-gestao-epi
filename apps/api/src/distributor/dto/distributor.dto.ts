@@ -14,6 +14,12 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+export class ImportProductsCsvDto {
+  @IsString()
+  @MinLength(10)
+  csvText!: string;
+}
+
 export class CreateDistributorProductDto {
   @IsString()
   @MinLength(2)

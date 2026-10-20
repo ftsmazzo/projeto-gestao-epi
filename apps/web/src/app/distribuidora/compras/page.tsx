@@ -75,7 +75,7 @@ export default function DistribuidoraComprasPage() {
     setError(null);
     const amount = Number(quantity);
     if (!variantId || !Number.isInteger(amount) || amount < 1) {
-      setError('Escolha a variante e uma quantidade inteira.');
+      setError('Escolha o tamanho e uma quantidade inteira.');
       return;
     }
     if (selected?.tracksLot && !lotCode.trim()) {

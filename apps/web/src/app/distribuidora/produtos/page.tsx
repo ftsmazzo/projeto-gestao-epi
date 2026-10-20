@@ -2,9 +2,12 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { fetchMe } from '../../../lib/auth';
+import Link from 'next/link';
 import {
   addDistributorVariant,
   createDistributorProduct,
+  getDistributorImportTemplate,
+  importDistributorProductsCsv,
   isDistributorManager,
   listDistributorProducts,
   lookupDistributorCa,
@@ -161,11 +164,6 @@ function catalogFromDraft(draft: Draft): DistributorCatalogInput {
   };
 }
 
-function formatM3(value: number | null) {
-  if (value == null) return '—';
-  return `${value.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} m3`;
-}
-
 function sizeName(label: string) {
   return label.trim() || 'Único';
 }
@@ -189,6 +187,9 @@ export default function DistribuidoraProdutosPage() {
   const [saving, setSaving] = useState(false);
   const [depotOpen, setDepotOpen] = useState(false);
   const [fiscalOpen, setFiscalOpen] = useState(false);
+  const [csvOpen, setCsvOpen] = useState(false);
+  const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   async function reload() {
     const [rows, me] = await Promise.all([listDistributorProducts(), fetchMe()]);
@@ -296,8 +297,9 @@ export default function DistribuidoraProdutosPage() {
           tracksLot: draft.tracksLot,
         });
         setNotice('Ficha atualizada.');
+        setLastCreatedId(editingId);
       } else {
-        await createDistributorProduct({
+        const created = await createDistributorProduct({
           ...catalog,
           name,
           internalSku,
@@ -307,7 +309,12 @@ export default function DistribuidoraProdutosPage() {
           variants: labels.length > 0 ? labels : ['Único'],
           tracksLot: draft.tracksLot,
         });
-        setNotice('Produto cadastrado.');
+        setLastCreatedId(created.id);
+        setNotice(
+          catalog.gtin
+            ? 'Produto cadastrado. Próximo passo: dar entrada no estoque (pode usar o leitor).'
+            : 'Produto cadastrado. Complete o código de barras (GTIN) na ficha ou vá para Entrada com o SKU.',
+        );
       }
       resetForm();
       await reload();
@@ -513,6 +520,18 @@ export default function DistribuidoraProdutosPage() {
                 )}
               </div>
               <div className="field">
+                <label htmlFor="gtin-essencial">Código de barras (GTIN / EAN)</label>
+                <input
+                  id="gtin-essencial"
+                  value={draft.gtin}
+                  onChange={(e) => setField('gtin', e.target.value)}
+                  placeholder="Escaneie ou digite 8–14 dígitos"
+                />
+                <p className="field-hint">
+                  Depois do cadastro, a Entrada usa este código no leitor USB.
+                </p>
+              </div>
+              <div className="field">
                 <label htmlFor="minimo">Estoque mínimo</label>
                 <input
                   id="minimo"
@@ -567,14 +586,6 @@ export default function DistribuidoraProdutosPage() {
                     value={draft.costReais}
                     onChange={(e) => setField('costReais', e.target.value)}
                     placeholder="0,00"
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="gtin">GTIN / EAN</label>
-                  <input
-                    id="gtin"
-                    value={draft.gtin}
-                    onChange={(e) => setField('gtin', e.target.value)}
                   />
                 </div>
                 <div className="field">
@@ -772,13 +783,128 @@ export default function DistribuidoraProdutosPage() {
           </div>
         </form>
       ) : null}
+
+      {lastCreatedId ? (
+        <section className="dash-panel product-form__next">
+          <h2 className="dash-panel__title">Próximos passos</h2>
+          <ol className="product-form__steps">
+            <li>
+              Se ainda não tem GTIN, abra a ficha e cole o código de barras do
+              produto.
+            </li>
+            <li>
+              Vá em <Link href="/distribuidora/entrada">Entrada</Link>, escaneie
+              o código (ou digite o SKU) e registre a quantidade.
+            </li>
+            <li>
+              Confira o saldo em <Link href="/distribuidora/saldo">Saldo</Link>.
+            </li>
+          </ol>
+        </section>
+      ) : null}
+
+      {manager ? (
+        <section className="dash-panel">
+          <h2 className="dash-panel__title">
+            <button
+              type="button"
+              className="product-form__toggle"
+              aria-expanded={csvOpen}
+              onClick={() => setCsvOpen((open) => !open)}
+            >
+              {csvOpen ? '▾' : '▸'} Carga em lote (CSV)
+              <span className="product-form__optional">muitos SKUs de uma vez</span>
+            </button>
+          </h2>
+          {csvOpen ? (
+            <>
+              <p className="field-hint">
+                Colunas: nome, codigo_interno, tamanhos (P|M|G ou Unico), gtin,
+                unidade, ncm, minimo, custo, controla_lote. Separador ; ou ,.
+              </p>
+              <div className="product-form__actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    void getDistributorImportTemplate()
+                      .then((tpl) => {
+                        const blob = new Blob([tpl.csv], {
+                          type: 'text/csv;charset=utf-8',
+                        });
+                        const url = URL.createObjectURL(blob);
+                        const anchor = document.createElement('a');
+                        anchor.href = url;
+                        anchor.download = tpl.fileName;
+                        anchor.click();
+                        URL.revokeObjectURL(url);
+                      })
+                      .catch((err: unknown) =>
+                        setError(
+                          err instanceof Error
+                            ? err.message
+                            : 'Falha ao baixar o modelo.',
+                        ),
+                      );
+                  }}
+                >
+                  Baixar modelo CSV
+                </button>
+                <label className="btn btn-primary" htmlFor="csv-upload">
+                  {importing ? 'Importando…' : 'Enviar CSV'}
+                </label>
+                <input
+                  id="csv-upload"
+                  type="file"
+                  accept=".csv,text/csv"
+                  hidden
+                  disabled={importing}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (!file) return;
+                    setError(null);
+                    setNotice(null);
+                    setImporting(true);
+                    void file
+                      .text()
+                      .then((text) => importDistributorProductsCsv(text))
+                      .then(async (result) => {
+                        setNotice(
+                          `${result.createdCount} produto(s) criados` +
+                            (result.skippedCount
+                              ? ` · ${result.skippedCount} linha(s) ignoradas`
+                              : '') +
+                            '.',
+                        );
+                        if (result.skipped.length > 0) {
+                          setError(result.skipped.slice(0, 5).join(' '));
+                        }
+                        await reload();
+                      })
+                      .catch((err: unknown) =>
+                        setError(
+                          err instanceof Error
+                            ? err.message
+                            : 'Falha na importação.',
+                        ),
+                      )
+                      .finally(() => setImporting(false));
+                  }}
+                />
+              </div>
+            </>
+          ) : null}
+        </section>
+      ) : null}
+
       <div className="field">
         <label htmlFor="busca-produto">Buscar no catálogo</label>
         <input
           id="busca-produto"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Nome, código ou tamanho"
+          placeholder="Nome, código, GTIN ou tamanho"
         />
       </div>
       <div className="table-wrap">
@@ -787,10 +913,10 @@ export default function DistribuidoraProdutosPage() {
             <tr>
               <th scope="col">Produto</th>
               <th scope="col">Código</th>
+              <th scope="col">Barras</th>
               <th scope="col">Tamanho</th>
               <th scope="col">Saldo</th>
               <th scope="col">Unidade</th>
-              <th scope="col">Cubagem</th>
               <th scope="col">NCM</th>
               <th scope="col">Mínimo</th>
               {manager ? <th scope="col">Ficha</th> : null}
@@ -816,12 +942,20 @@ export default function DistribuidoraProdutosPage() {
                   ) : null}
                 </td>
                 <td>{index === 0 ? product.internalSku : ''}</td>
-                <td>{sizeName(variant.label)}</td>
+                <td>
+                  {index === 0
+                    ? product.gtin ?? (
+                        <span className="table-sub">sem GTIN</span>
+                      )
+                    : ''}
+                </td>
+                <td>
+                  {sizeName(variant.label) === 'Único'
+                    ? 'sem numeração'
+                    : sizeName(variant.label)}
+                </td>
                 <td>{variant.quantity}</td>
                 <td>{index === 0 ? product.unitCode : ''}</td>
-                <td>
-                  {index === 0 ? formatM3(product.boxCubageM3 ?? product.itemCubageM3) : ''}
-                </td>
                 <td>{index === 0 ? (product.ncm ?? '—') : ''}</td>
                 <td>
                   {index === 0 && manager ? (

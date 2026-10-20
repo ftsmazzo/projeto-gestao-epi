@@ -182,6 +182,39 @@ export function lookupDistributorCa(caNumber: string) {
   );
 }
 
+export type ProductCodeLookup = {
+  product: DistributorProduct;
+  preferredVariantId: string | null;
+  sizes: Array<{ id: string; label: string; quantity: number }>;
+};
+
+export type CatalogImportResult = {
+  createdCount: number;
+  skippedCount: number;
+  created: DistributorProduct[];
+  skipped: string[];
+  templateHint: string;
+};
+
+export function lookupDistributorProductByCode(code: string) {
+  return apiFetch<ProductCodeLookup>(
+    `/distributor/products/by-code?${new URLSearchParams({ code }).toString()}`,
+  );
+}
+
+export function getDistributorImportTemplate() {
+  return apiFetch<{ csv: string; fileName: string }>(
+    '/distributor/products/import-template',
+  );
+}
+
+export function importDistributorProductsCsv(csvText: string) {
+  return apiFetch<CatalogImportResult>('/distributor/products/import-csv', {
+    method: 'POST',
+    body: JSON.stringify({ csvText }),
+  });
+}
+
 export function moveDistributorStock(input: {
   variantId: string;
   direction: 'IN' | 'OUT';

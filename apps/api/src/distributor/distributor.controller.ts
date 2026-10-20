@@ -33,6 +33,7 @@ import {
   CreatePurchaseOrderDto,
   CreateQuoteDto,
   CreateReceivableDto,
+  ImportProductsCsvDto,
   ManualDistributorMovementDto,
   RejectPurchaseOrderDto,
   SetSellerCeilingDto,
@@ -49,6 +50,35 @@ export class DistributorController {
   @Get('products')
   listProducts(@CurrentUser() user: JwtPayload) {
     return this.distributor.listProducts(user.organizationId, user.membershipRole);
+  }
+
+  @Get('products/by-code')
+  lookupByCode(
+    @CurrentUser() user: JwtPayload,
+    @Query('code') code: string,
+  ) {
+    return this.distributor.lookupProductByCode(
+      user.organizationId,
+      user.membershipRole,
+      code ?? '',
+    );
+  }
+
+  @Get('products/import-template')
+  importTemplate() {
+    return this.distributor.catalogImportTemplate();
+  }
+
+  @Post('products/import-csv')
+  importCsv(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ImportProductsCsvDto,
+  ) {
+    return this.distributor.importProductsCsv(
+      user.organizationId,
+      user.membershipRole,
+      dto.csvText,
+    );
   }
 
   @Post('products')

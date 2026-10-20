@@ -307,7 +307,7 @@ export default function DistribuidoraPlusPage() {
                 </button>
               </form>
               <form className="form-grid" onSubmit={onSaveMapping}>
-                <label htmlFor="plus-variant">Variante da distribuidora</label>
+                <label htmlFor="plus-variant">Produto e tamanho da distribuidora</label>
                 <select
                   id="plus-variant"
                   value={variantId}

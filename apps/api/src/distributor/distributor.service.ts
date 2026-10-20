@@ -71,6 +71,12 @@ import {
   normalizeCatalogPatch,
   type CatalogInput,
 } from './catalog.rules';
+import {
+  CatalogImportError,
+  buildCatalogImportRows,
+  catalogImportTemplateCsv,
+} from './catalog-import.rules';
+import { parseCsvText } from '../epis/epi-import.utils';
 import { FiscalCertificateError, sealCertificate } from './fiscal-certificate';
 import {
   NfeOutboundError,
@@ -183,7 +189,9 @@ export class DistributorService {
     const internalSku = dto.internalSku.trim();
     const labels = uniqueLabels(dto.variants);
     if (!internalSku || labels.length === 0) {
-      throw new BadRequestException('Informe o codigo interno e ao menos uma variante.');
+      throw new BadRequestException(
+        'Informe o codigo interno e ao menos um tamanho (ex.: Unico, M, 40).',
+      );
     }
     let catalog;
     try {
@@ -215,11 +223,139 @@ export class DistributorService {
     } catch (error) {
       if (isUniqueConflict(error)) {
         throw new ConflictException(
-          'Ja existe um produto com este codigo interno, ou a variante se repete.',
+          'Ja existe um produto com este codigo interno, ou o tamanho se repete.',
         );
       }
       throw error;
     }
+  }
+
+  async lookupProductByCode(
+    organizationId: string,
+    role: string,
+    codeRaw: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const code = codeRaw.trim();
+    if (!code) {
+      throw new BadRequestException('Informe o codigo de barras ou o SKU.');
+    }
+    const digits = code.replace(/\D/g, '');
+    const product = await this.prisma.distributorProduct.findFirst({
+      where: {
+        organizationId,
+        OR: [
+          { internalSku: { equals: code, mode: 'insensitive' } },
+          ...(digits.length >= 8 ? [{ gtin: digits }] : []),
+          { supplierSku: { equals: code, mode: 'insensitive' } },
+        ],
+      },
+      include: productInclude,
+    });
+    if (!product) {
+      throw new NotFoundException(
+        'Nenhum produto com este codigo. Cadastre o GTIN na ficha ou use o CSV.',
+      );
+    }
+    const view = toProductView(product);
+    const preferred =
+      view.variants.find(
+        (row) => row.label.toLocaleLowerCase('pt-BR') === 'único',
+      ) ??
+      view.variants.find(
+        (row) => row.label.toLocaleLowerCase('pt-BR') === 'unico',
+      ) ??
+      view.variants[0] ??
+      null;
+    return {
+      product: view,
+      preferredVariantId: preferred?.id ?? null,
+      sizes: view.variants.map((row) => ({
+        id: row.id,
+        label: row.label,
+        quantity: row.quantity,
+      })),
+    };
+  }
+
+  async importProductsCsv(
+    organizationId: string,
+    role: string,
+    csvText: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    let parsed: ReturnType<typeof parseCsvText>;
+    let built: ReturnType<typeof buildCatalogImportRows>;
+    try {
+      parsed = parseCsvText(csvText);
+      built = buildCatalogImportRows(parsed.headers, parsed.records);
+    } catch (error) {
+      throw this.asCatalogImportError(error);
+    }
+
+    const created: Array<ReturnType<typeof toProductView>> = [];
+    const skipped: string[] = [...built.errors];
+
+    for (const row of built.rows) {
+      const exists = await this.prisma.distributorProduct.findFirst({
+        where: {
+          organizationId,
+          internalSku: { equals: row.internalSku, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (exists) {
+        skipped.push(
+          `Linha ${row.line}: codigo interno ${row.internalSku} ja existe — ignorado.`,
+        );
+        continue;
+      }
+      try {
+        const product = await this.prisma.distributorProduct.create({
+          data: {
+            organizationId,
+            name: row.name,
+            internalSku: row.internalSku,
+            supplierSku: row.supplierSku,
+            caNumber: normalizeCa(row.caNumber),
+            minQuantity: row.minQuantity,
+            tracksLot: row.tracksLot,
+            ...row.catalog,
+            variants: {
+              create: row.sizes.map((label) => ({
+                label,
+                balance: { create: { quantity: 0 } },
+              })),
+            },
+          },
+          include: productInclude,
+        });
+        created.push(toProductView(product));
+      } catch (error) {
+        if (isUniqueConflict(error)) {
+          skipped.push(
+            `Linha ${row.line}: conflito de codigo ou tamanho — ignorado.`,
+          );
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return {
+      createdCount: created.length,
+      skippedCount: skipped.length,
+      created,
+      skipped,
+      templateHint: catalogImportTemplateCsv().split('\n')[0],
+    };
+  }
+
+  catalogImportTemplate() {
+    return {
+      csv: catalogImportTemplateCsv(),
+      fileName: 'modelo-produtos-distribuidora.csv',
+    };
   }
 
   async updateProduct(
@@ -3137,6 +3273,16 @@ export class DistributorService {
 
   private asCatalogError(error: unknown): BadRequestException {
     if (error instanceof CatalogRuleError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
+  private asCatalogImportError(error: unknown): BadRequestException {
+    if (
+      error instanceof CatalogImportError ||
+      error instanceof CatalogRuleError
+    ) {
       return new BadRequestException(error.message);
     }
     throw error;

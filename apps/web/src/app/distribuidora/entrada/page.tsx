@@ -1,12 +1,14 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   confirmDistributorInbound,
   discardDistributorInbound,
   extractDistributorInvoice,
   linkDistributorLine,
   listDistributorProducts,
+  lookupDistributorProductByCode,
   moveDistributorStock,
   type DistributorInboundDocument,
   type DistributorProduct,
@@ -18,10 +20,14 @@ export default function DistribuidoraEntradaPage() {
   const [quantity, setQuantity] = useState('1');
   const [lotCode, setLotCode] = useState('');
   const [expiresOn, setExpiresOn] = useState('');
+  const [scanCode, setScanCode] = useState('');
+  const [scannedLabel, setScannedLabel] = useState<string | null>(null);
   const [document, setDocument] = useState<DistributorInboundDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const scanRef = useRef<HTMLInputElement>(null);
+  const qtyRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void listDistributorProducts()
@@ -33,7 +39,39 @@ export default function DistribuidoraEntradaPage() {
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Falha ao carregar.'),
       );
+    scanRef.current?.focus();
   }, []);
+
+  async function resolveScan(code: string) {
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    setError(null);
+    setNotice(null);
+    try {
+      const found = await lookupDistributorProductByCode(trimmed);
+      setProducts((current) => {
+        const others = current.filter((row) => row.id !== found.product.id);
+        return [found.product, ...others];
+      });
+      const nextId = found.preferredVariantId ?? found.sizes[0]?.id ?? '';
+      setVariantId(nextId);
+      setScannedLabel(
+        `${found.product.name}${found.sizes.length > 1 ? ' — escolha o tamanho abaixo' : ''}`,
+      );
+      setScanCode('');
+      setQuantity('1');
+      setNotice(
+        found.product.gtin
+          ? 'Código lido. Confira a quantidade e registre a entrada.'
+          : 'Produto encontrado pelo SKU. Vale cadastrar o GTIN na ficha para o leitor.',
+      );
+      window.setTimeout(() => qtyRef.current?.focus(), 50);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Código não encontrado.');
+      setScanCode('');
+      scanRef.current?.focus();
+    }
+  }
 
   async function onManual(event: FormEvent) {
     event.preventDefault();
@@ -41,14 +79,14 @@ export default function DistribuidoraEntradaPage() {
     setNotice(null);
     const amount = Number(quantity);
     if (!variantId || !Number.isInteger(amount) || amount < 1) {
-      setError('Escolha a variante e uma quantidade inteira.');
+      setError('Escolha o tamanho e uma quantidade inteira.');
       return;
     }
     const selected = products.find((product) =>
       product.variants.some((variant) => variant.id === variantId),
     );
     if (selected?.tracksLot && !lotCode.trim()) {
-      setError('Este produto controla lote. Informe o codigo do lote.');
+      setError('Este produto controla lote. Informe o código do lote.');
       return;
     }
     setSaving(true);
@@ -64,6 +102,11 @@ export default function DistribuidoraEntradaPage() {
         `Entrada registrada. Saldo de ${result.productName} ${result.label}: ${result.balance}${result.lotSummary ? `. Lote ${result.lotSummary}` : ''}.`,
       );
       setProducts(await listDistributorProducts());
+      setQuantity('1');
+      setLotCode('');
+      setExpiresOn('');
+      setScannedLabel(null);
+      scanRef.current?.focus();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha na entrada.');
     } finally {
@@ -79,7 +122,7 @@ export default function DistribuidoraEntradaPage() {
     try {
       const draft = await extractDistributorInvoice(file);
       setDocument(draft);
-      setNotice(draft.message || 'Rascunho criado. O estoque ainda nao mudou.');
+      setNotice(draft.message || 'Rascunho criado. O estoque ainda não mudou.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao ler a nota.');
     } finally {
@@ -129,7 +172,7 @@ export default function DistribuidoraEntradaPage() {
     try {
       const updated = await discardDistributorInbound(document.id);
       setDocument(updated);
-      setNotice('Rascunho descartado. O saldo nao mudou.');
+      setNotice('Rascunho descartado. O saldo não mudou.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao descartar.');
     } finally {
@@ -144,7 +187,7 @@ export default function DistribuidoraEntradaPage() {
   const options = products.flatMap((product) =>
     product.variants.map((variant) => ({
       id: variant.id,
-      label: `${product.name} · ${variant.label}`,
+      label: `${product.name} · ${variant.label === 'Único' || variant.label === 'Unico' ? 'sem numeração' : variant.label}`,
     })),
   );
 
@@ -155,8 +198,8 @@ export default function DistribuidoraEntradaPage() {
           <p className="page-kicker">Distribuidora</p>
           <h1 className="page-title">Entrada</h1>
           <p className="page-lead">
-            Entrada manual ou nota de compra. A nota vira rascunho e so altera
-            o saldo depois da confirmacao.
+            Escaneie o código de barras (ou digite o SKU), confira o tamanho e a
+            quantidade. Nota de compra continua como rascunho até confirmar.
           </p>
         </div>
       </header>
@@ -165,13 +208,40 @@ export default function DistribuidoraEntradaPage() {
           {error}
         </p>
       ) : null}
-      {notice ? <p className="field-hint">{notice}</p> : null}
+      {notice ? <p className="success">{notice}</p> : null}
+
+      <section className="dash-panel scan-panel">
+        <h2 className="dash-panel__title">Leitor de código de barras</h2>
+        <p className="field-hint">
+          Use o leitor USB/Bluetooth: ele digita o código e dá Enter. O produto
+          precisa ter GTIN na ficha —{' '}
+          <Link href="/distribuidora/produtos">cadastre ou complete em Produtos</Link>.
+        </p>
+        <label htmlFor="scan-code">Aponte o leitor aqui</label>
+        <input
+          ref={scanRef}
+          id="scan-code"
+          className="scan-panel__input"
+          value={scanCode}
+          autoComplete="off"
+          placeholder="Código de barras ou SKU"
+          onChange={(e) => setScanCode(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void resolveScan(scanCode);
+            }
+          }}
+        />
+        {scannedLabel ? <p className="scan-panel__hit">{scannedLabel}</p> : null}
+      </section>
+
       <form className="form dash-panel" onSubmit={onManual}>
-        <h2 className="dash-panel__title">Entrada manual</h2>
+        <h2 className="dash-panel__title">Confirmar entrada</h2>
         <div className="field">
-          <label htmlFor="variante">Variante</label>
+          <label htmlFor="tamanho">Produto e tamanho</label>
           <select
-            id="variante"
+            id="tamanho"
             value={variantId}
             onChange={(e) => setVariantId(e.target.value)}
           >
@@ -181,6 +251,9 @@ export default function DistribuidoraEntradaPage() {
               </option>
             ))}
           </select>
+          <p className="field-hint">
+            Tamanho = numeração (40, M…) ou “sem numeração” quando o item é único.
+          </p>
         </div>
         {tracksLot ? (
           <>
@@ -202,6 +275,7 @@ export default function DistribuidoraEntradaPage() {
         <div className="field">
           <label htmlFor="qtd">Quantidade</label>
           <input
+            ref={qtyRef}
             id="qtd"
             inputMode="numeric"
             value={quantity}
@@ -226,7 +300,7 @@ export default function DistribuidoraEntradaPage() {
         {document ? (
           <>
             <p className="field-hint">
-              {document.supplierName ?? 'Fornecedor nao lido'}
+              {document.supplierName ?? 'Fornecedor não lido'}
               {document.invoiceNumber ? ` · Nota ${document.invoiceNumber}` : ''}
               {document.accessKey ? ` · Chave ${document.accessKey}` : ''}
               {` · ${document.status}`}
@@ -237,7 +311,7 @@ export default function DistribuidoraEntradaPage() {
                   <tr>
                     <th scope="col">Item lido</th>
                     <th scope="col">Qtd</th>
-                    <th scope="col">Variante</th>
+                    <th scope="col">Tamanho</th>
                     <th scope="col">Lote</th>
                   </tr>
                 </thead>
@@ -253,12 +327,12 @@ export default function DistribuidoraEntradaPage() {
                       <td>{line.quantity}</td>
                       <td>
                         <select
-                          aria-label={`Variante de ${line.description}`}
+                          aria-label={`Tamanho de ${line.description}`}
                           value={line.variantId ?? ''}
                           disabled={document.status !== 'DRAFT'}
                           onChange={(e) => onLink(line.id, e.target.value)}
                         >
-                          <option value="">Nao entra</option>
+                          <option value="">Não entra</option>
                           {options.map((option) => (
                             <option key={option.id} value={option.id}>
                               {option.label}
