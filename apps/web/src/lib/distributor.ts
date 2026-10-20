@@ -751,6 +751,83 @@ export function getCashFlow(input: {
   return apiFetch<CashFlowReport>(`/distributor/cash-flow?${params.toString()}`);
 }
 
+export type DistributorCustomer = {
+  id: string;
+  name: string;
+  cnpj: string | null;
+  phone: string | null;
+  city: string | null;
+  notes: string | null;
+  visitCount: number;
+  lastVisitedAt: string | null;
+  lastSummary: string | null;
+  createdAt: string;
+};
+
+export type DistributorVisit = {
+  id: string;
+  customerId: string;
+  customerName: string | null;
+  customerCnpj: string | null;
+  sellerUserId: string;
+  sellerName: string | null;
+  visitedAt: string;
+  summary: string;
+  nextAction: string | null;
+  quoteId: string | null;
+  createdAt: string;
+};
+
+export type DistributorCustomerHistory = DistributorCustomer & {
+  visits: DistributorVisit[];
+};
+
+export function listCustomers(q?: string) {
+  const query = q?.trim() ? `?${new URLSearchParams({ q: q.trim() }).toString()}` : '';
+  return apiFetch<DistributorCustomer[]>(`/distributor/customers${query}`);
+}
+
+export function createCustomer(input: {
+  name: string;
+  cnpj?: string | null;
+  phone?: string | null;
+  city?: string | null;
+  notes?: string | null;
+}) {
+  return apiFetch<DistributorCustomer>('/distributor/customers', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function getCustomerHistory(customerId: string) {
+  return apiFetch<DistributorCustomerHistory>(
+    `/distributor/customers/${customerId}`,
+  );
+}
+
+export function listVisits(opts?: { customerId?: string; sellerUserId?: string }) {
+  const params = new URLSearchParams();
+  if (opts?.customerId) params.set('customerId', opts.customerId);
+  if (opts?.sellerUserId) params.set('sellerUserId', opts.sellerUserId);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<DistributorVisit[]>(`/distributor/visits${query}`);
+}
+
+export function createVisit(input: {
+  customerId: string;
+  visitedAt: string;
+  summary: string;
+  nextAction?: string | null;
+  quoteId?: string | null;
+  sellerUserId?: string | null;
+}) {
+  return apiFetch<DistributorVisit>('/distributor/visits', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export function getDistributorFiscal() {
   return apiFetch<DistributorFiscalProfile>('/distributor/fiscal');
 }

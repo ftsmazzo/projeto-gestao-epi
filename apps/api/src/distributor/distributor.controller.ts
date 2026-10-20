@@ -23,6 +23,8 @@ import {
   SaveDistributorFiscalDto,
   CreateBankAccountDto,
   CreateCashMovementDto,
+  CreateDistributorCustomerDto,
+  CreateDistributorVisitDto,
   CreateLedgerAccountDto,
   CreateOutboundFromQuoteDto,
   CreatePayableDto,
@@ -636,6 +638,68 @@ export class DistributorController {
       from,
       to,
       bankAccountId,
+    );
+  }
+
+  @Get('customers')
+  listCustomers(
+    @CurrentUser() user: JwtPayload,
+    @Query('q') q?: string,
+  ) {
+    return this.distributor.listCustomers(
+      user.organizationId,
+      user.membershipRole,
+      q,
+    );
+  }
+
+  @Post('customers')
+  createCustomer(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateDistributorCustomerDto,
+  ) {
+    return this.distributor.createCustomer(
+      user.organizationId,
+      user.membershipRole,
+      dto,
+    );
+  }
+
+  @Get('customers/:customerId')
+  customerHistory(
+    @CurrentUser() user: JwtPayload,
+    @Param('customerId') customerId: string,
+  ) {
+    return this.distributor.customerHistory(
+      user.organizationId,
+      user.membershipRole,
+      customerId,
+    );
+  }
+
+  @Get('visits')
+  listVisits(
+    @CurrentUser() user: JwtPayload,
+    @Query('customerId') customerId?: string,
+    @Query('sellerUserId') sellerUserId?: string,
+  ) {
+    return this.distributor.listVisits(
+      user.organizationId,
+      user.membershipRole,
+      { customerId, sellerUserId },
+    );
+  }
+
+  @Post('visits')
+  createVisit(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateDistributorVisitDto,
+  ) {
+    return this.distributor.createVisit(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      dto,
     );
   }
 

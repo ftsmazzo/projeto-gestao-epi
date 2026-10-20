@@ -241,6 +241,8 @@ model Organization {
   distributorReceivables DistributorReceivable[]
   distributorLedgerAccounts DistributorLedgerAccount[]
   distributorBankAccounts DistributorBankAccount[]
+  distributorCustomers DistributorCustomer[]
+  distributorVisits DistributorVisit[]
   distributorFiscalProfile DistributorFiscalProfile?
   distributorDfeCursor DistributorDfeCursor?
 }
@@ -511,8 +513,50 @@ model DistributorQuote {
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   lines        DistributorQuoteLine[]
   outboundInvoice DistributorOutboundInvoice?
+  visits       DistributorVisit[]
 
   @@index([organizationId, status, approvedAt])
+}
+
+/// Cliente comercial da distribuidora para a agenda do vendedor.
+model DistributorCustomer {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  cnpj           String?
+  phone          String?
+  city           String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  visits       DistributorVisit[]
+
+  @@index([organizationId, name])
+  @@index([organizationId, cnpj])
+}
+
+/// Registro do que o vendedor falou com o cliente. O gestor le o historico.
+model DistributorVisit {
+  id             String   @id @default(cuid())
+  organizationId String
+  customerId     String
+  sellerUserId   String
+  visitedAt      DateTime
+  summary        String
+  nextAction     String?
+  quoteId        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     DistributorCustomer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  quote        DistributorQuote?    @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, customerId, visitedAt])
+  @@index([organizationId, sellerUserId, visitedAt])
+  @@index([quoteId])
 }
 
 /// Rascunho de NF-e de saida. A autorizacao na SEFAZ so dispara com homologacao e certificado.

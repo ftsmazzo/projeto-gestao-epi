@@ -21,6 +21,8 @@ import type {
   CreateDistributorProductDto,
   CreateBankAccountDto,
   CreateCashMovementDto,
+  CreateDistributorCustomerDto,
+  CreateDistributorVisitDto,
   CreateLedgerAccountDto,
   CreateOutboundFromQuoteDto,
   CreatePayableDto,
@@ -32,6 +34,14 @@ import type {
   SettleWithBankDto,
   UpdateDistributorProductDto,
 } from './dto/distributor.dto';
+import {
+  AgendaRuleError,
+  formatVisitedAt,
+  normalizeCustomerName,
+  normalizeNextAction,
+  normalizeVisitSummary,
+  parseVisitedAt,
+} from './agenda.rules';
 import {
   CatalogRuleError,
   measureCubage,
@@ -2181,6 +2191,185 @@ export class DistributorService {
     };
   }
 
+  async listCustomers(organizationId: string, role: string, q?: string) {
+    await this.requireDistributor(organizationId, role);
+    const query = q?.trim();
+    const rows = await this.prisma.distributorCustomer.findMany({
+      where: {
+        organizationId,
+        ...(query
+          ? {
+              OR: [
+                { name: { contains: query, mode: 'insensitive' } },
+                { cnpj: { contains: query.replace(/\D/g, '') } },
+                { city: { contains: query, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        visits: {
+          orderBy: { visitedAt: 'desc' },
+          take: 1,
+        },
+        _count: { select: { visits: true } },
+      },
+      orderBy: { name: 'asc' },
+      take: 100,
+    });
+    return rows.map(toCustomerView);
+  }
+
+  async createCustomer(
+    organizationId: string,
+    role: string,
+    dto: CreateDistributorCustomerDto,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    let name: string;
+    try {
+      name = normalizeCustomerName(dto.name);
+    } catch (error) {
+      throw this.asAgendaError(error);
+    }
+    let cnpj: string | null = null;
+    if (dto.cnpj?.trim()) {
+      const validated = validateCnpj(dto.cnpj);
+      if (!validated.ok) throw new BadRequestException(validated.message);
+      cnpj = validated.normalized;
+    }
+    const created = await this.prisma.distributorCustomer.create({
+      data: {
+        organizationId,
+        name,
+        cnpj,
+        phone: emptyToNull(dto.phone),
+        city: emptyToNull(dto.city),
+        notes: emptyToNull(dto.notes),
+      },
+      include: {
+        visits: true,
+        _count: { select: { visits: true } },
+      },
+    });
+    return toCustomerView(created);
+  }
+
+  async listVisits(
+    organizationId: string,
+    role: string,
+    opts?: { customerId?: string; sellerUserId?: string },
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const rows = await this.prisma.distributorVisit.findMany({
+      where: {
+        organizationId,
+        ...(opts?.customerId ? { customerId: opts.customerId } : {}),
+        ...(opts?.sellerUserId ? { sellerUserId: opts.sellerUserId } : {}),
+      },
+      include: {
+        customer: true,
+      },
+      orderBy: { visitedAt: 'desc' },
+      take: 200,
+    });
+    const sellerIds = [...new Set(rows.map((row) => row.sellerUserId))];
+    const sellers = sellerIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: sellerIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const sellerName = new Map(sellers.map((user) => [user.id, user.name]));
+    return rows.map((row) => toVisitView(row, sellerName.get(row.sellerUserId) ?? null));
+  }
+
+  async createVisit(
+    organizationId: string,
+    role: string,
+    userId: string,
+    dto: CreateDistributorVisitDto,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const isManager = role === 'OWNER' || role === 'ADMIN';
+    const sellerUserId =
+      isManager && dto.sellerUserId?.trim() ? dto.sellerUserId.trim() : userId;
+    if (sellerUserId !== userId) {
+      const member = await this.prisma.membership.findFirst({
+        where: { organizationId, userId: sellerUserId },
+      });
+      if (!member) {
+        throw new NotFoundException('Vendedor nao encontrado nesta distribuidora.');
+      }
+    }
+    const customer = await this.prisma.distributorCustomer.findFirst({
+      where: { id: dto.customerId, organizationId },
+    });
+    if (!customer) throw new NotFoundException('Cliente nao encontrado.');
+    let visitedAt: Date;
+    let summary: string;
+    let nextAction: string | null;
+    try {
+      visitedAt = parseVisitedAt(dto.visitedAt);
+      summary = normalizeVisitSummary(dto.summary);
+      nextAction = normalizeNextAction(dto.nextAction);
+    } catch (error) {
+      throw this.asAgendaError(error);
+    }
+    if (dto.quoteId?.trim()) {
+      const quote = await this.prisma.distributorQuote.findFirst({
+        where: { id: dto.quoteId.trim(), organizationId },
+      });
+      if (!quote) throw new NotFoundException('Orcamento nao encontrado.');
+    }
+    const created = await this.prisma.distributorVisit.create({
+      data: {
+        organizationId,
+        customerId: customer.id,
+        sellerUserId,
+        visitedAt,
+        summary,
+        nextAction,
+        quoteId: dto.quoteId?.trim() || null,
+      },
+      include: { customer: true },
+    });
+    const seller = await this.prisma.user.findUnique({
+      where: { id: sellerUserId },
+      select: { name: true },
+    });
+    return toVisitView(created, seller?.name ?? null);
+  }
+
+  async customerHistory(organizationId: string, role: string, customerId: string) {
+    await this.requireDistributor(organizationId, role);
+    const customer = await this.prisma.distributorCustomer.findFirst({
+      where: { id: customerId, organizationId },
+      include: {
+        visits: {
+          orderBy: { visitedAt: 'desc' },
+          include: { customer: true },
+        },
+        _count: { select: { visits: true } },
+      },
+    });
+    if (!customer) throw new NotFoundException('Cliente nao encontrado.');
+    const sellerIds = [...new Set(customer.visits.map((row) => row.sellerUserId))];
+    const sellers = sellerIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: sellerIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const sellerName = new Map(sellers.map((user) => [user.id, user.name]));
+    return {
+      ...toCustomerView(customer),
+      visits: customer.visits.map((row) =>
+        toVisitView(row, sellerName.get(row.sellerUserId) ?? null),
+      ),
+    };
+  }
+
   private async bankBalanceCents(
     bankAccountId: string,
     tx: Prisma.TransactionClient | PrismaService = this.prisma,
@@ -2290,6 +2479,13 @@ export class DistributorService {
 
   private asFinanceOrPayableError(error: unknown): BadRequestException {
     if (error instanceof FinanceRuleError || error instanceof PayableRuleError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
+  private asAgendaError(error: unknown): BadRequestException {
+    if (error instanceof AgendaRuleError) {
       return new BadRequestException(error.message);
     }
     throw error;
@@ -2742,6 +2938,61 @@ function toCashMovementView(row: {
     reconciledAt: row.reconciledAt ?? null,
     reconciled: Boolean(row.reconciledAt),
     createdAt: row.createdAt,
+  };
+}
+
+function toCustomerView(customer: {
+  id: string;
+  name: string;
+  cnpj: string | null;
+  phone: string | null;
+  city: string | null;
+  notes: string | null;
+  createdAt: Date;
+  visits?: Array<{ visitedAt: Date; summary: string }>;
+  _count?: { visits: number };
+}) {
+  const last = customer.visits?.[0];
+  return {
+    id: customer.id,
+    name: customer.name,
+    cnpj: customer.cnpj,
+    phone: customer.phone,
+    city: customer.city,
+    notes: customer.notes,
+    visitCount: customer._count?.visits ?? customer.visits?.length ?? 0,
+    lastVisitedAt: last ? formatVisitedAt(last.visitedAt) : null,
+    lastSummary: last?.summary ?? null,
+    createdAt: customer.createdAt,
+  };
+}
+
+function toVisitView(
+  visit: {
+    id: string;
+    customerId: string;
+    sellerUserId: string;
+    visitedAt: Date;
+    summary: string;
+    nextAction: string | null;
+    quoteId: string | null;
+    createdAt: Date;
+    customer?: { name: string; cnpj: string | null };
+  },
+  sellerName: string | null,
+) {
+  return {
+    id: visit.id,
+    customerId: visit.customerId,
+    customerName: visit.customer?.name ?? null,
+    customerCnpj: visit.customer?.cnpj ?? null,
+    sellerUserId: visit.sellerUserId,
+    sellerName,
+    visitedAt: formatVisitedAt(visit.visitedAt),
+    summary: visit.summary,
+    nextAction: visit.nextAction,
+    quoteId: visit.quoteId,
+    createdAt: visit.createdAt,
   };
 }
 

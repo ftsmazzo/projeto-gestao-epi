@@ -541,6 +541,52 @@ export class CreateCashMovementDto {
   note?: string | null;
 }
 
+export class CreateDistributorCustomerDto {
+  @IsString()
+  @MinLength(2)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  cnpj?: string | null;
+
+  @IsOptional()
+  @IsString()
+  phone?: string | null;
+
+  @IsOptional()
+  @IsString()
+  city?: string | null;
+
+  @IsOptional()
+  @IsString()
+  notes?: string | null;
+}
+
+export class CreateDistributorVisitDto {
+  @IsString()
+  customerId!: string;
+
+  @IsString()
+  visitedAt!: string;
+
+  @IsString()
+  @MinLength(3)
+  summary!: string;
+
+  @IsOptional()
+  @IsString()
+  nextAction?: string | null;
+
+  @IsOptional()
+  @IsString()
+  quoteId?: string | null;
+
+  @IsOptional()
+  @IsString()
+  sellerUserId?: string | null;
+}
+
 export class LinkInboundLineDto {
   @IsOptional()
   @IsString()

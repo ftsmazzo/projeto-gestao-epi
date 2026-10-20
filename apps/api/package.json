@@ -29,6 +29,7 @@
     "test:nfe-outbound": "npx --yes tsx src/distributor/nfe-outbound.rules.selftest.ts",
     "test:payable": "npx --yes tsx src/distributor/payable.rules.selftest.ts",
     "test:finance": "npx --yes tsx src/distributor/finance.rules.selftest.ts",
+    "test:agenda": "npx --yes tsx src/distributor/agenda.rules.selftest.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",
