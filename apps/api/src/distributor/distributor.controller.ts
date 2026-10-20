@@ -569,11 +569,16 @@ export class DistributorController {
   listCashMovements(
     @CurrentUser() user: JwtPayload,
     @Query('bankAccountId') bankAccountId?: string,
+    @Query('unreconciledOnly') unreconciledOnly?: string,
   ) {
     return this.distributor.listCashMovements(
       user.organizationId,
       user.membershipRole,
-      bankAccountId,
+      {
+        bankAccountId,
+        unreconciledOnly:
+          unreconciledOnly === '1' || unreconciledOnly === 'true',
+      },
     );
   }
 
@@ -587,6 +592,50 @@ export class DistributorController {
       user.membershipRole,
       user.sub,
       dto,
+    );
+  }
+
+  @Post('cash-movements/:movementId/reconcile')
+  reconcileCashMovement(
+    @CurrentUser() user: JwtPayload,
+    @Param('movementId') movementId: string,
+  ) {
+    return this.distributor.setCashMovementReconciled(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      movementId,
+      true,
+    );
+  }
+
+  @Post('cash-movements/:movementId/unreconcile')
+  unreconcileCashMovement(
+    @CurrentUser() user: JwtPayload,
+    @Param('movementId') movementId: string,
+  ) {
+    return this.distributor.setCashMovementReconciled(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      movementId,
+      false,
+    );
+  }
+
+  @Get('cash-flow')
+  cashFlow(
+    @CurrentUser() user: JwtPayload,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('bankAccountId') bankAccountId?: string,
+  ) {
+    return this.distributor.cashFlowReport(
+      user.organizationId,
+      user.membershipRole,
+      from,
+      to,
+      bankAccountId,
     );
   }
 

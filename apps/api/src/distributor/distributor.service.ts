@@ -58,7 +58,9 @@ import {
   assertCashAmount,
   assertMarkReceivableReceived,
   assertReceivableAmount,
+  assertReconcileToggle,
   cashBalanceFromMovements,
+  cashFlowTotals,
   defaultDueOn,
   dreTotals,
   nextCashBalance,
@@ -2050,13 +2052,14 @@ export class DistributorService {
   async listCashMovements(
     organizationId: string,
     role: string,
-    bankAccountId?: string,
+    opts?: { bankAccountId?: string; unreconciledOnly?: boolean },
   ) {
     await this.requireDistributor(organizationId, role);
     const rows = await this.prisma.distributorCashMovement.findMany({
       where: {
         bankAccount: { organizationId },
-        ...(bankAccountId ? { bankAccountId } : {}),
+        ...(opts?.bankAccountId ? { bankAccountId: opts.bankAccountId } : {}),
+        ...(opts?.unreconciledOnly ? { reconciledAt: null } : {}),
       },
       include: { bankAccount: true },
       orderBy: { createdAt: 'desc' },
@@ -2099,6 +2102,83 @@ export class DistributorService {
       });
       return toCashMovementView(created);
     });
+  }
+
+  async setCashMovementReconciled(
+    organizationId: string,
+    role: string,
+    userId: string,
+    movementId: string,
+    reconcile: boolean,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const row = await this.prisma.distributorCashMovement.findFirst({
+      where: { id: movementId, bankAccount: { organizationId } },
+      include: { bankAccount: true },
+    });
+    if (!row) throw new NotFoundException('Movimento de caixa nao encontrado.');
+    try {
+      assertReconcileToggle({
+        currentlyReconciled: Boolean(row.reconciledAt),
+        reconcile,
+      });
+    } catch (error) {
+      throw this.asFinanceError(error);
+    }
+    const updated = await this.prisma.distributorCashMovement.update({
+      where: { id: row.id },
+      data: reconcile
+        ? { reconciledAt: new Date(), reconciledByUserId: userId }
+        : { reconciledAt: null, reconciledByUserId: null },
+      include: { bankAccount: true },
+    });
+    return toCashMovementView(updated);
+  }
+
+  async cashFlowReport(
+    organizationId: string,
+    role: string,
+    from?: string,
+    to?: string,
+    bankAccountId?: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const fromDay = parseReportDay(from, 'inicio');
+    const toDay = parseReportDay(to, 'fim');
+    if (toDay.getTime() < fromDay.getTime()) {
+      throw new BadRequestException('A data final precisa ser depois da inicial.');
+    }
+    const toExclusive = new Date(toDay);
+    toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+    if (bankAccountId) {
+      await this.requireBankAccount(organizationId, bankAccountId);
+    }
+    const rows = await this.prisma.distributorCashMovement.findMany({
+      where: {
+        bankAccount: { organizationId },
+        ...(bankAccountId ? { bankAccountId } : {}),
+        createdAt: { gte: fromDay, lt: toExclusive },
+      },
+      include: { bankAccount: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const totals = cashFlowTotals(rows);
+    const unreconciledCents = rows
+      .filter((row) => !row.reconciledAt)
+      .reduce(
+        (sum, row) =>
+          sum + (row.direction === 'IN' ? row.amountCents : -row.amountCents),
+        0,
+      );
+    return {
+      from: fromDay.toISOString().slice(0, 10),
+      to: toDay.toISOString().slice(0, 10),
+      bankAccountId: bankAccountId ?? null,
+      ...totals,
+      unreconciledCount: rows.filter((row) => !row.reconciledAt).length,
+      unreconciledNetCents: unreconciledCents,
+      movements: rows.map(toCashMovementView),
+    };
   }
 
   private async bankBalanceCents(
@@ -2645,6 +2725,7 @@ function toCashMovementView(row: {
   note: string | null;
   payableId: string | null;
   receivableId: string | null;
+  reconciledAt?: Date | null;
   createdAt: Date;
   bankAccount?: { name: string };
 }) {
@@ -2658,6 +2739,8 @@ function toCashMovementView(row: {
     note: row.note,
     payableId: row.payableId,
     receivableId: row.receivableId,
+    reconciledAt: row.reconciledAt ?? null,
+    reconciled: Boolean(row.reconciledAt),
     createdAt: row.createdAt,
   };
 }

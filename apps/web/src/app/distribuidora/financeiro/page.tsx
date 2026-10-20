@@ -10,6 +10,7 @@ import {
   createLedgerAccount,
   createPayable,
   createReceivable,
+  getCashFlow,
   getFinanceSummary,
   isDistributorManager,
   listBankAccounts,
@@ -19,7 +20,10 @@ import {
   listReceivables,
   markPayablePaid,
   markReceivableReceived,
+  reconcileCashMovement,
+  unreconcileCashMovement,
   type CashDirection,
+  type CashFlowReport,
   type DistributorBankAccount,
   type DistributorCashMovement,
   type DistributorFinanceSummary,
@@ -30,6 +34,16 @@ import {
   type PayableStatus,
   type ReceivableStatus,
 } from '../../../lib/distributor';
+
+function monthRange() {
+  const now = new Date();
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+  };
+}
 
 type Tab = 'pagar' | 'receber' | 'caixa' | 'plano';
 
@@ -81,8 +95,13 @@ export default function DistribuidoraFinanceiroPage() {
   const [banks, setBanks] = useState<DistributorBankAccount[]>([]);
   const [movements, setMovements] = useState<DistributorCashMovement[]>([]);
   const [summary, setSummary] = useState<DistributorFinanceSummary | null>(null);
+  const [cashFlow, setCashFlow] = useState<CashFlowReport | null>(null);
   const [manager, setManager] = useState(false);
   const [bankAccountId, setBankAccountId] = useState('');
+  const [unreconciledOnly, setUnreconciledOnly] = useState(false);
+  const initialRange = monthRange();
+  const [flowFrom, setFlowFrom] = useState(initialRange.from);
+  const [flowTo, setFlowTo] = useState(initialRange.to);
   const [description, setDescription] = useState('');
   const [party, setParty] = useState('');
   const [amount, setAmount] = useState('');
@@ -99,14 +118,16 @@ export default function DistribuidoraFinanceiroPage() {
   const [saving, setSaving] = useState(false);
 
   async function reload() {
-    const [payableRows, receivableRows, ledgerRows, bankRows, cashRows, finance] =
+    const range = { from: flowFrom, to: flowTo };
+    const [payableRows, receivableRows, ledgerRows, bankRows, cashRows, finance, flow] =
       await Promise.all([
         listPayables(),
         listReceivables(),
         listLedgerAccounts(),
         listBankAccounts(),
-        listCashMovements(),
+        listCashMovements({ unreconciledOnly }),
         getFinanceSummary(),
+        getCashFlow(range),
       ]);
     setPayables(payableRows);
     setReceivables(receivableRows);
@@ -114,10 +135,12 @@ export default function DistribuidoraFinanceiroPage() {
     setBanks(bankRows);
     setMovements(cashRows);
     setSummary(finance);
+    setCashFlow(flow);
     if (!bankAccountId && bankRows[0]) setBankAccountId(bankRows[0].id);
   }
 
   useEffect(() => {
+    const range = monthRange();
     void Promise.all([
       listPayables(),
       listReceivables(),
@@ -125,15 +148,17 @@ export default function DistribuidoraFinanceiroPage() {
       listBankAccounts(),
       listCashMovements(),
       getFinanceSummary(),
+      getCashFlow(range),
       fetchMe(),
     ])
-      .then(([payableRows, receivableRows, ledgerRows, bankRows, cashRows, finance, me]) => {
+      .then(([payableRows, receivableRows, ledgerRows, bankRows, cashRows, finance, flow, me]) => {
         setPayables(payableRows);
         setReceivables(receivableRows);
         setAccounts(ledgerRows);
         setBanks(bankRows);
         setMovements(cashRows);
         setSummary(finance);
+        setCashFlow(flow);
         setManager(isDistributorManager(me.membershipRole));
         if (bankRows[0]) setBankAccountId(bankRows[0].id);
       })
@@ -772,7 +797,101 @@ export default function DistribuidoraFinanceiroPage() {
           ) : null}
 
           <section className="dash-panel">
-            <h2 className="dash-panel__title">Extrato recente</h2>
+            <h2 className="dash-panel__title">Fluxo de caixa</h2>
+            <form
+              className="form-grid"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setError(null);
+                setSaving(true);
+                void getCashFlow({ from: flowFrom, to: flowTo })
+                  .then((flow) => {
+                    setCashFlow(flow);
+                    setNotice('Fluxo atualizado.');
+                  })
+                  .catch((err: unknown) =>
+                    setError(
+                      err instanceof Error ? err.message : 'Falha no fluxo.',
+                    ),
+                  )
+                  .finally(() => setSaving(false));
+              }}
+            >
+              <label className="field">
+                <span className="field-label">De</span>
+                <input
+                  className="input"
+                  type="date"
+                  value={flowFrom}
+                  onChange={(event) => setFlowFrom(event.target.value)}
+                  required
+                />
+              </label>
+              <label className="field">
+                <span className="field-label">Até</span>
+                <input
+                  className="input"
+                  type="date"
+                  value={flowTo}
+                  onChange={(event) => setFlowTo(event.target.value)}
+                  required
+                />
+              </label>
+              <div className="form-actions">
+                <button className="btn btn-primary" type="submit" disabled={saving}>
+                  Calcular
+                </button>
+              </div>
+            </form>
+            {cashFlow ? (
+              <div className="dash-kpi-grid" aria-label="Totais do período">
+                <article className="dash-kpi">
+                  <p className="dash-kpi__label">Entradas</p>
+                  <p className="dash-kpi__value">{money(cashFlow.inflowCents)}</p>
+                </article>
+                <article className="dash-kpi">
+                  <p className="dash-kpi__label">Saídas</p>
+                  <p className="dash-kpi__value">{money(cashFlow.outflowCents)}</p>
+                </article>
+                <article className="dash-kpi">
+                  <p className="dash-kpi__label">Líquido</p>
+                  <p className="dash-kpi__value">{money(cashFlow.netCents)}</p>
+                </article>
+                <article className="dash-kpi">
+                  <p className="dash-kpi__label">Sem conciliar</p>
+                  <p className="dash-kpi__value">{cashFlow.unreconciledCount}</p>
+                  <p className="dash-kpi__hint">
+                    {money(cashFlow.unreconciledNetCents)} líquido
+                  </p>
+                </article>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="dash-panel">
+            <h2 className="dash-panel__title">Extrato</h2>
+            <label className="field">
+              <span className="field-label">
+                <input
+                  type="checkbox"
+                  checked={unreconciledOnly}
+                  onChange={(event) => {
+                    const next = event.target.checked;
+                    setUnreconciledOnly(next);
+                    setSaving(true);
+                    void listCashMovements({ unreconciledOnly: next })
+                      .then(setMovements)
+                      .catch((err: unknown) =>
+                        setError(
+                          err instanceof Error ? err.message : 'Falha ao filtrar.',
+                        ),
+                      )
+                      .finally(() => setSaving(false));
+                  }}
+                />{' '}
+                Só pendentes de conciliação
+              </span>
+            </label>
             {movements.length === 0 ? (
               <p className="field-hint">Nenhum movimento ainda.</p>
             ) : (
@@ -786,6 +905,8 @@ export default function DistribuidoraFinanceiroPage() {
                       <th>Tipo</th>
                       <th>Valor</th>
                       <th>Nota</th>
+                      <th>Conciliação</th>
+                      <th />
                     </tr>
                   </thead>
                   <tbody>
@@ -797,6 +918,41 @@ export default function DistribuidoraFinanceiroPage() {
                         <td>{row.direction === 'IN' ? 'Entrada' : 'Saída'}</td>
                         <td>{money(row.amountCents)}</td>
                         <td>{row.note ?? '—'}</td>
+                        <td>{row.reconciled ? 'Conciliado' : 'Pendente'}</td>
+                        <td>
+                          {manager ? (
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              disabled={saving}
+                              onClick={() => {
+                                setSaving(true);
+                                const action = row.reconciled
+                                  ? unreconcileCashMovement
+                                  : reconcileCashMovement;
+                                void action(row.id)
+                                  .then(async () => {
+                                    setNotice(
+                                      row.reconciled
+                                        ? 'Conciliação desfeita.'
+                                        : 'Movimento conciliado.',
+                                    );
+                                    await reload();
+                                  })
+                                  .catch((err: unknown) =>
+                                    setError(
+                                      err instanceof Error
+                                        ? err.message
+                                        : 'Falha na conciliação.',
+                                    ),
+                                  )
+                                  .finally(() => setSaving(false));
+                              }}
+                            >
+                              {row.reconciled ? 'Desfazer' : 'Conciliar'}
+                            </button>
+                          ) : null}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

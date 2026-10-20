@@ -8,7 +8,9 @@ import {
   assertCashAmount,
   assertMarkReceivableReceived,
   assertReceivableAmount,
+  assertReconcileToggle,
   cashBalanceFromMovements,
+  cashFlowTotals,
   defaultDueOn,
   dreTotals,
   nextCashBalance,
@@ -66,5 +68,23 @@ assert(
   ]) === 750,
   'balance from movements',
 );
+
+assertReconcileToggle({ currentlyReconciled: false, reconcile: true });
+let already = false;
+try {
+  assertReconcileToggle({ currentlyReconciled: true, reconcile: true });
+} catch (error) {
+  already = error instanceof FinanceRuleError;
+}
+assert(already, 'nao reconcilia de novo');
+
+const flow = cashFlowTotals([
+  { direction: 'IN', amountCents: 1000 },
+  { direction: 'OUT', amountCents: 300 },
+  { direction: 'IN', amountCents: 50 },
+]);
+assert(flow.inflowCents === 1050, 'inflow');
+assert(flow.outflowCents === 300, 'outflow');
+assert(flow.netCents === 750, 'net');
 
 console.log('finance.rules.selftest ok');

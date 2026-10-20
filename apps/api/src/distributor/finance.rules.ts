@@ -121,3 +121,34 @@ export function cashBalanceFromMovements(
       : total - row.amountCents;
   }, 0);
 }
+
+export function assertReconcileToggle(input: {
+  currentlyReconciled: boolean;
+  reconcile: boolean;
+}): void {
+  if (input.reconcile && input.currentlyReconciled) {
+    throw new FinanceRuleError('Este movimento ja esta conciliado.');
+  }
+  if (!input.reconcile && !input.currentlyReconciled) {
+    throw new FinanceRuleError('Este movimento ainda nao esta conciliado.');
+  }
+}
+
+export function cashFlowTotals(
+  movements: Array<{ direction: string; amountCents: number }>,
+): { inflowCents: number; outflowCents: number; netCents: number } {
+  let inflowCents = 0;
+  let outflowCents = 0;
+  for (const row of movements) {
+    if (!Number.isInteger(row.amountCents) || row.amountCents < 0) {
+      throw new FinanceRuleError('Movimento de caixa invalido.');
+    }
+    if (row.direction === 'IN') inflowCents += row.amountCents;
+    else outflowCents += row.amountCents;
+  }
+  return {
+    inflowCents,
+    outflowCents,
+    netCents: inflowCents - outflowCents,
+  };
+}

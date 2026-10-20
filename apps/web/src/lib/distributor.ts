@@ -538,7 +538,21 @@ export type DistributorCashMovement = {
   note: string | null;
   payableId: string | null;
   receivableId: string | null;
+  reconciledAt: string | null;
+  reconciled: boolean;
   createdAt: string;
+};
+
+export type CashFlowReport = {
+  from: string;
+  to: string;
+  bankAccountId: string | null;
+  inflowCents: number;
+  outflowCents: number;
+  netCents: number;
+  unreconciledCount: number;
+  unreconciledNetCents: number;
+  movements: DistributorCashMovement[];
 };
 
 export type DistributorFinanceSummary = {
@@ -690,10 +704,14 @@ export function createBankAccount(input: {
   });
 }
 
-export function listCashMovements(bankAccountId?: string) {
-  const query = bankAccountId
-    ? `?${new URLSearchParams({ bankAccountId }).toString()}`
-    : '';
+export function listCashMovements(opts?: {
+  bankAccountId?: string;
+  unreconciledOnly?: boolean;
+}) {
+  const params = new URLSearchParams();
+  if (opts?.bankAccountId) params.set('bankAccountId', opts.bankAccountId);
+  if (opts?.unreconciledOnly) params.set('unreconciledOnly', '1');
+  const query = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<DistributorCashMovement[]>(`/distributor/cash-movements${query}`);
 }
 
@@ -707,6 +725,30 @@ export function createCashMovement(input: {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+export function reconcileCashMovement(movementId: string) {
+  return apiFetch<DistributorCashMovement>(
+    `/distributor/cash-movements/${movementId}/reconcile`,
+    { method: 'POST' },
+  );
+}
+
+export function unreconcileCashMovement(movementId: string) {
+  return apiFetch<DistributorCashMovement>(
+    `/distributor/cash-movements/${movementId}/unreconcile`,
+    { method: 'POST' },
+  );
+}
+
+export function getCashFlow(input: {
+  from: string;
+  to: string;
+  bankAccountId?: string;
+}) {
+  const params = new URLSearchParams({ from: input.from, to: input.to });
+  if (input.bankAccountId) params.set('bankAccountId', input.bankAccountId);
+  return apiFetch<CashFlowReport>(`/distributor/cash-flow?${params.toString()}`);
 }
 
 export function getDistributorFiscal() {

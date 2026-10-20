@@ -643,22 +643,25 @@ model DistributorBankAccount {
 }
 
 model DistributorCashMovement {
-  id              String                   @id @default(cuid())
-  bankAccountId   String
-  direction       DistributorCashDirection
-  amountCents     Int
-  source          DistributorCashSource
-  note            String?
-  payableId       String?                  @unique
-  receivableId    String?                  @unique
-  createdByUserId String
-  createdAt       DateTime                 @default(now())
+  id                String                   @id @default(cuid())
+  bankAccountId     String
+  direction         DistributorCashDirection
+  amountCents       Int
+  source            DistributorCashSource
+  note              String?
+  payableId         String?                  @unique
+  receivableId      String?                  @unique
+  reconciledAt      DateTime?
+  reconciledByUserId String?
+  createdByUserId   String
+  createdAt         DateTime                 @default(now())
 
   bankAccount DistributorBankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
   payable     DistributorPayable?    @relation(fields: [payableId], references: [id], onDelete: SetNull)
   receivable  DistributorReceivable? @relation(fields: [receivableId], references: [id], onDelete: SetNull)
 
   @@index([bankAccountId, createdAt])
+  @@index([bankAccountId, reconciledAt])
 }
 
 model DistributorOutboundLine {
