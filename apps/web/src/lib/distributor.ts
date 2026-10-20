@@ -828,6 +828,139 @@ export function createVisit(input: {
   });
 }
 
+export type PlusPreviewClient = {
+  servedClientId: string;
+  legalName: string;
+  tradeName: string | null;
+  cnpj: string;
+  consultoriaOrganizationId: string;
+  consultoriaName: string;
+};
+
+export type PlusContract = {
+  id: string;
+  status: 'ACTIVE' | 'REVOKED';
+  servedClientId: string;
+  clientName: string;
+  clientTradeName: string | null;
+  clientCnpj: string;
+  consultoriaOrganizationId: string;
+  consultoriaName: string;
+  mappingCount: number;
+  shipmentCount: number;
+  createdAt: string;
+  revokedAt: string | null;
+};
+
+export type PlusMapping = {
+  id: string;
+  contractId: string;
+  variantId: string;
+  productName: string;
+  internalSku: string;
+  label: string;
+  epiItemId: string;
+  epiName: string | null;
+  epiCaNumber: string | null;
+  epiVariantId: string | null;
+};
+
+export type PlusCatalogItem = {
+  id: string;
+  name: string;
+  caNumber: string | null;
+  externalCode: string | null;
+  variants: Array<{
+    id: string;
+    size: string | null;
+    color: string | null;
+    model: string | null;
+  }>;
+};
+
+export type PlusShipment = {
+  id: string;
+  contractId: string;
+  clientName: string;
+  clientCnpj: string;
+  outboundInvoiceId: string;
+  series: string;
+  number: number;
+  customerName: string;
+  stockLocationId: string;
+  lineCount: number;
+  quantity: number;
+  createdAt: string;
+};
+
+export function previewPlusClient(cnpj: string) {
+  return apiFetch<PlusPreviewClient[]>(
+    `/distributor/plus/preview?${new URLSearchParams({ cnpj }).toString()}`,
+  );
+}
+
+export function listPlusContracts() {
+  return apiFetch<PlusContract[]>('/distributor/plus/contracts');
+}
+
+export function createPlusContract(input: {
+  cnpj: string;
+  consultoriaOrganizationId?: string | null;
+}) {
+  return apiFetch<PlusContract>('/distributor/plus/contracts', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function revokePlusContract(contractId: string) {
+  return apiFetch<PlusContract>(`/distributor/plus/contracts/${contractId}/revoke`, {
+    method: 'POST',
+  });
+}
+
+export function listPlusMappings(contractId: string) {
+  return apiFetch<PlusMapping[]>(
+    `/distributor/plus/contracts/${contractId}/mappings`,
+  );
+}
+
+export function upsertPlusMapping(
+  contractId: string,
+  input: {
+    variantId: string;
+    epiItemId: string;
+    epiVariantId?: string | null;
+  },
+) {
+  return apiFetch<{
+    id: string;
+    contractId: string;
+    variantId: string;
+    epiItemId: string;
+    epiVariantId: string | null;
+  }>(`/distributor/plus/contracts/${contractId}/mappings`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export function listPlusCatalog(contractId: string, q?: string) {
+  const query = q?.trim()
+    ? `?${new URLSearchParams({ q: q.trim() }).toString()}`
+    : '';
+  return apiFetch<PlusCatalogItem[]>(
+    `/distributor/plus/contracts/${contractId}/catalog${query}`,
+  );
+}
+
+export function listPlusShipments(contractId?: string) {
+  const query = contractId
+    ? `?${new URLSearchParams({ contractId }).toString()}`
+    : '';
+  return apiFetch<PlusShipment[]>(`/distributor/plus/shipments${query}`);
+}
+
 export function getDistributorFiscal() {
   return apiFetch<DistributorFiscalProfile>('/distributor/fiscal');
 }

@@ -127,6 +127,12 @@ enum DistributorCashSource {
   RECEIVABLE
 }
 
+/// Contrato Plus: saida da distribuidora alimenta o estoque de um ServedClient.
+enum DistributorPlusStatus {
+  ACTIVE
+  REVOKED
+}
+
 /// Estado comercial da assinatura do cliente atendido (CNPJ).
 enum ClientSubscriptionStatus {
   TRIAL
@@ -243,6 +249,8 @@ model Organization {
   distributorBankAccounts DistributorBankAccount[]
   distributorCustomers DistributorCustomer[]
   distributorVisits DistributorVisit[]
+  distributorPlusContracts DistributorPlusContract[] @relation("DistributorPlusDistributor")
+  consultoriaPlusContracts DistributorPlusContract[] @relation("DistributorPlusConsultoria")
   distributorFiscalProfile DistributorFiscalProfile?
   distributorDfeCursor DistributorDfeCursor?
 }
@@ -309,6 +317,8 @@ model DistributorVariant {
   quoteLines DistributorQuoteLine[]
   outboundLines DistributorOutboundLine[]
   lots       DistributorLot[]
+  plusMappings DistributorPlusMapping[]
+  plusShipmentLines DistributorPlusShipmentLine[]
 
   @@unique([productId, label])
   @@index([productId])
@@ -587,9 +597,86 @@ model DistributorOutboundInvoice {
   lines        DistributorOutboundLine[]
   movements    DistributorMovement[]
   receivable   DistributorReceivable?
+  plusShipment DistributorPlusShipment?
 
   @@unique([organizationId, series, number])
   @@index([organizationId, status])
+}
+
+/// Vinculo explicito entre a distribuidora e uma empresa ja cliente do ProntEPI.
+model DistributorPlusContract {
+  id                        String                @id @default(cuid())
+  organizationId            String
+  consultoriaOrganizationId String
+  servedClientId            String
+  status                    DistributorPlusStatus @default(ACTIVE)
+  createdByUserId           String
+  revokedAt                 DateTime?
+  revokedByUserId           String?
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  organization            Organization @relation("DistributorPlusDistributor", fields: [organizationId], references: [id], onDelete: Cascade)
+  consultoriaOrganization Organization @relation("DistributorPlusConsultoria", fields: [consultoriaOrganizationId], references: [id], onDelete: Restrict)
+  servedClient            ServedClient @relation(fields: [servedClientId], references: [id], onDelete: Restrict)
+  mappings                DistributorPlusMapping[]
+  shipments               DistributorPlusShipment[]
+
+  @@unique([organizationId, servedClientId])
+  @@index([organizationId, status])
+  @@index([consultoriaOrganizationId])
+  @@index([servedClientId])
+}
+
+/// Mapeia a variante da distribuidora para o EPI ja cadastrado na ficha do cliente.
+model DistributorPlusMapping {
+  id          String   @id @default(cuid())
+  contractId  String
+  variantId   String
+  epiItemId   String
+  epiVariantId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  contract DistributorPlusContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  variant  DistributorVariant      @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([contractId, variantId])
+  @@index([variantId])
+  @@index([epiItemId])
+}
+
+/// Registro da transferencia Plus gerada na confirmacao da nota de saida.
+model DistributorPlusShipment {
+  id                 String   @id @default(cuid())
+  contractId         String
+  outboundInvoiceId  String   @unique
+  stockLocationId    String
+  createdByUserId    String
+  createdAt          DateTime @default(now())
+
+  contract        DistributorPlusContract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  outboundInvoice DistributorOutboundInvoice @relation(fields: [outboundInvoiceId], references: [id], onDelete: Cascade)
+  lines           DistributorPlusShipmentLine[]
+
+  @@index([contractId, createdAt])
+}
+
+model DistributorPlusShipmentLine {
+  id                 String  @id @default(cuid())
+  shipmentId         String
+  variantId          String
+  epiItemId          String
+  epiVariantId       String?
+  quantity           Int
+  epiStockMovementId String?
+
+  shipment DistributorPlusShipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  variant  DistributorVariant      @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@index([shipmentId])
+  @@index([variantId])
+  @@index([epiStockMovementId])
 }
 
 /// Conta a pagar da distribuidora. Compra recebida e nota de entrada confirmada geram OPEN.
@@ -992,6 +1079,7 @@ model ServedClient {
   groupMember      ClientGroupMember?
   workSites        ClientWorkSite[]
   workAssignments  WorkerWorkAssignment[]
+  plusContracts    DistributorPlusContract[]
 
   @@unique([organizationId, cnpj])
   @@index([organizationId])

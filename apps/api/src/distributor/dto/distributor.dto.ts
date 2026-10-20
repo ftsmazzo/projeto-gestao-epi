@@ -587,6 +587,28 @@ export class CreateDistributorVisitDto {
   sellerUserId?: string | null;
 }
 
+export class CreatePlusContractDto {
+  @IsString()
+  @MinLength(14)
+  cnpj!: string;
+
+  @IsOptional()
+  @IsString()
+  consultoriaOrganizationId?: string | null;
+}
+
+export class UpsertPlusMappingDto {
+  @IsString()
+  variantId!: string;
+
+  @IsString()
+  epiItemId!: string;
+
+  @IsOptional()
+  @IsString()
+  epiVariantId?: string | null;
+}
+
 export class LinkInboundLineDto {
   @IsOptional()
   @IsString()

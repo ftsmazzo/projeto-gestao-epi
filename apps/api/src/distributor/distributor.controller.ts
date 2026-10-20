@@ -28,6 +28,7 @@ import {
   CreateLedgerAccountDto,
   CreateOutboundFromQuoteDto,
   CreatePayableDto,
+  CreatePlusContractDto,
   CreatePurchaseOrderDto,
   CreateQuoteDto,
   CreateReceivableDto,
@@ -36,6 +37,7 @@ import {
   SetSellerCeilingDto,
   SettleWithBankDto,
   UpdateDistributorProductDto,
+  UpsertPlusMappingDto,
 } from './dto/distributor.dto';
 
 @Controller('distributor')
@@ -700,6 +702,104 @@ export class DistributorController {
       user.membershipRole,
       user.sub,
       dto,
+    );
+  }
+
+  @Get('plus/preview')
+  previewPlus(
+    @CurrentUser() user: JwtPayload,
+    @Query('cnpj') cnpj: string,
+  ) {
+    return this.distributor.previewPlusClient(
+      user.organizationId,
+      user.membershipRole,
+      cnpj ?? '',
+    );
+  }
+
+  @Get('plus/contracts')
+  listPlusContracts(@CurrentUser() user: JwtPayload) {
+    return this.distributor.listPlusContracts(
+      user.organizationId,
+      user.membershipRole,
+    );
+  }
+
+  @Post('plus/contracts')
+  createPlusContract(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreatePlusContractDto,
+  ) {
+    return this.distributor.createPlusContract(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      dto,
+    );
+  }
+
+  @Post('plus/contracts/:contractId/revoke')
+  revokePlusContract(
+    @CurrentUser() user: JwtPayload,
+    @Param('contractId') contractId: string,
+  ) {
+    return this.distributor.revokePlusContract(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      contractId,
+    );
+  }
+
+  @Get('plus/contracts/:contractId/mappings')
+  listPlusMappings(
+    @CurrentUser() user: JwtPayload,
+    @Param('contractId') contractId: string,
+  ) {
+    return this.distributor.listPlusMappings(
+      user.organizationId,
+      user.membershipRole,
+      contractId,
+    );
+  }
+
+  @Put('plus/contracts/:contractId/mappings')
+  upsertPlusMapping(
+    @CurrentUser() user: JwtPayload,
+    @Param('contractId') contractId: string,
+    @Body() dto: UpsertPlusMappingDto,
+  ) {
+    return this.distributor.upsertPlusMapping(
+      user.organizationId,
+      user.membershipRole,
+      contractId,
+      dto,
+    );
+  }
+
+  @Get('plus/contracts/:contractId/catalog')
+  listPlusCatalog(
+    @CurrentUser() user: JwtPayload,
+    @Param('contractId') contractId: string,
+    @Query('q') q?: string,
+  ) {
+    return this.distributor.listPlusCatalog(
+      user.organizationId,
+      user.membershipRole,
+      contractId,
+      q,
+    );
+  }
+
+  @Get('plus/shipments')
+  listPlusShipments(
+    @CurrentUser() user: JwtPayload,
+    @Query('contractId') contractId?: string,
+  ) {
+    return this.distributor.listPlusShipments(
+      user.organizationId,
+      user.membershipRole,
+      contractId,
     );
   }
 

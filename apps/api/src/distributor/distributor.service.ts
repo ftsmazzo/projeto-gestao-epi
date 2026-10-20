@@ -9,12 +9,15 @@ import {
   DistributorInboundStatus,
   DistributorMovementDirection,
   DistributorMovementSource,
+  EpiStockMovementType,
   OrganizationKind,
   Prisma,
+  ServedClientStatus,
 } from '@prisma/client';
 import { validateCnpj } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import { extractInvoiceFromFile } from '../portal/invoice-extract';
+import { StockService } from '../stock/stock.service';
 import { saveDistributorInboundFile } from './distributor-document.storage';
 import type {
   AddDistributorVariantDto,
@@ -26,6 +29,7 @@ import type {
   CreateLedgerAccountDto,
   CreateOutboundFromQuoteDto,
   CreatePayableDto,
+  CreatePlusContractDto,
   CreatePurchaseOrderDto,
   CreateQuoteDto,
   CreateReceivableDto,
@@ -33,6 +37,7 @@ import type {
   SetSellerCeilingDto,
   SettleWithBankDto,
   UpdateDistributorProductDto,
+  UpsertPlusMappingDto,
 } from './dto/distributor.dto';
 import {
   AgendaRuleError,
@@ -42,6 +47,13 @@ import {
   normalizeVisitSummary,
   parseVisitedAt,
 } from './agenda.rules';
+import {
+  PlusRuleError,
+  assertPlusContractActive,
+  assertPlusMappingTargets,
+  pickPlusMappedLines,
+  plusShipmentNotes,
+} from './plus.rules';
 import {
   CatalogRuleError,
   measureCubage,
@@ -117,9 +129,29 @@ const productInclude = {
   },
 };
 
+const PLUS_DEFAULT_LOCATION = 'Almoxarifado';
+
+const plusContractInclude = {
+  servedClient: {
+    select: {
+      id: true,
+      legalName: true,
+      tradeName: true,
+      cnpj: true,
+      status: true,
+    },
+  },
+  consultoriaOrganization: { select: { id: true, name: true } },
+  mappings: true,
+  _count: { select: { mappings: true, shipments: true } },
+} as const;
+
 @Injectable()
 export class DistributorService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stock: StockService,
+  ) {}
 
   async listProducts(organizationId: string, role: string) {
     await this.requireDistributor(organizationId, role);
@@ -1560,6 +1592,24 @@ export class DistributorService {
           createdByUserId: userId,
         },
       });
+      await this.applyPlusOnOutboundConfirm(
+        {
+          organizationId,
+          userId,
+          invoice: {
+            id: invoice.id,
+            series: invoice.series,
+            number: invoice.number,
+            customerCnpj: invoice.customerCnpj,
+            lines: invoice.lines.map((line) => ({
+              variantId: line.variantId,
+              quantity: line.quantity,
+              unitPriceCents: line.unitPriceCents,
+            })),
+          },
+        },
+        tx,
+      );
       const profile = await tx.distributorFiscalProfile.findUnique({
         where: { organizationId },
       });
@@ -2370,6 +2420,461 @@ export class DistributorService {
     };
   }
 
+  async previewPlusClient(
+    organizationId: string,
+    role: string,
+    cnpjRaw: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const validated = validateCnpj(cnpjRaw);
+    if (!validated.ok) throw new BadRequestException(validated.message);
+    const matches = await this.prisma.servedClient.findMany({
+      where: {
+        cnpj: validated.normalized,
+        status: ServedClientStatus.ACTIVE,
+        organization: { kind: OrganizationKind.CONSULTORIA },
+      },
+      select: {
+        id: true,
+        legalName: true,
+        tradeName: true,
+        cnpj: true,
+        organizationId: true,
+        organization: { select: { id: true, name: true } },
+      },
+      take: 10,
+    });
+    return matches.map((row) => ({
+      servedClientId: row.id,
+      legalName: row.legalName,
+      tradeName: row.tradeName,
+      cnpj: row.cnpj,
+      consultoriaOrganizationId: row.organizationId,
+      consultoriaName: row.organization.name,
+    }));
+  }
+
+  async listPlusContracts(organizationId: string, role: string) {
+    await this.requireDistributor(organizationId, role);
+    const rows = await this.prisma.distributorPlusContract.findMany({
+      where: { organizationId },
+      include: plusContractInclude,
+      orderBy: { createdAt: 'desc' },
+    });
+    return rows.map(toPlusContractView);
+  }
+
+  async createPlusContract(
+    organizationId: string,
+    role: string,
+    userId: string,
+    dto: CreatePlusContractDto,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const validated = validateCnpj(dto.cnpj);
+    if (!validated.ok) throw new BadRequestException(validated.message);
+    const matches = await this.prisma.servedClient.findMany({
+      where: {
+        cnpj: validated.normalized,
+        status: ServedClientStatus.ACTIVE,
+        organization: { kind: OrganizationKind.CONSULTORIA },
+        ...(dto.consultoriaOrganizationId?.trim()
+          ? { organizationId: dto.consultoriaOrganizationId.trim() }
+          : {}),
+      },
+      include: { organization: { select: { id: true, name: true } } },
+      take: 5,
+    });
+    if (matches.length === 0) {
+      throw new NotFoundException(
+        'Nenhuma empresa ativa do ProntEPI encontrada com este CNPJ.',
+      );
+    }
+    if (matches.length > 1) {
+      throw new BadRequestException(
+        'Ha mais de uma consultoria com este CNPJ. Informe a consultoria.',
+      );
+    }
+    const client = matches[0]!;
+    try {
+      const created = await this.prisma.distributorPlusContract.create({
+        data: {
+          organizationId,
+          consultoriaOrganizationId: client.organizationId,
+          servedClientId: client.id,
+          createdByUserId: userId,
+        },
+        include: plusContractInclude,
+      });
+      return toPlusContractView(created);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'Ja existe contrato Plus com esta empresa.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  async revokePlusContract(
+    organizationId: string,
+    role: string,
+    userId: string,
+    contractId: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const contract = await this.prisma.distributorPlusContract.findFirst({
+      where: { id: contractId, organizationId },
+      include: plusContractInclude,
+    });
+    if (!contract) throw new NotFoundException('Contrato Plus nao encontrado.');
+    try {
+      assertPlusContractActive(contract.status);
+    } catch (error) {
+      throw this.asPlusError(error);
+    }
+    const updated = await this.prisma.distributorPlusContract.update({
+      where: { id: contract.id },
+      data: {
+        status: 'REVOKED',
+        revokedAt: new Date(),
+        revokedByUserId: userId,
+      },
+      include: plusContractInclude,
+    });
+    return toPlusContractView(updated);
+  }
+
+  async listPlusMappings(
+    organizationId: string,
+    role: string,
+    contractId: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const contract = await this.requirePlusContract(organizationId, contractId);
+    const rows = await this.prisma.distributorPlusMapping.findMany({
+      where: { contractId: contract.id },
+      include: {
+        variant: {
+          include: { product: { select: { name: true, internalSku: true } } },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const epiIds = [...new Set(rows.map((row) => row.epiItemId))];
+    const epis = epiIds.length
+      ? await this.prisma.epiItem.findMany({
+          where: {
+            id: { in: epiIds },
+            organizationId: contract.consultoriaOrganizationId,
+          },
+          select: { id: true, name: true, caNumber: true },
+        })
+      : [];
+    const epiName = new Map(epis.map((row) => [row.id, row]));
+    return rows.map((row) => ({
+      id: row.id,
+      contractId: row.contractId,
+      variantId: row.variantId,
+      productName: row.variant.product.name,
+      internalSku: row.variant.product.internalSku,
+      label: row.variant.label,
+      epiItemId: row.epiItemId,
+      epiName: epiName.get(row.epiItemId)?.name ?? null,
+      epiCaNumber: epiName.get(row.epiItemId)?.caNumber ?? null,
+      epiVariantId: row.epiVariantId,
+    }));
+  }
+
+  async upsertPlusMapping(
+    organizationId: string,
+    role: string,
+    contractId: string,
+    dto: UpsertPlusMappingDto,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const contract = await this.requirePlusContract(organizationId, contractId);
+    try {
+      assertPlusContractActive(contract.status);
+    } catch (error) {
+      throw this.asPlusError(error);
+    }
+    const variant = await this.requireVariant(organizationId, dto.variantId);
+    let targets: { epiItemId: string; epiVariantId: string | null };
+    try {
+      targets = assertPlusMappingTargets(dto);
+    } catch (error) {
+      throw this.asPlusError(error);
+    }
+    const epi = await this.prisma.epiItem.findFirst({
+      where: {
+        id: targets.epiItemId,
+        organizationId: contract.consultoriaOrganizationId,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    if (!epi) {
+      throw new NotFoundException(
+        'EPI nao encontrado no catalogo da consultoria vinculada.',
+      );
+    }
+    if (targets.epiVariantId) {
+      const epiVariant = await this.prisma.epiVariant.findFirst({
+        where: {
+          id: targets.epiVariantId,
+          organizationId: contract.consultoriaOrganizationId,
+          epiItemId: epi.id,
+          isActive: true,
+        },
+        select: { id: true },
+      });
+      if (!epiVariant) {
+        throw new BadRequestException(
+          'Variacao do EPI nao pertence a este item na consultoria.',
+        );
+      }
+    }
+    const row = await this.prisma.distributorPlusMapping.upsert({
+      where: {
+        contractId_variantId: {
+          contractId: contract.id,
+          variantId: variant.id,
+        },
+      },
+      create: {
+        contractId: contract.id,
+        variantId: variant.id,
+        epiItemId: targets.epiItemId,
+        epiVariantId: targets.epiVariantId,
+      },
+      update: {
+        epiItemId: targets.epiItemId,
+        epiVariantId: targets.epiVariantId,
+      },
+    });
+    return {
+      id: row.id,
+      contractId: row.contractId,
+      variantId: row.variantId,
+      epiItemId: row.epiItemId,
+      epiVariantId: row.epiVariantId,
+    };
+  }
+
+  async listPlusCatalog(
+    organizationId: string,
+    role: string,
+    contractId: string,
+    q?: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const contract = await this.requirePlusContract(organizationId, contractId);
+    const query = q?.trim();
+    const rows = await this.prisma.epiItem.findMany({
+      where: {
+        organizationId: contract.consultoriaOrganizationId,
+        isActive: true,
+        ...(query
+          ? {
+              OR: [
+                { name: { contains: query, mode: 'insensitive' } },
+                { caNumber: { contains: query.replace(/\D/g, '') } },
+                { externalCode: { contains: query, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        caNumber: true,
+        externalCode: true,
+        variants: {
+          where: { isActive: true },
+          select: { id: true, size: true, color: true, model: true },
+          take: 20,
+        },
+      },
+      orderBy: { name: 'asc' },
+      take: 50,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      caNumber: row.caNumber,
+      externalCode: row.externalCode,
+      variants: row.variants,
+    }));
+  }
+
+  async listPlusShipments(
+    organizationId: string,
+    role: string,
+    contractId?: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const rows = await this.prisma.distributorPlusShipment.findMany({
+      where: {
+        contract: { organizationId },
+        ...(contractId ? { contractId } : {}),
+      },
+      include: {
+        contract: {
+          include: {
+            servedClient: { select: { legalName: true, cnpj: true } },
+          },
+        },
+        outboundInvoice: {
+          select: { series: true, number: true, customerName: true },
+        },
+        lines: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      contractId: row.contractId,
+      clientName: row.contract.servedClient.legalName,
+      clientCnpj: row.contract.servedClient.cnpj,
+      outboundInvoiceId: row.outboundInvoiceId,
+      series: row.outboundInvoice.series,
+      number: row.outboundInvoice.number,
+      customerName: row.outboundInvoice.customerName,
+      stockLocationId: row.stockLocationId,
+      lineCount: row.lines.length,
+      quantity: row.lines.reduce((sum, line) => sum + line.quantity, 0),
+      createdAt: row.createdAt,
+    }));
+  }
+
+  private async requirePlusContract(organizationId: string, contractId: string) {
+    const contract = await this.prisma.distributorPlusContract.findFirst({
+      where: { id: contractId, organizationId },
+    });
+    if (!contract) throw new NotFoundException('Contrato Plus nao encontrado.');
+    return contract;
+  }
+
+  private async applyPlusOnOutboundConfirm(
+    input: {
+      organizationId: string;
+      userId: string;
+      invoice: {
+        id: string;
+        series: string;
+        number: number;
+        customerCnpj: string;
+        lines: Array<{
+          variantId: string;
+          quantity: number;
+          unitPriceCents: number;
+        }>;
+      };
+    },
+    tx: Prisma.TransactionClient,
+  ) {
+    const cnpj = input.invoice.customerCnpj.replace(/\D/g, '');
+    if (cnpj.length !== 14) return;
+    const contract = await tx.distributorPlusContract.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        status: 'ACTIVE',
+        servedClient: { cnpj, status: ServedClientStatus.ACTIVE },
+      },
+      include: { mappings: true, organization: { select: { name: true } } },
+    });
+    if (!contract || contract.mappings.length === 0) return;
+    let mapped;
+    try {
+      mapped = pickPlusMappedLines(input.invoice.lines, contract.mappings);
+    } catch (error) {
+      throw this.asPlusError(error);
+    }
+    if (mapped.length === 0) return;
+
+    const location = await this.ensurePlusStockLocation(
+      contract.consultoriaOrganizationId,
+      contract.servedClientId,
+      tx,
+    );
+    const notes = plusShipmentNotes({
+      series: input.invoice.series,
+      number: input.invoice.number,
+      distributorName: contract.organization.name,
+    });
+    const shipmentLines: Array<{
+      variantId: string;
+      epiItemId: string;
+      epiVariantId: string | null;
+      quantity: number;
+      epiStockMovementId: string;
+    }> = [];
+    for (const line of mapped) {
+      const result = await this.stock.applyMovementInTx(
+        tx,
+        contract.consultoriaOrganizationId,
+        input.userId,
+        {
+          type: EpiStockMovementType.ENTRADA,
+          stockLocationId: location.id,
+          epiItemId: line.epiItemId,
+          epiVariantId: line.epiVariantId,
+          quantity: line.quantity,
+          unitCostCents: line.unitPriceCents,
+          notes,
+        },
+      );
+      shipmentLines.push({
+        variantId: line.variantId,
+        epiItemId: line.epiItemId,
+        epiVariantId: line.epiVariantId,
+        quantity: line.quantity,
+        epiStockMovementId: result.movement.id,
+      });
+    }
+    await tx.distributorPlusShipment.create({
+      data: {
+        contractId: contract.id,
+        outboundInvoiceId: input.invoice.id,
+        stockLocationId: location.id,
+        createdByUserId: input.userId,
+        lines: {
+          create: shipmentLines,
+        },
+      },
+    });
+  }
+
+  private async ensurePlusStockLocation(
+    consultoriaOrganizationId: string,
+    servedClientId: string,
+    tx: Prisma.TransactionClient,
+  ) {
+    const existing = await tx.stockLocation.findFirst({
+      where: {
+        organizationId: consultoriaOrganizationId,
+        servedClientId,
+        isActive: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (existing) return existing;
+    return tx.stockLocation.create({
+      data: {
+        organizationId: consultoriaOrganizationId,
+        servedClientId,
+        name: PLUS_DEFAULT_LOCATION,
+        description: 'Local padrao criado pelo Plus da distribuidora.',
+      },
+    });
+  }
+
   private async bankBalanceCents(
     bankAccountId: string,
     tx: Prisma.TransactionClient | PrismaService = this.prisma,
@@ -2486,6 +2991,13 @@ export class DistributorService {
 
   private asAgendaError(error: unknown): BadRequestException {
     if (error instanceof AgendaRuleError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
+  private asPlusError(error: unknown): BadRequestException {
+    if (error instanceof PlusRuleError) {
       return new BadRequestException(error.message);
     }
     throw error;
@@ -2993,6 +3505,27 @@ function toVisitView(
     nextAction: visit.nextAction,
     quoteId: visit.quoteId,
     createdAt: visit.createdAt,
+  };
+}
+
+type PlusContractRow = Prisma.DistributorPlusContractGetPayload<{
+  include: typeof plusContractInclude;
+}>;
+
+function toPlusContractView(contract: PlusContractRow) {
+  return {
+    id: contract.id,
+    status: contract.status,
+    servedClientId: contract.servedClientId,
+    clientName: contract.servedClient.legalName,
+    clientTradeName: contract.servedClient.tradeName,
+    clientCnpj: contract.servedClient.cnpj,
+    consultoriaOrganizationId: contract.consultoriaOrganizationId,
+    consultoriaName: contract.consultoriaOrganization.name,
+    mappingCount: contract._count.mappings,
+    shipmentCount: contract._count.shipments,
+    createdAt: contract.createdAt,
+    revokedAt: contract.revokedAt,
   };
 }
 
