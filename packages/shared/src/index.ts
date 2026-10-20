@@ -2763,7 +2763,11 @@ export interface ClientWorkSiteImportPreview {
 }
 
 export interface PortalCreateDeliveryItemInput {
-  /** Obrigatorio para item normativo; omitir quando isExtra. */
+  /**
+   * Obrigatorio para item normativo.
+   * Em Extra, opcional: quando informado, encerra a troca daquela necessidade
+   * (CA/SKU diferente do item anterior).
+   */
   epiNeedId?: string;
   epiItemId: string;
   epiVariantId?: string | null;

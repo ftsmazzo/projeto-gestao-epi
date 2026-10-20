@@ -27,7 +27,11 @@ export const FACIAL_EVIDENCE_CONSENT_TEXT =
   'Declaro que a imagem facial será registrada como evidência da entrega deste EPI e vinculada ao comprovante de fornecimento.';
 
 export class PortalDeliveryItemDto {
-  /** Obrigatorio quando nao e item extra. */
+  /**
+   * Obrigatorio quando nao e item extra.
+   * Em Extra, opcional: se informado (ou inferido no servidor), encerra a troca
+   * daquela necessidade mesmo com CA/SKU diferente.
+   */
   @ValidateIf((o: PortalDeliveryItemDto) => !o.isExtra)
   @IsString()
   @MinLength(1)

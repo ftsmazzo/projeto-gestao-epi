@@ -61,6 +61,9 @@ type ExtraSelection = {
   quantity: number;
   usefulLifeValue: string;
   usefulLifeUnit: 'DIAS' | 'MESES' | 'ANOS';
+  /** Necessidade da funcao que esta troca Extra encerra (CA diferente). */
+  epiNeedId: string | null;
+  resolvesNeedName: string | null;
 };
 
 function stripDiacritics(value: string) {
@@ -68,6 +71,34 @@ function stripDiacritics(value: string) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
+}
+
+function matchExtraToNeed(
+  epiName: string,
+  epiItemId: string,
+  needs: PortalEpiCoverageNeedRow[],
+): { epiNeedId: string; needName: string } | null {
+  const byLink = needs.find((need) =>
+    need.linkedEpis.some((epi) => epi.epiItemId === epiItemId),
+  );
+  if (byLink) {
+    return { epiNeedId: byLink.epiNeedId, needName: byLink.needName };
+  }
+  const needle = stripDiacritics(epiName);
+  const byName = needs.find((need) => {
+    const target = stripDiacritics(need.needName);
+    if (!needle || !target) return false;
+    if (needle === target || needle.includes(target) || target.includes(needle)) {
+      return true;
+    }
+    const left = needle.split(/\s+/).filter((t) => t.length >= 4);
+    const right = new Set(target.split(/\s+/).filter((t) => t.length >= 4));
+    const shared = left.filter((t) => right.has(t)).length;
+    return shared >= Math.min(2, left.length, right.size);
+  });
+  return byName
+    ? { epiNeedId: byName.epiNeedId, needName: byName.needName }
+    : null;
 }
 
 function statusLabel(status: PortalEpiCoverageStatus) {
@@ -354,6 +385,7 @@ function NeedConfigPanel({
 function PortalEntregasContent() {
   const searchParams = useSearchParams();
   const workerFromQuery = searchParams.get('worker');
+  const trocaFromQuery = searchParams.get('troca') === '1';
   const autoSelectedRef = useRef<string | null>(null);
   const coverageSectionRef = useRef<HTMLElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -548,6 +580,9 @@ function PortalEntregasContent() {
               | 'ANOS',
           }
         : { usefulLifeValue: '30', usefulLifeUnit: 'DIAS' as const };
+    const match = coverage
+      ? matchExtraToNeed(row.epiName, row.epiItemId, coverage.needs)
+      : null;
     setExtraItems((prev) => [
       ...prev,
       {
@@ -559,6 +594,8 @@ function PortalEntregasContent() {
         locationName: row.locationName,
         availableQuantity: row.quantity,
         quantity: 1,
+        epiNeedId: match?.epiNeedId ?? null,
+        resolvesNeedName: match?.needName ?? null,
         ...life,
       },
     ]);
@@ -690,7 +727,14 @@ function PortalEntregasContent() {
       setStockBalances(estoque.balances);
       const next: Record<string, ItemSelection> = {};
       for (const need of res.needs) {
-        next[need.epiNeedId] = defaultSelection(need);
+        const base = defaultSelection(need);
+        next[need.epiNeedId] = trocaFromQuery
+          ? {
+              ...base,
+              // Na troca, prioriza linha normativa (mesmo CA diferente via Extra).
+              selected: base.selected || need.linkedEpis.length > 0,
+            }
+          : base;
       }
       setSelections(next);
       setWorkerPickerOpen(false);
@@ -794,6 +838,7 @@ function PortalEntregasContent() {
               const lifeRaw = Number(item.usefulLifeValue);
               return {
                 isExtra: true,
+                ...(item.epiNeedId ? { epiNeedId: item.epiNeedId } : {}),
                 epiItemId: item.epiItemId,
                 stockLocationId: item.stockLocationId,
                 quantity: item.quantity,
@@ -1267,7 +1312,9 @@ function PortalEntregasContent() {
                         autoComplete="off"
                       />
                       <p className="field-hint">
-                        Entrega complementar sem alterar as indicacoes da funcao.
+                        Use Extra quando o CA novo ainda nao esta na indicacao.
+                        Se o nome bater com uma necessidade da funcao, a troca
+                        encerra o alerta do CA antigo automaticamente.
                       </p>
                     </div>
                     {availableExtraBalances.length > 0 ? (
@@ -1327,6 +1374,9 @@ function PortalEntregasContent() {
                               </div>
                               <p className="table-sub">
                                 {item.locationName} · saldo {item.availableQuantity}
+                                {item.resolvesNeedName
+                                  ? ` · encerra troca de “${item.resolvesNeedName}”`
+                                  : ''}
                               </p>
                               <div className="form-grid form-grid--compact">
                                 <div className="field">

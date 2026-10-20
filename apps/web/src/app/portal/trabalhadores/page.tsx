@@ -1209,7 +1209,7 @@ function PortalTrabalhadoresContent({
                         <>
                           <Link
                             className="btn btn-primary"
-                            href={`/portal/entregas?worker=${worker.id}`}
+                            href={`/portal/entregas?worker=${worker.id}&troca=1`}
                           >
                             Registrar troca
                           </Link>

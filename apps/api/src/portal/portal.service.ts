@@ -68,6 +68,11 @@ import {
   type PortalCreateDeliveryPayloadDto,
   type PortalCreateReturnDto,
 } from './dto/portal-delivery.dto';
+import {
+  pickPrimaryReplacementNeedId,
+  resolveExtraReplacementNeedIds,
+  type ExtraReplacementNeed,
+} from './extra-replacement.rules';
 import type {
   PortalStockEntradasDto,
   PortalStockSaidaDto,
@@ -858,6 +863,187 @@ export class PortalService {
     };
   }
 
+  /**
+   * Backfill: Extra com CA novo que cobre a mesma necessidade encerra o alerta
+   * do CA antigo (itens normativos ainda DELIVERED).
+   */
+  private async healExtraReplacements(
+    organizationId: string,
+    servedClientId: string,
+  ) {
+    const openItems = await this.prisma.epiDeliveryItem.findMany({
+      where: {
+        isExtra: false,
+        epiNeedId: { not: null },
+        status: {
+          in: [
+            EpiDeliveryItemStatus.DELIVERED,
+            EpiDeliveryItemStatus.PARTIALLY_RETURNED,
+          ],
+        },
+        delivery: {
+          organizationId,
+          servedClientId,
+          status: {
+            in: [
+              EpiDeliveryStatus.COMPLETED,
+              EpiDeliveryStatus.PARTIALLY_RETURNED,
+            ],
+          },
+        },
+      },
+      select: {
+        id: true,
+        epiNeedId: true,
+        epiItemId: true,
+        delivery: {
+          select: { workerId: true, deliveredAt: true },
+        },
+        epiNeed: { select: { id: true, name: true, category: true } },
+      },
+      take: 500,
+    });
+    if (openItems.length === 0) return;
+
+    const workerIds = [...new Set(openItems.map((row) => row.delivery.workerId))];
+    const laterExtras = await this.prisma.epiDeliveryItem.findMany({
+      where: {
+        isExtra: true,
+        delivery: {
+          organizationId,
+          servedClientId,
+          workerId: { in: workerIds },
+          status: {
+            in: [
+              EpiDeliveryStatus.COMPLETED,
+              EpiDeliveryStatus.PARTIALLY_RETURNED,
+            ],
+          },
+        },
+      },
+      select: {
+        id: true,
+        epiNeedId: true,
+        epiItemId: true,
+        delivery: {
+          select: { workerId: true, deliveredAt: true },
+        },
+        epiItem: {
+          select: { id: true, name: true, category: true, caNumber: true },
+        },
+      },
+      take: 2000,
+    });
+    if (laterExtras.length === 0) return;
+
+    const workers = await this.prisma.worker.findMany({
+      where: { id: { in: workerIds }, organizationId, servedClientId },
+      select: { id: true, clientJobFunctionId: true },
+    });
+    const jobIds = [
+      ...new Set(
+        workers
+          .map((w) => w.clientJobFunctionId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const requirements =
+      jobIds.length === 0
+        ? []
+        : await this.prisma.jobFunctionEpiRequirement.findMany({
+            where: {
+              organizationId,
+              jobFunctionId: { in: jobIds },
+              isActive: true,
+            },
+            include: {
+              epiNeed: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                  itemLinks: { select: { epiItemId: true } },
+                },
+              },
+            },
+          });
+    const needsByJob = new Map<string, ExtraReplacementNeed[]>();
+    for (const req of requirements) {
+      const list = needsByJob.get(req.jobFunctionId) ?? [];
+      list.push({
+        epiNeedId: req.epiNeedId,
+        name: req.epiNeed.name,
+        category: req.epiNeed.category,
+        linkedEpiItemIds: req.epiNeed.itemLinks.map((link) => link.epiItemId),
+      });
+      needsByJob.set(req.jobFunctionId, list);
+    }
+    const jobByWorker = new Map(
+      workers.map((w) => [w.id, w.clientJobFunctionId] as const),
+    );
+
+    const extraEpiIds = [...new Set(laterExtras.map((row) => row.epiItemId))];
+    const allNeedIds = [
+      ...new Set(requirements.map((req) => req.epiNeedId)),
+    ];
+    const links =
+      extraEpiIds.length === 0 || allNeedIds.length === 0
+        ? []
+        : await this.prisma.epiItemNeed.findMany({
+            where: {
+              organizationId,
+              epiItemId: { in: extraEpiIds },
+              epiNeedId: { in: allNeedIds },
+            },
+            select: { epiItemId: true, epiNeedId: true },
+          });
+    const linkedNeedsByEpi = new Map<string, string[]>();
+    for (const link of links) {
+      const list = linkedNeedsByEpi.get(link.epiItemId) ?? [];
+      list.push(link.epiNeedId);
+      linkedNeedsByEpi.set(link.epiItemId, list);
+    }
+
+    const idsToReplace = new Set<string>();
+    for (const open of openItems) {
+      const needId = open.epiNeedId;
+      if (!needId) continue;
+      const jobId = jobByWorker.get(open.delivery.workerId);
+      const workerNeeds = jobId ? (needsByJob.get(jobId) ?? []) : [];
+      for (const extra of laterExtras) {
+        if (extra.delivery.workerId !== open.delivery.workerId) continue;
+        if (
+          extra.delivery.deliveredAt.getTime() <=
+          open.delivery.deliveredAt.getTime()
+        ) {
+          continue;
+        }
+        const matchedNeedIds: string[] =
+          extra.epiNeedId && extra.epiNeedId === needId
+            ? [needId]
+            : resolveExtraReplacementNeedIds({
+                epi: extra.epiItem,
+                workerNeeds,
+                explicitNeedId: extra.epiNeedId,
+                linkedNeedIds: linkedNeedsByEpi.get(extra.epiItemId) ?? [],
+              });
+        if (matchedNeedIds.includes(needId)) {
+          idsToReplace.add(open.id);
+          break;
+        }
+      }
+    }
+
+    if (idsToReplace.size === 0) return;
+    await this.prisma.epiDeliveryItem.updateMany({
+      where: { id: { in: [...idsToReplace] } },
+      data: {
+        status: EpiDeliveryItemStatus.REPLACED,
+        nextReplacementAt: null,
+      },
+    });
+  }
+
   async getTrabalhadores(organizationId: string, servedClientId: string) {
     const client = await this.requireClient(organizationId, servedClientId);
     await reassignWorkersFromArchivedFunctions(
@@ -865,6 +1051,7 @@ export class PortalService {
       organizationId,
       servedClientId,
     );
+    await this.healExtraReplacements(organizationId, servedClientId);
     const now = new Date();
     const warnHorizon = new Date(now);
     warnHorizon.setUTCDate(warnHorizon.getUTCDate() + REPLACEMENT_WARN_DAYS);
@@ -915,7 +1102,7 @@ export class PortalService {
               deliveredAt: true,
             },
           },
-          epiNeed: { select: { name: true } },
+          epiNeed: { select: { id: true, name: true } },
           epiItem: { select: { id: true, name: true, caNumber: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -978,19 +1165,27 @@ export class PortalService {
         totalDays: number;
       }
     >();
-    const latestDeliveryPerWorkerEpi = new Map<string, Date>();
+    /** Ultima entrega por necessidade (preferencial) ou por item quando nao ha need. */
+    const latestDeliveryPerCoverageKey = new Map<string, Date>();
 
     for (const item of dueItems) {
-      const workerEpiKey = `${item.delivery.workerId}:${item.epiItem.id}`;
-      const latest = latestDeliveryPerWorkerEpi.get(workerEpiKey);
+      const coverageKey = item.epiNeedId
+        ? `${item.delivery.workerId}:need:${item.epiNeedId}`
+        : `${item.delivery.workerId}:item:${item.epiItem.id}`;
+      const latest = latestDeliveryPerCoverageKey.get(coverageKey);
       if (!latest || item.delivery.deliveredAt.getTime() > latest.getTime()) {
-        latestDeliveryPerWorkerEpi.set(workerEpiKey, item.delivery.deliveredAt);
+        latestDeliveryPerCoverageKey.set(
+          coverageKey,
+          item.delivery.deliveredAt,
+        );
       }
     }
 
     for (const item of dueItems) {
-      const workerEpiKey = `${item.delivery.workerId}:${item.epiItem.id}`;
-      const latest = latestDeliveryPerWorkerEpi.get(workerEpiKey);
+      const coverageKey = item.epiNeedId
+        ? `${item.delivery.workerId}:need:${item.epiNeedId}`
+        : `${item.delivery.workerId}:item:${item.epiItem.id}`;
+      const latest = latestDeliveryPerCoverageKey.get(coverageKey);
       if (!latest || item.delivery.deliveredAt.getTime() !== latest.getTime()) {
         continue;
       }
@@ -4904,6 +5099,80 @@ export class PortalService {
       ),
     );
 
+    const workerNeedRows =
+      !worker.clientJobFunctionId || extraItems.length === 0
+        ? []
+        : await this.prisma.jobFunctionEpiRequirement.findMany({
+            where: {
+              organizationId,
+              jobFunctionId: worker.clientJobFunctionId,
+              isActive: true,
+            },
+            include: {
+              epiNeed: {
+                select: {
+                  id: true,
+                  name: true,
+                  category: true,
+                  itemLinks: { select: { epiItemId: true } },
+                },
+              },
+            },
+          });
+    const workerNeeds: ExtraReplacementNeed[] = workerNeedRows.map((req) => ({
+      epiNeedId: req.epiNeedId,
+      name: req.epiNeed.name,
+      category: req.epiNeed.category,
+      linkedEpiItemIds: req.epiNeed.itemLinks.map((link) => link.epiItemId),
+    }));
+    const workerNeedIdSet = new Set(workerNeeds.map((need) => need.epiNeedId));
+    const extraLinkRows =
+      extraItems.length === 0 || workerNeeds.length === 0
+        ? []
+        : await this.prisma.epiItemNeed.findMany({
+            where: {
+              organizationId,
+              epiItemId: { in: extraItems.map((item) => item.epiItemId) },
+              epiNeedId: { in: [...workerNeedIdSet] },
+            },
+            select: { epiItemId: true, epiNeedId: true },
+          });
+    const linkedNeedsByEpi = new Map<string, string[]>();
+    for (const link of extraLinkRows) {
+      const list = linkedNeedsByEpi.get(link.epiItemId) ?? [];
+      list.push(link.epiNeedId);
+      linkedNeedsByEpi.set(link.epiItemId, list);
+    }
+    const extraNeedIdsByItemId = new Map<string, string[]>();
+    const primaryNeedByExtraItemId = new Map<string, string | null>();
+    for (const item of extraItems) {
+      const epi = epiById.get(item.epiItemId);
+      if (!epi) continue;
+      const explicitNeedId = item.epiNeedId?.trim() || null;
+      if (explicitNeedId && !workerNeedIdSet.has(explicitNeedId)) {
+        throw new BadRequestException(
+          'Necessidade informada no Extra nao pertence a funcao do trabalhador.',
+        );
+      }
+      const resolved = resolveExtraReplacementNeedIds({
+        epi,
+        workerNeeds,
+        explicitNeedId,
+        linkedNeedIds: linkedNeedsByEpi.get(item.epiItemId) ?? [],
+      });
+      extraNeedIdsByItemId.set(item.epiItemId, resolved);
+      primaryNeedByExtraItemId.set(
+        item.epiItemId,
+        explicitNeedId || pickPrimaryReplacementNeedId(resolved),
+      );
+    }
+    const replacementNeedIds = [
+      ...new Set([
+        ...needIds,
+        ...[...extraNeedIdsByItemId.values()].flat(),
+      ]),
+    ];
+
     for (const item of normativeItems) {
       const req = reqByNeed.get(item.epiNeedId!);
       if (!req) {
@@ -5160,7 +5429,9 @@ export class PortalService {
           const deliveryItem = await tx.epiDeliveryItem.create({
             data: {
               deliveryId: delivery.id,
-              epiNeedId: isExtra ? null : item.epiNeedId!,
+              epiNeedId: isExtra
+                ? (primaryNeedByExtraItemId.get(item.epiItemId) ?? null)
+                : item.epiNeedId!,
               isExtra,
               epiItemId: item.epiItemId,
               epiVariantId: variantId,
@@ -5189,12 +5460,12 @@ export class PortalService {
           });
         }
 
-        if (needIds.length > 0) {
+        if (replacementNeedIds.length > 0) {
           await tx.epiDeliveryItem.updateMany({
             where: {
               id: { notIn: createdItems.map((row) => row.id) },
               isExtra: false,
-              epiNeedId: { in: needIds },
+              epiNeedId: { in: replacementNeedIds },
               status: {
                 in: [
                   EpiDeliveryItemStatus.DELIVERED,
