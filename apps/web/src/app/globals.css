@@ -1238,6 +1238,10 @@ a.btn-danger:hover {
   color: var(--color-ink);
 }
 
+.data-table__row--warn td {
+  background: color-mix(in srgb, #f59e0b 12%, transparent);
+}
+
 .table-sub {
   display: block;
   margin-top: 0.2rem;

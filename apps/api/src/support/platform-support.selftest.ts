@@ -77,6 +77,33 @@ assert.ok(
   ),
 );
 
+const distributorResults = searchSupportKnowledge({
+  query: 'como bipar na entrada',
+  scope: 'DISTRIBUIDORA',
+  currentPath: '/distribuidora/entrada',
+  limit: 8,
+});
+assert.ok(distributorResults.length > 0);
+assert.ok(
+  distributorResults.every((entry) => entry.scope === 'DISTRIBUIDORA'),
+);
+assert.ok(
+  distributorResults.some(
+    (entry) =>
+      entry.route === '/distribuidora/entrada' ||
+      (entry.routeAlias ?? []).includes('/distribuidora/entrada'),
+  ),
+);
+
+const distributorLeakCheck = searchSupportKnowledge({
+  query: 'importar pgr',
+  scope: 'DISTRIBUIDORA',
+  limit: 10,
+});
+assert.ok(
+  distributorLeakCheck.every((entry) => entry.scope === 'DISTRIBUIDORA'),
+);
+
 const expiredEpiResults = searchSupportKnowledge({
   query: 'como ver o epi que venceu e preciso entregar novamente',
   scope: 'CLIENTE',

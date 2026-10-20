@@ -23,6 +23,7 @@ export default function DistribuidoraEntradaPage() {
   const [scanCode, setScanCode] = useState('');
   const [scannedLabel, setScannedLabel] = useState<string | null>(null);
   const [document, setDocument] = useState<DistributorInboundDocument | null>(null);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -122,6 +123,7 @@ export default function DistribuidoraEntradaPage() {
     try {
       const draft = await extractDistributorInvoice(file);
       setDocument(draft);
+      setInvoiceOpen(true);
       setNotice(draft.message || 'Rascunho criado. O estoque ainda não mudou.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao ler a nota.');
@@ -208,7 +210,11 @@ export default function DistribuidoraEntradaPage() {
           {error}
         </p>
       ) : null}
-      {notice ? <p className="success">{notice}</p> : null}
+      {notice ? (
+        <p className="success" role="status" aria-live="polite">
+          {notice}
+        </p>
+      ) : null}
 
       <DistributorScanPanel
         inputId="scan-code"
@@ -272,108 +278,124 @@ export default function DistribuidoraEntradaPage() {
         </button>
       </form>
       <section className="dash-panel">
-        <h2 className="dash-panel__title">Nota de compra</h2>
-        <div className="field">
-          <label htmlFor="nota">XML da NF-e, PDF ou imagem</label>
-          <input
-            id="nota"
-            type="file"
-            accept="application/pdf,image/jpeg,image/png,image/webp,.xml,text/xml,application/xml"
-            onChange={(e) => onFile(e.target.files?.[0])}
-          />
-        </div>
-        {document ? (
+        <h2 className="dash-panel__title">
+          <button
+            type="button"
+            className="product-form__toggle"
+            aria-expanded={invoiceOpen || Boolean(document)}
+            onClick={() => setInvoiceOpen((open) => !open)}
+          >
+            {invoiceOpen || document ? '▾' : '▸'} Nota de compra
+            <span className="product-form__optional">
+              opcional — recebimento por bipagem continua acima
+            </span>
+          </button>
+        </h2>
+        {invoiceOpen || document ? (
           <>
-            <p className="field-hint">
-              {document.supplierName ?? 'Fornecedor não lido'}
-              {document.invoiceNumber ? ` · Nota ${document.invoiceNumber}` : ''}
-              {document.accessKey ? ` · Chave ${document.accessKey}` : ''}
-              {` · ${document.status}`}
-            </p>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Item lido</th>
-                    <th scope="col">Qtd</th>
-                    <th scope="col">Tamanho</th>
-                    <th scope="col">Lote</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {document.lines.map((line) => (
-                    <tr key={line.id}>
-                      <td>
-                        {line.description}
-                        {line.caNumber ? (
-                          <span className="table-sub">CA {line.caNumber}</span>
-                        ) : null}
-                      </td>
-                      <td>{line.quantity}</td>
-                      <td>
-                        <select
-                          aria-label={`Tamanho de ${line.description}`}
-                          value={line.variantId ?? ''}
-                          disabled={document.status !== 'DRAFT'}
-                          onChange={(e) => onLink(line.id, e.target.value)}
-                        >
-                          <option value="">Não entra</option>
-                          {options.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          aria-label={`Lote de ${line.description}`}
-                          defaultValue={line.lotCode ?? ''}
-                          disabled={document.status !== 'DRAFT'}
-                          onBlur={(e) =>
-                            onLink(line.id, line.variantId ?? '', {
-                              lotCode: e.target.value,
-                              expiresOn: line.expiresOn,
-                            })
-                          }
-                        />
-                        <input
-                          aria-label={`Validade de ${line.description}`}
-                          type="date"
-                          defaultValue={line.expiresOn ?? ''}
-                          disabled={document.status !== 'DRAFT'}
-                          onBlur={(e) =>
-                            onLink(line.id, line.variantId ?? '', {
-                              lotCode: line.lotCode,
-                              expiresOn: e.target.value,
-                            })
-                          }
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="field">
+              <label htmlFor="nota">XML da NF-e, PDF ou imagem</label>
+              <input
+                id="nota"
+                type="file"
+                accept="application/pdf,image/jpeg,image/png,image/webp,.xml,text/xml,application/xml"
+                onChange={(e) => onFile(e.target.files?.[0])}
+              />
             </div>
-            {document.status === 'DRAFT' ? (
-              <div className="header-actions">
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  disabled={saving}
-                  onClick={onConfirm}
-                >
-                  Confirmar entrada
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={saving}
-                  onClick={onDiscard}
-                >
-                  Descartar
-                </button>
-              </div>
+            {document ? (
+              <>
+                <p className="field-hint">
+                  {document.supplierName ?? 'Fornecedor não lido'}
+                  {document.invoiceNumber ? ` · Nota ${document.invoiceNumber}` : ''}
+                  {document.accessKey ? ` · Chave ${document.accessKey}` : ''}
+                  {` · ${document.status}`}
+                </p>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">Item lido</th>
+                        <th scope="col">Qtd</th>
+                        <th scope="col">Tamanho</th>
+                        <th scope="col">Lote</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {document.lines.map((line) => (
+                        <tr key={line.id}>
+                          <td>
+                            {line.description}
+                            {line.caNumber ? (
+                              <span className="table-sub">CA {line.caNumber}</span>
+                            ) : null}
+                          </td>
+                          <td>{line.quantity}</td>
+                          <td>
+                            <select
+                              aria-label={`Tamanho de ${line.description}`}
+                              value={line.variantId ?? ''}
+                              disabled={document.status !== 'DRAFT'}
+                              onChange={(e) => onLink(line.id, e.target.value)}
+                            >
+                              <option value="">Não entra</option>
+                              {options.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              aria-label={`Lote de ${line.description}`}
+                              defaultValue={line.lotCode ?? ''}
+                              disabled={document.status !== 'DRAFT'}
+                              onBlur={(e) =>
+                                onLink(line.id, line.variantId ?? '', {
+                                  lotCode: e.target.value,
+                                  expiresOn: line.expiresOn,
+                                })
+                              }
+                            />
+                            <input
+                              aria-label={`Validade de ${line.description}`}
+                              type="date"
+                              defaultValue={line.expiresOn ?? ''}
+                              disabled={document.status !== 'DRAFT'}
+                              onBlur={(e) =>
+                                onLink(line.id, line.variantId ?? '', {
+                                  lotCode: line.lotCode,
+                                  expiresOn: e.target.value,
+                                })
+                              }
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {document.status === 'DRAFT' ? (
+                  <div className="header-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={saving}
+                      onClick={onConfirm}
+                    >
+                      Confirmar entrada
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={saving}
+                      onClick={onDiscard}
+                    >
+                      Descartar
+                    </button>
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </>
         ) : null}

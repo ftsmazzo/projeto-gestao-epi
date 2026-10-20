@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { listDistributorBalances, type DistributorBalanceRow } from '../../../lib/distributor';
 
@@ -29,7 +30,7 @@ export default function DistribuidoraSaldoPage() {
     <div className="module-page">
       <header className="dash-page-header">
         <div>
-          <p className="page-kicker">Estoque</p>
+          <p className="page-kicker">Depósito</p>
           <h1 className="page-title">Saldo por tamanho</h1>
           <p className="page-lead">
             Cada linha é um tamanho do produto. Sem tamanho informado, o item aparece como Único.
@@ -50,8 +51,29 @@ export default function DistribuidoraSaldoPage() {
           placeholder="Nome, código ou tamanho"
         />
       </div>
-      {rows && visible.length === 0 ? (
-        <p className="field-hint">Nenhum tamanho encontrado.</p>
+      {rows === null && !error ? (
+        <p className="field-hint" role="status" aria-live="polite">
+          Carregando saldo…
+        </p>
+      ) : null}
+      {rows && rows.length === 0 ? (
+        <div className="empty-state dash-panel">
+          <h2 className="page-title">Nenhum tamanho no depósito</h2>
+          <p className="page-lead">
+            Cadastre produtos (ou gere o catálogo demo) e registre a primeira entrada.
+          </p>
+          <div className="header-actions header-actions--wrap">
+            <Link className="btn btn-primary" href="/distribuidora/produtos">
+              Abrir produtos
+            </Link>
+            <Link className="btn btn-secondary" href="/distribuidora/entrada">
+              Registrar entrada
+            </Link>
+          </div>
+        </div>
+      ) : null}
+      {rows && rows.length > 0 && visible.length === 0 ? (
+        <p className="field-hint">Nenhum tamanho encontrado para essa busca.</p>
       ) : null}
       {visible.length > 0 ? (
         <div className="table-wrap">
@@ -64,17 +86,34 @@ export default function DistribuidoraSaldoPage() {
                 <th scope="col">Unidade</th>
                 <th scope="col">Quantidade</th>
                 <th scope="col">Situação</th>
+                <th scope="col">Ações</th>
               </tr>
             </thead>
             <tbody>
               {visible.map((row) => (
-                <tr key={row.variantId}>
+                <tr
+                  key={row.variantId}
+                  className={row.low ? 'data-table__row--warn' : undefined}
+                >
                   <td>{row.productName}</td>
                   <td>{row.internalSku}</td>
                   <td>{sizeName(row.label)}</td>
                   <td>{row.unitCode}</td>
                   <td>{row.quantity}</td>
-                  <td>{row.low ? 'Abaixo do mínimo' : 'Ok'}</td>
+                  <td>
+                    {row.low ? (
+                      <span className="dash-kpi__hint" style={{ color: 'inherit', fontWeight: 600 }}>
+                        Abaixo do mínimo
+                      </span>
+                    ) : (
+                      'Ok'
+                    )}
+                  </td>
+                  <td>
+                    <Link href="/distribuidora/entrada">Entrada</Link>
+                    {' · '}
+                    <Link href="/distribuidora/saida">Saída</Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

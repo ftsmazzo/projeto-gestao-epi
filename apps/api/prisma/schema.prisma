@@ -875,6 +875,7 @@ enum CommunicationStatus {
 enum SupportScope {
   CONSULTORIA
   CLIENTE
+  DISTRIBUIDORA
 }
 
 enum SupportThreadStatus {

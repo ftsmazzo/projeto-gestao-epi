@@ -9,6 +9,7 @@ import {
 import {
   ClientUserRole,
   MembershipRole,
+  OrganizationKind,
   Prisma,
   SupportLifecycleStatus,
   SupportMessageRole,
@@ -279,7 +280,29 @@ export class SupportService {
       };
     }
 
-    this.assertConsultoriaAccess(actor.membershipRole);
+    this.assertTenantMemberAccess(actor.membershipRole);
+
+    const organization = await this.prisma.organization.findFirst({
+      where: { id: actor.organizationId },
+      select: { kind: true },
+    });
+    if (!organization) throw new NotFoundException('Organizacao nao encontrada.');
+
+    if (scope === 'DISTRIBUIDORA') {
+      if (organization.kind !== OrganizationKind.DISTRIBUIDORA) {
+        throw new ForbiddenException(
+          'O suporte da Distribuidora so funciona em conta do tipo Distribuidora.',
+        );
+      }
+      return { scope: 'DISTRIBUIDORA', servedClientId: null, clientName: null };
+    }
+
+    if (organization.kind === OrganizationKind.DISTRIBUIDORA) {
+      throw new ForbiddenException(
+        'Conta Distribuidora usa o suporte com escopo DISTRIBUIDORA.',
+      );
+    }
+
     if (scope === 'CONSULTORIA') {
       return { scope, servedClientId: null, clientName: null };
     }
@@ -301,7 +324,7 @@ export class SupportService {
     };
   }
 
-  private assertConsultoriaAccess(membershipRole?: string | null) {
+  private assertTenantMemberAccess(membershipRole?: string | null) {
     if (
       membershipRole !== MembershipRole.OWNER &&
       membershipRole !== MembershipRole.ADMIN &&
@@ -547,7 +570,12 @@ export class SupportService {
       return `${top.answer}${routePart}`;
     }
     const pathPart = currentPath ? ` na tela ${currentPath}` : '';
-    const scopeLabel = scope === 'CONSULTORIA' ? 'consultoria' : 'painel da empresa';
+    const scopeLabel =
+      scope === 'CONSULTORIA'
+        ? 'consultoria'
+        : scope === 'DISTRIBUIDORA'
+          ? 'distribuidora'
+          : 'painel da empresa';
     return `Ainda nao achei uma instrucao especifica para isso no escopo ${scopeLabel}${pathPart}. Descreva a tarefa com mais detalhe (tela/acao esperada) que eu te guio no fluxo correto.`;
   }
 
@@ -714,7 +742,7 @@ export class SupportService {
     id: string;
     status: SupportThreadStatus;
     lifecycleStatus: SupportLifecycleStatus;
-    scope: 'CONSULTORIA' | 'CLIENTE';
+    scope: 'CONSULTORIA' | 'CLIENTE' | 'DISTRIBUIDORA';
     servedClientId: string | null;
     humanRequestedAt: Date | null;
     messages: Array<{
@@ -756,6 +784,7 @@ export class SupportService {
 
   private contextKey(scope: SupportScopeKind, servedClientId: string | null) {
     if (scope === 'CONSULTORIA') return 'consultoria';
+    if (scope === 'DISTRIBUIDORA') return 'distribuidora';
     return servedClientId || 'cliente-desconhecido';
   }
 

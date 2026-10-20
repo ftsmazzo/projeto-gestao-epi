@@ -5,43 +5,114 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import { PoweredBy } from './PoweredBy';
+import { SupportChatWidget } from './SupportChatWidget';
 import { TenantBrand } from './TenantBrand';
-import { IconHome, IconMenu, IconPackage } from './ui/NavIcons';
+import {
+  IconBuilding,
+  IconCertificate,
+  IconChart,
+  IconHome,
+  IconMenu,
+  IconPackage,
+  IconShield,
+  IconTruck,
+  IconUsers,
+  IconWallet,
+} from './ui/NavIcons';
 
-const NAV = [
+type NavItem = {
+  href: string;
+  label: string;
+  exact?: boolean;
+  icon: ReactNode;
+};
+
+const NAV: Array<{ label: string; items: NavItem[] }> = [
   {
     label: 'Visão',
-    items: [{ href: '/distribuidora', label: 'Painel', exact: true }],
-  },
-  {
-    label: 'Cadastro',
     items: [
-      { href: '/distribuidora/produtos', label: 'Produtos', exact: false },
-      { href: '/distribuidora/fiscal', label: 'Fiscal', exact: false },
+      {
+        href: '/distribuidora',
+        label: 'Painel',
+        exact: true,
+        icon: <IconHome />,
+      },
     ],
   },
   {
-    label: 'Estoque',
+    label: 'Depósito',
     items: [
-      { href: '/distribuidora/saldo', label: 'Saldo', exact: false },
-      { href: '/distribuidora/entrada', label: 'Entrada', exact: false },
-      { href: '/distribuidora/saida', label: 'Saida', exact: false },
+      {
+        href: '/distribuidora/entrada',
+        label: 'Entrada',
+        icon: <IconTruck />,
+      },
+      {
+        href: '/distribuidora/saida',
+        label: 'Saída',
+        icon: <IconPackage />,
+      },
+      {
+        href: '/distribuidora/saldo',
+        label: 'Saldo',
+        icon: <IconChart />,
+      },
+      {
+        href: '/distribuidora/produtos',
+        label: 'Produtos',
+        icon: <IconShield />,
+      },
     ],
   },
   {
     label: 'Comercial',
     items: [
-      { href: '/distribuidora/compras', label: 'Compras', exact: false },
-      { href: '/distribuidora/orcamentos', label: 'Orcamentos', exact: false },
-      { href: '/distribuidora/notas', label: 'Notas', exact: false },
-      { href: '/distribuidora/agenda', label: 'Agenda', exact: false },
-      { href: '/distribuidora/tablet', label: 'Tablet', exact: false },
-      { href: '/distribuidora/plus', label: 'Plus', exact: false },
+      {
+        href: '/distribuidora/compras',
+        label: 'Compras',
+        icon: <IconTruck />,
+      },
+      {
+        href: '/distribuidora/orcamentos',
+        label: 'Orçamentos',
+        icon: <IconUsers />,
+      },
+      {
+        href: '/distribuidora/agenda',
+        label: 'Agenda',
+        icon: <IconUsers />,
+      },
+      {
+        href: '/distribuidora/tablet',
+        label: 'Tablet',
+        icon: <IconBuilding />,
+      },
     ],
   },
   {
-    label: 'Financeiro',
-    items: [{ href: '/distribuidora/financeiro', label: 'Financeiro', exact: false }],
+    label: 'Avançado',
+    items: [
+      {
+        href: '/distribuidora/notas',
+        label: 'Notas',
+        icon: <IconCertificate />,
+      },
+      {
+        href: '/distribuidora/plus',
+        label: 'Plus',
+        icon: <IconBuilding />,
+      },
+      {
+        href: '/distribuidora/fiscal',
+        label: 'Fiscal',
+        icon: <IconCertificate />,
+      },
+      {
+        href: '/distribuidora/financeiro',
+        label: 'Financeiro',
+        icon: <IconWallet />,
+      },
+    ],
   },
 ];
 
@@ -99,9 +170,7 @@ export function DistributorShell({
                     onClick={() => setMenuOpen(false)}
                   >
                     <span className="ops-nav-link__row">
-                      <span className="ops-nav-link__icon">
-                        {item.href === '/distribuidora' ? <IconHome /> : <IconPackage />}
-                      </span>
+                      <span className="ops-nav-link__icon">{item.icon}</span>
                       <span>{item.label}</span>
                     </span>
                   </Link>
@@ -112,8 +181,7 @@ export function DistributorShell({
         </nav>
         <div className="ops-sidebar-note">
           <p className="field-hint">
-            Pedido de compra so entra no saldo depois das duas liberacoes e do
-            recebimento.
+            Bipe o codigo na Entrada ou Saida. Duvidas? Use o Suporte no canto.
           </p>
           <PoweredBy compact />
         </div>
@@ -161,6 +229,7 @@ export function DistributorShell({
           {children}
         </main>
       </div>
+      {user ? <SupportChatWidget mode="distribuidora" /> : null}
     </div>
   );
 }

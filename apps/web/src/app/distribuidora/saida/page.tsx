@@ -139,7 +139,11 @@ export default function DistribuidoraSaidaPage() {
           {error}
         </p>
       ) : null}
-      {notice ? <p className="success">{notice}</p> : null}
+      {notice ? (
+        <p className="success" role="status" aria-live="polite">
+          {notice}
+        </p>
+      ) : null}
 
       <DistributorScanPanel
         inputId="scan-out"

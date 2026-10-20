@@ -72,7 +72,7 @@ export default function DistribuidoraHomePage() {
           <p className="page-kicker">Distribuidora</p>
           <h1 className="page-title">Painel</h1>
           <p className="page-lead">
-            Estoque, compras, orçamentos e rascunhos de nota de saída.
+            Comece pelo depósito: bipar entrada, bipar saída ou conferir o que repor.
           </p>
         </div>
       </header>
@@ -81,7 +81,26 @@ export default function DistribuidoraHomePage() {
           {error}
         </p>
       ) : null}
-      <section className="dash-kpi-grid" aria-label="Resumo da operação">
+
+      <section className="dash-panel" aria-label="Tarefas do depósito">
+        <h2 className="dash-panel__title">O que fazer agora</h2>
+        <div className="header-actions header-actions--wrap">
+          <Link className="btn btn-primary" href="/distribuidora/entrada">
+            Registrar entrada
+          </Link>
+          <Link className="btn btn-primary" href="/distribuidora/saida">
+            Registrar saída
+          </Link>
+          <Link className="btn btn-secondary" href="/distribuidora/saldo">
+            Ver saldo
+          </Link>
+          <Link className="btn btn-secondary" href="/distribuidora/produtos">
+            Cadastrar produto
+          </Link>
+        </div>
+      </section>
+
+      <section className="dash-kpi-grid" aria-label="Resumo do depósito">
         <article className="dash-kpi">
           <p className="dash-kpi__label">Produtos</p>
           <p className="dash-kpi__value">{products.length}</p>
@@ -102,50 +121,8 @@ export default function DistribuidoraHomePage() {
           <p className="dash-kpi__value">{openOrders.length}</p>
           <p className="dash-kpi__hint">{waitingQuotes.length} orçamentos na fila</p>
         </article>
-        <article className="dash-kpi">
-          <p className="dash-kpi__label">Notas em rascunho</p>
-          <p className="dash-kpi__value">{draftNotes.length}</p>
-          <p className="dash-kpi__hint">
-            <Link href="/distribuidora/notas">abrir notas</Link>
-          </p>
-        </article>
-        <article className="dash-kpi">
-          <p className="dash-kpi__label">A pagar</p>
-          <p className="dash-kpi__value">
-            {(openPayableCents / 100).toLocaleString('pt-BR', {
-              style: 'currency',
-              currency: 'BRL',
-            })}
-          </p>
-          <p className="dash-kpi__hint">
-            <Link href="/distribuidora/financeiro">financeiro</Link>
-          </p>
-        </article>
-        <article className="dash-kpi">
-          <p className="dash-kpi__label">A receber</p>
-          <p className="dash-kpi__value">
-            {(openReceivableCents / 100).toLocaleString('pt-BR', {
-              style: 'currency',
-              currency: 'BRL',
-            })}
-          </p>
-          <p className="dash-kpi__hint">
-            <Link href="/distribuidora/financeiro">aberto</Link>
-          </p>
-        </article>
-        <article className="dash-kpi">
-          <p className="dash-kpi__label">Caixa</p>
-          <p className="dash-kpi__value">
-            {((finance?.cashBalanceCents ?? 0) / 100).toLocaleString('pt-BR', {
-              style: 'currency',
-              currency: 'BRL',
-            })}
-          </p>
-          <p className="dash-kpi__hint">
-            <Link href="/distribuidora/financeiro">bancos</Link>
-          </p>
-        </article>
       </section>
+
       <section className="dash-panel">
         <h2 className="dash-panel__title">Repor agora</h2>
         {low.length === 0 ? (
@@ -159,6 +136,7 @@ export default function DistribuidoraHomePage() {
                   <th scope="col">Tamanho</th>
                   <th scope="col">Saldo</th>
                   <th scope="col">Mínimo</th>
+                  <th scope="col">Ação</th>
                 </tr>
               </thead>
               <tbody>
@@ -168,6 +146,9 @@ export default function DistribuidoraHomePage() {
                     <td>{sizeName(row.label)}</td>
                     <td>{row.quantity}</td>
                     <td>{row.minQuantity}</td>
+                    <td>
+                      <Link href="/distribuidora/entrada">Entrada</Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -181,6 +162,55 @@ export default function DistribuidoraHomePage() {
           {' · '}
           <Link href="/distribuidora/orcamentos">Abrir orçamentos</Link>
         </p>
+      </section>
+
+      <section className="dash-panel" aria-label="Resumo comercial e financeiro">
+        <h2 className="dash-panel__title">Comercial e financeiro</h2>
+        <section className="dash-kpi-grid">
+          <article className="dash-kpi">
+            <p className="dash-kpi__label">Notas em rascunho</p>
+            <p className="dash-kpi__value">{draftNotes.length}</p>
+            <p className="dash-kpi__hint">
+              <Link href="/distribuidora/notas">abrir notas</Link>
+            </p>
+          </article>
+          <article className="dash-kpi">
+            <p className="dash-kpi__label">A pagar</p>
+            <p className="dash-kpi__value">
+              {(openPayableCents / 100).toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+              })}
+            </p>
+            <p className="dash-kpi__hint">
+              <Link href="/distribuidora/financeiro">financeiro</Link>
+            </p>
+          </article>
+          <article className="dash-kpi">
+            <p className="dash-kpi__label">A receber</p>
+            <p className="dash-kpi__value">
+              {(openReceivableCents / 100).toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+              })}
+            </p>
+            <p className="dash-kpi__hint">
+              <Link href="/distribuidora/financeiro">aberto</Link>
+            </p>
+          </article>
+          <article className="dash-kpi">
+            <p className="dash-kpi__label">Caixa</p>
+            <p className="dash-kpi__value">
+              {((finance?.cashBalanceCents ?? 0) / 100).toLocaleString('pt-BR', {
+                style: 'currency',
+                currency: 'BRL',
+              })}
+            </p>
+            <p className="dash-kpi__hint">
+              <Link href="/distribuidora/financeiro">bancos</Link>
+            </p>
+          </article>
+        </section>
       </section>
     </div>
   );

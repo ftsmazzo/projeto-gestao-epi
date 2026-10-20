@@ -387,7 +387,11 @@ export default function DistribuidoraProdutosPage() {
           {error}
         </p>
       ) : null}
-      {notice ? <p className="success">{notice}</p> : null}
+      {notice ? (
+        <p className="success" role="status" aria-live="polite">
+          {notice}
+        </p>
+      ) : null}
       {manager && formOpen ? (
         <form className="form dash-panel product-form" onSubmit={onCreate}>
           <h2 className="dash-panel__title">
@@ -950,6 +954,28 @@ export default function DistribuidoraProdutosPage() {
           placeholder="Nome, código, GTIN ou tamanho"
         />
       </div>
+      {products.length === 0 ? (
+        <div className="empty-state dash-panel">
+          <h2 className="page-title">Catálogo vazio</h2>
+          <p className="page-lead">
+            Comece pelo catálogo demo, depois bipe na Entrada e confira o Saldo.
+          </p>
+          <ol className="product-form__steps">
+            <li>
+              {manager
+                ? 'Clique em “Gerar catálogo demo (10 EPIs)” acima.'
+                : 'Peça ao gestor para gerar o catálogo demo ou cadastrar o primeiro produto.'}
+            </li>
+            <li>
+              Abra <Link href="/distribuidora/entrada">Entrada</Link> e bipe o GTIN.
+            </li>
+            <li>
+              Confira o resultado em <Link href="/distribuidora/saldo">Saldo</Link>.
+            </li>
+          </ol>
+        </div>
+      ) : null}
+      {products.length > 0 ? (
       <div className="table-wrap">
         <table className="data-table">
           <thead>
@@ -1033,6 +1059,7 @@ export default function DistribuidoraProdutosPage() {
           </tbody>
         </table>
       </div>
+      ) : null}
     </div>
   );
 }

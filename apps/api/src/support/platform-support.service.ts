@@ -459,7 +459,7 @@ export class PlatformSupportService {
 
   private serializeRow(thread: {
     id: string;
-    scope: 'CONSULTORIA' | 'CLIENTE';
+    scope: 'CONSULTORIA' | 'CLIENTE' | 'DISTRIBUIDORA';
     status: SupportThreadStatus;
     lifecycleStatus: SupportLifecycleStatus;
     organization: { id: string; name: string };

@@ -1,14 +1,15 @@
 # KB Agente Interno V2
 
-Versao: `v2-2026-09-16`  
+Versao: `v2-2026-10-20`  
 Agente: `agente-unico-prontepi`
 
 ## Objetivo
 
-Esta base sustenta o agente interno unico do ProntEPI para os dois niveis:
+Esta base sustenta o agente interno unico do ProntEPI para tres niveis:
 
 - Consultoria (implantacao e governanca)
 - Cliente (operacao diaria no portal)
+- Distribuidora (deposito, compras, orcamentos e fiscal do ERP)
 
 ## Estrutura
 
@@ -18,11 +19,11 @@ Esta base sustenta o agente interno unico do ProntEPI para os dois niveis:
 
 ## Composicao da base
 
-- Entradas globais: `6`
-- Entradas especiais (casos criticos): `3`
-- Modulos operacionais: `22`
+- Entradas globais: `8` (6 BOTH + 2 DISTRIBUIDORA)
+- Entradas especiais (casos criticos): `4`
+- Modulos operacionais: `33` (22 consultoria/cliente + 11 distribuidora)
 - Entradas por modulo: `4`
-- Total de entradas KB V2: `97`
+- Total de entradas KB V2: `144` (aprox.)
 
 Cada modulo gera 4 tipos de resposta:
 
@@ -33,17 +34,18 @@ Cada modulo gera 4 tipos de resposta:
 
 ## Regras de priorizacao
 
-1. Filtro de escopo (`CONSULTORIA`, `CLIENTE`, `BOTH`)
+1. Filtro de escopo (`CONSULTORIA`, `CLIENTE`, `DISTRIBUIDORA`; `BOTH` so para consultoria/cliente)
 2. Match por rota atual (com suporte a rotas dinamicas como `[id]`)
 3. Match semantico por titulo, pergunta, resposta, passos, avisos e tags
 
 ## Boas praticas de manutencao
 
-- Nao misturar orientacao de consultoria em respostas de cliente.
-- Sempre incluir rota quando houver tela especifica.
+- Nao misturar orientacao de consultoria em respostas de cliente ou distribuidora.
+- Sempre incluir rota quando houver tela especifica (`[Nome](/caminho)`).
 - Incluir checklist curto para fluxos com alto risco operacional.
 - Registrar erros recorrentes (warnings) para prevenir retrabalho.
 - Manter linguagem direta e operacional.
+- Na Distribuidora, nao prometer autorizacao SEFAZ ate homologacao.
 
 ## Evolucao sugerida (V3)
 

@@ -99,7 +99,17 @@ export function searchSupportKnowledge(input: {
 }): SupportKnowledgeEntry[] {
   const { query, scope, currentPath = null, limit = 4 } = input;
   return SUPPORT_KNOWLEDGE
-    .filter((entry) => entry.scope === 'BOTH' || entry.scope === scope)
+    .filter((entry) => {
+      if (entry.scope === scope) return true;
+      // BOTH cobre consultoria/cliente; Distribuidora tem base propria.
+      if (
+        entry.scope === 'BOTH' &&
+        (scope === 'CONSULTORIA' || scope === 'CLIENTE')
+      ) {
+        return true;
+      }
+      return false;
+    })
     .map((entry) => ({
       entry,
       score:

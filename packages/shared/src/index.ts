@@ -3246,7 +3246,7 @@ export type TrainingGenerateInput = {
   controlNumber?: string;
 };
 
-export type SupportScope = 'CONSULTORIA' | 'CLIENTE';
+export type SupportScope = 'CONSULTORIA' | 'CLIENTE' | 'DISTRIBUIDORA';
 export type SupportThreadStatusView = 'ai' | 'human';
 export type SupportMessageRoleView =
   | 'user'

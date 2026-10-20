@@ -16,7 +16,7 @@ import {
 } from '../lib/client-auth';
 
 type Props = {
-  mode: 'consultoria' | 'portal';
+  mode: 'consultoria' | 'portal' | 'distribuidora';
   clientContextId?: string | null;
 };
 
@@ -32,10 +32,60 @@ const SUGGESTIONS_CLIENTE = [
   'Onde vejo alertas de reposicao?',
 ];
 
+const SUGGESTIONS_DISTRIBUIDORA = [
+  'Como bipar na entrada?',
+  'Onde gero o catalogo demo?',
+  'Como dar saida com o leitor?',
+];
+
 function suggestionsByPath(
   path: string | null,
   scope: SupportScope,
 ): string[] {
+  if (scope === 'DISTRIBUIDORA') {
+    if (!path) return SUGGESTIONS_DISTRIBUIDORA;
+    if (path.startsWith('/distribuidora/entrada')) {
+      return [
+        'Como bipar na entrada?',
+        'A nota de compra ja move o saldo?',
+        'O que fazer se o GTIN nao achar produto?',
+      ];
+    }
+    if (path.startsWith('/distribuidora/saida')) {
+      return [
+        'Como dar saida com o leitor?',
+        'Por que a saida bloqueia por saldo?',
+        'Onde cadastro o GTIN do produto?',
+      ];
+    }
+    if (path.startsWith('/distribuidora/produtos')) {
+      return [
+        'Onde gero o catalogo demo?',
+        'Como importar produtos por CSV?',
+        'Qual campo e o codigo de barras?',
+      ];
+    }
+    if (path.startsWith('/distribuidora/saldo')) {
+      return [
+        'Como ver o que esta abaixo do minimo?',
+        'Como repor um tamanho?',
+        'Onde bipo a entrada?',
+      ];
+    }
+    if (path.startsWith('/distribuidora/plus')) {
+      return [
+        'Como funciona o Plus com cliente ProntEPI?',
+        'A saida Plus altera a ficha de entrega?',
+      ];
+    }
+    if (path.startsWith('/distribuidora/fiscal')) {
+      return [
+        'A SEFAZ ja emite nota neste piloto?',
+        'Onde cadastro o certificado A1?',
+      ];
+    }
+    return SUGGESTIONS_DISTRIBUIDORA;
+  }
   if (!path) return scope === 'CLIENTE' ? SUGGESTIONS_CLIENTE : SUGGESTIONS_CONSULTORIA;
   if (path.startsWith('/portal/entregas')) {
     return [
@@ -59,6 +109,18 @@ function suggestionsByPath(
     ];
   }
   return scope === 'CLIENTE' ? SUGGESTIONS_CLIENTE : SUGGESTIONS_CONSULTORIA;
+}
+
+function scopeHeadline(scope: SupportScope) {
+  if (scope === 'CONSULTORIA') return 'Duvidas de operacao da consultoria';
+  if (scope === 'DISTRIBUIDORA') return 'Duvidas do deposito e do ERP';
+  return 'Duvidas de operacao da empresa cliente';
+}
+
+function scopeContextLabel(scope: SupportScope) {
+  if (scope === 'CONSULTORIA') return 'Consultoria';
+  if (scope === 'DISTRIBUIDORA') return 'Distribuidora';
+  return 'Cliente';
 }
 
 function roleLabel(role: SupportMessageView['role']) {
@@ -140,7 +202,11 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
   const [reducedMotion, setReducedMotion] = useState(false);
 
   const effectiveScope: SupportScope =
-    mode === 'portal' || Boolean(clientContextId) ? 'CLIENTE' : 'CONSULTORIA';
+    mode === 'portal' || Boolean(clientContextId)
+      ? 'CLIENTE'
+      : mode === 'distribuidora'
+        ? 'DISTRIBUIDORA'
+        : 'CONSULTORIA';
   const suggestions = suggestionsByPath(pathname, effectiveScope);
 
   const load = useMemo(
@@ -301,11 +367,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
           <header className="support-widget__header">
             <div>
               <strong>Suporte interno</strong>
-              <small>
-                {effectiveScope === 'CONSULTORIA'
-                  ? 'Duvidas de operacao da consultoria'
-                  : 'Duvidas de operacao da empresa cliente'}
-              </small>
+              <small>{scopeHeadline(effectiveScope)}</small>
             </div>
             <button
               type="button"
@@ -318,7 +380,7 @@ export function SupportChatWidget({ mode, clientContextId }: Props) {
           </header>
 
           <div className="support-widget__scope-label">
-            Contexto: {effectiveScope === 'CONSULTORIA' ? 'Consultoria' : 'Cliente'}{' '}
+            Contexto: {scopeContextLabel(effectiveScope)}{' '}
             {pathname ? `· ${pathname}` : ''}
           </div>
           <p className="support-widget__sr-only" aria-live="polite">

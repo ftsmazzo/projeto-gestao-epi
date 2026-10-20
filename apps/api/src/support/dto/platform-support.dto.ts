@@ -16,7 +16,7 @@ const LIFECYCLE_VALUES = [
   'IN_PROGRESS',
   'RESOLVED',
 ] as const;
-const SCOPE_VALUES = ['CONSULTORIA', 'CLIENTE'] as const;
+const SCOPE_VALUES = ['CONSULTORIA', 'CLIENTE', 'DISTRIBUIDORA'] as const;
 
 export class PlatformSupportListQueryDto {
   @IsOptional()

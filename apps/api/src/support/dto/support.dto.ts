@@ -1,6 +1,6 @@
 import { IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
-const SUPPORT_SCOPE_VALUES = ['CONSULTORIA', 'CLIENTE'] as const;
+const SUPPORT_SCOPE_VALUES = ['CONSULTORIA', 'CLIENTE', 'DISTRIBUIDORA'] as const;
 type SupportScopeValue = (typeof SUPPORT_SCOPE_VALUES)[number];
 
 export class SupportLoadThreadQueryDto {

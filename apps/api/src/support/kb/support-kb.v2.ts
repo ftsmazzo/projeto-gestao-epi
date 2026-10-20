@@ -1,4 +1,4 @@
-export type SupportScopeKind = 'CONSULTORIA' | 'CLIENTE';
+export type SupportScopeKind = 'CONSULTORIA' | 'CLIENTE' | 'DISTRIBUIDORA';
 
 export type SupportKnowledgeEntryRecord = {
   id: string;
@@ -26,7 +26,7 @@ type SupportKbModule = {
   tags: string[];
 };
 
-export const SUPPORT_KB_VERSION = 'v2-2026-09-17';
+export const SUPPORT_KB_VERSION = 'v2-2026-10-20';
 
 const GLOBAL_ENTRIES: SupportKnowledgeEntryRecord[] = [
   {
@@ -82,6 +82,37 @@ const GLOBAL_ENTRIES: SupportKnowledgeEntryRecord[] = [
     answer:
       'Sim. Fichas e comprovantes exibem data de emissao/reemissao e aviso sobre as regras vigentes no momento da geracao.',
     tags: ['pdf', 'ficha epi', 'comprovante', 'reemissao', 'regra'],
+  },
+  {
+    id: 'global-distribuidora-visao',
+    scope: 'DISTRIBUIDORA',
+    title: 'Visao geral da Distribuidora',
+    question: 'O que faco no painel da Distribuidora?',
+    answer:
+      'O painel da Distribuidora controla o deposito proprio: produtos com tamanho/GTIN, saldo, entrada e saida por leitor, compras, orcamentos e tablet do representante. Nao e o portal da consultoria nem do cliente.',
+    route: '/distribuidora',
+    tags: ['distribuidora', 'deposito', 'visao geral', 'piloto'],
+  },
+  {
+    id: 'global-distribuidora-leitor',
+    scope: 'DISTRIBUIDORA',
+    title: 'Leitor de codigo de barras',
+    question: 'Como usar o leitor de codigo de barras?',
+    answer:
+      'O leitor USB funciona como teclado: clique no campo, bipe o GTIN e o Enter confirma. Sem leitor, use os chips de codigo demo ou digite e clique em Buscar.',
+    route: '/distribuidora/entrada',
+    routeAlias: ['/distribuidora/saida', '/distribuidora/produtos'],
+    steps: [
+      'Abra [Entrada](/distribuidora/entrada) ou [Saida](/distribuidora/saida).',
+      'Clique no campo do codigo para focar.',
+      'Bipe a etiqueta (ou digite o GTIN e Buscar).',
+      'Confirme a quantidade e grave o movimento.',
+    ],
+    warnings: [
+      'O produto precisa ter GTIN cadastrado em [Produtos](/distribuidora/produtos).',
+      'Na saida, quantidade maior que o saldo e bloqueada.',
+    ],
+    tags: ['leitor', 'gtin', 'codigo de barras', 'bipagem', 'scan'],
   },
 ];
 
@@ -332,6 +363,215 @@ const MODULES: SupportKbModule[] = [
     commonIssues: ['Senha fraca', 'Senha temporaria nao trocada', 'Duvida de permissao'],
     metricFocus: 'Saude de acesso e conformidade de credenciais.',
     tags: ['conta', 'senha', 'acesso', 'seguranca'],
+  },
+  {
+    key: 'painel',
+    scope: 'DISTRIBUIDORA',
+    title: 'Painel do deposito',
+    route: '/distribuidora',
+    operationLead: 'Ver o que repor e abrir as tarefas do dia no deposito.',
+    checklist: [
+      'Revisar tamanhos abaixo do minimo',
+      'Abrir Entrada ou Saida conforme a fila',
+      'Conferir saldo quando houver duvida de peca',
+    ],
+    commonIssues: [
+      'Painel vazio porque o catalogo ainda nao foi gerado',
+      'Confundir KPI financeiro com tarefa de estoque',
+    ],
+    metricFocus: 'Produtos, pecas em estoque e itens abaixo do minimo.',
+    tags: ['painel', 'deposito', 'repor', 'kpi'],
+  },
+  {
+    key: 'produtos',
+    scope: 'DISTRIBUIDORA',
+    title: 'Produtos e tamanhos',
+    route: '/distribuidora/produtos',
+    operationLead:
+      'Cadastrar EPI com tamanho, GTIN e minimo; importar CSV ou gerar catalogo demo para o piloto.',
+    checklist: [
+      'Preencher nome, tamanho e GTIN',
+      'Usar Gerar catalogo demo se for teste',
+      'Importar CSV com ponto e virgula quando houver lista pronta',
+    ],
+    commonIssues: [
+      'GTIN ausente impede bipagem na Entrada/Saida',
+      'Cabecalho CSV com alias errado (use codigo_de_barras ou gtin)',
+      'Variacao sem minimo gera alerta tarde demais',
+    ],
+    metricFocus: 'SKUs ativos, GTINs preenchidos e tamanhos com minimo.',
+    tags: ['produto', 'gtin', 'csv', 'demo', 'tamanho', 'variacao'],
+  },
+  {
+    key: 'saldo',
+    scope: 'DISTRIBUIDORA',
+    title: 'Saldo do deposito',
+    route: '/distribuidora/saldo',
+    operationLead: 'Consultar quantidade por tamanho e priorizar o que esta no minimo.',
+    checklist: [
+      'Buscar pelo nome ou SKU',
+      'Conferir linhas abaixo do minimo',
+      'Abrir Entrada para repor ou Saida para expedir',
+    ],
+    commonIssues: [
+      'Saldo zerado confundido com filtro vazio',
+      'Esquecer de bipar a Entrada apos receber mercadoria',
+    ],
+    metricFocus: 'Quantidade por tamanho e alertas de minimo.',
+    tags: ['saldo', 'estoque', 'minimo', 'deposito'],
+  },
+  {
+    key: 'entrada',
+    scope: 'DISTRIBUIDORA',
+    title: 'Entrada no deposito',
+    route: '/distribuidora/entrada',
+    operationLead:
+      'Somar saldo bipando GTIN (ou digitando). Nota de compra em XML/PDF e rascunho opcional ate confirmar.',
+    checklist: [
+      'Focar o campo do codigo',
+      'Bipar ou Buscar o produto',
+      'Confirmar quantidade',
+      'Se usar nota, revisar o rascunho antes de confirmar',
+    ],
+    commonIssues: [
+      'Produto sem GTIN',
+      'Confirmar nota sem vincular linhas a variacao',
+      'Achar que o upload da nota ja moveu o saldo',
+    ],
+    metricFocus: 'Entradas confirmadas e rascunhos de nota pendentes.',
+    tags: ['entrada', 'leitor', 'nota de compra', 'rascunho', 'bipagem'],
+  },
+  {
+    key: 'saida',
+    scope: 'DISTRIBUIDORA',
+    title: 'Saida do deposito',
+    route: '/distribuidora/saida',
+    operationLead: 'Baixar saldo bipando GTIN, sem passar da quantidade disponivel.',
+    checklist: [
+      'Focar o campo do codigo',
+      'Bipar o item',
+      'Conferir saldo disponivel',
+      'Confirmar a saida',
+    ],
+    commonIssues: [
+      'Quantidade maior que o saldo',
+      'Item sem cadastro de GTIN',
+      'Confundir saida do deposito com entrega do portal do cliente',
+    ],
+    metricFocus: 'Saidas confirmadas e bloqueios por saldo insuficiente.',
+    tags: ['saida', 'expedicao', 'leitor', 'saldo insuficiente'],
+  },
+  {
+    key: 'compras',
+    scope: 'DISTRIBUIDORA',
+    title: 'Compras e recebimento',
+    route: '/distribuidora/compras',
+    operationLead:
+      'Pedido de compra so vira estoque depois das liberacoes e do recebimento. Depois disso, a Entrada/bipagem confirma o saldo.',
+    checklist: [
+      'Criar pedido',
+      'Aguardar liberacoes do financeiro',
+      'Registrar recebimento',
+      'Conferir saldo em Entrada ou Saldo',
+    ],
+    commonIssues: [
+      'Pedido rejeitado nao move saldo',
+      'Receber sem bipar varia inconsistencia',
+    ],
+    metricFocus: 'Pedidos abertos, liberados e recebidos.',
+    tags: ['compras', 'pedido', 'recebimento', 'liberacao'],
+  },
+  {
+    key: 'orcamentos',
+    scope: 'DISTRIBUIDORA',
+    title: 'Orcamentos',
+    route: '/distribuidora/orcamentos',
+    operationLead: 'Montar orcamento com teto de desconto; acima do teto fica pendente de aprovacao.',
+    checklist: [
+      'Selecionar cliente e itens',
+      'Aplicar desconto dentro do teto',
+      'Enviar para aprovacao se passar do limite',
+    ],
+    commonIssues: [
+      'Desconto acima do teto sem aprovacao',
+      'Orcamento aprovado confundido com saida de estoque',
+    ],
+    metricFocus: 'Orcamentos pendentes, aprovados e desconto concedido.',
+    tags: ['orcamento', 'desconto', 'aprovacao', 'vendedor'],
+  },
+  {
+    key: 'tablet',
+    scope: 'DISTRIBUIDORA',
+    title: 'Tablet do representante',
+    route: '/distribuidora/tablet',
+    operationLead: 'Montar orcamento em visita com as mesmas regras de desconto do painel.',
+    checklist: [
+      'Abrir o modo tablet',
+      'Selecionar itens e quantidades',
+      'Respeitar o teto de desconto',
+    ],
+    commonIssues: [
+      'Usar tablet como se fosse bipagem de deposito',
+      'Desconto acima do teto sem aprovacao',
+    ],
+    metricFocus: 'Orcamentos criados em visita.',
+    tags: ['tablet', 'representante', 'visita', 'orcamento'],
+  },
+  {
+    key: 'plus',
+    scope: 'DISTRIBUIDORA',
+    title: 'Plus ProntEPI',
+    route: '/distribuidora/plus',
+    operationLead:
+      'Vincular a saida da distribuidora a uma empresa ja cliente do ProntEPI para abastecer o estoque dela por contrato explicito.',
+    checklist: [
+      'Confirmar contrato Plus ativo',
+      'Selecionar a empresa cliente',
+      'Confirmar a saida que gera a entrada no cliente',
+    ],
+    commonIssues: [
+      'Tentar usar Plus sem vinculo de organizacoes',
+      'Achar que isso substitui a ficha de entrega do portal',
+    ],
+    metricFocus: 'Saidas Plus confirmadas e empresas vinculadas.',
+    tags: ['plus', 'cliente prontepi', 'abastecimento', 'contrato'],
+  },
+  {
+    key: 'fiscal',
+    scope: 'DISTRIBUIDORA',
+    title: 'Fiscal e certificado',
+    route: '/distribuidora/fiscal',
+    operationLead:
+      'Cadastrar dados fiscais e certificado A1. A autorizacao assinada na SEFAZ permanece desligada ate homologacao.',
+    checklist: [
+      'Preencher regime e CFOP de trabalho',
+      'Enviar certificado A1 quando houver',
+      'Nao esperar emissao SEFAZ no piloto de deposito',
+    ],
+    commonIssues: [
+      'Servidor sem FISCAL_CERT_SECRET',
+      'Achar que rascunho de nota ja foi autorizado na SEFAZ',
+    ],
+    metricFocus: 'Certificado cadastrado e rascunhos de nota.',
+    tags: ['fiscal', 'sefaz', 'certificado', 'nfe', 'cfop'],
+  },
+  {
+    key: 'financeiro',
+    scope: 'DISTRIBUIDORA',
+    title: 'Financeiro',
+    route: '/distribuidora/financeiro',
+    operationLead: 'Acompanhar a pagar, a receber, caixa e conciliações da operacao comercial.',
+    checklist: [
+      'Revisar contas em aberto',
+      'Conferir saldo de caixa/bancos',
+      'Registrar lancamentos manuais quando preciso',
+    ],
+    commonIssues: [
+      'Confundir KPI financeiro com tarefa do operador de deposito',
+      'Lancamento sem vinculo com nota de compra',
+    ],
+    metricFocus: 'A pagar, a receber e saldo de caixa.',
+    tags: ['financeiro', 'caixa', 'pagar', 'receber'],
   },
 ];
 
