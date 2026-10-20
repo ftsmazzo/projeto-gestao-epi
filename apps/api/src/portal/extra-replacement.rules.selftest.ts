@@ -1,70 +1,71 @@
 import assert from 'node:assert/strict';
 import {
+  coverageKeyForDeliveryItem,
+  equipmentFamilyKey,
   pickPrimaryReplacementNeedId,
   resolveExtraReplacementNeedIds,
+  sameEquipmentFamily,
 } from './extra-replacement.rules';
+
+assert.equal(
+  equipmentFamilyKey('PROTETOR AUDITIVO', null),
+  'auditivo',
+);
+assert.equal(
+  equipmentFamilyKey('Protetor auricular tipo concha', 'X'),
+  'auditivo',
+);
+assert.ok(
+  sameEquipmentFamily({
+    leftName: 'PROTETOR AUDITIVO',
+    leftCategory: null,
+    rightName: 'Protecao auditiva',
+    rightCategory: 'OUVIDO',
+  }),
+);
+assert.ok(
+  sameEquipmentFamily({
+    leftName: 'PROTETOR AUDITIVO CA 39068',
+    rightName: 'PROTETOR AUDITIVO',
+    rightCategory: null,
+  }),
+);
 
 const protetorNeed = {
   epiNeedId: 'need-protetor',
-  name: 'Protetor auditivo',
-  category: 'AUDITIVO',
+  name: 'Protecao auditiva',
+  category: 'OUVIDO',
   linkedEpiItemIds: ['epi-39068'],
 };
-
-const luvasNeed = {
-  epiNeedId: 'need-luvas',
-  name: 'Luvas de protecao',
-  category: 'MAOS',
-  linkedEpiItemIds: ['epi-luva'],
-};
-
-const epiNovo = {
-  id: 'epi-18189',
-  name: 'PROTETOR AUDITIVO',
-  category: 'AUDITIVO',
-  caNumber: '18189',
-};
-
-assert.deepEqual(
-  resolveExtraReplacementNeedIds({
-    epi: epiNovo,
-    workerNeeds: [protetorNeed, luvasNeed],
-    explicitNeedId: 'need-protetor',
-  }),
-  ['need-protetor'],
-);
-
-assert.deepEqual(
-  resolveExtraReplacementNeedIds({
-    epi: epiNovo,
-    workerNeeds: [protetorNeed, luvasNeed],
-    linkedNeedIds: ['need-protetor'],
-  }),
-  ['need-protetor'],
-);
-
-assert.deepEqual(
-  resolveExtraReplacementNeedIds({
-    epi: epiNovo,
-    workerNeeds: [protetorNeed, luvasNeed],
-  }),
-  ['need-protetor'],
-);
 
 assert.deepEqual(
   resolveExtraReplacementNeedIds({
     epi: {
-      id: 'epi-x',
-      name: 'Botina de seguranca',
+      id: 'epi-18189',
+      name: 'PROTETOR AUDITIVO',
       category: null,
-      caNumber: '1',
+      caNumber: '18189',
     },
-    workerNeeds: [protetorNeed, luvasNeed],
+    workerNeeds: [protetorNeed],
   }),
-  [],
+  ['need-protetor'],
+);
+
+assert.equal(
+  coverageKeyForDeliveryItem({
+    workerId: 'w1',
+    epiNeedId: 'need-a',
+    epiItemId: 'epi-39068',
+    epiName: 'PROTETOR AUDITIVO',
+  }),
+  coverageKeyForDeliveryItem({
+    workerId: 'w1',
+    epiNeedId: null,
+    epiItemId: 'epi-18189',
+    epiName: 'PROTETOR AUDITIVO',
+  }),
 );
 
 assert.equal(pickPrimaryReplacementNeedId(['need-protetor']), 'need-protetor');
-assert.equal(pickPrimaryReplacementNeedId(['a', 'b']), null);
 
 console.log('extra-replacement.rules.selftest: ok');

@@ -69,8 +69,10 @@ import {
   type PortalCreateReturnDto,
 } from './dto/portal-delivery.dto';
 import {
+  coverageKeyForDeliveryItem,
   pickPrimaryReplacementNeedId,
   resolveExtraReplacementNeedIds,
+  sameEquipmentFamily,
   type ExtraReplacementNeed,
 } from './extra-replacement.rules';
 import type {
@@ -322,7 +324,9 @@ export class PortalService {
           cancelledQuantity: true,
           usefulLifeValue: true,
           usefulLifeUnit: true,
-          epiItem: { select: { name: true, caNumber: true } },
+          epiItem: { select: { id: true, name: true, caNumber: true, category: true } },
+          epiNeedId: true,
+          epiNeed: { select: { name: true, category: true } },
           delivery: {
             select: {
               id: true,
@@ -379,12 +383,20 @@ export class PortalService {
       return a.name.localeCompare(b.name, 'pt-BR');
     });
 
-    const latestDeliveryByWorkerEpi = new Map<string, Date>();
+    const latestDeliveryByCoverage = new Map<string, Date>();
     for (const item of replacementItems) {
-      const key = `${item.delivery.workerId}:${item.epiItemId}`;
-      const latest = latestDeliveryByWorkerEpi.get(key);
+      const key = coverageKeyForDeliveryItem({
+        workerId: item.delivery.workerId,
+        epiNeedId: item.epiNeedId,
+        epiItemId: item.epiItem.id,
+        epiName: item.epiItem.name,
+        epiCategory: item.epiItem.category,
+        needName: item.epiNeed?.name,
+        needCategory: item.epiNeed?.category,
+      });
+      const latest = latestDeliveryByCoverage.get(key);
       if (!latest || item.delivery.deliveredAt.getTime() > latest.getTime()) {
-        latestDeliveryByWorkerEpi.set(key, item.delivery.deliveredAt);
+        latestDeliveryByCoverage.set(key, item.delivery.deliveredAt);
       }
     }
 
@@ -398,8 +410,16 @@ export class PortalService {
       }
     >();
     for (const item of replacementItems) {
-      const workerEpiKey = `${item.delivery.workerId}:${item.epiItemId}`;
-      const latest = latestDeliveryByWorkerEpi.get(workerEpiKey);
+      const coverageKey = coverageKeyForDeliveryItem({
+        workerId: item.delivery.workerId,
+        epiNeedId: item.epiNeedId,
+        epiItemId: item.epiItem.id,
+        epiName: item.epiItem.name,
+        epiCategory: item.epiItem.category,
+        needName: item.epiNeed?.name,
+        needCategory: item.epiNeed?.category,
+      });
+      const latest = latestDeliveryByCoverage.get(coverageKey);
       if (!latest || item.delivery.deliveredAt.getTime() !== latest.getTime()) {
         continue;
       }
@@ -864,8 +884,8 @@ export class PortalService {
   }
 
   /**
-   * Backfill: Extra com CA novo que cobre a mesma necessidade encerra o alerta
-   * do CA antigo (itens normativos ainda DELIVERED).
+   * Backfill: entrega mais nova da mesma familia de EPI (tipo/protecao)
+   * encerra o item antigo — CA/marca diferente nao mantem alerta.
    */
   private async healExtraReplacements(
     organizationId: string,
@@ -873,8 +893,6 @@ export class PortalService {
   ) {
     const openItems = await this.prisma.epiDeliveryItem.findMany({
       where: {
-        isExtra: false,
-        epiNeedId: { not: null },
         status: {
           in: [
             EpiDeliveryItemStatus.DELIVERED,
@@ -900,136 +918,61 @@ export class PortalService {
           select: { workerId: true, deliveredAt: true },
         },
         epiNeed: { select: { id: true, name: true, category: true } },
-      },
-      take: 500,
-    });
-    if (openItems.length === 0) return;
-
-    const workerIds = [...new Set(openItems.map((row) => row.delivery.workerId))];
-    const laterExtras = await this.prisma.epiDeliveryItem.findMany({
-      where: {
-        isExtra: true,
-        delivery: {
-          organizationId,
-          servedClientId,
-          workerId: { in: workerIds },
-          status: {
-            in: [
-              EpiDeliveryStatus.COMPLETED,
-              EpiDeliveryStatus.PARTIALLY_RETURNED,
-            ],
-          },
-        },
-      },
-      select: {
-        id: true,
-        epiNeedId: true,
-        epiItemId: true,
-        delivery: {
-          select: { workerId: true, deliveredAt: true },
-        },
         epiItem: {
           select: { id: true, name: true, category: true, caNumber: true },
         },
       },
-      take: 2000,
+      take: 3000,
     });
-    if (laterExtras.length === 0) return;
+    if (openItems.length === 0) return;
 
-    const workers = await this.prisma.worker.findMany({
-      where: { id: { in: workerIds }, organizationId, servedClientId },
-      select: { id: true, clientJobFunctionId: true },
-    });
-    const jobIds = [
-      ...new Set(
-        workers
-          .map((w) => w.clientJobFunctionId)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    ];
-    const requirements =
-      jobIds.length === 0
-        ? []
-        : await this.prisma.jobFunctionEpiRequirement.findMany({
-            where: {
-              organizationId,
-              jobFunctionId: { in: jobIds },
-              isActive: true,
-            },
-            include: {
-              epiNeed: {
-                select: {
-                  id: true,
-                  name: true,
-                  category: true,
-                  itemLinks: { select: { epiItemId: true } },
-                },
-              },
-            },
-          });
-    const needsByJob = new Map<string, ExtraReplacementNeed[]>();
-    for (const req of requirements) {
-      const list = needsByJob.get(req.jobFunctionId) ?? [];
-      list.push({
-        epiNeedId: req.epiNeedId,
-        name: req.epiNeed.name,
-        category: req.epiNeed.category,
-        linkedEpiItemIds: req.epiNeed.itemLinks.map((link) => link.epiItemId),
-      });
-      needsByJob.set(req.jobFunctionId, list);
-    }
-    const jobByWorker = new Map(
-      workers.map((w) => [w.id, w.clientJobFunctionId] as const),
-    );
-
-    const extraEpiIds = [...new Set(laterExtras.map((row) => row.epiItemId))];
-    const allNeedIds = [
-      ...new Set(requirements.map((req) => req.epiNeedId)),
-    ];
-    const links =
-      extraEpiIds.length === 0 || allNeedIds.length === 0
-        ? []
-        : await this.prisma.epiItemNeed.findMany({
-            where: {
-              organizationId,
-              epiItemId: { in: extraEpiIds },
-              epiNeedId: { in: allNeedIds },
-            },
-            select: { epiItemId: true, epiNeedId: true },
-          });
-    const linkedNeedsByEpi = new Map<string, string[]>();
-    for (const link of links) {
-      const list = linkedNeedsByEpi.get(link.epiItemId) ?? [];
-      list.push(link.epiNeedId);
-      linkedNeedsByEpi.set(link.epiItemId, list);
+    const byWorker = new Map<string, typeof openItems>();
+    for (const row of openItems) {
+      const list = byWorker.get(row.delivery.workerId) ?? [];
+      list.push(row);
+      byWorker.set(row.delivery.workerId, list);
     }
 
     const idsToReplace = new Set<string>();
-    for (const open of openItems) {
-      const needId = open.epiNeedId;
-      if (!needId) continue;
-      const jobId = jobByWorker.get(open.delivery.workerId);
-      const workerNeeds = jobId ? (needsByJob.get(jobId) ?? []) : [];
-      for (const extra of laterExtras) {
-        if (extra.delivery.workerId !== open.delivery.workerId) continue;
-        if (
-          extra.delivery.deliveredAt.getTime() <=
-          open.delivery.deliveredAt.getTime()
-        ) {
-          continue;
-        }
-        const matchedNeedIds: string[] =
-          extra.epiNeedId && extra.epiNeedId === needId
-            ? [needId]
-            : resolveExtraReplacementNeedIds({
-                epi: extra.epiItem,
-                workerNeeds,
-                explicitNeedId: extra.epiNeedId,
-                linkedNeedIds: linkedNeedsByEpi.get(extra.epiItemId) ?? [],
-              });
-        if (matchedNeedIds.includes(needId)) {
-          idsToReplace.add(open.id);
-          break;
+    for (const rows of byWorker.values()) {
+      const sorted = [...rows].sort(
+        (a, b) =>
+          a.delivery.deliveredAt.getTime() - b.delivery.deliveredAt.getTime(),
+      );
+      for (let i = 0; i < sorted.length; i += 1) {
+        const older = sorted[i]!;
+        for (let j = i + 1; j < sorted.length; j += 1) {
+          const newer = sorted[j]!;
+          if (newer.epiItemId === older.epiItemId) {
+            idsToReplace.add(older.id);
+            break;
+          }
+          if (
+            older.epiNeedId &&
+            newer.epiNeedId &&
+            older.epiNeedId === newer.epiNeedId
+          ) {
+            idsToReplace.add(older.id);
+            break;
+          }
+          const sameFamily = sameEquipmentFamily({
+            leftName: older.epiItem.name,
+            leftCategory: older.epiItem.category,
+            rightName: newer.epiItem.name,
+            rightCategory: newer.epiItem.category,
+          });
+          const sameAsNeed =
+            Boolean(older.epiNeed) &&
+            sameEquipmentFamily({
+              leftName: older.epiNeed!.name,
+              leftCategory: older.epiNeed!.category,
+              rightName: newer.epiItem.name,
+              rightCategory: newer.epiItem.category,
+            });
+          if (sameFamily || sameAsNeed) {
+            idsToReplace.add(older.id);
+            break;
+          }
         }
       }
     }
@@ -1102,8 +1045,10 @@ export class PortalService {
               deliveredAt: true,
             },
           },
-          epiNeed: { select: { id: true, name: true } },
-          epiItem: { select: { id: true, name: true, caNumber: true } },
+          epiNeed: { select: { id: true, name: true, category: true } },
+          epiItem: {
+            select: { id: true, name: true, caNumber: true, category: true },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }),
@@ -1165,13 +1110,19 @@ export class PortalService {
         totalDays: number;
       }
     >();
-    /** Ultima entrega por necessidade (preferencial) ou por item quando nao ha need. */
+    /** Ultima entrega por familia de EPI (tipo) — CA diferente nao gera alerta paralelo. */
     const latestDeliveryPerCoverageKey = new Map<string, Date>();
 
     for (const item of dueItems) {
-      const coverageKey = item.epiNeedId
-        ? `${item.delivery.workerId}:need:${item.epiNeedId}`
-        : `${item.delivery.workerId}:item:${item.epiItem.id}`;
+      const coverageKey = coverageKeyForDeliveryItem({
+        workerId: item.delivery.workerId,
+        epiNeedId: item.epiNeedId,
+        epiItemId: item.epiItem.id,
+        epiName: item.epiItem.name,
+        epiCategory: item.epiItem.category,
+        needName: item.epiNeed?.name,
+        needCategory: item.epiNeed?.category,
+      });
       const latest = latestDeliveryPerCoverageKey.get(coverageKey);
       if (!latest || item.delivery.deliveredAt.getTime() > latest.getTime()) {
         latestDeliveryPerCoverageKey.set(
@@ -1182,9 +1133,15 @@ export class PortalService {
     }
 
     for (const item of dueItems) {
-      const coverageKey = item.epiNeedId
-        ? `${item.delivery.workerId}:need:${item.epiNeedId}`
-        : `${item.delivery.workerId}:item:${item.epiItem.id}`;
+      const coverageKey = coverageKeyForDeliveryItem({
+        workerId: item.delivery.workerId,
+        epiNeedId: item.epiNeedId,
+        epiItemId: item.epiItem.id,
+        epiName: item.epiItem.name,
+        epiCategory: item.epiItem.category,
+        needName: item.epiNeed?.name,
+        needCategory: item.epiNeed?.category,
+      });
       const latest = latestDeliveryPerCoverageKey.get(coverageKey);
       if (!latest || item.delivery.deliveredAt.getTime() !== latest.getTime()) {
         continue;
@@ -5520,6 +5477,84 @@ export class PortalService {
             },
           });
         }
+
+        // Troca por familia (tipo): CA/marca nova encerra alerta do CA antigo.
+        const createdIds = new Set(createdItems.map((row) => row.id));
+        const openPrior = await tx.epiDeliveryItem.findMany({
+          where: {
+            id: { notIn: [...createdIds] },
+            status: {
+              in: [
+                EpiDeliveryItemStatus.DELIVERED,
+                EpiDeliveryItemStatus.PARTIALLY_RETURNED,
+              ],
+            },
+            delivery: {
+              organizationId,
+              servedClientId,
+              workerId: worker.id,
+              status: {
+                in: [
+                  EpiDeliveryStatus.COMPLETED,
+                  EpiDeliveryStatus.PARTIALLY_RETURNED,
+                ],
+              },
+            },
+          },
+          select: {
+            id: true,
+            epiNeedId: true,
+            epiItem: { select: { name: true, category: true } },
+            epiNeed: { select: { name: true, category: true } },
+          },
+        });
+        const familyReplaceIds = openPrior
+          .filter((prior) =>
+            createdItems.some((created) => {
+              const createdEpi = epiById.get(created.epiItemId);
+              if (!createdEpi) return false;
+              if (
+                created.epiNeedId &&
+                prior.epiNeedId &&
+                created.epiNeedId === prior.epiNeedId
+              ) {
+                return true;
+              }
+              if (
+                sameEquipmentFamily({
+                  leftName: prior.epiItem.name,
+                  leftCategory: prior.epiItem.category,
+                  rightName: createdEpi.name,
+                  rightCategory: createdEpi.category,
+                })
+              ) {
+                return true;
+              }
+              if (
+                prior.epiNeed &&
+                sameEquipmentFamily({
+                  leftName: prior.epiNeed.name,
+                  leftCategory: prior.epiNeed.category,
+                  rightName: createdEpi.name,
+                  rightCategory: createdEpi.category,
+                })
+              ) {
+                return true;
+              }
+              return false;
+            }),
+          )
+          .map((row) => row.id);
+        if (familyReplaceIds.length > 0) {
+          await tx.epiDeliveryItem.updateMany({
+            where: { id: { in: familyReplaceIds } },
+            data: {
+              status: EpiDeliveryItemStatus.REPLACED,
+              nextReplacementAt: null,
+            },
+          });
+        }
+
         await tx.deliveryEvidence.create({
           data: {
             deliveryId: delivery.id,

@@ -7,6 +7,7 @@ import {
   WorkerStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { coverageKeyForDeliveryItem } from './extra-replacement.rules';
 import { groupCoverageRequirementsByNeed } from './portal-epi-coverage.utils';
 import {
   usefulLifeToBaseDays,
@@ -770,20 +771,30 @@ export class PortalReportsService {
             },
           },
         },
-        epiNeed: { select: { name: true } },
-        epiItem: { select: { id: true, name: true, caNumber: true } },
+        epiNeed: { select: { name: true, category: true } },
+        epiItem: {
+          select: { id: true, name: true, caNumber: true, category: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
       take: 500,
     });
 
     const msPerDay = 24 * 60 * 60 * 1000;
-    const latestDeliveryPerWorkerEpi = new Map<string, Date>();
+    const latestDeliveryPerCoverage = new Map<string, Date>();
     for (const item of items) {
-      const key = `${item.delivery.worker.id}:${item.epiItem.id}`;
-      const latest = latestDeliveryPerWorkerEpi.get(key);
+      const key = coverageKeyForDeliveryItem({
+        workerId: item.delivery.worker.id,
+        epiNeedId: item.epiNeedId,
+        epiItemId: item.epiItem.id,
+        epiName: item.epiItem.name,
+        epiCategory: item.epiItem.category,
+        needName: item.epiNeed?.name,
+        needCategory: item.epiNeed?.category,
+      });
+      const latest = latestDeliveryPerCoverage.get(key);
       if (!latest || item.delivery.deliveredAt.getTime() > latest.getTime()) {
-        latestDeliveryPerWorkerEpi.set(key, item.delivery.deliveredAt);
+        latestDeliveryPerCoverage.set(key, item.delivery.deliveredAt);
       }
     }
 
@@ -807,8 +818,16 @@ export class PortalReportsService {
     >();
 
     for (const item of items) {
-      const latestKey = `${item.delivery.worker.id}:${item.epiItem.id}`;
-      const latestAt = latestDeliveryPerWorkerEpi.get(latestKey);
+      const latestKey = coverageKeyForDeliveryItem({
+        workerId: item.delivery.worker.id,
+        epiNeedId: item.epiNeedId,
+        epiItemId: item.epiItem.id,
+        epiName: item.epiItem.name,
+        epiCategory: item.epiItem.category,
+        needName: item.epiNeed?.name,
+        needCategory: item.epiNeed?.category,
+      });
+      const latestAt = latestDeliveryPerCoverage.get(latestKey);
       if (!latestAt || latestAt.getTime() !== item.delivery.deliveredAt.getTime()) {
         continue;
       }

@@ -1,4 +1,4 @@
-/** Resolve quais necessidades de EPI um item Extra pode encerrar na troca. */
+/** Troca de EPI por tipo/familia — CA/marca nao e identidade. */
 
 export type ExtraReplacementNeed = {
   epiNeedId: string;
@@ -23,6 +23,69 @@ export function normalizeMatchText(value: string) {
     .trim();
 }
 
+/** Familias operacionais: troca de marca/CA dentro da familia encerra o alerta. */
+const FAMILY_PATTERNS: Array<{ family: string; patterns: RegExp[] }> = [
+  {
+    family: 'auditivo',
+    patterns: [
+      /\bauditiv/,
+      /\bauricular/,
+      /\babafador/,
+      /\bplug(ue)?\b/,
+      /\bprotetor\b.*\b(ouvido|orelha)/,
+    ],
+  },
+  {
+    family: 'respiratorio',
+    patterns: [
+      /\brespirador/,
+      /\bmascara/,
+      /\bpff\d*/,
+      /\bsemifacial/,
+      /\bpurificador\b.*\bar\b/,
+    ],
+  },
+  {
+    family: 'ocular',
+    patterns: [/\boculos/, /\bocular/, /\bvisiera/, /\bviseira/, /\bgoggles?/],
+  },
+  {
+    family: 'maos',
+    patterns: [/\bluva/, /\bgloves?/],
+  },
+  {
+    family: 'calcado',
+    patterns: [/\bbotina/, /\bbota\b/, /\bcalcado/, /\bsapat/],
+  },
+  {
+    family: 'queda',
+    patterns: [
+      /\bcinturao/,
+      /\btalabarte/,
+      /\btrava.?queda/,
+      /\bcadeira\b.*\bqued/,
+    ],
+  },
+  {
+    family: 'cabeca',
+    patterns: [/\bcapacete/, /\bcasco\b/],
+  },
+];
+
+export function equipmentFamilyKey(
+  name: string | null | undefined,
+  category?: string | null,
+): string | null {
+  const hay = normalizeMatchText(`${name ?? ''} ${category ?? ''}`);
+  if (!hay) return null;
+  for (const row of FAMILY_PATTERNS) {
+    if (row.patterns.some((re) => re.test(hay))) return row.family;
+  }
+  const cat = normalizeMatchText(category ?? '');
+  if (cat) return `cat:${cat}`;
+  return null;
+}
+
 function namesOverlap(a: string, b: string) {
   const left = normalizeMatchText(a);
   const right = normalizeMatchText(b);
@@ -33,12 +96,26 @@ function namesOverlap(a: string, b: string) {
   const rightTokens = new Set(right.split(/\s+/).filter((t) => t.length >= 4));
   if (leftTokens.length === 0 || rightTokens.size === 0) return false;
   const shared = leftTokens.filter((t) => rightTokens.has(t)).length;
-  return shared >= Math.min(2, leftTokens.length, rightTokens.size);
+  // 1 token forte ja basta (ex.: "protetor" + familia); 2 tokens e ainda melhor.
+  return shared >= 1;
+}
+
+/** Dois EPIs/necessidades cobrem a mesma protecao (independente do CA). */
+export function sameEquipmentFamily(input: {
+  leftName: string;
+  leftCategory?: string | null;
+  rightName: string;
+  rightCategory?: string | null;
+}): boolean {
+  const leftFamily = equipmentFamilyKey(input.leftName, input.leftCategory);
+  const rightFamily = equipmentFamilyKey(input.rightName, input.rightCategory);
+  if (leftFamily && rightFamily && leftFamily === rightFamily) return true;
+  return namesOverlap(input.leftName, input.rightName);
 }
 
 /**
  * Retorna IDs de necessidade da funcao do trabalhador que o Extra deve encerrar.
- * Ordem de prioridade: need explicita → vinculo item↔need → categoria → nome.
+ * Ordem: need explicita → vinculo → familia/categoria → nome.
  */
 export function resolveExtraReplacementNeedIds(input: {
   epi: ExtraReplacementEpi;
@@ -67,22 +144,41 @@ export function resolveExtraReplacementNeedIds(input: {
     .map((need) => need.epiNeedId);
   if (byItemLink.length > 0) return [...new Set(byItemLink)];
 
-  const epiCategory = normalizeMatchText(epi.category ?? '');
-  if (epiCategory) {
-    const byCategory = workerNeeds
-      .filter((need) => normalizeMatchText(need.category ?? '') === epiCategory)
-      .map((need) => need.epiNeedId);
-    if (byCategory.length > 0) return [...new Set(byCategory)];
-  }
-
-  const byName = workerNeeds
-    .filter((need) => namesOverlap(epi.name, need.name))
+  const byFamily = workerNeeds
+    .filter((need) =>
+      sameEquipmentFamily({
+        leftName: epi.name,
+        leftCategory: epi.category,
+        rightName: need.name,
+        rightCategory: need.category,
+      }),
+    )
     .map((need) => need.epiNeedId);
-  return [...new Set(byName)];
+  return [...new Set(byFamily)];
 }
 
-/** Preferencia para persistir no item Extra (uma necessidade primaria). */
 export function pickPrimaryReplacementNeedId(needIds: string[]) {
   if (needIds.length === 1) return needIds[0] ?? null;
   return null;
+}
+
+/**
+ * Chave de cobertura para alertas: familia > necessidade > item.
+ * Assim CA diferente da mesma familia nao gera alerta paralelo.
+ */
+export function coverageKeyForDeliveryItem(input: {
+  workerId: string;
+  epiNeedId?: string | null;
+  epiItemId: string;
+  epiName: string;
+  epiCategory?: string | null;
+  needName?: string | null;
+  needCategory?: string | null;
+}): string {
+  const family =
+    equipmentFamilyKey(input.epiName, input.epiCategory) ??
+    equipmentFamilyKey(input.needName, input.needCategory);
+  if (family) return `${input.workerId}:family:${family}`;
+  if (input.epiNeedId) return `${input.workerId}:need:${input.epiNeedId}`;
+  return `${input.workerId}:item:${input.epiItemId}`;
 }

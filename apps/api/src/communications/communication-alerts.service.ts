@@ -16,6 +16,7 @@ import {
   COMM_TEMPLATE_DAILY_ALERTS,
 } from './communication.templates';
 import { CommunicationsService } from './communications.service';
+import { coverageKeyForDeliveryItem } from '../portal/extra-replacement.rules';
 import {
   REPLACEMENT_WARN_DAYS,
   usefulLifeToBaseDays,
@@ -301,12 +302,16 @@ export class CommunicationAlertsService {
           },
           select: {
             epiItemId: true,
+            epiNeedId: true,
             quantity: true,
             returnedQuantity: true,
             cancelledQuantity: true,
             usefulLifeValue: true,
             usefulLifeUnit: true,
-            epiItem: { select: { name: true, caNumber: true } },
+            epiItem: {
+              select: { id: true, name: true, caNumber: true, category: true },
+            },
+            epiNeed: { select: { name: true, category: true } },
             delivery: {
               select: {
                 id: true,
@@ -359,15 +364,21 @@ export class CommunicationAlertsService {
         }),
       ]);
 
-    // Mesma regra do painel/ficha: vida util unitaria × quantidade restante
-    // na ultima entrega do par trabalhador+EPI. Nao usar nextReplacementAt
-    // legado (pode ter sido gravado sem multiplicar a quantidade).
-    const latestByWorkerEpi = new Map<string, Date>();
+    // Ultima entrega por familia de EPI (tipo) — CA/marca diferente nao gera alerta paralelo.
+    const latestByCoverage = new Map<string, Date>();
     for (const item of deliveryItems) {
-      const key = `${item.delivery.workerId}:${item.epiItemId}`;
-      const latest = latestByWorkerEpi.get(key);
+      const key = coverageKeyForDeliveryItem({
+        workerId: item.delivery.workerId,
+        epiNeedId: item.epiNeedId,
+        epiItemId: item.epiItem.id,
+        epiName: item.epiItem.name,
+        epiCategory: item.epiItem.category,
+        needName: item.epiNeed?.name,
+        needCategory: item.epiNeed?.category,
+      });
+      const latest = latestByCoverage.get(key);
       if (!latest || item.delivery.deliveredAt.getTime() > latest.getTime()) {
-        latestByWorkerEpi.set(key, item.delivery.deliveredAt);
+        latestByCoverage.set(key, item.delivery.deliveredAt);
       }
     }
 
@@ -381,8 +392,16 @@ export class CommunicationAlertsService {
       }
     >();
     for (const item of deliveryItems) {
-      const workerEpiKey = `${item.delivery.workerId}:${item.epiItemId}`;
-      const latest = latestByWorkerEpi.get(workerEpiKey);
+      const coverageKey = coverageKeyForDeliveryItem({
+        workerId: item.delivery.workerId,
+        epiNeedId: item.epiNeedId,
+        epiItemId: item.epiItem.id,
+        epiName: item.epiItem.name,
+        epiCategory: item.epiItem.category,
+        needName: item.epiNeed?.name,
+        needCategory: item.epiNeed?.category,
+      });
+      const latest = latestByCoverage.get(coverageKey);
       if (!latest || item.delivery.deliveredAt.getTime() !== latest.getTime()) {
         continue;
       }
