@@ -215,6 +215,20 @@ export function importDistributorProductsCsv(csvText: string) {
   });
 }
 
+export type DemoSeedResult = {
+  createdCount: number;
+  createdSkus: string[];
+  skippedCount: number;
+  skippedSkus: string[];
+  hint: string;
+};
+
+export function seedDistributorDemoCatalog() {
+  return apiFetch<DemoSeedResult>('/distributor/products/seed-demo', {
+    method: 'POST',
+  });
+}
+
 export function moveDistributorStock(input: {
   variantId: string;
   direction: 'IN' | 'OUT';

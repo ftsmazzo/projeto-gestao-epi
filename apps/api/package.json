@@ -33,6 +33,7 @@
     "test:plus": "npx --yes tsx src/distributor/plus.rules.selftest.ts",
     "test:field-quote": "npx --yes tsx src/distributor/field-quote.rules.selftest.ts",
     "test:catalog-import": "npx --yes tsx src/distributor/catalog-import.rules.selftest.ts",
+    "test:demo-seed": "npx --yes tsx src/distributor/demo-seed.rules.selftest.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",

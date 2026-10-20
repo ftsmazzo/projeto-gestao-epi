@@ -11,6 +11,7 @@ import {
   isDistributorManager,
   listDistributorProducts,
   lookupDistributorCa,
+  seedDistributorDemoCatalog,
   updateDistributorMin,
   updateDistributorProduct,
   type DistributorCatalogInput,
@@ -190,6 +191,7 @@ export default function DistribuidoraProdutosPage() {
   const [csvOpen, setCsvOpen] = useState(false);
   const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   async function reload() {
     const [rows, me] = await Promise.all([listDistributorProducts(), fetchMe()]);
@@ -800,6 +802,47 @@ export default function DistribuidoraProdutosPage() {
               Confira o saldo em <Link href="/distribuidora/saldo">Saldo</Link>.
             </li>
           </ol>
+        </section>
+      ) : null}
+
+      {manager ? (
+        <section className="dash-panel">
+          <h2 className="dash-panel__title">Para testar rápido</h2>
+          <p className="field-hint">
+            Carrega 10 EPIs com GTIN, tamanhos e saldo inicial. SKUs que já
+            existem são ignorados.
+          </p>
+          <div className="product-form__actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={seeding}
+              onClick={() => {
+                setError(null);
+                setNotice(null);
+                setSeeding(true);
+                void seedDistributorDemoCatalog()
+                  .then(async (result) => {
+                    setNotice(
+                      result.createdCount > 0
+                        ? `${result.createdCount} produtos demo criados com saldo. ${result.hint}`
+                        : `Nada novo: os SKUs demo já estavam cadastrados. ${result.hint}`,
+                    );
+                    await reload();
+                  })
+                  .catch((err: unknown) =>
+                    setError(
+                      err instanceof Error
+                        ? err.message
+                        : 'Falha ao gerar o catálogo demo.',
+                    ),
+                  )
+                  .finally(() => setSeeding(false));
+              }}
+            >
+              {seeding ? 'Gerando…' : 'Gerar catálogo demo (10 EPIs)'}
+            </button>
+          </div>
         </section>
       ) : null}
 

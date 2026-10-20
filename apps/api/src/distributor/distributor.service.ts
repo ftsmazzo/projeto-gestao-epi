@@ -76,6 +76,10 @@ import {
   buildCatalogImportRows,
   catalogImportTemplateCsv,
 } from './catalog-import.rules';
+import {
+  DISTRIBUTOR_DEMO_PRODUCTS,
+  demoSeedSummary,
+} from './demo-seed.rules';
 import { parseCsvText } from '../epis/epi-import.utils';
 import { FiscalCertificateError, sealCertificate } from './fiscal-certificate';
 import {
@@ -355,6 +359,81 @@ export class DistributorService {
     return {
       csv: catalogImportTemplateCsv(),
       fileName: 'modelo-produtos-distribuidora.csv',
+    };
+  }
+
+  async seedDemoCatalog(
+    organizationId: string,
+    role: string,
+    userId: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const createdSkus: string[] = [];
+    const skipped: string[] = [];
+
+    for (const seed of DISTRIBUTOR_DEMO_PRODUCTS) {
+      const exists = await this.prisma.distributorProduct.findFirst({
+        where: {
+          organizationId,
+          internalSku: { equals: seed.internalSku, mode: 'insensitive' },
+        },
+        select: { id: true },
+      });
+      if (exists) {
+        skipped.push(seed.internalSku);
+        continue;
+      }
+      const catalog = normalizeCatalog({
+        unitCode: seed.unitCode,
+        gtin: seed.gtin,
+        ncm: seed.ncm,
+        costCents: seed.costCents,
+      });
+      const product = await this.prisma.distributorProduct.create({
+        data: {
+          organizationId,
+          name: seed.name,
+          internalSku: seed.internalSku,
+          supplierSku: seed.supplierSku,
+          caNumber: normalizeCa(seed.caNumber),
+          minQuantity: seed.minQuantity,
+          tracksLot: seed.tracksLot,
+          ...catalog,
+          variants: {
+            create: seed.sizes.map((label) => ({
+              label,
+              balance: { create: { quantity: 0 } },
+            })),
+          },
+        },
+        include: productInclude,
+      });
+      for (const variant of product.variants) {
+        await this.applyMovement({
+          organizationId,
+          userId,
+          variantId: variant.id,
+          direction: 'IN',
+          quantity: seed.openingQty,
+          source: DistributorMovementSource.MANUAL,
+          documentId: null,
+          purchaseOrderId: null,
+          outboundInvoiceId: null,
+          lotCode: seed.tracksLot ? `DEMO-${seed.internalSku}` : null,
+          expiresOn: seed.tracksLot
+            ? new Date(Date.now() + 180 * 24 * 60 * 60 * 1000)
+                .toISOString()
+                .slice(0, 10)
+            : null,
+        });
+      }
+      createdSkus.push(seed.internalSku);
+    }
+
+    return {
+      ...demoSeedSummary(createdSkus),
+      skippedCount: skipped.length,
+      skippedSkus: skipped,
     };
   }
 

@@ -81,6 +81,15 @@ export class DistributorController {
     );
   }
 
+  @Post('products/seed-demo')
+  seedDemo(@CurrentUser() user: JwtPayload) {
+    return this.distributor.seedDemoCatalog(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+    );
+  }
+
   @Post('products')
   createProduct(
     @CurrentUser() user: JwtPayload,
