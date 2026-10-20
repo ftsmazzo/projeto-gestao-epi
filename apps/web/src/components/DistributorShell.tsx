@@ -35,6 +35,7 @@ const NAV = [
       { href: '/distribuidora/orcamentos', label: 'Orcamentos', exact: false },
       { href: '/distribuidora/notas', label: 'Notas', exact: false },
       { href: '/distribuidora/agenda', label: 'Agenda', exact: false },
+      { href: '/distribuidora/tablet', label: 'Tablet', exact: false },
       { href: '/distribuidora/plus', label: 'Plus', exact: false },
     ],
   },

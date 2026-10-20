@@ -25,6 +25,7 @@ import {
   CreateCashMovementDto,
   CreateDistributorCustomerDto,
   CreateDistributorVisitDto,
+  CreateFieldQuoteDto,
   CreateLedgerAccountDto,
   CreateOutboundFromQuoteDto,
   CreatePayableDto,
@@ -299,6 +300,15 @@ export class DistributorController {
     return this.distributor.listSellers(user.organizationId, user.membershipRole);
   }
 
+  @Get('sellers/me')
+  mySellerCeiling(@CurrentUser() user: JwtPayload) {
+    return this.distributor.mySellerCeiling(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+    );
+  }
+
   @Post('sellers/ceiling')
   setSellerCeiling(
     @CurrentUser() user: JwtPayload,
@@ -319,6 +329,19 @@ export class DistributorController {
   @Post('quotes')
   createQuote(@CurrentUser() user: JwtPayload, @Body() dto: CreateQuoteDto) {
     return this.distributor.createQuote(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      dto,
+    );
+  }
+
+  @Post('field-quotes')
+  createFieldQuote(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateFieldQuoteDto,
+  ) {
+    return this.distributor.createFieldQuote(
       user.organizationId,
       user.membershipRole,
       user.sub,

@@ -388,6 +388,41 @@ export function createQuote(input: {
   });
 }
 
+export type MySellerCeiling = {
+  userId: string;
+  maxDiscountBps: number;
+  maxDiscountPercent: number;
+};
+
+export type FieldQuoteResult = {
+  quote: DistributorQuote;
+  visit: DistributorVisit;
+  ceilingPercent: number;
+  needsApproval: boolean;
+};
+
+export function getMySellerCeiling() {
+  return apiFetch<MySellerCeiling>('/distributor/sellers/me');
+}
+
+export function createFieldQuote(input: {
+  customerId: string;
+  visitedAt: string;
+  summary?: string | null;
+  nextAction?: string | null;
+  lines: Array<{
+    variantId: string;
+    quantity: number;
+    unitPriceCents: number;
+    discountPercent: number;
+  }>;
+}) {
+  return apiFetch<FieldQuoteResult>('/distributor/field-quotes', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export function approveQuote(quoteId: string) {
   return apiFetch<DistributorQuote>(`/distributor/quotes/${quoteId}/approve`, {
     method: 'POST',

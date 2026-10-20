@@ -29,6 +29,7 @@ import type {
   CreateLedgerAccountDto,
   CreateOutboundFromQuoteDto,
   CreatePayableDto,
+  CreateFieldQuoteDto,
   CreatePlusContractDto,
   CreatePurchaseOrderDto,
   CreateQuoteDto,
@@ -47,6 +48,15 @@ import {
   normalizeVisitSummary,
   parseVisitedAt,
 } from './agenda.rules';
+import {
+  FieldQuoteRuleError,
+  bpsToPercentLabel,
+  buildFieldQuoteLines,
+  decideFieldQuote,
+  normalizeFieldNextAction,
+  normalizeFieldVisitSummary,
+  normalizeFieldVisitedAt,
+} from './field-quote.rules';
 import {
   PlusRuleError,
   assertPlusContractActive,
@@ -112,6 +122,7 @@ import {
 } from './lot.rules';
 import {
   QuoteRuleError,
+  bpsToPercent,
   decideQuote,
   percentToBps,
   sumGrantedCents,
@@ -1280,6 +1291,106 @@ export class DistributorService {
       include: quoteInclude,
     });
     return toQuoteView(created);
+  }
+
+  async mySellerCeiling(organizationId: string, role: string, userId: string) {
+    await this.requireDistributor(organizationId, role);
+    const ceiling = await this.prisma.distributorSellerCeiling.findUnique({
+      where: { organizationId_userId: { organizationId, userId } },
+    });
+    const maxDiscountBps = ceiling?.maxDiscountBps ?? 0;
+    return {
+      userId,
+      maxDiscountBps,
+      maxDiscountPercent: bpsToPercentLabel(maxDiscountBps),
+    };
+  }
+
+  async createFieldQuote(
+    organizationId: string,
+    role: string,
+    userId: string,
+    dto: CreateFieldQuoteDto,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const customer = await this.prisma.distributorCustomer.findFirst({
+      where: { id: dto.customerId, organizationId },
+    });
+    if (!customer) throw new NotFoundException('Cliente nao encontrado.');
+
+    let visitedAt: Date;
+    let summary: string;
+    let nextAction: string | null;
+    let lines: Array<{
+      variantId: string;
+      quantity: number;
+      unitPriceCents: number;
+      discountBps: number;
+    }>;
+    try {
+      visitedAt = normalizeFieldVisitedAt(dto.visitedAt);
+      summary = normalizeFieldVisitSummary(dto.summary);
+      nextAction = normalizeFieldNextAction(dto.nextAction);
+      lines = buildFieldQuoteLines(dto.lines);
+    } catch (error) {
+      throw this.asFieldQuoteError(error);
+    }
+    for (const line of lines) {
+      await this.requireVariant(organizationId, line.variantId);
+    }
+    const ceiling = await this.prisma.distributorSellerCeiling.findUnique({
+      where: { organizationId_userId: { organizationId, userId } },
+    });
+    let decision: ReturnType<typeof decideFieldQuote>;
+    try {
+      decision = decideFieldQuote({
+        lines,
+        sellerMaxDiscountBps: ceiling?.maxDiscountBps ?? 0,
+      });
+    } catch (error) {
+      throw this.asFieldQuoteError(error);
+    }
+
+    const now = new Date();
+    const result = await this.prisma.$transaction(async (tx) => {
+      const quote = await tx.distributorQuote.create({
+        data: {
+          organizationId,
+          customerName: customer.name,
+          sellerUserId: userId,
+          status: decision.status,
+          grantedCents: decision.grantedCents,
+          approvedByUserId: decision.status === 'APPROVED' ? userId : null,
+          approvedAt: decision.status === 'APPROVED' ? now : null,
+          lines: { create: lines },
+        },
+        include: quoteInclude,
+      });
+      const visit = await tx.distributorVisit.create({
+        data: {
+          organizationId,
+          customerId: customer.id,
+          sellerUserId: userId,
+          visitedAt,
+          summary,
+          nextAction,
+          quoteId: quote.id,
+        },
+        include: { customer: true },
+      });
+      return { quote, visit };
+    });
+
+    const seller = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { name: true },
+    });
+    return {
+      quote: toQuoteView(result.quote),
+      visit: toVisitView(result.visit, seller?.name ?? null),
+      ceilingPercent: bpsToPercent(ceiling?.maxDiscountBps ?? 0),
+      needsApproval: decision.status === 'PENDING_APPROVAL',
+    };
   }
 
   async approveQuote(
@@ -2998,6 +3109,13 @@ export class DistributorService {
 
   private asPlusError(error: unknown): BadRequestException {
     if (error instanceof PlusRuleError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
+  private asFieldQuoteError(error: unknown): BadRequestException {
+    if (error instanceof FieldQuoteRuleError) {
       return new BadRequestException(error.message);
     }
     throw error;

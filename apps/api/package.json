@@ -31,6 +31,7 @@
     "test:finance": "npx --yes tsx src/distributor/finance.rules.selftest.ts",
     "test:agenda": "npx --yes tsx src/distributor/agenda.rules.selftest.ts",
     "test:plus": "npx --yes tsx src/distributor/plus.rules.selftest.ts",
+    "test:field-quote": "npx --yes tsx src/distributor/field-quote.rules.selftest.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:migrate:dev": "prisma migrate dev",

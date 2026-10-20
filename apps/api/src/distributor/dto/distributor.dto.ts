@@ -393,6 +393,29 @@ export class CreateQuoteDto {
   lines!: QuoteLineDto[];
 }
 
+/** Orçamento + visita no tablet do representante. */
+export class CreateFieldQuoteDto {
+  @IsString()
+  customerId!: string;
+
+  @IsString()
+  visitedAt!: string;
+
+  @IsOptional()
+  @IsString()
+  summary?: string | null;
+
+  @IsOptional()
+  @IsString()
+  nextAction?: string | null;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => QuoteLineDto)
+  lines!: QuoteLineDto[];
+}
+
 export class SetSellerCeilingDto {
   @IsString()
   userId!: string;
