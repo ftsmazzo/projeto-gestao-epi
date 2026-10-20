@@ -19,6 +19,8 @@ import { saveDistributorInboundFile } from './distributor-document.storage';
 import type {
   AddDistributorVariantDto,
   CreateDistributorProductDto,
+  CreateBankAccountDto,
+  CreateCashMovementDto,
   CreateLedgerAccountDto,
   CreateOutboundFromQuoteDto,
   CreatePayableDto,
@@ -27,6 +29,7 @@ import type {
   CreateReceivableDto,
   ManualDistributorMovementDto,
   SetSellerCeilingDto,
+  SettleWithBankDto,
   UpdateDistributorProductDto,
 } from './dto/distributor.dto';
 import {
@@ -52,10 +55,13 @@ import {
   PAYABLE_ACCOUNT_CODE,
   RECEIVABLE_ACCOUNT_CODE,
   assertCancelReceivable,
+  assertCashAmount,
   assertMarkReceivableReceived,
   assertReceivableAmount,
+  cashBalanceFromMovements,
   defaultDueOn,
   dreTotals,
+  nextCashBalance,
   sumOpenCents,
 } from './finance.rules';
 import {
@@ -1658,29 +1664,58 @@ export class DistributorService {
     role: string,
     userId: string,
     payableId: string,
+    dto: SettleWithBankDto,
   ) {
     await this.requireDistributor(organizationId, role, { manager: true });
-    const payable = await this.prisma.distributorPayable.findFirst({
-      where: { id: payableId, organizationId },
+    return this.prisma.$transaction(async (tx) => {
+      const payable = await tx.distributorPayable.findFirst({
+        where: { id: payableId, organizationId },
+      });
+      if (!payable) throw new NotFoundException('Conta a pagar nao encontrada.');
+      try {
+        assertMarkPayablePaid(payable.status);
+      } catch (error) {
+        throw this.asPayableError(error);
+      }
+      const bank = await this.requireBankAccount(
+        organizationId,
+        dto.bankAccountId,
+        tx,
+      );
+      if (payable.amountCents > 0) {
+        const balance = await this.bankBalanceCents(bank.id, tx);
+        try {
+          nextCashBalance(balance, 'OUT', payable.amountCents);
+        } catch (error) {
+          throw this.asFinanceError(error);
+        }
+      }
+      const claimed = await tx.distributorPayable.updateMany({
+        where: { id: payable.id, organizationId, status: 'OPEN' },
+        data: { status: 'PAID', paidAt: new Date(), paidByUserId: userId },
+      });
+      if (claimed.count !== 1) {
+        throw new ConflictException('Esta conta ja foi paga ou cancelada.');
+      }
+      if (payable.amountCents > 0) {
+        await tx.distributorCashMovement.create({
+          data: {
+            bankAccountId: bank.id,
+            direction: 'OUT',
+            amountCents: payable.amountCents,
+            source: 'PAYABLE',
+            note: payable.description,
+            payableId: payable.id,
+            createdByUserId: userId,
+          },
+        });
+      }
+      const updated = await tx.distributorPayable.findFirstOrThrow({
+        where: { id: payable.id },
+        include: { account: true },
+      });
+      return toPayableView(updated);
     });
-    if (!payable) throw new NotFoundException('Conta a pagar nao encontrada.');
-    try {
-      assertMarkPayablePaid(payable.status);
-    } catch (error) {
-      throw this.asPayableError(error);
-    }
-    const claimed = await this.prisma.distributorPayable.updateMany({
-      where: { id: payable.id, organizationId, status: 'OPEN' },
-      data: { status: 'PAID', paidAt: new Date(), paidByUserId: userId },
-    });
-    if (claimed.count !== 1) {
-      throw new ConflictException('Esta conta ja foi paga ou cancelada.');
-    }
-    const updated = await this.prisma.distributorPayable.findFirstOrThrow({
-      where: { id: payable.id },
-      include: { account: true },
-    });
-    return toPayableView(updated);
   }
 
   async cancelPayable(
@@ -1778,33 +1813,62 @@ export class DistributorService {
     role: string,
     userId: string,
     receivableId: string,
+    dto: SettleWithBankDto,
   ) {
     await this.requireDistributor(organizationId, role, { manager: true });
-    const row = await this.prisma.distributorReceivable.findFirst({
-      where: { id: receivableId, organizationId },
+    return this.prisma.$transaction(async (tx) => {
+      const row = await tx.distributorReceivable.findFirst({
+        where: { id: receivableId, organizationId },
+      });
+      if (!row) throw new NotFoundException('Conta a receber nao encontrada.');
+      try {
+        assertMarkReceivableReceived(row.status);
+      } catch (error) {
+        throw this.asFinanceError(error);
+      }
+      const bank = await this.requireBankAccount(
+        organizationId,
+        dto.bankAccountId,
+        tx,
+      );
+      if (row.amountCents > 0) {
+        const balance = await this.bankBalanceCents(bank.id, tx);
+        try {
+          nextCashBalance(balance, 'IN', row.amountCents);
+        } catch (error) {
+          throw this.asFinanceError(error);
+        }
+      }
+      const claimed = await tx.distributorReceivable.updateMany({
+        where: { id: row.id, organizationId, status: 'OPEN' },
+        data: {
+          status: 'RECEIVED',
+          receivedAt: new Date(),
+          receivedByUserId: userId,
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new ConflictException('Esta conta ja foi recebida ou cancelada.');
+      }
+      if (row.amountCents > 0) {
+        await tx.distributorCashMovement.create({
+          data: {
+            bankAccountId: bank.id,
+            direction: 'IN',
+            amountCents: row.amountCents,
+            source: 'RECEIVABLE',
+            note: row.description,
+            receivableId: row.id,
+            createdByUserId: userId,
+          },
+        });
+      }
+      const updated = await tx.distributorReceivable.findFirstOrThrow({
+        where: { id: row.id },
+        include: { account: true },
+      });
+      return toReceivableView(updated);
     });
-    if (!row) throw new NotFoundException('Conta a receber nao encontrada.');
-    try {
-      assertMarkReceivableReceived(row.status);
-    } catch (error) {
-      throw this.asFinanceError(error);
-    }
-    const claimed = await this.prisma.distributorReceivable.updateMany({
-      where: { id: row.id, organizationId, status: 'OPEN' },
-      data: {
-        status: 'RECEIVED',
-        receivedAt: new Date(),
-        receivedByUserId: userId,
-      },
-    });
-    if (claimed.count !== 1) {
-      throw new ConflictException('Esta conta ja foi recebida ou cancelada.');
-    }
-    const updated = await this.prisma.distributorReceivable.findFirstOrThrow({
-      where: { id: row.id },
-      include: { account: true },
-    });
-    return toReceivableView(updated);
   }
 
   async cancelReceivable(
@@ -1882,7 +1946,7 @@ export class DistributorService {
   async financeSummary(organizationId: string, role: string) {
     await this.requireDistributor(organizationId, role);
     await this.ensureLedgerAccounts(organizationId);
-    const [payables, receivables, accounts] = await Promise.all([
+    const [payables, receivables, accounts, banks] = await Promise.all([
       this.prisma.distributorPayable.findMany({
         where: { organizationId },
         select: { status: true, amountCents: true },
@@ -1894,6 +1958,10 @@ export class DistributorService {
       this.prisma.distributorLedgerAccount.findMany({
         where: { organizationId, active: true },
         orderBy: { code: 'asc' },
+      }),
+      this.prisma.distributorBankAccount.findMany({
+        where: { organizationId, active: true },
+        include: { movements: { select: { direction: true, amountCents: true } } },
       }),
     ]);
     const openPayableCents = sumOpenCents(payables, 'OPEN');
@@ -1908,14 +1976,154 @@ export class DistributorService {
       revenueCents: receivedCents,
       expenseCents: paidCents,
     });
+    const cashBalanceCents = banks.reduce(
+      (sum, bank) => sum + cashBalanceFromMovements(bank.movements),
+      0,
+    );
     return {
       openPayableCents,
       openReceivableCents,
       paidCents,
       receivedCents,
+      cashBalanceCents,
       ...dre,
       accounts: accounts.map(toLedgerView),
+      banks: banks.map((bank) =>
+        toBankView(bank, cashBalanceFromMovements(bank.movements)),
+      ),
     };
+  }
+
+  async listBankAccounts(organizationId: string, role: string) {
+    await this.requireDistributor(organizationId, role);
+    const banks = await this.prisma.distributorBankAccount.findMany({
+      where: { organizationId },
+      include: { movements: { select: { direction: true, amountCents: true } } },
+      orderBy: { name: 'asc' },
+    });
+    return banks.map((bank) =>
+      toBankView(bank, cashBalanceFromMovements(bank.movements)),
+    );
+  }
+
+  async createBankAccount(
+    organizationId: string,
+    role: string,
+    userId: string,
+    dto: CreateBankAccountDto,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const name = dto.name.trim();
+    if (name.length < 2) {
+      throw new BadRequestException('Informe o nome da conta bancaria.');
+    }
+    const opening = dto.openingBalanceCents ?? 0;
+    if (!Number.isInteger(opening) || opening < 0) {
+      throw new BadRequestException('Saldo inicial invalido.');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.distributorBankAccount.create({
+        data: {
+          organizationId,
+          name,
+          bankCode: emptyToNull(dto.bankCode),
+          agency: emptyToNull(dto.agency),
+          number: emptyToNull(dto.number),
+        },
+      });
+      if (opening > 0) {
+        await tx.distributorCashMovement.create({
+          data: {
+            bankAccountId: created.id,
+            direction: 'IN',
+            amountCents: opening,
+            source: 'OPENING',
+            note: 'Saldo inicial',
+            createdByUserId: userId,
+          },
+        });
+      }
+      return toBankView(created, opening);
+    });
+  }
+
+  async listCashMovements(
+    organizationId: string,
+    role: string,
+    bankAccountId?: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const rows = await this.prisma.distributorCashMovement.findMany({
+      where: {
+        bankAccount: { organizationId },
+        ...(bankAccountId ? { bankAccountId } : {}),
+      },
+      include: { bankAccount: true },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    return rows.map(toCashMovementView);
+  }
+
+  async createCashMovement(
+    organizationId: string,
+    role: string,
+    userId: string,
+    dto: CreateCashMovementDto,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    return this.prisma.$transaction(async (tx) => {
+      const bank = await this.requireBankAccount(
+        organizationId,
+        dto.bankAccountId,
+        tx,
+      );
+      let amount: number;
+      try {
+        amount = assertCashAmount(dto.amountCents);
+        const balance = await this.bankBalanceCents(bank.id, tx);
+        nextCashBalance(balance, dto.direction, amount);
+      } catch (error) {
+        throw this.asFinanceError(error);
+      }
+      const created = await tx.distributorCashMovement.create({
+        data: {
+          bankAccountId: bank.id,
+          direction: dto.direction,
+          amountCents: amount,
+          source: 'MANUAL',
+          note: emptyToNull(dto.note),
+          createdByUserId: userId,
+        },
+        include: { bankAccount: true },
+      });
+      return toCashMovementView(created);
+    });
+  }
+
+  private async bankBalanceCents(
+    bankAccountId: string,
+    tx: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const movements = await tx.distributorCashMovement.findMany({
+      where: { bankAccountId },
+      select: { direction: true, amountCents: true },
+    });
+    return cashBalanceFromMovements(movements);
+  }
+
+  private async requireBankAccount(
+    organizationId: string,
+    bankAccountId: string,
+    tx: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const bank = await tx.distributorBankAccount.findFirst({
+      where: { id: bankAccountId, organizationId, active: true },
+    });
+    if (!bank) {
+      throw new BadRequestException('Conta bancaria nao encontrada.');
+    }
+    return bank;
   }
 
   private async ensureLedgerAccounts(
@@ -2403,6 +2611,54 @@ function toLedgerView(account: {
     name: account.name,
     kind: account.kind,
     active: account.active,
+  };
+}
+
+function toBankView(
+  bank: {
+    id: string;
+    name: string;
+    bankCode: string | null;
+    agency: string | null;
+    number: string | null;
+    active: boolean;
+  },
+  balanceCents: number,
+) {
+  return {
+    id: bank.id,
+    name: bank.name,
+    bankCode: bank.bankCode,
+    agency: bank.agency,
+    number: bank.number,
+    active: bank.active,
+    balanceCents,
+  };
+}
+
+function toCashMovementView(row: {
+  id: string;
+  bankAccountId: string;
+  direction: string;
+  amountCents: number;
+  source: string;
+  note: string | null;
+  payableId: string | null;
+  receivableId: string | null;
+  createdAt: Date;
+  bankAccount?: { name: string };
+}) {
+  return {
+    id: row.id,
+    bankAccountId: row.bankAccountId,
+    bankAccountName: row.bankAccount?.name ?? null,
+    direction: row.direction,
+    amountCents: row.amountCents,
+    source: row.source,
+    note: row.note,
+    payableId: row.payableId,
+    receivableId: row.receivableId,
+    createdAt: row.createdAt,
   };
 }
 

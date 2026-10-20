@@ -495,6 +495,52 @@ export class CreateLedgerAccountDto {
   kind!: 'ASSET' | 'LIABILITY' | 'REVENUE' | 'EXPENSE';
 }
 
+export class CreateBankAccountDto {
+  @IsString()
+  @MinLength(2)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  bankCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  agency?: string | null;
+
+  @IsOptional()
+  @IsString()
+  number?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  openingBalanceCents?: number;
+}
+
+export class SettleWithBankDto {
+  @IsString()
+  bankAccountId!: string;
+}
+
+export class CreateCashMovementDto {
+  @IsString()
+  bankAccountId!: string;
+
+  @IsIn(['IN', 'OUT'])
+  direction!: 'IN' | 'OUT';
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  amountCents!: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string | null;
+}
+
 export class LinkInboundLineDto {
   @IsOptional()
   @IsString()

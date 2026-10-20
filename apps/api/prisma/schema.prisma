@@ -115,6 +115,18 @@ enum DistributorLedgerKind {
   EXPENSE
 }
 
+enum DistributorCashDirection {
+  IN
+  OUT
+}
+
+enum DistributorCashSource {
+  OPENING
+  MANUAL
+  PAYABLE
+  RECEIVABLE
+}
+
 /// Estado comercial da assinatura do cliente atendido (CNPJ).
 enum ClientSubscriptionStatus {
   TRIAL
@@ -228,6 +240,7 @@ model Organization {
   distributorPayables DistributorPayable[]
   distributorReceivables DistributorReceivable[]
   distributorLedgerAccounts DistributorLedgerAccount[]
+  distributorBankAccounts DistributorBankAccount[]
   distributorFiscalProfile DistributorFiscalProfile?
   distributorDfeCursor DistributorDfeCursor?
 }
@@ -558,6 +571,7 @@ model DistributorPayable {
   purchaseOrder   DistributorPurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
   inboundDocument DistributorInboundDocument? @relation(fields: [inboundDocumentId], references: [id], onDelete: SetNull)
   account         DistributorLedgerAccount?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  cashMovement    DistributorCashMovement?
 
   @@index([organizationId, status, dueOn])
   @@index([accountId])
@@ -585,12 +599,13 @@ model DistributorReceivable {
   organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   outboundInvoice DistributorOutboundInvoice? @relation(fields: [outboundInvoiceId], references: [id], onDelete: SetNull)
   account         DistributorLedgerAccount?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  cashMovement    DistributorCashMovement?
 
   @@index([organizationId, status, dueOn])
   @@index([accountId])
 }
 
-/// Plano de contas simples da distribuidora. Sem concilicacao bancaria ainda.
+/// Plano de contas simples da distribuidora.
 model DistributorLedgerAccount {
   id             String                @id @default(cuid())
   organizationId String
@@ -607,6 +622,43 @@ model DistributorLedgerAccount {
 
   @@unique([organizationId, code])
   @@index([organizationId, kind])
+}
+
+/// Conta bancaria ou caixa fisico. O saldo sai da soma dos movimentos.
+model DistributorBankAccount {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  bankCode       String?
+  agency         String?
+  number         String?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  movements    DistributorCashMovement[]
+
+  @@index([organizationId, active])
+}
+
+model DistributorCashMovement {
+  id              String                   @id @default(cuid())
+  bankAccountId   String
+  direction       DistributorCashDirection
+  amountCents     Int
+  source          DistributorCashSource
+  note            String?
+  payableId       String?                  @unique
+  receivableId    String?                  @unique
+  createdByUserId String
+  createdAt       DateTime                 @default(now())
+
+  bankAccount DistributorBankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  payable     DistributorPayable?    @relation(fields: [payableId], references: [id], onDelete: SetNull)
+  receivable  DistributorReceivable? @relation(fields: [receivableId], references: [id], onDelete: SetNull)
+
+  @@index([bankAccountId, createdAt])
 }
 
 model DistributorOutboundLine {

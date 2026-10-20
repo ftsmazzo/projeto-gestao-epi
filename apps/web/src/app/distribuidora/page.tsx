@@ -133,6 +133,18 @@ export default function DistribuidoraHomePage() {
             <Link href="/distribuidora/financeiro">aberto</Link>
           </p>
         </article>
+        <article className="dash-kpi">
+          <p className="dash-kpi__label">Caixa</p>
+          <p className="dash-kpi__value">
+            {((finance?.cashBalanceCents ?? 0) / 100).toLocaleString('pt-BR', {
+              style: 'currency',
+              currency: 'BRL',
+            })}
+          </p>
+          <p className="dash-kpi__hint">
+            <Link href="/distribuidora/financeiro">bancos</Link>
+          </p>
+        </article>
       </section>
       <section className="dash-panel">
         <h2 className="dash-panel__title">Repor agora</h2>

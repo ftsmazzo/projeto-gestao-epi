@@ -84,3 +84,40 @@ export function dreTotals(input: {
     resultCents: input.revenueCents - input.expenseCents,
   };
 }
+
+export function assertCashAmount(amountCents: number): number {
+  if (!Number.isInteger(amountCents) || amountCents < 1) {
+    throw new FinanceRuleError('O valor do movimento de caixa precisa ser positivo.');
+  }
+  return amountCents;
+}
+
+export function nextCashBalance(
+  currentCents: number,
+  direction: 'IN' | 'OUT',
+  amountCents: number,
+): number {
+  assertCashAmount(amountCents);
+  if (!Number.isInteger(currentCents)) {
+    throw new FinanceRuleError('Saldo de caixa invalido.');
+  }
+  const next =
+    direction === 'IN' ? currentCents + amountCents : currentCents - amountCents;
+  if (next < 0) {
+    throw new FinanceRuleError('Saldo insuficiente nesta conta bancaria.');
+  }
+  return next;
+}
+
+export function cashBalanceFromMovements(
+  movements: Array<{ direction: string; amountCents: number }>,
+): number {
+  return movements.reduce((total, row) => {
+    if (!Number.isInteger(row.amountCents) || row.amountCents < 0) {
+      throw new FinanceRuleError('Movimento de caixa invalido.');
+    }
+    return row.direction === 'IN'
+      ? total + row.amountCents
+      : total - row.amountCents;
+  }, 0);
+}

@@ -515,15 +515,43 @@ export type DistributorLedgerAccount = {
   active: boolean;
 };
 
+export type DistributorBankAccount = {
+  id: string;
+  name: string;
+  bankCode: string | null;
+  agency: string | null;
+  number: string | null;
+  active: boolean;
+  balanceCents: number;
+};
+
+export type CashDirection = 'IN' | 'OUT';
+export type CashSource = 'OPENING' | 'MANUAL' | 'PAYABLE' | 'RECEIVABLE';
+
+export type DistributorCashMovement = {
+  id: string;
+  bankAccountId: string;
+  bankAccountName: string | null;
+  direction: CashDirection;
+  amountCents: number;
+  source: CashSource;
+  note: string | null;
+  payableId: string | null;
+  receivableId: string | null;
+  createdAt: string;
+};
+
 export type DistributorFinanceSummary = {
   openPayableCents: number;
   openReceivableCents: number;
   paidCents: number;
   receivedCents: number;
+  cashBalanceCents: number;
   revenueCents: number;
   expenseCents: number;
   resultCents: number;
   accounts: DistributorLedgerAccount[];
+  banks: DistributorBankAccount[];
 };
 
 export function listOutboundInvoices() {
@@ -575,9 +603,10 @@ export function createPayable(input: {
   });
 }
 
-export function markPayablePaid(payableId: string) {
+export function markPayablePaid(payableId: string, bankAccountId: string) {
   return apiFetch<DistributorPayable>(`/distributor/payables/${payableId}/pay`, {
     method: 'POST',
+    body: JSON.stringify({ bankAccountId }),
   });
 }
 
@@ -605,10 +634,16 @@ export function createReceivable(input: {
   });
 }
 
-export function markReceivableReceived(receivableId: string) {
+export function markReceivableReceived(
+  receivableId: string,
+  bankAccountId: string,
+) {
   return apiFetch<DistributorReceivable>(
     `/distributor/receivables/${receivableId}/receive`,
-    { method: 'POST' },
+    {
+      method: 'POST',
+      body: JSON.stringify({ bankAccountId }),
+    },
   );
 }
 
@@ -636,6 +671,42 @@ export function createLedgerAccount(input: {
 
 export function getFinanceSummary() {
   return apiFetch<DistributorFinanceSummary>('/distributor/finance/summary');
+}
+
+export function listBankAccounts() {
+  return apiFetch<DistributorBankAccount[]>('/distributor/banks');
+}
+
+export function createBankAccount(input: {
+  name: string;
+  bankCode?: string | null;
+  agency?: string | null;
+  number?: string | null;
+  openingBalanceCents?: number;
+}) {
+  return apiFetch<DistributorBankAccount>('/distributor/banks', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function listCashMovements(bankAccountId?: string) {
+  const query = bankAccountId
+    ? `?${new URLSearchParams({ bankAccountId }).toString()}`
+    : '';
+  return apiFetch<DistributorCashMovement[]>(`/distributor/cash-movements${query}`);
+}
+
+export function createCashMovement(input: {
+  bankAccountId: string;
+  direction: CashDirection;
+  amountCents: number;
+  note?: string | null;
+}) {
+  return apiFetch<DistributorCashMovement>('/distributor/cash-movements', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function getDistributorFiscal() {

@@ -21,6 +21,8 @@ import {
   CreateDistributorProductDto,
   LinkInboundLineDto,
   SaveDistributorFiscalDto,
+  CreateBankAccountDto,
+  CreateCashMovementDto,
   CreateLedgerAccountDto,
   CreateOutboundFromQuoteDto,
   CreatePayableDto,
@@ -30,6 +32,7 @@ import {
   ManualDistributorMovementDto,
   RejectPurchaseOrderDto,
   SetSellerCeilingDto,
+  SettleWithBankDto,
   UpdateDistributorProductDto,
 } from './dto/distributor.dto';
 
@@ -442,12 +445,14 @@ export class DistributorController {
   markPayablePaid(
     @CurrentUser() user: JwtPayload,
     @Param('payableId') payableId: string,
+    @Body() dto: SettleWithBankDto,
   ) {
     return this.distributor.markPayablePaid(
       user.organizationId,
       user.membershipRole,
       user.sub,
       payableId,
+      dto,
     );
   }
 
@@ -488,12 +493,14 @@ export class DistributorController {
   markReceivableReceived(
     @CurrentUser() user: JwtPayload,
     @Param('receivableId') receivableId: string,
+    @Body() dto: SettleWithBankDto,
   ) {
     return this.distributor.markReceivableReceived(
       user.organizationId,
       user.membershipRole,
       user.sub,
       receivableId,
+      dto,
     );
   }
 
@@ -534,6 +541,52 @@ export class DistributorController {
     return this.distributor.financeSummary(
       user.organizationId,
       user.membershipRole,
+    );
+  }
+
+  @Get('banks')
+  listBanks(@CurrentUser() user: JwtPayload) {
+    return this.distributor.listBankAccounts(
+      user.organizationId,
+      user.membershipRole,
+    );
+  }
+
+  @Post('banks')
+  createBank(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateBankAccountDto,
+  ) {
+    return this.distributor.createBankAccount(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      dto,
+    );
+  }
+
+  @Get('cash-movements')
+  listCashMovements(
+    @CurrentUser() user: JwtPayload,
+    @Query('bankAccountId') bankAccountId?: string,
+  ) {
+    return this.distributor.listCashMovements(
+      user.organizationId,
+      user.membershipRole,
+      bankAccountId,
+    );
+  }
+
+  @Post('cash-movements')
+  createCashMovement(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateCashMovementDto,
+  ) {
+    return this.distributor.createCashMovement(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      dto,
     );
   }
 

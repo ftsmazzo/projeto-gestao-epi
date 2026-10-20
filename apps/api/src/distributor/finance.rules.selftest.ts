@@ -5,10 +5,13 @@ import {
   DEFAULT_LEDGER_ACCOUNTS,
   FinanceRuleError,
   assertCancelReceivable,
+  assertCashAmount,
   assertMarkReceivableReceived,
   assertReceivableAmount,
+  cashBalanceFromMovements,
   defaultDueOn,
   dreTotals,
+  nextCashBalance,
   sumOpenCents,
 } from './finance.rules';
 
@@ -45,5 +48,23 @@ assert(
 
 const dre = dreTotals({ revenueCents: 10000, expenseCents: 4000 });
 assert(dre.resultCents === 6000, 'dre');
+
+assert(assertCashAmount(100) === 100, 'cash amount');
+assert(nextCashBalance(1000, 'IN', 500) === 1500, 'cash in');
+assert(nextCashBalance(1000, 'OUT', 400) === 600, 'cash out');
+let overdraw = false;
+try {
+  nextCashBalance(100, 'OUT', 200);
+} catch (error) {
+  overdraw = error instanceof FinanceRuleError;
+}
+assert(overdraw, 'sem saldo negativo');
+assert(
+  cashBalanceFromMovements([
+    { direction: 'IN', amountCents: 1000 },
+    { direction: 'OUT', amountCents: 250 },
+  ]) === 750,
+  'balance from movements',
+);
 
 console.log('finance.rules.selftest ok');

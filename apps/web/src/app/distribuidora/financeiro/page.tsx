@@ -5,16 +5,23 @@ import { fetchMe } from '../../../lib/auth';
 import {
   cancelPayable,
   cancelReceivable,
+  createBankAccount,
+  createCashMovement,
   createLedgerAccount,
   createPayable,
   createReceivable,
   getFinanceSummary,
   isDistributorManager,
+  listBankAccounts,
+  listCashMovements,
   listLedgerAccounts,
   listPayables,
   listReceivables,
   markPayablePaid,
   markReceivableReceived,
+  type CashDirection,
+  type DistributorBankAccount,
+  type DistributorCashMovement,
   type DistributorFinanceSummary,
   type DistributorLedgerAccount,
   type DistributorPayable,
@@ -24,7 +31,7 @@ import {
   type ReceivableStatus,
 } from '../../../lib/distributor';
 
-type Tab = 'pagar' | 'receber' | 'plano';
+type Tab = 'pagar' | 'receber' | 'caixa' | 'plano';
 
 const PAYABLE_LABEL: Record<PayableStatus, string> = {
   OPEN: 'Em aberto',
@@ -45,6 +52,13 @@ const KIND_LABEL: Record<LedgerKind, string> = {
   EXPENSE: 'Despesa',
 };
 
+const SOURCE_LABEL = {
+  OPENING: 'Saldo inicial',
+  MANUAL: 'Manual',
+  PAYABLE: 'Pagamento',
+  RECEIVABLE: 'Recebimento',
+} as const;
+
 function money(cents: number) {
   return (cents / 100).toLocaleString('pt-BR', {
     style: 'currency',
@@ -64,12 +78,19 @@ export default function DistribuidoraFinanceiroPage() {
   const [payables, setPayables] = useState<DistributorPayable[]>([]);
   const [receivables, setReceivables] = useState<DistributorReceivable[]>([]);
   const [accounts, setAccounts] = useState<DistributorLedgerAccount[]>([]);
+  const [banks, setBanks] = useState<DistributorBankAccount[]>([]);
+  const [movements, setMovements] = useState<DistributorCashMovement[]>([]);
   const [summary, setSummary] = useState<DistributorFinanceSummary | null>(null);
   const [manager, setManager] = useState(false);
+  const [bankAccountId, setBankAccountId] = useState('');
   const [description, setDescription] = useState('');
   const [party, setParty] = useState('');
   const [amount, setAmount] = useState('');
   const [dueOn, setDueOn] = useState('');
+  const [bankName, setBankName] = useState('');
+  const [opening, setOpening] = useState('');
+  const [cashDirection, setCashDirection] = useState<CashDirection>('IN');
+  const [cashNote, setCashNote] = useState('');
   const [ledgerCode, setLedgerCode] = useState('');
   const [ledgerName, setLedgerName] = useState('');
   const [ledgerKind, setLedgerKind] = useState<LedgerKind>('EXPENSE');
@@ -78,16 +99,22 @@ export default function DistribuidoraFinanceiroPage() {
   const [saving, setSaving] = useState(false);
 
   async function reload() {
-    const [payableRows, receivableRows, ledgerRows, finance] = await Promise.all([
-      listPayables(),
-      listReceivables(),
-      listLedgerAccounts(),
-      getFinanceSummary(),
-    ]);
+    const [payableRows, receivableRows, ledgerRows, bankRows, cashRows, finance] =
+      await Promise.all([
+        listPayables(),
+        listReceivables(),
+        listLedgerAccounts(),
+        listBankAccounts(),
+        listCashMovements(),
+        getFinanceSummary(),
+      ]);
     setPayables(payableRows);
     setReceivables(receivableRows);
     setAccounts(ledgerRows);
+    setBanks(bankRows);
+    setMovements(cashRows);
     setSummary(finance);
+    if (!bankAccountId && bankRows[0]) setBankAccountId(bankRows[0].id);
   }
 
   useEffect(() => {
@@ -95,20 +122,33 @@ export default function DistribuidoraFinanceiroPage() {
       listPayables(),
       listReceivables(),
       listLedgerAccounts(),
+      listBankAccounts(),
+      listCashMovements(),
       getFinanceSummary(),
       fetchMe(),
     ])
-      .then(([payableRows, receivableRows, ledgerRows, finance, me]) => {
+      .then(([payableRows, receivableRows, ledgerRows, bankRows, cashRows, finance, me]) => {
         setPayables(payableRows);
         setReceivables(receivableRows);
         setAccounts(ledgerRows);
+        setBanks(bankRows);
+        setMovements(cashRows);
         setSummary(finance);
         setManager(isDistributorManager(me.membershipRole));
+        if (bankRows[0]) setBankAccountId(bankRows[0].id);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Falha ao carregar.'),
       );
   }, []);
+
+  function requireBank(): string | null {
+    if (!bankAccountId) {
+      setError('Cadastre e escolha uma conta de caixa/banco antes de baixar.');
+      return null;
+    }
+    return bankAccountId;
+  }
 
   async function onCreatePayable(event: FormEvent) {
     event.preventDefault();
@@ -170,6 +210,61 @@ export default function DistribuidoraFinanceiroPage() {
     }
   }
 
+  async function onCreateBank(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setNotice(null);
+    const openingCents = opening ? reaisToCents(opening) : 0;
+    if (openingCents == null) {
+      setError('Saldo inicial inválido.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await createBankAccount({
+        name: bankName,
+        openingBalanceCents: openingCents,
+      });
+      setBankName('');
+      setOpening('');
+      setNotice('Conta de caixa/banco criada.');
+      await reload();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha ao criar conta.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onCreateCash(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setNotice(null);
+    const bankId = requireBank();
+    const cents = reaisToCents(amount);
+    if (!bankId || cents == null || cents < 1) {
+      setError('Informe conta e valor positivo.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await createCashMovement({
+        bankAccountId: bankId,
+        direction: cashDirection,
+        amountCents: cents,
+        note: cashNote || null,
+      });
+      setAmount('');
+      setCashNote('');
+      setNotice('Movimento de caixa lançado.');
+      await reload();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha no movimento.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function onCreateLedger(event: FormEvent) {
     event.preventDefault();
     setError(null);
@@ -199,8 +294,8 @@ export default function DistribuidoraFinanceiroPage() {
           <p className="page-kicker">Financeiro</p>
           <h1 className="page-title">Financeiro</h1>
           <p className="page-lead">
-            Contas a pagar, a receber e plano de contas. A confirmação da saída
-            gera o receber; a compra gera o pagar.
+            Pagar, receber, caixa/bancos e plano de contas. A baixa exige conta
+            bancária e atualiza o saldo.
           </p>
         </div>
       </header>
@@ -230,8 +325,10 @@ export default function DistribuidoraFinanceiroPage() {
           </p>
         </article>
         <article className="dash-kpi">
-          <p className="dash-kpi__label">Recebido</p>
-          <p className="dash-kpi__value">{money(summary?.receivedCents ?? 0)}</p>
+          <p className="dash-kpi__label">Caixa</p>
+          <p className="dash-kpi__value">
+            {money(summary?.cashBalanceCents ?? 0)}
+          </p>
         </article>
         <article className="dash-kpi">
           <p className="dash-kpi__label">Resultado</p>
@@ -241,28 +338,41 @@ export default function DistribuidoraFinanceiroPage() {
       </section>
 
       <div className="form-actions" role="tablist" aria-label="Abas do financeiro">
-        <button
-          type="button"
-          className={`btn ${tab === 'pagar' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => setTab('pagar')}
-        >
-          A pagar
-        </button>
-        <button
-          type="button"
-          className={`btn ${tab === 'receber' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => setTab('receber')}
-        >
-          A receber
-        </button>
-        <button
-          type="button"
-          className={`btn ${tab === 'plano' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => setTab('plano')}
-        >
-          Plano de contas
-        </button>
+        {(
+          [
+            ['pagar', 'A pagar'],
+            ['receber', 'A receber'],
+            ['caixa', 'Caixa'],
+            ['plano', 'Plano de contas'],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={`btn ${tab === id ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setTab(id)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
+
+      {(tab === 'pagar' || tab === 'receber') && banks.length > 0 ? (
+        <label className="field" style={{ maxWidth: '20rem' }}>
+          <span className="field-label">Conta para baixas</span>
+          <select
+            className="input"
+            value={bankAccountId}
+            onChange={(event) => setBankAccountId(event.target.value)}
+          >
+            {banks.map((bank) => (
+              <option key={bank.id} value={bank.id}>
+                {bank.name} · {money(bank.balanceCents)}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
 
       {tab === 'pagar' ? (
         <>
@@ -325,7 +435,6 @@ export default function DistribuidoraFinanceiroPage() {
                     <tr>
                       <th>Descrição</th>
                       <th>Fornecedor</th>
-                      <th>Conta</th>
                       <th>Valor</th>
                       <th>Vencimento</th>
                       <th>Situação</th>
@@ -337,11 +446,6 @@ export default function DistribuidoraFinanceiroPage() {
                       <tr key={row.id}>
                         <td>{row.description}</td>
                         <td>{row.supplierName}</td>
-                        <td>
-                          {row.accountCode
-                            ? `${row.accountCode} ${row.accountName}`
-                            : '—'}
-                        </td>
                         <td>{money(row.amountCents)}</td>
                         <td>{row.dueOn ?? '—'}</td>
                         <td>{PAYABLE_LABEL[row.status]}</td>
@@ -353,10 +457,12 @@ export default function DistribuidoraFinanceiroPage() {
                                 className="btn btn-primary"
                                 disabled={saving}
                                 onClick={() => {
+                                  const bankId = requireBank();
+                                  if (!bankId) return;
                                   setSaving(true);
-                                  void markPayablePaid(row.id)
+                                  void markPayablePaid(row.id, bankId)
                                     .then(async () => {
-                                      setNotice('Conta marcada como paga.');
+                                      setNotice('Conta paga e baixa no caixa.');
                                       await reload();
                                     })
                                     .catch((err: unknown) =>
@@ -470,7 +576,6 @@ export default function DistribuidoraFinanceiroPage() {
                     <tr>
                       <th>Descrição</th>
                       <th>Cliente</th>
-                      <th>Conta</th>
                       <th>Valor</th>
                       <th>Vencimento</th>
                       <th>Situação</th>
@@ -482,11 +587,6 @@ export default function DistribuidoraFinanceiroPage() {
                       <tr key={row.id}>
                         <td>{row.description}</td>
                         <td>{row.customerName}</td>
-                        <td>
-                          {row.accountCode
-                            ? `${row.accountCode} ${row.accountName}`
-                            : '—'}
-                        </td>
                         <td>{money(row.amountCents)}</td>
                         <td>{row.dueOn ?? '—'}</td>
                         <td>{RECEIVABLE_LABEL[row.status]}</td>
@@ -498,10 +598,12 @@ export default function DistribuidoraFinanceiroPage() {
                                 className="btn btn-primary"
                                 disabled={saving}
                                 onClick={() => {
+                                  const bankId = requireBank();
+                                  if (!bankId) return;
                                   setSaving(true);
-                                  void markReceivableReceived(row.id)
+                                  void markReceivableReceived(row.id, bankId)
                                     .then(async () => {
-                                      setNotice('Conta marcada como recebida.');
+                                      setNotice('Recebido e creditado no caixa.');
                                       await reload();
                                     })
                                     .catch((err: unknown) =>
@@ -552,6 +654,159 @@ export default function DistribuidoraFinanceiroPage() {
         </>
       ) : null}
 
+      {tab === 'caixa' ? (
+        <>
+          {manager ? (
+            <section className="dash-panel">
+              <h2 className="dash-panel__title">Nova conta de caixa/banco</h2>
+              <form className="form-grid" onSubmit={onCreateBank}>
+                <label className="field">
+                  <span className="field-label">Nome</span>
+                  <input
+                    className="input"
+                    value={bankName}
+                    onChange={(event) => setBankName(event.target.value)}
+                    placeholder="Caixa geral"
+                    required
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">Saldo inicial (R$)</span>
+                  <input
+                    className="input"
+                    value={opening}
+                    onChange={(event) => setOpening(event.target.value)}
+                    placeholder="0,00"
+                  />
+                </label>
+                <div className="form-actions">
+                  <button className="btn btn-primary" type="submit" disabled={saving}>
+                    Criar
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
+
+          <section className="dash-panel">
+            <h2 className="dash-panel__title">Saldos</h2>
+            {banks.length === 0 ? (
+              <p className="field-hint">Nenhuma conta bancária ainda.</p>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Conta</th>
+                      <th>Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {banks.map((bank) => (
+                      <tr key={bank.id}>
+                        <td>{bank.name}</td>
+                        <td>{money(bank.balanceCents)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {manager && banks.length > 0 ? (
+            <section className="dash-panel">
+              <h2 className="dash-panel__title">Movimento manual</h2>
+              <form className="form-grid" onSubmit={onCreateCash}>
+                <label className="field">
+                  <span className="field-label">Conta</span>
+                  <select
+                    className="input"
+                    value={bankAccountId}
+                    onChange={(event) => setBankAccountId(event.target.value)}
+                  >
+                    {banks.map((bank) => (
+                      <option key={bank.id} value={bank.id}>
+                        {bank.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span className="field-label">Tipo</span>
+                  <select
+                    className="input"
+                    value={cashDirection}
+                    onChange={(event) =>
+                      setCashDirection(event.target.value as CashDirection)
+                    }
+                  >
+                    <option value="IN">Entrada</option>
+                    <option value="OUT">Saída</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span className="field-label">Valor (R$)</span>
+                  <input
+                    className="input"
+                    value={amount}
+                    onChange={(event) => setAmount(event.target.value)}
+                    required
+                  />
+                </label>
+                <label className="field">
+                  <span className="field-label">Observação</span>
+                  <input
+                    className="input"
+                    value={cashNote}
+                    onChange={(event) => setCashNote(event.target.value)}
+                  />
+                </label>
+                <div className="form-actions">
+                  <button className="btn btn-primary" type="submit" disabled={saving}>
+                    Lançar
+                  </button>
+                </div>
+              </form>
+            </section>
+          ) : null}
+
+          <section className="dash-panel">
+            <h2 className="dash-panel__title">Extrato recente</h2>
+            {movements.length === 0 ? (
+              <p className="field-hint">Nenhum movimento ainda.</p>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Conta</th>
+                      <th>Origem</th>
+                      <th>Tipo</th>
+                      <th>Valor</th>
+                      <th>Nota</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {movements.map((row) => (
+                      <tr key={row.id}>
+                        <td>{new Date(row.createdAt).toLocaleString('pt-BR')}</td>
+                        <td>{row.bankAccountName ?? '—'}</td>
+                        <td>{SOURCE_LABEL[row.source]}</td>
+                        <td>{row.direction === 'IN' ? 'Entrada' : 'Saída'}</td>
+                        <td>{money(row.amountCents)}</td>
+                        <td>{row.note ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      ) : null}
+
       {tab === 'plano' ? (
         <>
           {manager ? (
@@ -564,7 +819,6 @@ export default function DistribuidoraFinanceiroPage() {
                     className="input"
                     value={ledgerCode}
                     onChange={(event) => setLedgerCode(event.target.value)}
-                    placeholder="4.2.02"
                     required
                   />
                 </label>
