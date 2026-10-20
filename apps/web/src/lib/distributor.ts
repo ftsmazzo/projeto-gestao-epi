@@ -470,6 +470,8 @@ export type OutboundInvoice = {
 };
 
 export type PayableStatus = 'OPEN' | 'PAID' | 'CANCELLED';
+export type ReceivableStatus = 'OPEN' | 'RECEIVED' | 'CANCELLED';
+export type LedgerKind = 'ASSET' | 'LIABILITY' | 'REVENUE' | 'EXPENSE';
 
 export type DistributorPayable = {
   id: string;
@@ -480,9 +482,48 @@ export type DistributorPayable = {
   dueOn: string | null;
   purchaseOrderId: string | null;
   inboundDocumentId: string | null;
+  accountId: string | null;
+  accountCode: string | null;
+  accountName: string | null;
   paidAt: string | null;
   cancelledAt: string | null;
   createdAt: string;
+};
+
+export type DistributorReceivable = {
+  id: string;
+  status: ReceivableStatus;
+  description: string;
+  customerName: string;
+  customerCnpj: string | null;
+  amountCents: number;
+  dueOn: string | null;
+  outboundInvoiceId: string | null;
+  accountId: string | null;
+  accountCode: string | null;
+  accountName: string | null;
+  receivedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+};
+
+export type DistributorLedgerAccount = {
+  id: string;
+  code: string;
+  name: string;
+  kind: LedgerKind;
+  active: boolean;
+};
+
+export type DistributorFinanceSummary = {
+  openPayableCents: number;
+  openReceivableCents: number;
+  paidCents: number;
+  receivedCents: number;
+  revenueCents: number;
+  expenseCents: number;
+  resultCents: number;
+  accounts: DistributorLedgerAccount[];
 };
 
 export function listOutboundInvoices() {
@@ -544,6 +585,57 @@ export function cancelPayable(payableId: string) {
   return apiFetch<DistributorPayable>(`/distributor/payables/${payableId}/cancel`, {
     method: 'POST',
   });
+}
+
+export function listReceivables() {
+  return apiFetch<DistributorReceivable[]>('/distributor/receivables');
+}
+
+export function createReceivable(input: {
+  description: string;
+  customerName: string;
+  customerCnpj?: string | null;
+  amountCents: number;
+  dueOn?: string | null;
+  accountId?: string | null;
+}) {
+  return apiFetch<DistributorReceivable>('/distributor/receivables', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function markReceivableReceived(receivableId: string) {
+  return apiFetch<DistributorReceivable>(
+    `/distributor/receivables/${receivableId}/receive`,
+    { method: 'POST' },
+  );
+}
+
+export function cancelReceivable(receivableId: string) {
+  return apiFetch<DistributorReceivable>(
+    `/distributor/receivables/${receivableId}/cancel`,
+    { method: 'POST' },
+  );
+}
+
+export function listLedgerAccounts() {
+  return apiFetch<DistributorLedgerAccount[]>('/distributor/ledger');
+}
+
+export function createLedgerAccount(input: {
+  code: string;
+  name: string;
+  kind: LedgerKind;
+}) {
+  return apiFetch<DistributorLedgerAccount>('/distributor/ledger', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function getFinanceSummary() {
+  return apiFetch<DistributorFinanceSummary>('/distributor/finance/summary');
 }
 
 export function getDistributorFiscal() {

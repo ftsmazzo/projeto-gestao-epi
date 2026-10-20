@@ -53,3 +53,8 @@ export function parseDueDay(value: string | null | undefined): Date | null {
   }
   return day;
 }
+
+export function formatDueDay(value: Date | null | undefined): string | null {
+  if (!value) return null;
+  return value.toISOString().slice(0, 10);
+}

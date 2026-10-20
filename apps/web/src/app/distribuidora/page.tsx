@@ -3,14 +3,14 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
+  getFinanceSummary,
   listDistributorLowStock,
   listDistributorProducts,
   listOutboundInvoices,
-  listPayables,
   listPurchaseOrders,
   listQuotes,
   type DistributorBalanceRow,
-  type DistributorPayable,
+  type DistributorFinanceSummary,
   type DistributorProduct,
   type OutboundInvoice,
   type PurchaseOrder,
@@ -27,7 +27,7 @@ export default function DistribuidoraHomePage() {
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [quotes, setQuotes] = useState<DistributorQuote[]>([]);
   const [outbounds, setOutbounds] = useState<OutboundInvoice[]>([]);
-  const [payables, setPayables] = useState<DistributorPayable[]>([]);
+  const [finance, setFinance] = useState<DistributorFinanceSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,15 +37,15 @@ export default function DistribuidoraHomePage() {
       listPurchaseOrders(),
       listQuotes(),
       listOutboundInvoices(),
-      listPayables(),
+      getFinanceSummary(),
     ])
-      .then(([productRows, lowRows, orderRows, quoteRows, outboundRows, payableRows]) => {
+      .then(([productRows, lowRows, orderRows, quoteRows, outboundRows, financeRow]) => {
         setProducts(productRows);
         setLow(lowRows);
         setOrders(orderRows);
         setQuotes(quoteRows);
         setOutbounds(outboundRows);
-        setPayables(payableRows);
+        setFinance(financeRow);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Falha ao carregar.'),
@@ -62,8 +62,8 @@ export default function DistribuidoraHomePage() {
   );
   const waitingQuotes = quotes.filter((quote) => quote.status === 'PENDING_APPROVAL');
   const draftNotes = outbounds.filter((invoice) => invoice.status === 'DRAFT');
-  const openPayables = payables.filter((row) => row.status === 'OPEN');
-  const openPayableCents = openPayables.reduce((sum, row) => sum + row.amountCents, 0);
+  const openPayableCents = finance?.openPayableCents ?? 0;
+  const openReceivableCents = finance?.openReceivableCents ?? 0;
 
   return (
     <div className="module-page">
@@ -118,9 +118,19 @@ export default function DistribuidoraHomePage() {
             })}
           </p>
           <p className="dash-kpi__hint">
-            <Link href="/distribuidora/financeiro">
-              {openPayables.length} em aberto
-            </Link>
+            <Link href="/distribuidora/financeiro">financeiro</Link>
+          </p>
+        </article>
+        <article className="dash-kpi">
+          <p className="dash-kpi__label">A receber</p>
+          <p className="dash-kpi__value">
+            {(openReceivableCents / 100).toLocaleString('pt-BR', {
+              style: 'currency',
+              currency: 'BRL',
+            })}
+          </p>
+          <p className="dash-kpi__hint">
+            <Link href="/distribuidora/financeiro">aberto</Link>
           </p>
         </article>
       </section>

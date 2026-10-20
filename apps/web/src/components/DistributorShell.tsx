@@ -38,7 +38,7 @@ const NAV = [
   },
   {
     label: 'Financeiro',
-    items: [{ href: '/distribuidora/financeiro', label: 'Contas a pagar', exact: false }],
+    items: [{ href: '/distribuidora/financeiro', label: 'Financeiro', exact: false }],
   },
 ];
 

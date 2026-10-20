@@ -102,6 +102,19 @@ enum DistributorPayableStatus {
   CANCELLED
 }
 
+enum DistributorReceivableStatus {
+  OPEN
+  RECEIVED
+  CANCELLED
+}
+
+enum DistributorLedgerKind {
+  ASSET
+  LIABILITY
+  REVENUE
+  EXPENSE
+}
+
 /// Estado comercial da assinatura do cliente atendido (CNPJ).
 enum ClientSubscriptionStatus {
   TRIAL
@@ -213,6 +226,8 @@ model Organization {
   distributorQuotes DistributorQuote[]
   distributorOutboundInvoices DistributorOutboundInvoice[]
   distributorPayables DistributorPayable[]
+  distributorReceivables DistributorReceivable[]
+  distributorLedgerAccounts DistributorLedgerAccount[]
   distributorFiscalProfile DistributorFiscalProfile?
   distributorDfeCursor DistributorDfeCursor?
 }
@@ -514,6 +529,7 @@ model DistributorOutboundInvoice {
   quote        DistributorQuote?         @relation(fields: [quoteId], references: [id], onDelete: SetNull)
   lines        DistributorOutboundLine[]
   movements    DistributorMovement[]
+  receivable   DistributorReceivable?
 
   @@unique([organizationId, series, number])
   @@index([organizationId, status])
@@ -530,6 +546,7 @@ model DistributorPayable {
   dueOn             DateTime?
   purchaseOrderId   String?                  @unique
   inboundDocumentId String?                  @unique
+  accountId         String?
   createdByUserId   String
   paidAt            DateTime?
   paidByUserId      String?
@@ -537,11 +554,59 @@ model DistributorPayable {
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
 
-  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  purchaseOrder   DistributorPurchaseOrder?  @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  organization    Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseOrder   DistributorPurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
   inboundDocument DistributorInboundDocument? @relation(fields: [inboundDocumentId], references: [id], onDelete: SetNull)
+  account         DistributorLedgerAccount?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status, dueOn])
+  @@index([accountId])
+}
+
+/// Conta a receber. Confirmacao da nota de saida gera OPEN com o total da venda.
+model DistributorReceivable {
+  id                 String                      @id @default(cuid())
+  organizationId     String
+  status             DistributorReceivableStatus @default(OPEN)
+  description        String
+  customerName       String
+  customerCnpj       String?
+  amountCents        Int
+  dueOn              DateTime?
+  outboundInvoiceId  String?                     @unique
+  accountId          String?
+  createdByUserId    String
+  receivedAt         DateTime?
+  receivedByUserId   String?
+  cancelledAt        DateTime?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outboundInvoice DistributorOutboundInvoice? @relation(fields: [outboundInvoiceId], references: [id], onDelete: SetNull)
+  account         DistributorLedgerAccount?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, dueOn])
+  @@index([accountId])
+}
+
+/// Plano de contas simples da distribuidora. Sem concilicacao bancaria ainda.
+model DistributorLedgerAccount {
+  id             String                @id @default(cuid())
+  organizationId String
+  code           String
+  name           String
+  kind           DistributorLedgerKind
+  active         Boolean               @default(true)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  organization Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payables     DistributorPayable[]
+  receivables  DistributorReceivable[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, kind])
 }
 
 model DistributorOutboundLine {

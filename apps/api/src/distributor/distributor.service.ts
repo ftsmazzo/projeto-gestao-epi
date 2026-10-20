@@ -19,10 +19,12 @@ import { saveDistributorInboundFile } from './distributor-document.storage';
 import type {
   AddDistributorVariantDto,
   CreateDistributorProductDto,
+  CreateLedgerAccountDto,
   CreateOutboundFromQuoteDto,
   CreatePayableDto,
   CreatePurchaseOrderDto,
   CreateQuoteDto,
+  CreateReceivableDto,
   ManualDistributorMovementDto,
   SetSellerCeilingDto,
   UpdateDistributorProductDto,
@@ -45,10 +47,23 @@ import {
 } from './nfe-outbound.rules';
 import { NfeXmlError, parseNfeXml } from './nfe-xml.rules';
 import {
+  DEFAULT_LEDGER_ACCOUNTS,
+  FinanceRuleError,
+  PAYABLE_ACCOUNT_CODE,
+  RECEIVABLE_ACCOUNT_CODE,
+  assertCancelReceivable,
+  assertMarkReceivableReceived,
+  assertReceivableAmount,
+  defaultDueOn,
+  dreTotals,
+  sumOpenCents,
+} from './finance.rules';
+import {
   PayableRuleError,
   assertCancelPayable,
   assertMarkPayablePaid,
   assertPayableAmount,
+  formatDueDay,
   parseDueDay,
   sumCostLines,
 } from './payable.rules';
@@ -603,13 +618,20 @@ export class DistributorService {
       } catch (error) {
         throw this.asPayableError(error);
       }
+      const payableAccountId = await this.resolveLedgerAccountId(
+        organizationId,
+        PAYABLE_ACCOUNT_CODE,
+        tx,
+      );
       await tx.distributorPayable.create({
         data: {
           organizationId,
           description: `Nota de entrada ${document.invoiceNumber ?? document.id.slice(0, 8)}`,
           supplierName: document.supplierName?.trim() || 'Fornecedor',
           amountCents,
+          dueOn: defaultDueOn(30),
           inboundDocumentId: document.id,
+          accountId: payableAccountId,
           createdByUserId: userId,
         },
       });
@@ -816,13 +838,20 @@ export class DistributorService {
       } catch (error) {
         throw this.asPayableError(error);
       }
+      const payableAccountId = await this.resolveLedgerAccountId(
+        organizationId,
+        PAYABLE_ACCOUNT_CODE,
+        tx,
+      );
       await tx.distributorPayable.create({
         data: {
           organizationId,
           description: `Pedido de compra ${current.id.slice(0, 8)}`,
           supplierName: current.supplierName,
           amountCents,
+          dueOn: defaultDueOn(30),
           purchaseOrderId: current.id,
+          accountId: payableAccountId,
           createdByUserId: userId,
         },
       });
@@ -1495,6 +1524,24 @@ export class DistributorService {
           tx,
         );
       }
+      const receivableAccountId = await this.resolveLedgerAccountId(
+        organizationId,
+        RECEIVABLE_ACCOUNT_CODE,
+        tx,
+      );
+      await tx.distributorReceivable.create({
+        data: {
+          organizationId,
+          description: `Nota ${invoice.series}/${invoice.number}`,
+          customerName: invoice.customerName,
+          customerCnpj: invoice.customerCnpj,
+          amountCents: invoice.totalCents,
+          dueOn: defaultDueOn(30),
+          outboundInvoiceId: invoice.id,
+          accountId: receivableAccountId,
+          createdByUserId: userId,
+        },
+      });
       const profile = await tx.distributorFiscalProfile.findUnique({
         where: { organizationId },
       });
@@ -1557,8 +1604,10 @@ export class DistributorService {
 
   async listPayables(organizationId: string, role: string) {
     await this.requireDistributor(organizationId, role);
+    await this.ensureLedgerAccounts(organizationId);
     const rows = await this.prisma.distributorPayable.findMany({
       where: { organizationId },
+      include: { account: true },
       orderBy: [{ status: 'asc' }, { dueOn: 'asc' }, { createdAt: 'desc' }],
     });
     return rows.map(toPayableView);
@@ -1571,19 +1620,24 @@ export class DistributorService {
     dto: CreatePayableDto,
   ) {
     await this.requireDistributor(organizationId, role, { manager: true });
+    await this.ensureLedgerAccounts(organizationId);
     let amountCents: number;
     let dueOn: Date | null;
     try {
       amountCents = assertPayableAmount(dto.amountCents);
-      dueOn = parseDueDay(dto.dueOn);
+      dueOn = parseDueDay(dto.dueOn) ?? defaultDueOn(30);
     } catch (error) {
-      throw this.asPayableError(error);
+      throw this.asFinanceOrPayableError(error);
     }
     const description = dto.description.trim();
     const supplierName = dto.supplierName.trim();
     if (description.length < 2 || supplierName.length < 2) {
       throw new BadRequestException('Informe descricao e fornecedor.');
     }
+    const accountId =
+      dto.accountId?.trim() ||
+      (await this.resolveLedgerAccountId(organizationId, PAYABLE_ACCOUNT_CODE));
+    if (accountId) await this.requireLedgerAccount(organizationId, accountId);
     const created = await this.prisma.distributorPayable.create({
       data: {
         organizationId,
@@ -1591,8 +1645,10 @@ export class DistributorService {
         supplierName,
         amountCents,
         dueOn,
+        accountId,
         createdByUserId: userId,
       },
+      include: { account: true },
     });
     return toPayableView(created);
   }
@@ -1622,6 +1678,7 @@ export class DistributorService {
     }
     const updated = await this.prisma.distributorPayable.findFirstOrThrow({
       where: { id: payable.id },
+      include: { account: true },
     });
     return toPayableView(updated);
   }
@@ -1650,8 +1707,257 @@ export class DistributorService {
     }
     const updated = await this.prisma.distributorPayable.findFirstOrThrow({
       where: { id: payable.id },
+      include: { account: true },
     });
     return toPayableView(updated);
+  }
+
+  async listReceivables(organizationId: string, role: string) {
+    await this.requireDistributor(organizationId, role);
+    await this.ensureLedgerAccounts(organizationId);
+    const rows = await this.prisma.distributorReceivable.findMany({
+      where: { organizationId },
+      include: { account: true },
+      orderBy: [{ status: 'asc' }, { dueOn: 'asc' }, { createdAt: 'desc' }],
+    });
+    return rows.map(toReceivableView);
+  }
+
+  async createReceivable(
+    organizationId: string,
+    role: string,
+    userId: string,
+    dto: CreateReceivableDto,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    await this.ensureLedgerAccounts(organizationId);
+    let amountCents: number;
+    let dueOn: Date | null;
+    try {
+      amountCents = assertReceivableAmount(dto.amountCents);
+      dueOn = parseDueDay(dto.dueOn) ?? defaultDueOn(30);
+    } catch (error) {
+      throw this.asFinanceOrPayableError(error);
+    }
+    const description = dto.description.trim();
+    const customerName = dto.customerName.trim();
+    if (description.length < 2 || customerName.length < 2) {
+      throw new BadRequestException('Informe descricao e cliente.');
+    }
+    let customerCnpj: string | null = null;
+    if (dto.customerCnpj?.trim()) {
+      const cnpj = validateCnpj(dto.customerCnpj);
+      if (!cnpj.ok) throw new BadRequestException(cnpj.message);
+      customerCnpj = cnpj.normalized;
+    }
+    const accountId =
+      dto.accountId?.trim() ||
+      (await this.resolveLedgerAccountId(
+        organizationId,
+        RECEIVABLE_ACCOUNT_CODE,
+      ));
+    if (accountId) await this.requireLedgerAccount(organizationId, accountId);
+    const created = await this.prisma.distributorReceivable.create({
+      data: {
+        organizationId,
+        description,
+        customerName,
+        customerCnpj,
+        amountCents,
+        dueOn,
+        accountId,
+        createdByUserId: userId,
+      },
+      include: { account: true },
+    });
+    return toReceivableView(created);
+  }
+
+  async markReceivableReceived(
+    organizationId: string,
+    role: string,
+    userId: string,
+    receivableId: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const row = await this.prisma.distributorReceivable.findFirst({
+      where: { id: receivableId, organizationId },
+    });
+    if (!row) throw new NotFoundException('Conta a receber nao encontrada.');
+    try {
+      assertMarkReceivableReceived(row.status);
+    } catch (error) {
+      throw this.asFinanceError(error);
+    }
+    const claimed = await this.prisma.distributorReceivable.updateMany({
+      where: { id: row.id, organizationId, status: 'OPEN' },
+      data: {
+        status: 'RECEIVED',
+        receivedAt: new Date(),
+        receivedByUserId: userId,
+      },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException('Esta conta ja foi recebida ou cancelada.');
+    }
+    const updated = await this.prisma.distributorReceivable.findFirstOrThrow({
+      where: { id: row.id },
+      include: { account: true },
+    });
+    return toReceivableView(updated);
+  }
+
+  async cancelReceivable(
+    organizationId: string,
+    role: string,
+    receivableId: string,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    const row = await this.prisma.distributorReceivable.findFirst({
+      where: { id: receivableId, organizationId },
+    });
+    if (!row) throw new NotFoundException('Conta a receber nao encontrada.');
+    try {
+      assertCancelReceivable(row.status);
+    } catch (error) {
+      throw this.asFinanceError(error);
+    }
+    const claimed = await this.prisma.distributorReceivable.updateMany({
+      where: { id: row.id, organizationId, status: 'OPEN' },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+    });
+    if (claimed.count !== 1) {
+      throw new ConflictException('Esta conta ja foi recebida ou cancelada.');
+    }
+    const updated = await this.prisma.distributorReceivable.findFirstOrThrow({
+      where: { id: row.id },
+      include: { account: true },
+    });
+    return toReceivableView(updated);
+  }
+
+  async listLedgerAccounts(organizationId: string, role: string) {
+    await this.requireDistributor(organizationId, role);
+    await this.ensureLedgerAccounts(organizationId);
+    const rows = await this.prisma.distributorLedgerAccount.findMany({
+      where: { organizationId },
+      orderBy: { code: 'asc' },
+    });
+    return rows.map(toLedgerView);
+  }
+
+  async createLedgerAccount(
+    organizationId: string,
+    role: string,
+    dto: CreateLedgerAccountDto,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    await this.ensureLedgerAccounts(organizationId);
+    const code = dto.code.trim();
+    const name = dto.name.trim();
+    if (!code || name.length < 2) {
+      throw new BadRequestException('Informe codigo e nome da conta.');
+    }
+    try {
+      const created = await this.prisma.distributorLedgerAccount.create({
+        data: {
+          organizationId,
+          code,
+          name,
+          kind: dto.kind,
+        },
+      });
+      return toLedgerView(created);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('Ja existe uma conta com este codigo.');
+      }
+      throw error;
+    }
+  }
+
+  async financeSummary(organizationId: string, role: string) {
+    await this.requireDistributor(organizationId, role);
+    await this.ensureLedgerAccounts(organizationId);
+    const [payables, receivables, accounts] = await Promise.all([
+      this.prisma.distributorPayable.findMany({
+        where: { organizationId },
+        select: { status: true, amountCents: true },
+      }),
+      this.prisma.distributorReceivable.findMany({
+        where: { organizationId },
+        select: { status: true, amountCents: true },
+      }),
+      this.prisma.distributorLedgerAccount.findMany({
+        where: { organizationId, active: true },
+        orderBy: { code: 'asc' },
+      }),
+    ]);
+    const openPayableCents = sumOpenCents(payables, 'OPEN');
+    const openReceivableCents = sumOpenCents(receivables, 'OPEN');
+    const receivedCents = receivables
+      .filter((row) => row.status === 'RECEIVED')
+      .reduce((sum, row) => sum + row.amountCents, 0);
+    const paidCents = payables
+      .filter((row) => row.status === 'PAID')
+      .reduce((sum, row) => sum + row.amountCents, 0);
+    const dre = dreTotals({
+      revenueCents: receivedCents,
+      expenseCents: paidCents,
+    });
+    return {
+      openPayableCents,
+      openReceivableCents,
+      paidCents,
+      receivedCents,
+      ...dre,
+      accounts: accounts.map(toLedgerView),
+    };
+  }
+
+  private async ensureLedgerAccounts(
+    organizationId: string,
+    tx: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const count = await tx.distributorLedgerAccount.count({
+      where: { organizationId },
+    });
+    if (count > 0) return;
+    await tx.distributorLedgerAccount.createMany({
+      data: DEFAULT_LEDGER_ACCOUNTS.map((account) => ({
+        organizationId,
+        code: account.code,
+        name: account.name,
+        kind: account.kind,
+      })),
+      skipDuplicates: true,
+    });
+  }
+
+  private async resolveLedgerAccountId(
+    organizationId: string,
+    code: string,
+    tx: Prisma.TransactionClient | PrismaService = this.prisma,
+  ): Promise<string | null> {
+    await this.ensureLedgerAccounts(organizationId, tx);
+    const account = await tx.distributorLedgerAccount.findUnique({
+      where: { organizationId_code: { organizationId, code } },
+      select: { id: true },
+    });
+    return account?.id ?? null;
+  }
+
+  private async requireLedgerAccount(organizationId: string, accountId: string) {
+    const account = await this.prisma.distributorLedgerAccount.findFirst({
+      where: { id: accountId, organizationId, active: true },
+    });
+    if (!account) {
+      throw new BadRequestException('Conta do plano nao encontrada.');
+    }
+    return account;
   }
 
   private async getOutboundInvoice(
@@ -1682,6 +1988,20 @@ export class DistributorService {
 
   private asPayableError(error: unknown): BadRequestException {
     if (error instanceof PayableRuleError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
+  private asFinanceError(error: unknown): BadRequestException {
+    if (error instanceof FinanceRuleError) {
+      return new BadRequestException(error.message);
+    }
+    throw error;
+  }
+
+  private asFinanceOrPayableError(error: unknown): BadRequestException {
+    if (error instanceof FinanceRuleError || error instanceof PayableRuleError) {
       return new BadRequestException(error.message);
     }
     throw error;
@@ -2013,6 +2333,8 @@ function toPayableView(payable: {
   dueOn: Date | null;
   purchaseOrderId: string | null;
   inboundDocumentId: string | null;
+  accountId?: string | null;
+  account?: { id: string; code: string; name: string; kind: string } | null;
   paidAt: Date | null;
   cancelledAt: Date | null;
   createdAt: Date;
@@ -2023,12 +2345,64 @@ function toPayableView(payable: {
     description: payable.description,
     supplierName: payable.supplierName,
     amountCents: payable.amountCents,
-    dueOn: payable.dueOn ? payable.dueOn.toISOString().slice(0, 10) : null,
+    dueOn: formatDueDay(payable.dueOn),
     purchaseOrderId: payable.purchaseOrderId,
     inboundDocumentId: payable.inboundDocumentId,
+    accountId: payable.accountId ?? payable.account?.id ?? null,
+    accountCode: payable.account?.code ?? null,
+    accountName: payable.account?.name ?? null,
     paidAt: payable.paidAt,
     cancelledAt: payable.cancelledAt,
     createdAt: payable.createdAt,
+  };
+}
+
+function toReceivableView(row: {
+  id: string;
+  status: string;
+  description: string;
+  customerName: string;
+  customerCnpj: string | null;
+  amountCents: number;
+  dueOn: Date | null;
+  outboundInvoiceId: string | null;
+  accountId?: string | null;
+  account?: { id: string; code: string; name: string; kind: string } | null;
+  receivedAt: Date | null;
+  cancelledAt: Date | null;
+  createdAt: Date;
+}) {
+  return {
+    id: row.id,
+    status: row.status,
+    description: row.description,
+    customerName: row.customerName,
+    customerCnpj: row.customerCnpj,
+    amountCents: row.amountCents,
+    dueOn: formatDueDay(row.dueOn),
+    outboundInvoiceId: row.outboundInvoiceId,
+    accountId: row.accountId ?? row.account?.id ?? null,
+    accountCode: row.account?.code ?? null,
+    accountName: row.account?.name ?? null,
+    receivedAt: row.receivedAt,
+    cancelledAt: row.cancelledAt,
+    createdAt: row.createdAt,
+  };
+}
+
+function toLedgerView(account: {
+  id: string;
+  code: string;
+  name: string;
+  kind: string;
+  active: boolean;
+}) {
+  return {
+    id: account.id,
+    code: account.code,
+    name: account.name,
+    kind: account.kind,
+    active: account.active,
   };
 }
 

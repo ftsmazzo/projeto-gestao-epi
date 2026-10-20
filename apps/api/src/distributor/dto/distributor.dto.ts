@@ -449,6 +449,50 @@ export class CreatePayableDto {
   @IsOptional()
   @IsString()
   dueOn?: string | null;
+
+  @IsOptional()
+  @IsString()
+  accountId?: string | null;
+}
+
+export class CreateReceivableDto {
+  @IsString()
+  @MinLength(2)
+  description!: string;
+
+  @IsString()
+  @MinLength(2)
+  customerName!: string;
+
+  @IsOptional()
+  @IsString()
+  customerCnpj?: string | null;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  amountCents!: number;
+
+  @IsOptional()
+  @IsString()
+  dueOn?: string | null;
+
+  @IsOptional()
+  @IsString()
+  accountId?: string | null;
+}
+
+export class CreateLedgerAccountDto {
+  @IsString()
+  @MinLength(1)
+  code!: string;
+
+  @IsString()
+  @MinLength(2)
+  name!: string;
+
+  @IsIn(['ASSET', 'LIABILITY', 'REVENUE', 'EXPENSE'])
+  kind!: 'ASSET' | 'LIABILITY' | 'REVENUE' | 'EXPENSE';
 }
 
 export class LinkInboundLineDto {

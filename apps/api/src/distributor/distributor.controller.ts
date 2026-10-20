@@ -21,10 +21,12 @@ import {
   CreateDistributorProductDto,
   LinkInboundLineDto,
   SaveDistributorFiscalDto,
+  CreateLedgerAccountDto,
   CreateOutboundFromQuoteDto,
   CreatePayableDto,
   CreatePurchaseOrderDto,
   CreateQuoteDto,
+  CreateReceivableDto,
   ManualDistributorMovementDto,
   RejectPurchaseOrderDto,
   SetSellerCeilingDto,
@@ -458,6 +460,80 @@ export class DistributorController {
       user.organizationId,
       user.membershipRole,
       payableId,
+    );
+  }
+
+  @Get('receivables')
+  listReceivables(@CurrentUser() user: JwtPayload) {
+    return this.distributor.listReceivables(
+      user.organizationId,
+      user.membershipRole,
+    );
+  }
+
+  @Post('receivables')
+  createReceivable(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateReceivableDto,
+  ) {
+    return this.distributor.createReceivable(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      dto,
+    );
+  }
+
+  @Post('receivables/:receivableId/receive')
+  markReceivableReceived(
+    @CurrentUser() user: JwtPayload,
+    @Param('receivableId') receivableId: string,
+  ) {
+    return this.distributor.markReceivableReceived(
+      user.organizationId,
+      user.membershipRole,
+      user.sub,
+      receivableId,
+    );
+  }
+
+  @Post('receivables/:receivableId/cancel')
+  cancelReceivable(
+    @CurrentUser() user: JwtPayload,
+    @Param('receivableId') receivableId: string,
+  ) {
+    return this.distributor.cancelReceivable(
+      user.organizationId,
+      user.membershipRole,
+      receivableId,
+    );
+  }
+
+  @Get('ledger')
+  listLedger(@CurrentUser() user: JwtPayload) {
+    return this.distributor.listLedgerAccounts(
+      user.organizationId,
+      user.membershipRole,
+    );
+  }
+
+  @Post('ledger')
+  createLedger(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateLedgerAccountDto,
+  ) {
+    return this.distributor.createLedgerAccount(
+      user.organizationId,
+      user.membershipRole,
+      dto,
+    );
+  }
+
+  @Get('finance/summary')
+  financeSummary(@CurrentUser() user: JwtPayload) {
+    return this.distributor.financeSummary(
+      user.organizationId,
+      user.membershipRole,
     );
   }
 
