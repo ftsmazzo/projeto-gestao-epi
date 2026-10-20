@@ -8821,18 +8821,95 @@ a.btn-primary:hover {
   }
 }
 
+.scan-panel__how {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.scan-panel__form {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.scan-panel__row {
+  display: flex;
+  gap: 0.55rem;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
 .scan-panel__input {
+  flex: 1 1 14rem;
   width: 100%;
   min-height: 52px;
   font-size: 1.15rem;
   letter-spacing: 0.02em;
   padding: 0.75rem 0.9rem;
-  margin-top: 0.35rem;
+}
+
+.scan-panel__go {
+  min-height: 52px;
+  white-space: nowrap;
 }
 
 .scan-panel__hit {
   margin: 0.65rem 0 0;
   font-weight: 650;
+}
+
+.scan-panel__shortcuts {
+  margin-top: 1rem;
+}
+
+.scan-panel__shortcuts-label {
+  margin: 0 0 0.45rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.scan-panel__chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.scan-panel__chip {
+  display: grid;
+  gap: 0.15rem;
+  text-align: left;
+  border: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--accent, #1d6b4f) 8%, transparent);
+  padding: 0.55rem 0.7rem;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  max-width: 16rem;
+}
+
+.scan-panel__chip:hover {
+  border-color: color-mix(in srgb, var(--accent, #1d6b4f) 55%, transparent);
+}
+
+.scan-panel__chip-name {
+  font-size: 0.88rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scan-panel__chip-code {
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
 }
 
 /* Cadastro de produto: essencial primeiro, resto recolhido. */

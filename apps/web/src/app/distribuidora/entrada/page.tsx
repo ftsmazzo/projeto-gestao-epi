@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import { DistributorScanPanel } from '../../../components/DistributorScanPanel';
 import {
   confirmDistributorInbound,
   discardDistributorInbound,
@@ -210,31 +210,16 @@ export default function DistribuidoraEntradaPage() {
       ) : null}
       {notice ? <p className="success">{notice}</p> : null}
 
-      <section className="dash-panel scan-panel">
-        <h2 className="dash-panel__title">Leitor de código de barras</h2>
-        <p className="field-hint">
-          Use o leitor USB/Bluetooth: ele digita o código e dá Enter. O produto
-          precisa ter GTIN na ficha —{' '}
-          <Link href="/distribuidora/produtos">cadastre ou complete em Produtos</Link>.
-        </p>
-        <label htmlFor="scan-code">Aponte o leitor aqui</label>
-        <input
-          ref={scanRef}
-          id="scan-code"
-          className="scan-panel__input"
-          value={scanCode}
-          autoComplete="off"
-          placeholder="Código de barras ou SKU"
-          onChange={(e) => setScanCode(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              void resolveScan(scanCode);
-            }
-          }}
-        />
-        {scannedLabel ? <p className="scan-panel__hit">{scannedLabel}</p> : null}
-      </section>
+      <DistributorScanPanel
+        inputId="scan-code"
+        inputRef={scanRef}
+        value={scanCode}
+        onChange={setScanCode}
+        onResolve={resolveScan}
+        scannedLabel={scannedLabel}
+        products={products}
+        mode="entrada"
+      />
 
       <form className="form dash-panel" onSubmit={onManual}>
         <h2 className="dash-panel__title">Confirmar entrada</h2>

@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import { DistributorScanPanel } from '../../../components/DistributorScanPanel';
 import {
   listDistributorProducts,
   lookupDistributorProductByCode,
@@ -141,30 +141,16 @@ export default function DistribuidoraSaidaPage() {
       ) : null}
       {notice ? <p className="success">{notice}</p> : null}
 
-      <section className="dash-panel scan-panel">
-        <h2 className="dash-panel__title">Leitor de código de barras</h2>
-        <p className="field-hint">
-          Mesmo fluxo da entrada. Sem GTIN na ficha, use o SKU —{' '}
-          <Link href="/distribuidora/produtos">complete em Produtos</Link>.
-        </p>
-        <label htmlFor="scan-out">Aponte o leitor aqui</label>
-        <input
-          ref={scanRef}
-          id="scan-out"
-          className="scan-panel__input"
-          value={scanCode}
-          autoComplete="off"
-          placeholder="Código de barras ou SKU"
-          onChange={(e) => setScanCode(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              void resolveScan(scanCode);
-            }
-          }}
-        />
-        {scannedLabel ? <p className="scan-panel__hit">{scannedLabel}</p> : null}
-      </section>
+      <DistributorScanPanel
+        inputId="scan-out"
+        inputRef={scanRef}
+        value={scanCode}
+        onChange={setScanCode}
+        onResolve={resolveScan}
+        scannedLabel={scannedLabel}
+        products={products}
+        mode="saida"
+      />
 
       <form className="form dash-panel" onSubmit={onSubmit}>
         <h2 className="dash-panel__title">Confirmar saída</h2>
