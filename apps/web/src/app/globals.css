@@ -8821,6 +8821,72 @@ a.btn-primary:hover {
   }
 }
 
+/* Cadastro de produto: essencial primeiro, resto recolhido. */
+.product-form__section {
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 0.55rem;
+  min-inline-size: 0;
+}
+
+.product-form__legend {
+  padding: 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.product-form__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  padding: 0.15rem 0;
+}
+
+.product-form__optional {
+  font-weight: 500;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
+
+.product-form__inline {
+  display: flex;
+  gap: 0.55rem;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.product-form__inline input {
+  flex: 1 1 12rem;
+  min-height: 44px;
+}
+
+.product-form__sizes {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+}
+
+.product-form__check {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 44px;
+}
+
+.product-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  margin-top: 0.35rem;
+}
+
 /* Tablet do representante: alvos grandes, empilhado. */
 .tablet-field__ceiling {
   margin: 0;

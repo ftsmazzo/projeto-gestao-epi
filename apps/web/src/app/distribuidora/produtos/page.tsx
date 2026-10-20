@@ -187,6 +187,8 @@ export default function DistribuidoraProdutosPage() {
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [depotOpen, setDepotOpen] = useState(false);
+  const [fiscalOpen, setFiscalOpen] = useState(false);
 
   async function reload() {
     const [rows, me] = await Promise.all([listDistributorProducts(), fetchMe()]);
@@ -215,6 +217,19 @@ export default function DistribuidoraProdutosPage() {
     setDraft(emptyDraft());
     setEditingId(null);
     setFormOpen(false);
+    setDepotOpen(false);
+    setFiscalOpen(false);
+  }
+
+  function suggestInternalSku(fromName: string) {
+    const slug = fromName
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 24);
+    return slug || '';
   }
 
   async function onLookupCa() {
@@ -249,6 +264,8 @@ export default function DistribuidoraProdutosPage() {
     setFormOpen(true);
     setMinQuantity(product.minQuantity == null ? '' : String(product.minQuantity));
     setDraft(draftFromProduct(product));
+    setDepotOpen(true);
+    setFiscalOpen(Boolean(product.ncm || product.cest || product.icmsSt));
   }
 
   async function onCreate(event: FormEvent) {
@@ -339,7 +356,8 @@ export default function DistribuidoraProdutosPage() {
           <p className="page-kicker">Distribuidora</p>
           <h1 className="page-title">Produtos</h1>
           <p className="page-lead">
-            O catálogo lista cada tamanho em uma linha. Sem numeração, o item fica como Único.
+            Para testar, basta nome, código interno e tamanho. Depósito e fiscal
+            ficam opcionais e abrem só quando precisar.
           </p>
         </div>
         {manager ? (
@@ -360,317 +378,398 @@ export default function DistribuidoraProdutosPage() {
           {error}
         </p>
       ) : null}
-      {notice ? <p className="field-hint">{notice}</p> : null}
+      {notice ? <p className="success">{notice}</p> : null}
       {manager && formOpen ? (
-        <form className="form dash-panel" onSubmit={onCreate}>
+        <form className="form dash-panel product-form" onSubmit={onCreate}>
           <h2 className="dash-panel__title">
             {editingId ? 'Editar ficha' : 'Novo produto'}
           </h2>
-          <div className="form-grid">
-            <div className="field">
-              <label htmlFor="ca">CA (opcional)</label>
-              <input
-                id="ca"
-                value={caNumber}
-                onChange={(e) => setCaNumber(e.target.value)}
-              />
-              <button type="button" className="btn btn-secondary" onClick={onLookupCa}>
-                Consultar CA
-              </button>
-            </div>
-            <div className="field">
-              <label htmlFor="nome">Nome</label>
-              <input
-                id="nome"
-                required
-                minLength={2}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="sku">Codigo interno</label>
-              <input
-                id="sku"
-                required
-                value={internalSku}
-                disabled={editingId != null}
-                onChange={(e) => setInternalSku(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="fornecedor">Codigo do fornecedor</label>
-              <input
-                id="fornecedor"
-                value={supplierSku}
-                disabled={editingId != null}
-                onChange={(e) => setSupplierSku(e.target.value)}
-              />
-            </div>
-            <div className="field field--span-2">
-              <label>Tamanhos</label>
-              {variantRows.map((row, index) => (
-                <input
-                  key={index}
-                  aria-label={`Tamanho ${index + 1}`}
-                  value={row}
-                  disabled={editingId != null}
-                  placeholder="Único, 40, M"
-                  onChange={(event) =>
-                    setVariantRows((current) =>
-                      current.map((item, itemIndex) =>
-                        itemIndex === index ? event.target.value : item,
-                      ),
-                    )
-                  }
-                />
-              ))}
-              {editingId ? (
-                <input
-                  aria-label="Novo tamanho"
-                  value={newSize}
-                  placeholder="Novo tamanho"
-                  onChange={(event) => setNewSize(event.target.value)}
-                />
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setVariantRows((current) => [...current, ''])}
-                >
-                  Adicionar tamanho
-                </button>
-              )}
-            </div>
-            <div className="field">
-              <label htmlFor="minimo">Minimo (opcional)</label>
-              <input
-                id="minimo"
-                inputMode="numeric"
-                value={minQuantity}
-                onChange={(e) => setMinQuantity(e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="unidade">Unidade</label>
-              <select
-                id="unidade"
-                value={draft.unitCode}
-                onChange={(e) => setField('unitCode', e.target.value)}
-              >
-                <option value="UN">UN</option>
-                <option value="PAR">PAR</option>
-                <option value="CX">CX</option>
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="caixa">Itens por caixa</label>
-              <input
-                id="caixa"
-                inputMode="numeric"
-                value={draft.itemsPerBox}
-                onChange={(e) => setField('itemsPerBox', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="gtin">GTIN / EAN</label>
-              <input
-                id="gtin"
-                value={draft.gtin}
-                onChange={(e) => setField('gtin', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="local">Endereco no deposito</label>
-              <input
-                id="local"
-                value={draft.warehouseLocation}
-                onChange={(e) => setField('warehouseLocation', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="custo">Custo (R$)</label>
-              <input
-                id="custo"
-                inputMode="decimal"
-                value={draft.costReais}
-                onChange={(e) => setField('costReais', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="comp">Comprimento (cm)</label>
-              <input
-                id="comp"
-                inputMode="decimal"
-                value={draft.lengthCm}
-                onChange={(e) => setField('lengthCm', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="larg">Largura (cm)</label>
-              <input
-                id="larg"
-                inputMode="decimal"
-                value={draft.widthCm}
-                onChange={(e) => setField('widthCm', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="alt">Altura (cm)</label>
-              <input
-                id="alt"
-                inputMode="decimal"
-                value={draft.heightCm}
-                onChange={(e) => setField('heightCm', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="pliq">Peso liquido (kg)</label>
-              <input
-                id="pliq"
-                inputMode="decimal"
-                value={draft.netKg}
-                onChange={(e) => setField('netKg', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="pbruto">Peso bruto (kg)</label>
-              <input
-                id="pbruto"
-                inputMode="decimal"
-                value={draft.grossKg}
-                onChange={(e) => setField('grossKg', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="ccomp">Caixa — comprimento (cm)</label>
-              <input
-                id="ccomp"
-                inputMode="decimal"
-                value={draft.boxLengthCm}
-                onChange={(e) => setField('boxLengthCm', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="clarg">Caixa — largura (cm)</label>
-              <input
-                id="clarg"
-                inputMode="decimal"
-                value={draft.boxWidthCm}
-                onChange={(e) => setField('boxWidthCm', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="calt">Caixa — altura (cm)</label>
-              <input
-                id="calt"
-                inputMode="decimal"
-                value={draft.boxHeightCm}
-                onChange={(e) => setField('boxHeightCm', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="ncm">NCM</label>
-              <input
-                id="ncm"
-                value={draft.ncm}
-                onChange={(e) => setField('ncm', e.target.value)}
-                placeholder="8 digitos"
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="cest">CEST</label>
-              <input
-                id="cest"
-                value={draft.cest}
-                onChange={(e) => setField('cest', e.target.value)}
-                placeholder="7 digitos, se houver ST"
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="origem">Origem</label>
-              <select
-                id="origem"
-                value={draft.originCode}
-                onChange={(e) => setField('originCode', e.target.value)}
-              >
-                {ORIGINS.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="lote">Controla lote e validade</label>
-              <input
-                id="lote"
-                type="checkbox"
-                checked={draft.tracksLot}
-                onChange={(e) => setField('tracksLot', e.target.checked)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="st">Substituicao tributaria</label>
-              <input
-                id="st"
-                type="checkbox"
-                checked={draft.icmsSt}
-                onChange={(e) => setField('icmsSt', e.target.checked)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="cfop-venda">CFOP venda interna</label>
-              <input
-                id="cfop-venda"
-                value={draft.saleCfopIn}
-                onChange={(e) => setField('saleCfopIn', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="cfop-venda-fora">CFOP venda interestadual</label>
-              <input
-                id="cfop-venda-fora"
-                value={draft.saleCfopOut}
-                onChange={(e) => setField('saleCfopOut', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="cfop-compra">CFOP compra interna</label>
-              <input
-                id="cfop-compra"
-                value={draft.buyCfopIn}
-                onChange={(e) => setField('buyCfopIn', e.target.value)}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="cfop-compra-fora">CFOP compra interestadual</label>
-              <input
-                id="cfop-compra-fora"
-                value={draft.buyCfopOut}
-                onChange={(e) => setField('buyCfopOut', e.target.value)}
-              />
-            </div>
-          </div>
           <p className="field-hint">
-            Cubagem em m3 = C x L x A. Peso cubado usa o divisor 6000. EPI comum
-            nasce sem substituicao tributaria.
+            Campos com * são o mínimo para entrar no estoque. O restante pode
+            completar depois pela ficha.
           </p>
-          <button className="btn btn-primary" type="submit" disabled={saving}>
-            {saving ? 'Salvando...' : editingId ? 'Salvar ficha' : 'Cadastrar produto'}
-          </button>
-          {editingId ? (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => void onAddSize()}
-            >
-              Incluir tamanho
+
+          <fieldset className="product-form__section">
+            <legend className="product-form__legend">Essencial</legend>
+            <div className="form-grid">
+              <div className="field field--span-2">
+                <label htmlFor="ca">CA (opcional)</label>
+                <div className="product-form__inline">
+                  <input
+                    id="ca"
+                    value={caNumber}
+                    onChange={(e) => setCaNumber(e.target.value)}
+                    placeholder="Só números"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={onLookupCa}
+                  >
+                    Consultar CA
+                  </button>
+                </div>
+                <p className="field-hint">
+                  Se achar na base, sugere o nome. Se não achar, o cadastro segue.
+                </p>
+              </div>
+              <div className="field">
+                <label htmlFor="nome">Nome *</label>
+                <input
+                  id="nome"
+                  required
+                  minLength={2}
+                  value={name}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setName(next);
+                    if (!editingId && !internalSku.trim()) {
+                      setInternalSku(suggestInternalSku(next));
+                    }
+                  }}
+                  placeholder="Ex.: Luva nitrílica"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="sku">Código interno *</label>
+                <input
+                  id="sku"
+                  required
+                  value={internalSku}
+                  disabled={editingId != null}
+                  onChange={(e) => setInternalSku(e.target.value)}
+                  placeholder="SKU da casa"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="fornecedor">Código do fornecedor</label>
+                <input
+                  id="fornecedor"
+                  value={supplierSku}
+                  disabled={editingId != null}
+                  onChange={(e) => setSupplierSku(e.target.value)}
+                  placeholder="Como vem na nota de compra"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="unidade">Unidade</label>
+                <select
+                  id="unidade"
+                  value={draft.unitCode}
+                  onChange={(e) => setField('unitCode', e.target.value)}
+                >
+                  <option value="UN">UN — unidade</option>
+                  <option value="PAR">PAR — par</option>
+                  <option value="CX">CX — caixa</option>
+                </select>
+              </div>
+              <div className="field field--span-2">
+                <label>Tamanhos *</label>
+                <p className="field-hint">
+                  Sem numeração, deixe Único. Cada tamanho vira uma linha no saldo.
+                </p>
+                <div className="product-form__sizes">
+                  {variantRows.map((row, index) => (
+                    <input
+                      key={index}
+                      aria-label={`Tamanho ${index + 1}`}
+                      value={row}
+                      disabled={editingId != null}
+                      placeholder="Único, 40, M…"
+                      onChange={(event) =>
+                        setVariantRows((current) =>
+                          current.map((item, itemIndex) =>
+                            itemIndex === index ? event.target.value : item,
+                          ),
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+                {editingId ? (
+                  <div className="product-form__inline">
+                    <input
+                      aria-label="Novo tamanho"
+                      value={newSize}
+                      placeholder="Novo tamanho"
+                      onChange={(event) => setNewSize(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => void onAddSize()}
+                    >
+                      Incluir tamanho
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setVariantRows((current) => [...current, ''])}
+                  >
+                    Adicionar tamanho
+                  </button>
+                )}
+              </div>
+              <div className="field">
+                <label htmlFor="minimo">Estoque mínimo</label>
+                <input
+                  id="minimo"
+                  inputMode="numeric"
+                  value={minQuantity}
+                  onChange={(e) => setMinQuantity(e.target.value)}
+                  placeholder="Opcional"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="lote" className="product-form__check">
+                  <input
+                    id="lote"
+                    type="checkbox"
+                    checked={draft.tracksLot}
+                    onChange={(e) => setField('tracksLot', e.target.checked)}
+                  />
+                  Controla lote e validade (FEFO)
+                </label>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset className="product-form__section">
+            <legend className="product-form__legend">
+              <button
+                type="button"
+                className="product-form__toggle"
+                aria-expanded={depotOpen}
+                onClick={() => setDepotOpen((open) => !open)}
+              >
+                {depotOpen ? '▾' : '▸'} Depósito e medidas
+                <span className="product-form__optional">opcional</span>
+              </button>
+            </legend>
+            {depotOpen ? (
+              <div className="form-grid">
+                <div className="field">
+                  <label htmlFor="local">Endereço no depósito</label>
+                  <input
+                    id="local"
+                    value={draft.warehouseLocation}
+                    onChange={(e) => setField('warehouseLocation', e.target.value)}
+                    placeholder="Ex.: A-12"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="custo">Custo (R$)</label>
+                  <input
+                    id="custo"
+                    inputMode="decimal"
+                    value={draft.costReais}
+                    onChange={(e) => setField('costReais', e.target.value)}
+                    placeholder="0,00"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="gtin">GTIN / EAN</label>
+                  <input
+                    id="gtin"
+                    value={draft.gtin}
+                    onChange={(e) => setField('gtin', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="caixa">Itens por caixa</label>
+                  <input
+                    id="caixa"
+                    inputMode="numeric"
+                    value={draft.itemsPerBox}
+                    onChange={(e) => setField('itemsPerBox', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="comp">Comprimento (cm)</label>
+                  <input
+                    id="comp"
+                    inputMode="decimal"
+                    value={draft.lengthCm}
+                    onChange={(e) => setField('lengthCm', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="larg">Largura (cm)</label>
+                  <input
+                    id="larg"
+                    inputMode="decimal"
+                    value={draft.widthCm}
+                    onChange={(e) => setField('widthCm', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="alt">Altura (cm)</label>
+                  <input
+                    id="alt"
+                    inputMode="decimal"
+                    value={draft.heightCm}
+                    onChange={(e) => setField('heightCm', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="pliq">Peso líquido (kg)</label>
+                  <input
+                    id="pliq"
+                    inputMode="decimal"
+                    value={draft.netKg}
+                    onChange={(e) => setField('netKg', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="pbruto">Peso bruto (kg)</label>
+                  <input
+                    id="pbruto"
+                    inputMode="decimal"
+                    value={draft.grossKg}
+                    onChange={(e) => setField('grossKg', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="ccomp">Caixa — comprimento (cm)</label>
+                  <input
+                    id="ccomp"
+                    inputMode="decimal"
+                    value={draft.boxLengthCm}
+                    onChange={(e) => setField('boxLengthCm', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="clarg">Caixa — largura (cm)</label>
+                  <input
+                    id="clarg"
+                    inputMode="decimal"
+                    value={draft.boxWidthCm}
+                    onChange={(e) => setField('boxWidthCm', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="calt">Caixa — altura (cm)</label>
+                  <input
+                    id="calt"
+                    inputMode="decimal"
+                    value={draft.boxHeightCm}
+                    onChange={(e) => setField('boxHeightCm', e.target.value)}
+                  />
+                </div>
+                <p className="field-hint field--span-2">
+                  Cubagem = C × L × A. Peso cubado usa divisor 6000.
+                </p>
+              </div>
+            ) : null}
+          </fieldset>
+
+          <fieldset className="product-form__section">
+            <legend className="product-form__legend">
+              <button
+                type="button"
+                className="product-form__toggle"
+                aria-expanded={fiscalOpen}
+                onClick={() => setFiscalOpen((open) => !open)}
+              >
+                {fiscalOpen ? '▾' : '▸'} Fiscal
+                <span className="product-form__optional">opcional no piloto</span>
+              </button>
+            </legend>
+            {fiscalOpen ? (
+              <div className="form-grid">
+                <div className="field">
+                  <label htmlFor="ncm">NCM</label>
+                  <input
+                    id="ncm"
+                    value={draft.ncm}
+                    onChange={(e) => setField('ncm', e.target.value)}
+                    placeholder="8 dígitos"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="cest">CEST</label>
+                  <input
+                    id="cest"
+                    value={draft.cest}
+                    onChange={(e) => setField('cest', e.target.value)}
+                    placeholder="7 dígitos, se houver ST"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="origem">Origem</label>
+                  <select
+                    id="origem"
+                    value={draft.originCode}
+                    onChange={(e) => setField('originCode', e.target.value)}
+                  >
+                    {ORIGINS.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="st" className="product-form__check">
+                    <input
+                      id="st"
+                      type="checkbox"
+                      checked={draft.icmsSt}
+                      onChange={(e) => setField('icmsSt', e.target.checked)}
+                    />
+                    Substituição tributária
+                  </label>
+                </div>
+                <div className="field">
+                  <label htmlFor="cfop-venda">CFOP venda interna</label>
+                  <input
+                    id="cfop-venda"
+                    value={draft.saleCfopIn}
+                    onChange={(e) => setField('saleCfopIn', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="cfop-venda-fora">CFOP venda interestadual</label>
+                  <input
+                    id="cfop-venda-fora"
+                    value={draft.saleCfopOut}
+                    onChange={(e) => setField('saleCfopOut', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="cfop-compra">CFOP compra interna</label>
+                  <input
+                    id="cfop-compra"
+                    value={draft.buyCfopIn}
+                    onChange={(e) => setField('buyCfopIn', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="cfop-compra-fora">CFOP compra interestadual</label>
+                  <input
+                    id="cfop-compra-fora"
+                    value={draft.buyCfopOut}
+                    onChange={(e) => setField('buyCfopOut', e.target.value)}
+                  />
+                </div>
+              </div>
+            ) : null}
+          </fieldset>
+
+          <div className="product-form__actions">
+            <button className="btn btn-primary" type="submit" disabled={saving}>
+              {saving
+                ? 'Salvando…'
+                : editingId
+                  ? 'Salvar ficha'
+                  : 'Cadastrar e seguir'}
             </button>
-          ) : null}
-          <button type="button" className="btn btn-secondary" onClick={resetForm}>
-            Fechar
-          </button>
+            <button type="button" className="btn btn-secondary" onClick={resetForm}>
+              Cancelar
+            </button>
+          </div>
         </form>
       ) : null}
       <div className="field">
