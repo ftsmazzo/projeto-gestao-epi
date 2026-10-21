@@ -7,6 +7,7 @@ import {
   assertMarkPayablePaid,
   assertPayableAmount,
   parseDueDay,
+  manualStockTitleCents,
   sumCostLines,
 } from './payable.rules';
 
@@ -22,6 +23,9 @@ assert(
   'soma ignora custo nulo como zero',
 );
 assert(assertPayableAmount(0) === 0, 'zero ok');
+assert(manualStockTitleCents(1500, 2) === 3000, 'titulo do estoque');
+assert(manualStockTitleCents(null, 2) === null, 'sem custo nao gera titulo');
+assert(manualStockTitleCents(0, 2) === null, 'custo zero nao gera titulo');
 
 let bad = false;
 try {

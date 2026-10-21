@@ -104,6 +104,7 @@ import {
   cashBalanceFromMovements,
   cashFlowTotals,
   defaultDueOn,
+  runningBalancesByMovement,
   dreTotals,
   nextCashBalance,
   sumOpenCents,
@@ -114,6 +115,7 @@ import {
   assertMarkPayablePaid,
   assertPayableAmount,
   formatDueDay,
+  manualStockTitleCents,
   parseDueDay,
   sumCostLines,
 } from './payable.rules';
@@ -568,17 +570,85 @@ export class DistributorService {
     dto: ManualDistributorMovementDto,
   ) {
     await this.requireDistributor(organizationId, role);
-    return this.applyMovement({
-      organizationId,
-      userId,
-      variantId: dto.variantId,
-      direction: dto.direction,
-      quantity: dto.quantity,
-      source: DistributorMovementSource.MANUAL,
-      documentId: null,
-      purchaseOrderId: null,
-      lotCode: dto.lotCode,
-      expiresOn: dto.expiresOn,
+    return this.prisma.$transaction(async (tx) => {
+      const moved = await this.applyMovement(
+        {
+          organizationId,
+          userId,
+          variantId: dto.variantId,
+          direction: dto.direction,
+          quantity: dto.quantity,
+          source: DistributorMovementSource.MANUAL,
+          documentId: null,
+          purchaseOrderId: null,
+          lotCode: dto.lotCode,
+          expiresOn: dto.expiresOn,
+        },
+        tx,
+      );
+      const variant = await tx.distributorVariant.findFirst({
+        where: { id: dto.variantId, product: { organizationId } },
+        include: { product: { select: { name: true, costCents: true } } },
+      });
+      const amountCents = manualStockTitleCents(
+        variant?.product.costCents,
+        dto.quantity,
+      );
+      if (amountCents == null || !variant) {
+        return {
+          ...moved,
+          financePosted: false,
+          financeKind: null,
+          financeAmountCents: null,
+        };
+      }
+      const label = `${variant.product.name} (${moved.label}) x ${dto.quantity}`;
+      if (dto.direction === 'IN') {
+        const accountId = await this.resolveLedgerAccountId(
+          organizationId,
+          PAYABLE_ACCOUNT_CODE,
+          tx,
+        );
+        await tx.distributorPayable.create({
+          data: {
+            organizationId,
+            description: `Entrada de estoque: ${label}`,
+            supplierName: 'Entrada de estoque',
+            amountCents,
+            dueOn: defaultDueOn(30),
+            accountId,
+            createdByUserId: userId,
+          },
+        });
+        return {
+          ...moved,
+          financePosted: true,
+          financeKind: 'PAYABLE' as const,
+          financeAmountCents: amountCents,
+        };
+      }
+      const accountId = await this.resolveLedgerAccountId(
+        organizationId,
+        RECEIVABLE_ACCOUNT_CODE,
+        tx,
+      );
+      await tx.distributorReceivable.create({
+        data: {
+          organizationId,
+          description: `Saida de estoque: ${label}`,
+          customerName: 'Saida de estoque',
+          amountCents,
+          dueOn: defaultDueOn(30),
+          accountId,
+          createdByUserId: userId,
+        },
+      });
+      return {
+        ...moved,
+        financePosted: true,
+        financeKind: 'RECEIVABLE' as const,
+        financeAmountCents: amountCents,
+      };
     });
   }
 
@@ -2441,17 +2511,35 @@ export class DistributorService {
     opts?: { bankAccountId?: string; unreconciledOnly?: boolean },
   ) {
     await this.requireDistributor(organizationId, role);
-    const rows = await this.prisma.distributorCashMovement.findMany({
-      where: {
-        bankAccount: { organizationId },
-        ...(opts?.bankAccountId ? { bankAccountId: opts.bankAccountId } : {}),
-        ...(opts?.unreconciledOnly ? { reconciledAt: null } : {}),
-      },
-      include: { bankAccount: true },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
-    return rows.map(toCashMovementView);
+    const scope = {
+      bankAccount: { organizationId },
+      ...(opts?.bankAccountId ? { bankAccountId: opts.bankAccountId } : {}),
+    };
+    const [rows, ledger] = await Promise.all([
+      this.prisma.distributorCashMovement.findMany({
+        where: {
+          ...scope,
+          ...(opts?.unreconciledOnly ? { reconciledAt: null } : {}),
+        },
+        include: { bankAccount: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 200,
+      }),
+      this.prisma.distributorCashMovement.findMany({
+        where: scope,
+        select: {
+          id: true,
+          direction: true,
+          amountCents: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+    const balances = runningBalancesByMovement(ledger);
+    return rows.map((row) => ({
+      ...toCashMovementView(row),
+      balanceAfterCents: balances.get(row.id) ?? 0,
+    }));
   }
 
   async createCashMovement(

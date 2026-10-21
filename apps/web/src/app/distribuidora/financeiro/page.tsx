@@ -870,6 +870,11 @@ export default function DistribuidoraFinanceiroPage() {
 
           <section className="dash-panel">
             <h2 className="dash-panel__title">Extrato</h2>
+            <p className="field-hint">
+              Saldo do caixa: {money(summary?.cashBalanceCents ?? 0)}. A coluna
+              Saldo acompanha os lançamentos, inclusive os manuais, e a linha mais
+              recente fecha com o cartão Caixa.
+            </p>
             <label className="field">
               <span className="field-label">
                 <input
@@ -904,6 +909,7 @@ export default function DistribuidoraFinanceiroPage() {
                       <th>Origem</th>
                       <th>Tipo</th>
                       <th>Valor</th>
+                      <th>Saldo</th>
                       <th>Nota</th>
                       <th>Conciliação</th>
                       <th />
@@ -917,6 +923,11 @@ export default function DistribuidoraFinanceiroPage() {
                         <td>{SOURCE_LABEL[row.source]}</td>
                         <td>{row.direction === 'IN' ? 'Entrada' : 'Saída'}</td>
                         <td>{money(row.amountCents)}</td>
+                        <td>
+                          {row.balanceAfterCents == null
+                            ? '—'
+                            : money(row.balanceAfterCents)}
+                        </td>
                         <td>{row.note ?? '—'}</td>
                         <td>{row.reconciled ? 'Conciliado' : 'Pendente'}</td>
                         <td>

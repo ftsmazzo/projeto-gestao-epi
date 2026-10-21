@@ -7,6 +7,8 @@ import {
   getMySellerCeiling,
   listCustomers,
   listDistributorProducts,
+  parseReaisToCents,
+  variantCatalogPrice,
   type DistributorCustomer,
   type DistributorProduct,
   type FieldQuoteResult,
@@ -19,13 +21,6 @@ type DraftLine = {
   price: string;
   discount: string;
 };
-
-function reaisToCents(value: string) {
-  const normalized = value.replace(/\./g, '').replace(',', '.');
-  const amount = Number(normalized);
-  if (!Number.isFinite(amount) || amount < 0) return null;
-  return Math.round(amount * 100);
-}
 
 function money(cents: number) {
   return (cents / 100).toLocaleString('pt-BR', {
@@ -48,6 +43,7 @@ export default function DistribuidoraTabletPage() {
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [price, setPrice] = useState('');
+  const [priceMissing, setPriceMissing] = useState(false);
   const [discount, setDiscount] = useState('0');
   const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
   const [lastResult, setLastResult] = useState<FieldQuoteResult | null>(null);
@@ -82,6 +78,12 @@ export default function DistribuidoraTabletPage() {
       );
   }, []);
 
+  useEffect(() => {
+    const next = variantCatalogPrice(products, variantId);
+    setPrice(next.price);
+    setPriceMissing(next.missingValue);
+  }, [products, variantId]);
+
   async function onCreateCustomer(event: FormEvent) {
     event.preventDefault();
     setError(null);
@@ -103,10 +105,22 @@ export default function DistribuidoraTabletPage() {
   function addLine() {
     setError(null);
     const amount = Number(quantity);
-    const cents = reaisToCents(price);
+    const cents = parseReaisToCents(price);
     const discountPercent = Number(discount.replace(',', '.'));
-    if (!variantId || !Number.isInteger(amount) || amount < 1 || cents == null) {
-      setError('Escolha o item, a quantidade e o preco.');
+    if (!variantId) {
+      setError('Escolha o item do orçamento.');
+      return;
+    }
+    if (!Number.isInteger(amount) || amount < 1) {
+      setError('A quantidade precisa ser um número inteiro maior que zero.');
+      return;
+    }
+    if (cents == null) {
+      setError(
+        price.trim()
+          ? 'Informe o preço com um valor válido. Exemplo: 12,50.'
+          : 'Este produto não tem valor cadastrado. Informe o preço ou complete o custo na ficha do produto.',
+      );
       return;
     }
     if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
@@ -118,13 +132,15 @@ export default function DistribuidoraTabletPage() {
       {
         variantId,
         quantity: String(amount),
-        price: String(cents / 100),
+        price: (cents / 100).toFixed(2).replace('.', ','),
         discount: String(discountPercent),
       },
     ]);
     setQuantity('1');
-    setPrice('');
     setDiscount('0');
+    const next = variantCatalogPrice(products, variantId);
+    setPrice(next.price);
+    setPriceMissing(next.missingValue);
   }
 
   function removeLine(index: number) {
@@ -145,7 +161,7 @@ export default function DistribuidoraTabletPage() {
       return;
     }
     const lines = draftLines.map((line) => {
-      const unitPriceCents = reaisToCents(line.price);
+      const unitPriceCents = parseReaisToCents(line.price);
       return {
         variantId: line.variantId,
         quantity: Number(line.quantity),
@@ -290,9 +306,15 @@ export default function DistribuidoraTabletPage() {
                 className="tablet-field__control"
                 inputMode="decimal"
                 value={price}
-                onChange={(event) => setPrice(event.target.value)}
+                onChange={(event) => {
+                  setPrice(event.target.value);
+                  if (event.target.value.trim()) setPriceMissing(false);
+                }}
                 placeholder="0,00"
               />
+              {priceMissing ? (
+                <p className="field-hint">Sem valor na ficha. Informe o preço.</p>
+              ) : null}
             </div>
             <div>
               <label htmlFor="tablet-discount">Desc. %</label>

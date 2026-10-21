@@ -11,6 +11,7 @@ import {
   assertReconcileToggle,
   cashBalanceFromMovements,
   cashFlowTotals,
+  runningBalancesByMovement,
   defaultDueOn,
   dreTotals,
   nextCashBalance,
@@ -86,5 +87,34 @@ const flow = cashFlowTotals([
 assert(flow.inflowCents === 1050, 'inflow');
 assert(flow.outflowCents === 300, 'outflow');
 assert(flow.netCents === 750, 'net');
+
+const ledger = [
+  {
+    id: 'b',
+    direction: 'IN',
+    amountCents: 500,
+    createdAt: '2026-10-02T00:00:00.000Z',
+  },
+  {
+    id: 'a',
+    direction: 'IN',
+    amountCents: 1000,
+    createdAt: '2026-10-01T00:00:00.000Z',
+  },
+  {
+    id: 'c',
+    direction: 'OUT',
+    amountCents: 200,
+    createdAt: '2026-10-03T00:00:00.000Z',
+  },
+];
+const running = runningBalancesByMovement(ledger);
+assert(running.get('a') === 1000, 'saldo apos o primeiro');
+assert(running.get('b') === 1500, 'saldo acumula contas');
+assert(running.get('c') === 1300, 'ultimo saldo fecha o caixa');
+assert(
+  running.get('c') === cashBalanceFromMovements(ledger),
+  'saldo corrido fecha com o cartao de caixa',
+);
 
 console.log('finance.rules.selftest ok');

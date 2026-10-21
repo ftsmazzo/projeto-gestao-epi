@@ -6,6 +6,7 @@ import {
   listDistributorProducts,
   lookupDistributorProductByCode,
   moveDistributorStock,
+  stockFinanceFollowUp,
   type DistributorProduct,
 } from '../../../lib/distributor';
 
@@ -89,7 +90,7 @@ export default function DistribuidoraSaidaPage() {
         lotCode: lotCode || undefined,
       });
       setNotice(
-        `Saída registrada. Saldo de ${result.productName} ${result.label}: ${result.balance}${result.lotSummary ? `. Lote ${result.lotSummary}` : ''}.`,
+        `Saída registrada. Saldo de ${result.productName} ${result.label}: ${result.balance}${result.lotSummary ? `. Lote ${result.lotSummary}` : ''}.${stockFinanceFollowUp(result, 'receber')}`,
       );
       const rows = await listDistributorProducts();
       setProducts(rows);

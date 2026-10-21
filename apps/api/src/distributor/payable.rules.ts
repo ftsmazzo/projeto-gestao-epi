@@ -22,6 +22,18 @@ export function sumCostLines(
   return total;
 }
 
+export function manualStockTitleCents(
+  unitCostCents: number | null | undefined,
+  quantity: number,
+): number | null {
+  if (unitCostCents == null) return null;
+  if (!Number.isInteger(unitCostCents) || unitCostCents < 1) return null;
+  if (!Number.isInteger(quantity) || quantity < 1) return null;
+  const total = unitCostCents * quantity;
+  if (!Number.isSafeInteger(total)) return null;
+  return total;
+}
+
 export function assertPayableAmount(amountCents: number): number {
   if (!Number.isInteger(amountCents) || amountCents < 0) {
     throw new PayableRuleError('O valor da conta precisa ser zero ou positivo.');

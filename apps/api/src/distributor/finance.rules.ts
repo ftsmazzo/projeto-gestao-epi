@@ -109,6 +109,33 @@ export function nextCashBalance(
   return next;
 }
 
+export function runningBalancesByMovement(
+  movements: Array<{
+    id: string;
+    direction: string;
+    amountCents: number;
+    createdAt: Date | string;
+  }>,
+): Map<string, number> {
+  const ordered = [...movements].sort((left, right) => {
+    const delta =
+      new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
+    if (delta !== 0) return delta;
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  });
+  const balances = new Map<string, number>();
+  let running = 0;
+  for (const row of ordered) {
+    if (!Number.isInteger(row.amountCents) || row.amountCents < 0) {
+      throw new FinanceRuleError('Movimento de caixa invalido.');
+    }
+    running =
+      row.direction === 'IN' ? running + row.amountCents : running - row.amountCents;
+    balances.set(row.id, running);
+  }
+  return balances;
+}
+
 export function cashBalanceFromMovements(
   movements: Array<{ direction: string; amountCents: number }>,
 ): number {

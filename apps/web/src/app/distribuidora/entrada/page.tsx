@@ -10,6 +10,7 @@ import {
   listDistributorProducts,
   lookupDistributorProductByCode,
   moveDistributorStock,
+  stockFinanceFollowUp,
   type DistributorInboundDocument,
   type DistributorProduct,
 } from '../../../lib/distributor';
@@ -100,7 +101,7 @@ export default function DistribuidoraEntradaPage() {
         expiresOn: expiresOn || undefined,
       });
       setNotice(
-        `Entrada registrada. Saldo de ${result.productName} ${result.label}: ${result.balance}${result.lotSummary ? `. Lote ${result.lotSummary}` : ''}.`,
+        `Entrada registrada. Saldo de ${result.productName} ${result.label}: ${result.balance}${result.lotSummary ? `. Lote ${result.lotSummary}` : ''}.${stockFinanceFollowUp(result, 'pagar')}`,
       );
       setProducts(await listDistributorProducts());
       setQuantity('1');

@@ -229,6 +229,59 @@ export function seedDistributorDemoCatalog() {
   });
 }
 
+export function centsToReaisInput(cents: number): string {
+  return (cents / 100).toFixed(2).replace('.', ',');
+}
+
+export function parseReaisToCents(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  let normalized: string;
+  if (trimmed.includes(',') && trimmed.includes('.')) {
+    normalized = trimmed.replace(/\./g, '').replace(',', '.');
+  } else if (trimmed.includes(',')) {
+    normalized = trimmed.replace(',', '.');
+  } else if (/^\d+\.\d{1,2}$/.test(trimmed)) {
+    normalized = trimmed;
+  } else {
+    normalized = trimmed.replace(/\./g, '');
+  }
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return Math.round(amount * 100);
+}
+
+export function stockFinanceFollowUp(
+  result: {
+    financePosted: boolean;
+    financeAmountCents: number | null;
+  },
+  kind: 'pagar' | 'receber',
+) {
+  if (result.financePosted && result.financeAmountCents != null) {
+    const value = (result.financeAmountCents / 100).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+    return ` Conta a ${kind} de ${value} lançada no financeiro.`;
+  }
+  return ' O produto não tem custo cadastrado, então nenhuma conta foi lançada. Complete o custo na ficha.';
+}
+
+export function variantCatalogPrice(
+  products: Array<{ costCents: number | null; variants: Array<{ id: string }> }>,
+  variantId: string,
+): { price: string; missingValue: boolean } {
+  const product = products.find((item) =>
+    item.variants.some((variant) => variant.id === variantId),
+  );
+  if (!product || !variantId) return { price: '', missingValue: false };
+  if (product.costCents != null && product.costCents > 0) {
+    return { price: centsToReaisInput(product.costCents), missingValue: false };
+  }
+  return { price: '', missingValue: true };
+}
+
 export function moveDistributorStock(input: {
   variantId: string;
   direction: 'IN' | 'OUT';
@@ -241,6 +294,9 @@ export function moveDistributorStock(input: {
     label: string;
     balance: number;
     lotSummary: string | null;
+    financePosted: boolean;
+    financeKind: 'PAYABLE' | 'RECEIVABLE' | null;
+    financeAmountCents: number | null;
   }>('/distributor/movements', {
     method: 'POST',
     body: JSON.stringify(input),
@@ -623,6 +679,7 @@ export type DistributorCashMovement = {
   reconciledAt: string | null;
   reconciled: boolean;
   createdAt: string;
+  balanceAfterCents?: number;
 };
 
 export type CashFlowReport = {

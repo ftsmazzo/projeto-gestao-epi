@@ -6,14 +6,18 @@ import {
   approveQuote,
   createQuote,
   discountReport,
+  getMySellerCeiling,
   isDistributorManager,
   listDistributorProducts,
   listQuotes,
   listSellers,
+  parseReaisToCents,
   rejectQuote,
   setSellerCeiling,
+  variantCatalogPrice,
   type DistributorProduct,
   type DistributorQuote,
+  type MySellerCeiling,
   type QuoteStatus,
   type SellerCeiling,
 } from '../../../lib/distributor';
@@ -38,11 +42,8 @@ function money(cents: number) {
   });
 }
 
-function reaisToCents(value: string) {
-  const normalized = value.replace(/\./g, '').replace(',', '.');
-  const amount = Number(normalized);
-  if (!Number.isFinite(amount) || amount < 0) return null;
-  return Math.round(amount * 100);
+function ceilingLabel(ceiling: MySellerCeiling | null) {
+  return (ceiling?.maxDiscountPercent ?? 0).toLocaleString('pt-BR');
 }
 
 export default function DistribuidoraOrcamentosPage() {
@@ -50,6 +51,8 @@ export default function DistribuidoraOrcamentosPage() {
   const [sellers, setSellers] = useState<SellerCeiling[]>([]);
   const [quotes, setQuotes] = useState<DistributorQuote[]>([]);
   const [manager, setManager] = useState(false);
+  const [ceiling, setCeiling] = useState<MySellerCeiling | null>(null);
+  const [priceMissing, setPriceMissing] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('1');
@@ -85,12 +88,14 @@ export default function DistribuidoraOrcamentosPage() {
       listDistributorProducts(),
       listQuotes(),
       listSellers(),
+      getMySellerCeiling(),
       fetchMe(),
     ])
-      .then(([productRows, quoteRows, sellerRows, me]) => {
+      .then(([productRows, quoteRows, sellerRows, ceilingRow, me]) => {
         setProducts(productRows);
         setQuotes(quoteRows);
         setSellers(sellerRows);
+        setCeiling(ceilingRow);
         setManager(isDistributorManager(me.membershipRole));
         const first = productRows[0]?.variants[0]?.id;
         if (first) setVariantId(first);
@@ -101,13 +106,31 @@ export default function DistribuidoraOrcamentosPage() {
       );
   }, []);
 
+  useEffect(() => {
+    const next = variantCatalogPrice(products, variantId);
+    setPrice(next.price);
+    setPriceMissing(next.missingValue);
+  }, [products, variantId]);
+
   function addLine() {
     setError(null);
     const amount = Number(quantity);
-    const cents = reaisToCents(price);
+    const cents = parseReaisToCents(price);
     const discountPercent = Number(discount.replace(',', '.'));
-    if (!variantId || !Number.isInteger(amount) || amount < 1 || cents == null) {
-      setError('Escolha o item, a quantidade e o preco.');
+    if (!variantId) {
+      setError('Escolha o item do orçamento.');
+      return;
+    }
+    if (!Number.isInteger(amount) || amount < 1) {
+      setError('A quantidade precisa ser um número inteiro maior que zero.');
+      return;
+    }
+    if (cents == null) {
+      setError(
+        price.trim()
+          ? 'Informe o preço unitário com um valor válido. Exemplo: 12,50.'
+          : 'Este produto não tem valor cadastrado. Informe o preço unitário ou complete o custo na ficha do produto.',
+      );
       return;
     }
     if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
@@ -140,16 +163,17 @@ export default function DistribuidoraOrcamentosPage() {
         lines: draftLines.map((line) => ({
           variantId: line.variantId,
           quantity: Number(line.quantity),
-          unitPriceCents: reaisToCents(line.price) ?? 0,
+          unitPriceCents: parseReaisToCents(line.price) ?? 0,
           discountPercent: Number(line.discount),
         })),
       });
       setCustomerName('');
       setDraftLines([]);
+      const teto = ceilingLabel(ceiling);
       setNotice(
         created.status === 'APPROVED'
-          ? 'Orcamento liberado. O desconto ficou dentro do teto.'
-          : 'Orcamento parado. O desconto passou do teto e espera um gestor.',
+          ? `Orçamento liberado. O desconto ficou dentro do seu teto de ${teto}%.`
+          : `Orçamento aguardando um gestor. O desconto passou do seu teto de ${teto}%.`,
       );
       await reload();
     } catch (err) {
@@ -303,13 +327,26 @@ export default function DistribuidoraOrcamentosPage() {
           />
         </div>
         <div className="field">
-          <label htmlFor="preco">Preco unitario (R$)</label>
+          <label htmlFor="preco">Preço unitário (R$)</label>
           <input
             id="preco"
             inputMode="decimal"
             value={price}
-            onChange={(event) => setPrice(event.target.value)}
+            onChange={(event) => {
+              setPrice(event.target.value);
+              if (event.target.value.trim()) setPriceMissing(false);
+            }}
           />
+          {priceMissing ? (
+            <p className="field-hint">
+              Este produto não tem valor cadastrado. Informe o preço ou complete o
+              custo na ficha do produto.
+            </p>
+          ) : (
+            <p className="field-hint">
+              Valor puxado do custo do produto. Você pode alterar antes de incluir.
+            </p>
+          )}
         </div>
         <div className="field">
           <label htmlFor="desconto">Desconto (%)</label>
@@ -319,6 +356,10 @@ export default function DistribuidoraOrcamentosPage() {
             value={discount}
             onChange={(event) => setDiscount(event.target.value)}
           />
+          <p className="field-hint">
+            Seu teto de desconto é {ceilingLabel(ceiling)}%. Acima disso o orçamento
+            fica aguardando um gestor.
+          </p>
         </div>
         <button className="btn" type="button" onClick={addLine}>
           Incluir item
