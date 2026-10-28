@@ -72,7 +72,9 @@ import {
   coverageKeyForDeliveryItem,
   pickPrimaryReplacementNeedId,
   resolveExtraReplacementNeedIds,
+  isOpenDeliveryItemStatus,
   sameEquipmentFamily,
+  shouldMarkOlderItemReplaced,
   type ExtraReplacementNeed,
 } from './extra-replacement.rules';
 import type {
@@ -891,6 +893,89 @@ export class PortalService {
     organizationId: string,
     servedClientId: string,
   ) {
+    const deliveryScope = {
+      organizationId,
+      servedClientId,
+      status: {
+        in: [
+          EpiDeliveryStatus.COMPLETED,
+          EpiDeliveryStatus.PARTIALLY_RETURNED,
+        ],
+      },
+    };
+
+    // Reabre irmas da mesma entrega que o heal antigo marcou REPLACED por engano
+    // (mesmo recibo, mesmo CA/item — a qty/vida util precisa somar).
+    const falseReplaced = await this.prisma.epiDeliveryItem.findMany({
+      where: {
+        status: EpiDeliveryItemStatus.REPLACED,
+        delivery: deliveryScope,
+      },
+      select: {
+        id: true,
+        epiItemId: true,
+        deliveryId: true,
+        usefulLifeValue: true,
+        usefulLifeUnit: true,
+        quantity: true,
+        delivery: { select: { deliveredAt: true } },
+      },
+      take: 3000,
+    });
+    if (falseReplaced.length > 0) {
+      const openSiblings = await this.prisma.epiDeliveryItem.findMany({
+        where: {
+          status: {
+            in: [
+              EpiDeliveryItemStatus.DELIVERED,
+              EpiDeliveryItemStatus.PARTIALLY_RETURNED,
+            ],
+          },
+          deliveryId: { in: [...new Set(falseReplaced.map((r) => r.deliveryId))] },
+          epiItemId: { in: [...new Set(falseReplaced.map((r) => r.epiItemId))] },
+        },
+        select: {
+          deliveryId: true,
+          epiItemId: true,
+          nextReplacementAt: true,
+        },
+      });
+      const openKey = new Set(
+        openSiblings.map((row) => `${row.deliveryId}:${row.epiItemId}`),
+      );
+      const siblingNext = new Map(
+        openSiblings
+          .filter((row) => row.nextReplacementAt)
+          .map((row) => [
+            `${row.deliveryId}:${row.epiItemId}`,
+            row.nextReplacementAt,
+          ]),
+      );
+      const toRestore = falseReplaced.filter((row) =>
+        openKey.has(`${row.deliveryId}:${row.epiItemId}`),
+      );
+      for (const row of toRestore) {
+        const key = `${row.deliveryId}:${row.epiItemId}`;
+        const fromSibling = siblingNext.get(key) ?? null;
+        const lineDays = resolveLineLifeDays({
+          usefulLifeValue: row.usefulLifeValue,
+          usefulLifeUnit: row.usefulLifeUnit,
+          quantity: row.quantity,
+        });
+        const recomputed =
+          lineDays != null
+            ? addUtcDays(row.delivery.deliveredAt, lineDays)
+            : null;
+        await this.prisma.epiDeliveryItem.update({
+          where: { id: row.id },
+          data: {
+            status: EpiDeliveryItemStatus.DELIVERED,
+            nextReplacementAt: fromSibling ?? recomputed,
+          },
+        });
+      }
+    }
+
     const openItems = await this.prisma.epiDeliveryItem.findMany({
       where: {
         status: {
@@ -899,23 +984,15 @@ export class PortalService {
             EpiDeliveryItemStatus.PARTIALLY_RETURNED,
           ],
         },
-        delivery: {
-          organizationId,
-          servedClientId,
-          status: {
-            in: [
-              EpiDeliveryStatus.COMPLETED,
-              EpiDeliveryStatus.PARTIALLY_RETURNED,
-            ],
-          },
-        },
+        delivery: deliveryScope,
       },
       select: {
         id: true,
         epiNeedId: true,
         epiItemId: true,
+        deliveryId: true,
         delivery: {
-          select: { workerId: true, deliveredAt: true },
+          select: { id: true, workerId: true, deliveredAt: true },
         },
         epiNeed: { select: { id: true, name: true, category: true } },
         epiItem: {
@@ -943,33 +1020,24 @@ export class PortalService {
         const older = sorted[i]!;
         for (let j = i + 1; j < sorted.length; j += 1) {
           const newer = sorted[j]!;
-          if (newer.epiItemId === older.epiItemId) {
-            idsToReplace.add(older.id);
-            break;
-          }
           if (
-            older.epiNeedId &&
-            newer.epiNeedId &&
-            older.epiNeedId === newer.epiNeedId
+            shouldMarkOlderItemReplaced({
+              olderDeliveryId: older.deliveryId,
+              newerDeliveryId: newer.deliveryId,
+              olderDeliveredAt: older.delivery.deliveredAt,
+              newerDeliveredAt: newer.delivery.deliveredAt,
+              olderEpiItemId: older.epiItemId,
+              newerEpiItemId: newer.epiItemId,
+              olderEpiNeedId: older.epiNeedId,
+              newerEpiNeedId: newer.epiNeedId,
+              olderEpiName: older.epiItem.name,
+              olderEpiCategory: older.epiItem.category,
+              newerEpiName: newer.epiItem.name,
+              newerEpiCategory: newer.epiItem.category,
+              olderNeedName: older.epiNeed?.name,
+              olderNeedCategory: older.epiNeed?.category,
+            })
           ) {
-            idsToReplace.add(older.id);
-            break;
-          }
-          const sameFamily = sameEquipmentFamily({
-            leftName: older.epiItem.name,
-            leftCategory: older.epiItem.category,
-            rightName: newer.epiItem.name,
-            rightCategory: newer.epiItem.category,
-          });
-          const sameAsNeed =
-            Boolean(older.epiNeed) &&
-            sameEquipmentFamily({
-              leftName: older.epiNeed!.name,
-              leftCategory: older.epiNeed!.category,
-              rightName: newer.epiItem.name,
-              rightCategory: newer.epiItem.category,
-            });
-          if (sameFamily || sameAsNeed) {
             idsToReplace.add(older.id);
             break;
           }
@@ -4230,11 +4298,14 @@ export class PortalService {
               0,
               item.quantity - item.returnedQuantity - item.cancelledQuantity,
             );
-            const lineLifeDays = resolveLineLifeDays({
-              usefulLifeValue: item.usefulLifeValue,
-              usefulLifeUnit: item.usefulLifeUnit,
-              quantity: remainingQty,
-            });
+            const open = isOpenDeliveryItemStatus(item.status) && remainingQty > 0;
+            const lineLifeDays = open
+              ? resolveLineLifeDays({
+                  usefulLifeValue: item.usefulLifeValue,
+                  usefulLifeUnit: item.usefulLifeUnit,
+                  quantity: remainingQty,
+                })
+              : null;
             const needLabel = this.deliveryNeedLabel(item);
             const existing = grouped.get(key);
             if (!existing) {
@@ -4259,7 +4330,9 @@ export class PortalService {
             existing.quantity += item.quantity;
             existing.returnedQuantity += item.returnedQuantity;
             existing.cancelledQuantity += item.cancelledQuantity;
-            existing.totalLifeDays += lineLifeDays ?? 0;
+            if (lineLifeDays != null) {
+              existing.totalLifeDays += lineLifeDays;
+            }
             if (
               existing.status !== EpiDeliveryItemStatus.DELIVERED &&
               item.status === EpiDeliveryItemStatus.DELIVERED

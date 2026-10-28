@@ -182,3 +182,66 @@ export function coverageKeyForDeliveryItem(input: {
   if (input.epiNeedId) return `${input.workerId}:need:${input.epiNeedId}`;
   return `${input.workerId}:item:${input.epiItemId}`;
 }
+
+/**
+ * Decide se a linha mais antiga deve ser encerrada pela mais nova.
+ * Nunca encerra irmas da mesma entrega — qty/vida util somam no recibo.
+ */
+export function shouldMarkOlderItemReplaced(input: {
+  olderDeliveryId: string;
+  newerDeliveryId: string;
+  olderDeliveredAt: Date | string;
+  newerDeliveredAt: Date | string;
+  olderEpiItemId: string;
+  newerEpiItemId: string;
+  olderEpiNeedId?: string | null;
+  newerEpiNeedId?: string | null;
+  olderEpiName: string;
+  olderEpiCategory?: string | null;
+  newerEpiName: string;
+  newerEpiCategory?: string | null;
+  olderNeedName?: string | null;
+  olderNeedCategory?: string | null;
+}): boolean {
+  if (input.olderDeliveryId === input.newerDeliveryId) return false;
+  const olderAt = new Date(input.olderDeliveredAt).getTime();
+  const newerAt = new Date(input.newerDeliveredAt).getTime();
+  if (!Number.isFinite(olderAt) || !Number.isFinite(newerAt)) return false;
+  if (newerAt <= olderAt) return false;
+
+  if (input.newerEpiItemId === input.olderEpiItemId) return true;
+  if (
+    input.olderEpiNeedId &&
+    input.newerEpiNeedId &&
+    input.olderEpiNeedId === input.newerEpiNeedId
+  ) {
+    return true;
+  }
+  if (
+    sameEquipmentFamily({
+      leftName: input.olderEpiName,
+      leftCategory: input.olderEpiCategory,
+      rightName: input.newerEpiName,
+      rightCategory: input.newerEpiCategory,
+    })
+  ) {
+    return true;
+  }
+  if (
+    input.olderNeedName &&
+    sameEquipmentFamily({
+      leftName: input.olderNeedName,
+      leftCategory: input.olderNeedCategory,
+      rightName: input.newerEpiName,
+      rightCategory: input.newerEpiCategory,
+    })
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Linha ainda conta para alerta e vida util restante na ficha. */
+export function isOpenDeliveryItemStatus(status: string): boolean {
+  return status === 'DELIVERED' || status === 'PARTIALLY_RETURNED';
+}
