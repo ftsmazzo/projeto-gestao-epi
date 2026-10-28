@@ -27,6 +27,9 @@ export default function HomePage() {
           <Link className="btn btn-ghost" href="/branding">
             Marca
           </Link>
+          <Link className="btn btn-ghost" href="/plataforma/login">
+            Painel SaaS
+          </Link>
           <Link className="btn btn-primary" href="/login">
             Entrar
           </Link>
