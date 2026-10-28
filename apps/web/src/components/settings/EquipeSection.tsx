@@ -21,9 +21,12 @@ import {
 export function EquipeSection({
   currentUserId,
   currentRole,
+  orgLabel = 'consultoria',
 }: {
   currentUserId: string;
   currentRole: MembershipRole;
+  /** Texto da organização nas mensagens (consultoria ou distribuidora). */
+  orgLabel?: 'consultoria' | 'distribuidora';
 }) {
   const canManage = currentRole === 'OWNER' || currentRole === 'ADMIN';
   const isOwner = currentRole === 'OWNER';
@@ -57,12 +60,12 @@ export function EquipeSection({
       setError(
         err instanceof Error
           ? err.message
-          : 'Falha ao carregar equipe da consultoria.',
+          : `Falha ao carregar equipe da ${orgLabel}.`,
       );
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [orgLabel]);
 
   useEffect(() => {
     void reload();
@@ -187,7 +190,7 @@ export function EquipeSection({
     if (!canManage || member.role === 'OWNER') return;
     if (member.userId === currentUserId) return;
     const ok = window.confirm(
-      `Remover o acesso de ${member.user.name} a esta consultoria?`,
+      `Remover o acesso de ${member.user.name} a esta ${orgLabel}?`,
     );
     if (!ok) return;
     setSaving(true);
@@ -221,7 +224,7 @@ export function EquipeSection({
       <header className="settings-section__head">
         <h2 className="settings-section__title">Equipe da gestao</h2>
         <p className="page-lead">
-          Usuarios que acessam a consultoria. O administrador geral (OWNER)
+          Usuarios que acessam a {orgLabel}. O administrador geral (OWNER)
           transfere o controle e adiciona administradores e membros. O convite
           sai por e-mail e WhatsApp, com resposta para o contato de suporte.
         </p>

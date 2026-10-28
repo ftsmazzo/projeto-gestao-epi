@@ -114,6 +114,16 @@ const NAV: Array<{ label: string; items: NavItem[] }> = [
       },
     ],
   },
+  {
+    label: 'Administração',
+    items: [
+      {
+        href: '/distribuidora/usuarios',
+        label: 'Usuários',
+        icon: <IconUsers />,
+      },
+    ],
+  },
 ];
 
 type DistributorShellProps = {
