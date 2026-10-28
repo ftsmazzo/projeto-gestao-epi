@@ -43,6 +43,9 @@ export default function LoginPage() {
           Ainda nao tem acesso? A {APP_NAME} cria sua conta.
           <br />
           Empresa cliente? <Link href="/portal/login">Entrar no portal</Link>
+          <br />
+          Administração ProntEPI?{' '}
+          <Link href="/plataforma/login">Painel SaaS</Link>
         </>
       }
     >

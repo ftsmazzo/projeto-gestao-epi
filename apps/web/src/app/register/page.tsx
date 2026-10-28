@@ -13,6 +13,9 @@ export default function RegisterPage() {
           Ja e cliente? <Link href="/login">Acesse a consultoria</Link>
           <br />
           Empresa cliente? <Link href="/portal/login">Entrar no portal</Link>
+          <br />
+          Administração ProntEPI?{' '}
+          <Link href="/plataforma/login">Painel SaaS</Link>
         </>
       }
     >
