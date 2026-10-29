@@ -2,6 +2,38 @@
 
 Objetivo: receber o A1 do cliente e o material do Daniel, e ligar a emissão operacional no momento certo — sem autorizar SEFAZ antes da checklist verde.
 
+## Dados recebidos (Daniel — 29/10/2026)
+
+Fontes: `dados-distribuidora/CNPJ EPICAT.pdf` + `dados-distribuidora/Consulta Pública ao Cadesp.pdf`.
+
+| Campo | Valor |
+| --- | --- |
+| Razão social | EPICAT DISTRIBUIDORA LTDA |
+| CNPJ | 69.406.699/0001-90 |
+| IE (SP) | 260.395.253.118 |
+| UF | SP |
+| Município | Catanduva |
+| Endereço | R. Riacho Fundo, 127 — CEP 15.801-446 — Loteamento Residencial Isabella |
+| Regime | **SIMPLES NACIONAL** (confirmado no Cadesp) |
+| Porte | ME |
+| CNAE principal | 46.42-7-02 — Comércio atacadista de roupas e acessórios para uso profissional e de segurança do trabalho |
+| Situação CNPJ | Ativa (inscrição 30/09/2026) |
+| Situação IE | Ativo (19/10/2026) |
+| Credenciamento NF-e | 19/10/2026 (Cadesp) |
+| E-mail cadastral | BEKAO3M@GMAIL.COM |
+| Telefone | (17) 9776-4623 |
+| Posto fiscal | PF-10 — São José do Rio Preto |
+
+### Ainda falta para ligar a SEFAZ
+
+- [ ] Certificado A1 (`.pfx` + senha) do CNPJ 69.406.699/0001-90
+- [ ] Série e numeração inicial da NF-e (evitar colisão)
+- [ ] Confirmação dos CFOP padrão (sugestão: 5102 interno / 6102 interestadual no Simples)
+- [ ] `FISCAL_CERT_SECRET` na API (EasyPanel)
+- [ ] 1 nota de homologação autorizada
+
+Preencher na tela **Distribuidora → Fiscal** assim que o tenant EPICAT estiver ativo: CNPJ, UF=SP, IE, regime=Simples, depois o A1.
+
 ## Já existe no produto
 
 - Cadastro fiscal: CNPJ, UF, IE, regime (Presumido / Simples / Real).
