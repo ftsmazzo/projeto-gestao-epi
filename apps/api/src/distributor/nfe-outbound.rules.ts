@@ -5,8 +5,14 @@ export class NfeOutboundError extends Error {
   }
 }
 
-/** Emissao assinada na SEFAZ permanece desligada ate homologacao. */
-export const OUTBOUND_EMISSION_ENABLED = false;
+/**
+ * Emissao assinada na SEFAZ.
+ * Padrao: desligada. Liga no go-live com OUTBOUND_EMISSION_ENABLED=true|1 no ambiente.
+ */
+export const OUTBOUND_EMISSION_ENABLED = (() => {
+  const raw = (process.env.OUTBOUND_EMISSION_ENABLED ?? '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on';
+})();
 
 export type OutboundProductSnapshot = {
   name: string;

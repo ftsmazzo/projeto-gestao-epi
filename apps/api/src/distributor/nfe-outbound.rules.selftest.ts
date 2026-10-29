@@ -121,6 +121,12 @@ try {
     error.message.includes('ainda nao esta ligada');
 }
 assert(gated, 'autorizacao gated');
-assert(OUTBOUND_EMISSION_ENABLED === false, 'emissao desligada');
+assert(
+  typeof OUTBOUND_EMISSION_ENABLED === 'boolean',
+  'flag de emissao precisa ser boolean',
+);
+if (!(process.env.OUTBOUND_EMISSION_ENABLED ?? '').trim()) {
+  assert(OUTBOUND_EMISSION_ENABLED === false, 'sem env a emissao fica desligada');
+}
 
 console.log('nfe-outbound.rules.selftest ok');

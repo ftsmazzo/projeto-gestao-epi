@@ -92,10 +92,22 @@ export default function DistribuidoraFiscalPage() {
           <p className="page-kicker">Cadastro</p>
           <h1 className="page-title">Fiscal</h1>
           <p className="page-lead">
-            O CNPJ daqui é o destinatário das notas de compra. A SEFAZ só devolve o XML pela chave de 44 dígitos e pelo certificado A1 desta empresa.
+            Cadastre a identidade da empresa e o certificado A1. A autorização na
+            SEFAZ só liga depois da homologação — um A1 cobre venda para qualquer
+            UF do cliente; a SEFAZ é a do emitente.
           </p>
         </div>
       </header>
+      <section className="dash-panel" aria-label="Ordem do go-live">
+        <h2 className="dash-panel__title">Ordem até emitir de verdade</h2>
+        <ol className="field-hint" style={{ margin: 0, paddingLeft: '1.25rem' }}>
+          <li>Salvar CNPJ, UF, IE e regime.</li>
+          <li>Guardar o A1 (.pfx + senha) deste CNPJ.</li>
+          <li>Conferir NCM e CFOP nos produtos que vão na nota.</li>
+          <li>Homologar com o material do contador / Daniel.</li>
+          <li>Só então a ProntEPI liga a autorização na SEFAZ.</li>
+        </ol>
+      </section>
       {error ? (
         <p className="error" role="alert">
           {error}
