@@ -298,6 +298,7 @@ export class CommunicationAlertsService {
                   EpiDeliveryStatus.PARTIALLY_RETURNED,
                 ],
               },
+              worker: { status: WorkerStatus.ACTIVE },
             },
           },
           select: {

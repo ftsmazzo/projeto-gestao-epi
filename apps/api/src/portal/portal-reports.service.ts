@@ -748,7 +748,10 @@ export class PortalReportsService {
             ],
           },
           ...(filters.workerId ? { workerId: filters.workerId } : {}),
-          ...(workerWhere ? { worker: workerWhere } : {}),
+          worker: {
+            status: WorkerStatus.ACTIVE,
+            ...(workerWhere ?? {}),
+          },
         },
         ...(filters.epiNeedId ? { epiNeedId: filters.epiNeedId } : {}),
         ...(filters.epiItemId ? { epiItemId: filters.epiItemId } : {}),

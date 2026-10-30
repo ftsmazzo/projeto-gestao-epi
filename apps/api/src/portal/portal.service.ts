@@ -317,6 +317,7 @@ export class PortalService {
                 EpiDeliveryStatus.PARTIALLY_RETURNED,
               ],
             },
+            worker: { status: WorkerStatus.ACTIVE },
           },
         },
         select: {
@@ -1102,6 +1103,8 @@ export class PortalService {
                 EpiDeliveryStatus.PARTIALLY_RETURNED,
               ],
             },
+            // Inativo nao entra na fila de troca nem no alerta urgente.
+            worker: { status: WorkerStatus.ACTIVE },
           },
         },
         include: {
@@ -1279,7 +1282,7 @@ export class PortalService {
       ).length;
       const warn = items.filter((i) => i.tone === 'warn').length;
       const replacementDue =
-        items.length === 0
+        w.status !== WorkerStatus.ACTIVE || items.length === 0
           ? null
           : {
               count: items.length,
