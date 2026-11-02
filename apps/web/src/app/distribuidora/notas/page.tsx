@@ -352,14 +352,14 @@ export default function DistribuidoraNotasPage() {
                             Autorizar SEFAZ
                           </button>
                         ) : null}
-                        {invoice.status === 'AUTHORIZED' || invoice.gatewayDocumentId ? (
+                        {invoice.status === 'AUTHORIZED' ? (
                           <button
                             type="button"
-                            className="btn btn-ghost"
+                            className="btn btn-primary"
                             disabled={saving}
                             onClick={() => void onDownloadXml(invoice.id)}
                           >
-                            Baixar XML
+                            Baixar XML da NF-e
                           </button>
                         ) : null}
                       </div>
