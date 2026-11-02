@@ -91,6 +91,7 @@ import {
   outboundBlockers,
 } from './nfe-outbound.rules';
 import { GatewayFiscalClient } from './gateway-fiscal.client';
+import { buildDanfePdf } from './nfe-danfe.pdf';
 import { NfeXmlError, parseNfeXml } from './nfe-xml.rules';
 import {
   DEFAULT_LEDGER_ACCOUNTS,
@@ -2203,12 +2204,79 @@ export class DistributorService {
         xml,
       };
     } catch (error) {
+      const msg = error instanceof Error ? error.message : '';
+      if (/not_found/i.test(msg)) {
+        throw new BadRequestException(
+          'XML nao encontrado no Gateway para esta API Key. O documento pode ter ficado na empresa demo; reinicie o Gateway para migrar, ou emita uma nota nova.',
+        );
+      }
       throw new BadRequestException(
-        error instanceof Error
-          ? `XML ainda nao disponivel: ${error.message}`
-          : 'XML ainda nao disponivel.',
+        msg ? `XML ainda nao disponivel: ${msg}` : 'XML ainda nao disponivel.',
       );
     }
+  }
+
+  async getOutboundDanfe(
+    organizationId: string,
+    role: string,
+    invoiceId: string,
+  ): Promise<{ fileName: string; pdf: Buffer }> {
+    await this.requireDistributor(organizationId, role);
+    const invoice = await this.prisma.distributorOutboundInvoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      include: outboundInclude,
+    });
+    if (!invoice) throw new NotFoundException('Nota de saida nao encontrada.');
+    if (invoice.status !== 'AUTHORIZED' && invoice.status !== 'CONFIRMED') {
+      throw new BadRequestException(
+        'O PDF auxiliar fica disponivel apos confirmar/autorizar a nota.',
+      );
+    }
+
+    if (invoice.gatewayDocumentId && this.gatewayFiscal.isConfigured()) {
+      try {
+        const status = await this.gatewayFiscal.getNfeStatus(invoice.gatewayDocumentId);
+        if (status.chaveAcesso || status.protocolo) {
+          await this.prisma.distributorOutboundInvoice.update({
+            where: { id: invoice.id },
+            data: {
+              accessKey: status.chaveAcesso || invoice.accessKey,
+              protocol: status.protocolo || invoice.protocol,
+              gatewayStatus: status.status || invoice.gatewayStatus,
+            },
+          });
+          invoice.accessKey = status.chaveAcesso || invoice.accessKey;
+          invoice.protocol = status.protocolo || invoice.protocol;
+        }
+      } catch {
+        // PDF usa dados locais mesmo se o Gateway nao achar o XML.
+      }
+    }
+
+    const pdf = await buildDanfePdf({
+      series: invoice.series,
+      number: invoice.number,
+      status: invoice.status,
+      customerName: invoice.customerName,
+      customerCnpj: invoice.customerCnpj,
+      customerUf: invoice.customerUf,
+      emitterCnpj: invoice.emitterCnpj,
+      emitterUf: invoice.emitterUf,
+      totalCents: invoice.totalCents,
+      accessKey: invoice.accessKey,
+      protocol: invoice.protocol,
+      createdAt: invoice.createdAt,
+      lines: invoice.lines.map((line) => ({
+        description: line.description || line.variant.product.name,
+        ncm: line.ncm,
+        cfop: line.cfop,
+        quantity: line.quantity,
+        unitPriceCents: line.unitPriceCents,
+        totalCents: line.unitPriceCents * line.quantity,
+      })),
+    });
+    const key = invoice.accessKey || `${invoice.series}-${invoice.number}`;
+    return { fileName: `DANFE-${key}.pdf`, pdf };
   }
 
   async applyGatewayFiscalWebhook(body: {

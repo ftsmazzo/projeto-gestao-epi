@@ -497,6 +497,26 @@ export class DistributorController {
     return res.send(file.xml);
   }
 
+  @Get('outbound/:invoiceId/pdf')
+  @Header('Cache-Control', 'private, no-store')
+  async outboundPdf(
+    @CurrentUser() user: JwtPayload,
+    @Param('invoiceId') invoiceId: string,
+    @Res() res: Response,
+  ) {
+    const file = await this.distributor.getOutboundDanfe(
+      user.organizationId,
+      user.membershipRole,
+      invoiceId,
+    );
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${file.fileName}"`,
+    );
+    return res.send(file.pdf);
+  }
+
   @Post('outbound/:invoiceId/cancel')
   cancelOutbound(
     @CurrentUser() user: JwtPayload,

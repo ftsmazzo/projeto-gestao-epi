@@ -7,6 +7,7 @@ import {
   cancelOutboundInvoice,
   confirmOutboundInvoice,
   createOutboundFromQuote,
+  downloadOutboundPdf,
   downloadOutboundXml,
   isDistributorManager,
   listOutboundInvoices,
@@ -173,6 +174,21 @@ export default function DistribuidoraNotasPage() {
       await reload();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Falha ao baixar XML.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onDownloadPdf(invoiceId: string) {
+    setError(null);
+    setNotice(null);
+    setSaving(true);
+    try {
+      await downloadOutboundPdf(invoiceId);
+      setNotice('PDF (DANFE auxiliar) baixado.');
+      await reload();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha ao baixar PDF.');
     } finally {
       setSaving(false);
     }
@@ -353,14 +369,24 @@ export default function DistribuidoraNotasPage() {
                           </button>
                         ) : null}
                         {invoice.status === 'AUTHORIZED' ? (
-                          <button
-                            type="button"
-                            className="btn btn-primary"
-                            disabled={saving}
-                            onClick={() => void onDownloadXml(invoice.id)}
-                          >
-                            Baixar XML da NF-e
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              disabled={saving}
+                              onClick={() => void onDownloadPdf(invoice.id)}
+                            >
+                              Baixar PDF
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost"
+                              disabled={saving}
+                              onClick={() => void onDownloadXml(invoice.id)}
+                            >
+                              Baixar XML
+                            </button>
+                          </>
                         ) : null}
                       </div>
                     </td>

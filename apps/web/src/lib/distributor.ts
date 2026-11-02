@@ -738,16 +738,21 @@ export function authorizeOutboundInvoice(invoiceId: string) {
   });
 }
 
-export async function downloadOutboundXml(invoiceId: string) {
+async function downloadOutboundFile(
+  invoiceId: string,
+  kind: 'xml' | 'pdf',
+  fallbackName: string,
+  fallbackError: string,
+) {
   const token = getAccessToken();
   const headers = new Headers();
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const response = await fetch(
-    `${getApiUrl()}/distributor/outbound/${encodeURIComponent(invoiceId)}/xml`,
+    `${getApiUrl()}/distributor/outbound/${encodeURIComponent(invoiceId)}/${kind}`,
     { headers },
   );
   if (!response.ok) {
-    let message = 'Falha ao baixar o XML.';
+    let message = fallbackError;
     try {
       const json = (await response.json()) as { message?: string };
       if (json.message) message = json.message;
@@ -759,13 +764,31 @@ export async function downloadOutboundXml(invoiceId: string) {
   const blob = await response.blob();
   const disposition = response.headers.get('Content-Disposition') ?? '';
   const match = /filename="([^"]+)"/.exec(disposition);
-  const fileName = match?.[1] ?? `NFe-${invoiceId}.xml`;
+  const fileName = match?.[1] ?? fallbackName;
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = fileName;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+export function downloadOutboundXml(invoiceId: string) {
+  return downloadOutboundFile(
+    invoiceId,
+    'xml',
+    `NFe-${invoiceId}.xml`,
+    'Falha ao baixar o XML.',
+  );
+}
+
+export function downloadOutboundPdf(invoiceId: string) {
+  return downloadOutboundFile(
+    invoiceId,
+    'pdf',
+    `DANFE-${invoiceId}.pdf`,
+    'Falha ao baixar o PDF.',
+  );
 }
 
 export function cancelOutboundInvoice(invoiceId: string) {
