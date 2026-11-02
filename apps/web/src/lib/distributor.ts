@@ -599,6 +599,9 @@ export type OutboundInvoice = {
   totalCents: number;
   accessKey: string | null;
   protocol: string | null;
+  gatewayDocumentId?: string | null;
+  gatewayStatus?: string | null;
+  gatewayRejection?: string | null;
   createdAt: string;
   confirmedAt: string | null;
   cancelledAt: string | null;

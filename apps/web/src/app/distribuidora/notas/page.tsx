@@ -238,8 +238,9 @@ export default function DistribuidoraNotasPage() {
         </form>
         {approvedQuotes.length === 0 ? (
           <p className="field-hint">
-            Não há orçamento aprovado livre. Libere um em Orçamentos ou cancele um
-            rascunho antigo.
+            {invoices.some((invoice) => invoice.status === 'AUTHORIZED')
+              ? 'Nada errado: o orçamento aprovado já virou a nota autorizada abaixo. Para emitir outra, aprove um orçamento novo em Orçamentos.'
+              : 'Não há orçamento aprovado livre. Aprove um em Orçamentos ou cancele um rascunho antigo.'}
           </p>
         ) : null}
       </section>
@@ -258,6 +259,7 @@ export default function DistribuidoraNotasPage() {
                   <th>Destino</th>
                   <th>Total</th>
                   <th>Situação</th>
+                  <th>Chave / protocolo</th>
                   <th>Pendências</th>
                   <th />
                 </tr>
@@ -275,6 +277,21 @@ export default function DistribuidoraNotasPage() {
                     <td>{money(invoice.totalCents)}</td>
                     <td>{STATUS_LABEL[invoice.status]}</td>
                     <td>
+                      {invoice.accessKey || invoice.protocol ? (
+                        <span className="field-hint" style={{ margin: 0 }}>
+                          {invoice.accessKey ? (
+                            <>
+                              {invoice.accessKey}
+                              <br />
+                            </>
+                          ) : null}
+                          {invoice.protocol ? `Prot. ${invoice.protocol}` : null}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td>
                       {invoice.status === 'DRAFT' || invoice.status === 'CONFIRMED'
                         ? invoice.blockers.length > 0
                           ? invoice.blockers.join(', ')
@@ -283,7 +300,9 @@ export default function DistribuidoraNotasPage() {
                             : invoice.emissionEnabled
                               ? 'Pronta para SEFAZ'
                               : 'Aguardando homologação SEFAZ'
-                        : '—'}
+                        : invoice.gatewayRejection
+                          ? invoice.gatewayRejection
+                          : '—'}
                     </td>
                     <td>
                       <div className="form-actions">
@@ -325,9 +344,7 @@ export default function DistribuidoraNotasPage() {
             </table>
           </div>
         )}
-        {invoices.some(
-          (invoice) => invoice.status === 'DRAFT' || invoice.status === 'CONFIRMED',
-        ) ? (
+        {invoices.length > 0 ? (
           <div className="table-wrap" style={{ marginTop: '1rem' }}>
             <table className="data-table">
               <thead>
@@ -341,25 +358,20 @@ export default function DistribuidoraNotasPage() {
                 </tr>
               </thead>
               <tbody>
-                {invoices
-                  .filter(
-                    (invoice) =>
-                      invoice.status === 'DRAFT' || invoice.status === 'CONFIRMED',
-                  )
-                  .flatMap((invoice) =>
-                    invoice.lines.map((line) => (
-                      <tr key={line.id}>
-                        <td>
-                          {invoice.series}/{invoice.number}
-                        </td>
-                        <td>{line.description}</td>
-                        <td>{line.ncm}</td>
-                        <td>{line.cfop}</td>
-                        <td>{line.quantity}</td>
-                        <td>{money(line.totalCents)}</td>
-                      </tr>
-                    )),
-                  )}
+                {invoices.flatMap((invoice) =>
+                  invoice.lines.map((line) => (
+                    <tr key={line.id}>
+                      <td>
+                        {invoice.series}/{invoice.number}
+                      </td>
+                      <td>{line.description}</td>
+                      <td>{line.ncm}</td>
+                      <td>{line.cfop}</td>
+                      <td>{line.quantity}</td>
+                      <td>{money(line.totalCents)}</td>
+                    </tr>
+                  )),
+                )}
               </tbody>
             </table>
           </div>
