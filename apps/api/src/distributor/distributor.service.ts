@@ -90,6 +90,7 @@ import {
   buildOutboundLines,
   outboundBlockers,
 } from './nfe-outbound.rules';
+import { GatewayFiscalClient } from './gateway-fiscal.client';
 import { NfeXmlError, parseNfeXml } from './nfe-xml.rules';
 import {
   DEFAULT_LEDGER_ACCOUNTS,
@@ -174,6 +175,7 @@ export class DistributorService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly stock: StockService,
+    private readonly gatewayFiscal: GatewayFiscalClient,
   ) {}
 
   async listProducts(organizationId: string, role: string) {
@@ -2033,8 +2035,13 @@ export class DistributorService {
       this.prisma.distributorFiscalProfile.findUnique({ where: { organizationId } }),
     ]);
     if (!invoice) throw new NotFoundException('Nota de saida nao encontrada.');
+    const skipLocalCert = /^(1|true|yes|on)$/i.test(
+      (process.env.GATEWAY_FISCAL_SKIP_LOCAL_CERT ?? '').trim(),
+    );
     const view = toOutboundView(invoice, {
-      certificateUploaded: Boolean(profile?.certificateCipher),
+      certificateUploaded:
+        Boolean(profile?.certificateCipher) ||
+        (skipLocalCert && this.gatewayFiscal.isConfigured()),
     });
     try {
       assertOutboundAuthorize({
@@ -2045,9 +2052,126 @@ export class DistributorService {
     } catch (error) {
       throw this.asOutboundError(error);
     }
-    throw new BadRequestException(
-      'A autorizacao na SEFAZ ainda nao esta ligada. Cadastre o certificado e aguarde a homologacao.',
-    );
+
+    if (!this.gatewayFiscal.isConfigured()) {
+      throw new BadRequestException(
+        'Gateway Fiscal nao configurado (GATEWAY_FISCAL_BASE_URL / GATEWAY_FISCAL_API_KEY).',
+      );
+    }
+
+    if (invoice.gatewayDocumentId) {
+      return this.getOutboundInvoice(organizationId, role, invoiceId);
+    }
+
+    const itens = invoice.lines.map((line) => ({
+      descricao: line.description || line.variant.product.name,
+      ncm: line.ncm || line.variant.product.ncm || '',
+      cfop: line.cfop || '',
+      quantidade: line.quantity,
+      valorUnitario: line.unitPriceCents / 100,
+      originCode: line.originCode,
+      cest: line.cest,
+      icmsSt: line.icmsSt,
+    }));
+
+    try {
+      const emitted = await this.gatewayFiscal.emitNfe({
+        externalId: invoice.id,
+        destinatario: {
+          nome: invoice.customerName,
+          cpfCnpj: invoice.customerCnpj,
+          uf: invoice.customerUf,
+        },
+        itens,
+        totais: { valorNota: invoice.totalCents / 100 },
+      });
+
+      await this.prisma.distributorOutboundInvoice.update({
+        where: { id: invoice.id },
+        data: {
+          gatewayDocumentId: emitted.id,
+          gatewayStatus: emitted.status,
+          gatewayRejection: null,
+        },
+      });
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error
+          ? `Falha ao enviar NF-e ao Gateway Fiscal: ${error.message}`
+          : 'Falha ao enviar NF-e ao Gateway Fiscal.',
+      );
+    }
+
+    return this.getOutboundInvoice(organizationId, role, invoiceId);
+  }
+
+  async applyGatewayFiscalWebhook(body: {
+    event?: string;
+    id?: string;
+    externalId?: string | null;
+    status?: string;
+    chaveAcesso?: string | null;
+    protocolo?: string | null;
+    rejectionCode?: string | null;
+    rejectionMsg?: string | null;
+  }) {
+    const invoice = body.externalId
+      ? await this.prisma.distributorOutboundInvoice.findFirst({
+          where: { id: body.externalId },
+        })
+      : body.id
+        ? await this.prisma.distributorOutboundInvoice.findFirst({
+            where: { gatewayDocumentId: body.id },
+          })
+        : null;
+
+    if (!invoice) {
+      return { ok: false, reason: 'invoice_not_found' };
+    }
+
+    if (invoice.status === 'AUTHORIZED' || invoice.status === 'CANCELLED') {
+      return { ok: true, skipped: true, id: invoice.id };
+    }
+
+    const gatewayStatus = body.status || null;
+    if (gatewayStatus === 'autorizada' || body.event === 'nfe.autorizada') {
+      await this.prisma.distributorOutboundInvoice.update({
+        where: { id: invoice.id },
+        data: {
+          status: 'AUTHORIZED',
+          accessKey: body.chaveAcesso || invoice.accessKey,
+          protocol: body.protocolo || invoice.protocol,
+          gatewayDocumentId: body.id || invoice.gatewayDocumentId,
+          gatewayStatus: 'autorizada',
+          gatewayRejection: null,
+        },
+      });
+      return { ok: true, id: invoice.id, status: 'AUTHORIZED' };
+    }
+
+    if (gatewayStatus === 'rejeitada' || body.event === 'nfe.rejeitada') {
+      const rejection = [body.rejectionCode, body.rejectionMsg]
+        .filter(Boolean)
+        .join(' — ');
+      await this.prisma.distributorOutboundInvoice.update({
+        where: { id: invoice.id },
+        data: {
+          gatewayDocumentId: body.id || invoice.gatewayDocumentId,
+          gatewayStatus: 'rejeitada',
+          gatewayRejection: rejection || 'rejeitada',
+        },
+      });
+      return { ok: true, id: invoice.id, status: 'rejeitada' };
+    }
+
+    await this.prisma.distributorOutboundInvoice.update({
+      where: { id: invoice.id },
+      data: {
+        gatewayDocumentId: body.id || invoice.gatewayDocumentId,
+        gatewayStatus: gatewayStatus,
+      },
+    });
+    return { ok: true, id: invoice.id, status: gatewayStatus };
   }
 
   async cancelOutboundInvoice(
@@ -3725,11 +3849,16 @@ function toOutboundView(
     totalCents: invoice.totalCents,
     accessKey: invoice.accessKey,
     protocol: invoice.protocol,
+    gatewayDocumentId: invoice.gatewayDocumentId,
+    gatewayStatus: invoice.gatewayStatus,
+    gatewayRejection: invoice.gatewayRejection,
     createdAt: invoice.createdAt,
     confirmedAt: invoice.confirmedAt,
     cancelledAt: invoice.cancelledAt,
     readyToAuthorize:
-      invoice.status === 'CONFIRMED' && blockers.length === 0,
+      invoice.status === 'CONFIRMED' &&
+      blockers.length === 0 &&
+      !invoice.gatewayDocumentId,
     blockers,
     emissionEnabled: OUTBOUND_EMISSION_ENABLED,
     lines: invoice.lines.map((line) => ({

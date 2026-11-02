@@ -41,7 +41,8 @@ Preencher na tela **Distribuidora → Fiscal** assim que o tenant EPICAT estiver
 - Nota de saída a partir do orçamento aprovado (rascunho).
 - CFOP interno/interestadual por produto (`saleCfopIn` / `saleCfopOut`).
 - Confirmação da saída no estoque + conta a receber.
-- Bloqueio explícito da autorização SEFAZ até o flag de emissão.
+- Bloqueio explícito da autorização até o flag de emissão.
+- **Integração com Gateway Fiscal** (`GATEWAY_FISCAL_*`): `authorize` envia `POST /v1/nfe`; webhook `POST /public/gateway-fiscal/webhook` + poll a cada 1 min atualizam `AUTHORIZED` / rejeição. Em mock (`SEFAZ_MODE=mock` no gateway) dá para testar o ERP sem A1/SEFAZ real.
 
 ## O que o cliente envia
 

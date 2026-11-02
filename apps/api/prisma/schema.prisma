@@ -585,6 +585,9 @@ model DistributorOutboundInvoice {
   totalCents      Int
   accessKey       String?
   protocol        String?
+  gatewayDocumentId String?
+  gatewayStatus     String?
+  gatewayRejection  String?
   createdByUserId String
   confirmedAt     DateTime?
   confirmedByUserId String?
@@ -601,6 +604,7 @@ model DistributorOutboundInvoice {
 
   @@unique([organizationId, series, number])
   @@index([organizationId, status])
+  @@index([gatewayDocumentId])
 }
 
 /// Vinculo explicito entre a distribuidora e uma empresa ja cliente do ProntEPI.
