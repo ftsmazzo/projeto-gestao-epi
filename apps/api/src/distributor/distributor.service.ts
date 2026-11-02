@@ -2253,6 +2253,16 @@ export class DistributorService {
       }
     }
 
+    const [profile, organization] = await Promise.all([
+      this.prisma.distributorFiscalProfile.findUnique({
+        where: { organizationId },
+      }),
+      this.prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { name: true },
+      }),
+    ]);
+
     const pdf = await buildDanfePdf({
       series: invoice.series,
       number: invoice.number,
@@ -2260,8 +2270,15 @@ export class DistributorService {
       customerName: invoice.customerName,
       customerCnpj: invoice.customerCnpj,
       customerUf: invoice.customerUf,
+      emitterRazaoSocial: organization?.name || 'EPICAT DISTRIBUIDORA LTDA',
+      emitterFantasia: 'EPICAT',
       emitterCnpj: invoice.emitterCnpj,
+      emitterIe: profile?.stateRegistration,
       emitterUf: invoice.emitterUf,
+      emitterMunicipio: 'Catanduva',
+      emitterEndereco:
+        'R. Riacho Fundo, 127 — Loteamento Residencial Isabella — Catanduva/SP — CEP 15.801-446',
+      naturezaOperacao: 'Venda de mercadoria',
       totalCents: invoice.totalCents,
       accessKey: invoice.accessKey,
       protocol: invoice.protocol,
@@ -2273,6 +2290,7 @@ export class DistributorService {
         quantity: line.quantity,
         unitPriceCents: line.unitPriceCents,
         totalCents: line.unitPriceCents * line.quantity,
+        originCode: line.originCode,
       })),
     });
     const key = invoice.accessKey || `${invoice.series}-${invoice.number}`;
