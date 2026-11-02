@@ -384,6 +384,9 @@ export class QuoteLineDto {
   unitPriceCents!: number;
 
   @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
   discountPercent!: number;
 }
 
