@@ -19,12 +19,33 @@ export type GatewayNfeStatus = {
   externalId: string | null;
 };
 
+export type GatewayCompany = {
+  id: string;
+  razaoSocial: string;
+  cnpj: string;
+  ie: string | null;
+  regime: string | null;
+  uf: string;
+  municipio: string | null;
+  ambiente: string;
+  hasCertificate: boolean;
+};
+
 @Injectable()
 export class GatewayFiscalClient {
   private readonly logger = new Logger(GatewayFiscalClient.name);
 
   isConfigured(): boolean {
     return Boolean(this.baseUrl() && this.apiKey());
+  }
+
+  async getCompany(): Promise<GatewayCompany> {
+    const res = await this.request('/v1/company', { method: 'GET' });
+    const json = (await res.json()) as GatewayCompany & { error?: string };
+    if (!res.ok) {
+      throw new Error(json.error || `gateway company failed (${res.status})`);
+    }
+    return json;
   }
 
   async emitNfe(payload: GatewayEmitPayload): Promise<{ id: string; status: string }> {

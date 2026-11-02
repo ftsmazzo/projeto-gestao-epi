@@ -561,6 +561,7 @@ export type DistributorFiscalProfile = {
   lastNsu: string;
   signedQueryEnabled: boolean;
   emissionEnabled: boolean;
+  gatewayConfigured?: boolean;
   missing: string[];
   note: string;
 };

@@ -770,6 +770,7 @@ export class DistributorService {
 
   async getFiscalProfile(organizationId: string, role: string) {
     await this.requireDistributor(organizationId, role);
+    await this.ensureEmitterProfile(organizationId);
     return this.fiscalView(organizationId);
   }
 
@@ -1775,27 +1776,88 @@ export class DistributorService {
     throw error;
   }
 
+  private skipLocalCert(): boolean {
+    return (
+      /^(1|true|yes|on)$/i.test((process.env.GATEWAY_FISCAL_SKIP_LOCAL_CERT ?? '').trim()) &&
+      this.gatewayFiscal.isConfigured()
+    );
+  }
+
+  private hasEmitterCert(profile: { certificateCipher?: Uint8Array | Buffer | null } | null): boolean {
+    return Boolean(profile?.certificateCipher) || this.skipLocalCert();
+  }
+
+  private async ensureEmitterProfile(organizationId: string) {
+    const existing = await this.prisma.distributorFiscalProfile.findUnique({
+      where: { organizationId },
+    });
+    if (existing?.cnpj && existing.uf) return existing;
+
+    let cnpj = EPICAT_CNPJ;
+    let uf = EPICAT_UF;
+    let stateRegistration: string | null = EPICAT_IE;
+    let regime: 'PRESUMIDO' | 'SIMPLES' | 'REAL' = 'SIMPLES';
+
+    if (this.gatewayFiscal.isConfigured()) {
+      try {
+        const company = await this.gatewayFiscal.getCompany();
+        if (company.cnpj && company.uf) {
+          cnpj = company.cnpj.replace(/\D/g, '');
+          uf = company.uf.trim().toUpperCase();
+          stateRegistration = company.ie ? company.ie.replace(/\D/g, '') : null;
+          const regimeRaw = (company.regime ?? '').toLowerCase();
+          if (regimeRaw.includes('simples')) regime = 'SIMPLES';
+          else if (regimeRaw.includes('real')) regime = 'REAL';
+          else if (regimeRaw.includes('presum')) regime = 'PRESUMIDO';
+        }
+      } catch {
+        // fallback EPICAT abaixo
+      }
+    }
+
+    return this.prisma.distributorFiscalProfile.upsert({
+      where: { organizationId },
+      create: {
+        organizationId,
+        cnpj,
+        uf,
+        stateRegistration,
+        regime,
+      },
+      update: {
+        ...(existing?.cnpj ? {} : { cnpj }),
+        ...(existing?.uf ? {} : { uf }),
+        ...(existing?.stateRegistration ? {} : { stateRegistration }),
+        ...(existing?.regime ? {} : { regime }),
+      },
+    });
+  }
+
   private async fiscalView(organizationId: string) {
     const [profile, cursor] = await Promise.all([
       this.prisma.distributorFiscalProfile.findUnique({ where: { organizationId } }),
       this.prisma.distributorDfeCursor.findUnique({ where: { organizationId } }),
     ]);
+    const certOk = this.hasEmitterCert(profile);
     const missing: string[] = [];
     if (!profile?.cnpj) missing.push('CNPJ');
     if (!profile?.uf) missing.push('UF');
-    if (!profile?.certificateCipher) missing.push('Certificado A1');
+    if (!certOk) missing.push('Certificado A1 (Gateway Fiscal)');
+    const gatewayConfigured = this.gatewayFiscal.isConfigured();
     return {
       cnpj: profile?.cnpj ?? null,
       uf: profile?.uf ?? null,
       stateRegistration: profile?.stateRegistration ?? null,
       regime: profile?.regime ?? 'PRESUMIDO',
-      certificateUploaded: Boolean(profile?.certificateCipher),
+      certificateUploaded: certOk,
       lastNsu: cursor?.lastNsu ?? '0',
       signedQueryEnabled: false,
       missing,
       emissionEnabled: OUTBOUND_EMISSION_ENABLED,
-      note:
-        'A nota de compra entra pelo XML e pela chave de 44 digitos. A nota de saida nasce do orcamento aprovado. A busca e a autorizacao assinadas na SEFAZ permanecem desligadas sem homologacao.',
+      gatewayConfigured,
+      note: gatewayConfigured
+        ? 'Identidade e certificado A1 ficam no Gateway Fiscal. O ERP so conecta via API Key.'
+        : 'Configure GATEWAY_FISCAL_BASE_URL e GATEWAY_FISCAL_API_KEY para emitir NF-e.',
     };
   }
 
@@ -1811,7 +1873,7 @@ export class DistributorService {
     ]);
     return rows.map((row) =>
       toOutboundView(row, {
-        certificateUploaded: Boolean(profile?.certificateCipher),
+        certificateUploaded: this.hasEmitterCert(profile),
       }),
     );
   }
@@ -1823,12 +1885,10 @@ export class DistributorService {
     dto: CreateOutboundFromQuoteDto,
   ) {
     await this.requireDistributor(organizationId, role);
-    const profile = await this.prisma.distributorFiscalProfile.findUnique({
-      where: { organizationId },
-    });
-    if (!profile?.cnpj || !profile.uf) {
+    const profile = await this.ensureEmitterProfile(organizationId);
+    if (!profile.cnpj || !profile.uf) {
       throw new BadRequestException(
-        'Cadastre o CNPJ e a UF da distribuidora em Fiscal antes de montar a nota de saida.',
+        'Emitente sem CNPJ/UF no Gateway Fiscal. Contador precisa cadastrar a empresa la.',
       );
     }
     const customer = validateCnpj(dto.customerCnpj);
@@ -1914,7 +1974,7 @@ export class DistributorService {
         include: outboundInclude,
       });
       return toOutboundView(created, {
-        certificateUploaded: Boolean(profile.certificateCipher),
+        certificateUploaded: this.hasEmitterCert(profile),
       });
     } catch (error) {
       if (
@@ -2016,7 +2076,7 @@ export class DistributorService {
         include: outboundInclude,
       });
       return toOutboundView(updated, {
-        certificateUploaded: Boolean(profile?.certificateCipher),
+        certificateUploaded: this.hasEmitterCert(profile),
       });
     });
   }
@@ -2035,13 +2095,8 @@ export class DistributorService {
       this.prisma.distributorFiscalProfile.findUnique({ where: { organizationId } }),
     ]);
     if (!invoice) throw new NotFoundException('Nota de saida nao encontrada.');
-    const skipLocalCert = /^(1|true|yes|on)$/i.test(
-      (process.env.GATEWAY_FISCAL_SKIP_LOCAL_CERT ?? '').trim(),
-    );
     const view = toOutboundView(invoice, {
-      certificateUploaded:
-        Boolean(profile?.certificateCipher) ||
-        (skipLocalCert && this.gatewayFiscal.isConfigured()),
+      certificateUploaded: this.hasEmitterCert(profile),
     });
     try {
       assertOutboundAuthorize({
@@ -3495,7 +3550,7 @@ export class DistributorService {
     ]);
     if (!invoice) throw new NotFoundException('Nota de saida nao encontrada.');
     return toOutboundView(invoice, {
-      certificateUploaded: Boolean(profile?.certificateCipher),
+      certificateUploaded: this.hasEmitterCert(profile),
     });
   }
 
@@ -4147,6 +4202,11 @@ function mergePurchaseLines(
   }
   return [...byVariant.values()];
 }
+
+/** Dados EPICAT (Daniel / NFE-GO-LIVE 29/10/2026) — seed quando perfil local vazio. */
+const EPICAT_CNPJ = '69406699000190';
+const EPICAT_UF = 'SP';
+const EPICAT_IE = '260395253118';
 
 const BRAZIL_UFS = new Set([
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
