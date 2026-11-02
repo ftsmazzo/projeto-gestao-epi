@@ -1801,8 +1801,10 @@ export class DistributorService {
     if (this.gatewayFiscal.isConfigured()) {
       try {
         const company = await this.gatewayFiscal.getCompany();
-        if (company.cnpj && company.uf) {
-          cnpj = company.cnpj.replace(/\D/g, '');
+        const gatewayCnpj = (company.cnpj ?? '').replace(/\D/g, '');
+        // Ignora CNPJ demo antigo do gateway.
+        if (gatewayCnpj && gatewayCnpj !== '00000000000191' && company.uf) {
+          cnpj = gatewayCnpj;
           uf = company.uf.trim().toUpperCase();
           stateRegistration = company.ie ? company.ie.replace(/\D/g, '') : null;
           const regimeRaw = (company.regime ?? '').toLowerCase();
