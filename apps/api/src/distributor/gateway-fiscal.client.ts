@@ -71,6 +71,17 @@ export class GatewayFiscalClient {
     return json;
   }
 
+  async getNfeXml(id: string): Promise<string> {
+    const res = await this.request(`/v1/nfe/${encodeURIComponent(id)}/xml`, {
+      method: 'GET',
+    });
+    if (!res.ok) {
+      const json = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(json.error || `gateway xml failed (${res.status})`);
+    }
+    return res.text();
+  }
+
   private baseUrl(): string {
     return (process.env.GATEWAY_FISCAL_BASE_URL ?? '').trim().replace(/\/$/, '');
   }

@@ -2162,6 +2162,55 @@ export class DistributorService {
     return this.getOutboundInvoice(organizationId, role, invoiceId);
   }
 
+  async getOutboundXml(
+    organizationId: string,
+    role: string,
+    invoiceId: string,
+  ): Promise<{ fileName: string; xml: string }> {
+    await this.requireDistributor(organizationId, role);
+    const invoice = await this.prisma.distributorOutboundInvoice.findFirst({
+      where: { id: invoiceId, organizationId },
+    });
+    if (!invoice) throw new NotFoundException('Nota de saida nao encontrada.');
+    if (!invoice.gatewayDocumentId) {
+      throw new BadRequestException(
+        'Esta nota ainda nao foi enviada ao Gateway Fiscal.',
+      );
+    }
+    if (!this.gatewayFiscal.isConfigured()) {
+      throw new BadRequestException('Gateway Fiscal nao configurado.');
+    }
+
+    try {
+      const status = await this.gatewayFiscal.getNfeStatus(invoice.gatewayDocumentId);
+      if (status.chaveAcesso || status.protocolo) {
+        await this.prisma.distributorOutboundInvoice.update({
+          where: { id: invoice.id },
+          data: {
+            accessKey: status.chaveAcesso || invoice.accessKey,
+            protocol: status.protocolo || invoice.protocol,
+            gatewayStatus: status.status || invoice.gatewayStatus,
+            ...(status.status === 'autorizada' && invoice.status !== 'AUTHORIZED'
+              ? { status: 'AUTHORIZED' }
+              : {}),
+          },
+        });
+      }
+      const xml = await this.gatewayFiscal.getNfeXml(invoice.gatewayDocumentId);
+      const key = status.chaveAcesso || invoice.accessKey || invoice.id;
+      return {
+        fileName: `NFe-${key}.xml`,
+        xml,
+      };
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error
+          ? `XML ainda nao disponivel: ${error.message}`
+          : 'XML ainda nao disponivel.',
+      );
+    }
+  }
+
   async applyGatewayFiscalWebhook(body: {
     event?: string;
     id?: string;

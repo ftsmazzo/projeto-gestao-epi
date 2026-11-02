@@ -7,6 +7,7 @@ import {
   cancelOutboundInvoice,
   confirmOutboundInvoice,
   createOutboundFromQuote,
+  downloadOutboundXml,
   isDistributorManager,
   listOutboundInvoices,
   listQuotes,
@@ -157,6 +158,21 @@ export default function DistribuidoraNotasPage() {
       await reload();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Falha ao cancelar.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onDownloadXml(invoiceId: string) {
+    setError(null);
+    setNotice(null);
+    setSaving(true);
+    try {
+      await downloadOutboundXml(invoiceId);
+      setNotice('XML da NF-e baixado.');
+      await reload();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha ao baixar XML.');
     } finally {
       setSaving(false);
     }
@@ -334,6 +350,16 @@ export default function DistribuidoraNotasPage() {
                             onClick={() => void onAuthorize(invoice.id)}
                           >
                             Autorizar SEFAZ
+                          </button>
+                        ) : null}
+                        {invoice.status === 'AUTHORIZED' || invoice.gatewayDocumentId ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            disabled={saving}
+                            onClick={() => void onDownloadXml(invoice.id)}
+                          >
+                            Baixar XML
                           </button>
                         ) : null}
                       </div>

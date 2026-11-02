@@ -2,16 +2,19 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   Param,
   Patch,
   Post,
   Put,
   Query,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import type { JwtPayload } from '../auth/types/jwt-payload';
@@ -472,6 +475,26 @@ export class DistributorController {
       user.membershipRole,
       invoiceId,
     );
+  }
+
+  @Get('outbound/:invoiceId/xml')
+  @Header('Cache-Control', 'private, no-store')
+  async outboundXml(
+    @CurrentUser() user: JwtPayload,
+    @Param('invoiceId') invoiceId: string,
+    @Res() res: Response,
+  ) {
+    const file = await this.distributor.getOutboundXml(
+      user.organizationId,
+      user.membershipRole,
+      invoiceId,
+    );
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${file.fileName}"`,
+    );
+    return res.send(file.xml);
   }
 
   @Post('outbound/:invoiceId/cancel')

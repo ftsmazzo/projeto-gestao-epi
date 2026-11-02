@@ -738,6 +738,36 @@ export function authorizeOutboundInvoice(invoiceId: string) {
   });
 }
 
+export async function downloadOutboundXml(invoiceId: string) {
+  const token = getAccessToken();
+  const headers = new Headers();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(
+    `${getApiUrl()}/distributor/outbound/${encodeURIComponent(invoiceId)}/xml`,
+    { headers },
+  );
+  if (!response.ok) {
+    let message = 'Falha ao baixar o XML.';
+    try {
+      const json = (await response.json()) as { message?: string };
+      if (json.message) message = json.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') ?? '';
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const fileName = match?.[1] ?? `NFe-${invoiceId}.xml`;
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export function cancelOutboundInvoice(invoiceId: string) {
   return apiFetch<OutboundInvoice>(`/distributor/outbound/${invoiceId}/cancel`, {
     method: 'POST',
