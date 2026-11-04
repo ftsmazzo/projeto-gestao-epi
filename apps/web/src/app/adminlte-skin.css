@@ -1088,7 +1088,16 @@ html[data-theme='light'] .module-page a:not(.btn):not(.ops-nav-link),
 html[data-theme='colorblind'] .dash-panel a:not(.btn),
 html[data-theme='colorblind'] .module-page a:not(.btn):not(.ops-nav-link) {
   color: var(--color-ink) !important;
-  text-decoration: underline;
+  text-decoration: none !important;
+  font-weight: 700;
+}
+
+html[data-theme='light'] .dash-panel a:not(.btn):hover,
+html[data-theme='light'] .module-page a:not(.btn):not(.ops-nav-link):hover,
+html[data-theme='colorblind'] .dash-panel a:not(.btn):hover,
+html[data-theme='colorblind'] .module-page a:not(.btn):not(.ops-nav-link):hover {
+  text-decoration: underline !important;
+  text-underline-offset: 0.18em;
 }
 
 html[data-theme='colorblind'] .flow-sticky-bar,

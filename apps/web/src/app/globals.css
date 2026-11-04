@@ -9400,13 +9400,17 @@ html[data-theme='dark'] {
   --accent: #75b798;
 }
 
-/* Alto contraste: sem azul de link, texto preto em cards, foco amarelo. */
+/*
+ * Daltonismo (deutera/protanopia): não usa vermelho×verde.
+ * Paleta segura: preto, branco e amarelo (#F5C518) — bem separados na luminância.
+ * Estados (ok/erro) usam borda + fundo amarelo, não só a cor.
+ */
 html[data-theme='colorblind'] {
   color-scheme: light;
   --color-accent: #000000;
   --color-accent-hover: #111111;
   --color-accent-active: #000000;
-  --color-accent-muted: #ffe566;
+  --color-accent-muted: #f5c518;
   --color-accent-ink: #ffffff;
   --color-info: #000000;
   --color-info-ink: #000000;
@@ -9420,19 +9424,19 @@ html[data-theme='colorblind'] {
   --color-border: #000000;
   --color-border-strong: #000000;
   --color-text: #000000;
-  --color-focus: #ffe566;
+  --color-focus: #f5c518;
   --color-danger: #000000;
-  --color-danger-bg: #ffe566;
+  --color-danger-bg: #f5c518;
   --color-success: #000000;
   --color-success-bg: #e8e8e0;
   --color-warn: #000000;
   --color-warn-ink: #000000;
-  --color-warn-bg: #ffe566;
+  --color-warn-bg: #f5c518;
   --color-graphite: #000000;
   --color-graphite-soft: #222222;
   --color-sidebar: #000000;
   --color-sidebar-hover: rgba(255, 255, 255, 0.14);
-  --color-sidebar-active: #ffe566;
+  --color-sidebar-active: #f5c518;
   --accent: #000000;
 }
 
@@ -9477,14 +9481,21 @@ html[data-theme='colorblind'] {
 .product-form__section a:not(.btn),
 .module-page a:not(.btn):not(.ops-nav-link) {
   color: var(--color-ink);
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
+  text-decoration: none;
+  font-weight: 700;
 }
 
 .dash-panel a:not(.btn):visited,
 .catalog-card a:not(.btn):visited,
 .module-page a:not(.btn):not(.ops-nav-link):visited {
   color: var(--color-ink);
+}
+
+.dash-panel a:not(.btn):hover,
+.catalog-card a:not(.btn):hover,
+.module-page a:not(.btn):not(.ops-nav-link):hover {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
 }
 
 .dash-panel .muted,
@@ -9527,7 +9538,7 @@ html[data-theme='colorblind'] {
 }
 
 html[data-theme='colorblind'] .size-chip--selected {
-  background: #ffe566;
+  background: #f5c518;
   color: #000;
   border: 2px solid #000;
   font-weight: 800;
@@ -9552,12 +9563,12 @@ html[data-theme='colorblind'] .error,
 html[data-theme='colorblind'] .notice {
   color: #000;
   border: 2px solid #000;
-  background: #ffe566;
+  background: #f5c518;
 }
 
 html[data-theme='colorblind'] .ops-nav-link.is-active,
 html[data-theme='colorblind'] .ops-nav-link.is-active:visited {
-  background: #ffe566;
+  background: #f5c518;
   color: #000;
   box-shadow: inset 4px 0 0 #000;
   font-weight: 700;
