@@ -835,6 +835,17 @@ a.btn-ghost:hover {
   padding-bottom: 1rem;
 }
 
+/* Hub/lista da distribuidora ja trazem padding interno — evita colagem/sobreposição. */
+.dash-panel.intake-hub > .intake-hub__body,
+.dash-panel.catalog-section > .catalog-section__body {
+  padding: 1rem;
+}
+
+.dash-panel.intake-hub > .dash-panel__head,
+.dash-panel.catalog-section > .dash-panel__head {
+  margin: 0;
+}
+
 .dash-panel > .table-wrap {
   padding-left: 0;
   padding-right: 0;

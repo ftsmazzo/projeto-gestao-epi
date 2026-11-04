@@ -88,6 +88,21 @@ export class DistributorController {
     );
   }
 
+  @Post('products/extract-quote')
+  @UseInterceptors(
+    FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }),
+  )
+  extractQuote(
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.distributor.extractCatalogQuote(
+      user.organizationId,
+      user.membershipRole,
+      file,
+    );
+  }
+
   @Post('products/seed-demo')
   seedDemo(@CurrentUser() user: JwtPayload) {
     return this.distributor.seedDemoCatalog(

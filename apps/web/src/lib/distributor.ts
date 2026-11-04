@@ -245,6 +245,55 @@ export function importDistributorProductsCsv(csvText: string) {
   });
 }
 
+export type CatalogQuoteItem = {
+  name: string;
+  sizes: string[];
+  supplierSku: string | null;
+  gtin: string | null;
+  ncm: string | null;
+  costCents: number | null;
+  salePriceCents: number | null;
+  quantity: number | null;
+  confidence: 'high' | 'medium' | 'low';
+};
+
+export type CatalogQuoteExtractResult = {
+  ok: boolean;
+  method: 'OPENROUTER_VISION' | 'OPENROUTER_TEXT' | 'NONE';
+  message: string;
+  supplierName: string | null;
+  items: CatalogQuoteItem[];
+  warnings: string[];
+};
+
+export async function extractDistributorCatalogQuote(file: File) {
+  const form = new FormData();
+  form.append('file', file);
+  const headers = new Headers();
+  const token = getAccessToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  const response = await fetch(
+    `${getApiUrl()}/distributor/products/extract-quote`,
+    {
+      method: 'POST',
+      headers,
+      body: form,
+    },
+  );
+  if (!response.ok) {
+    let message = `Erro HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as { message?: string | string[] };
+      if (Array.isArray(body.message)) message = body.message.join(', ');
+      else if (body.message) message = body.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+  return (await response.json()) as CatalogQuoteExtractResult;
+}
+
 export type DemoSeedResult = {
   createdCount: number;
   createdSkus: string[];
@@ -366,6 +415,12 @@ export async function extractDistributorInvoice(file: File) {
     throw new Error(message);
   }
   return (await response.json()) as DistributorInboundDocument;
+}
+
+export function getDistributorInbound(documentId: string) {
+  return apiFetch<DistributorInboundDocument>(
+    `/distributor/inbound/${documentId}`,
+  );
 }
 
 export function linkDistributorLine(

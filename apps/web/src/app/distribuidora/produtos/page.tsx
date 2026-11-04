@@ -1,11 +1,14 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { fetchMe } from '../../../lib/auth';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import {
   addDistributorVariant,
   createDistributorProduct,
+  extractDistributorCatalogQuote,
+  extractDistributorInvoice,
   getDistributorImportTemplate,
   importDistributorProductsCsv,
   isDistributorManager,
@@ -14,6 +17,7 @@ import {
   seedDistributorDemoCatalog,
   updateDistributorMin,
   updateDistributorProduct,
+  type CatalogQuoteItem,
   type DistributorCatalogInput,
   type DistributorProduct,
 } from '../../../lib/distributor';
@@ -219,12 +223,22 @@ export default function DistribuidoraProdutosPage() {
   const [depotOpen, setDepotOpen] = useState(false);
   const [fiscalOpen, setFiscalOpen] = useState(false);
   const [intakeMethod, setIntakeMethod] = useState<
-    'individual' | 'csv' | 'xml' | 'pdf'
+    'individual' | 'csv' | 'arquivo'
   >('individual');
   const [marginPercent, setMarginPercent] = useState('');
   const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [quoteRows, setQuoteRows] = useState<
+    Array<CatalogQuoteItem & { key: string; selected: boolean; internalSku: string }>
+  >([]);
+  const [quoteMeta, setQuoteMeta] = useState<{
+    supplierName: string | null;
+    message: string;
+    warnings: string[];
+  } | null>(null);
+  const router = useRouter();
 
   async function reload() {
     const [rows, me] = await Promise.all([listDistributorProducts(), fetchMe()]);
@@ -267,6 +281,128 @@ export default function DistribuidoraProdutosPage() {
       .replace(/^-|-$/g, '')
       .slice(0, 24);
     return slug || '';
+  }
+
+  const filteredProducts = useMemo(() => {
+    const needle = query.trim().toLocaleLowerCase('pt-BR');
+    if (!needle) return products;
+    return products.filter((product) => {
+      const text = `${product.name} ${product.internalSku} ${product.gtin ?? ''} ${product.variants
+        .map((variant) => variant.label)
+        .join(' ')}`.toLocaleLowerCase('pt-BR');
+      return text.includes(needle);
+    });
+  }, [products, query]);
+
+  function moneyLabel(cents: number | null) {
+    if (cents == null) return '—';
+    return (cents / 100).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
+  }
+
+  async function onArquivo(file: File | undefined) {
+    if (!file) return;
+    setError(null);
+    setNotice(null);
+    setQuoteRows([]);
+    setQuoteMeta(null);
+    const lower = file.name.toLowerCase();
+    const isXml =
+      lower.endsWith('.xml') ||
+      file.type.includes('xml') ||
+      file.type === 'text/xml';
+    setExtracting(true);
+    try {
+      if (isXml) {
+        const draft = await extractDistributorInvoice(file);
+        setNotice(
+          draft.message ||
+            'NF-e lida. Abrindo a Entrada para vincular tamanhos e confirmar.',
+        );
+        router.push(`/distribuidora/entrada?doc=${encodeURIComponent(draft.id)}`);
+        return;
+      }
+      const extracted = await extractDistributorCatalogQuote(file);
+      const usedSkus = new Set(
+        products.map((row) => row.internalSku.toLocaleLowerCase('pt-BR')),
+      );
+      const rows = extracted.items.map((item, index) => {
+        let sku =
+          item.supplierSku?.trim() ||
+          suggestInternalSku(item.name) ||
+          `ITEM-${index + 1}`;
+        const base = sku;
+        let n = 2;
+        while (usedSkus.has(sku.toLocaleLowerCase('pt-BR'))) {
+          sku = `${base}-${n}`;
+          n += 1;
+        }
+        usedSkus.add(sku.toLocaleLowerCase('pt-BR'));
+        return {
+          ...item,
+          key: `${index}-${sku}`,
+          selected: true,
+          internalSku: sku,
+        };
+      });
+      setQuoteRows(rows);
+      setQuoteMeta({
+        supplierName: extracted.supplierName,
+        message: extracted.message,
+        warnings: extracted.warnings,
+      });
+      setNotice(extracted.message);
+      if (extracted.warnings.length) {
+        setError(extracted.warnings.slice(0, 3).join(' · '));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao ler o arquivo.');
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function onCreateFromQuote() {
+    const selected = quoteRows.filter((row) => row.selected);
+    if (selected.length === 0) {
+      setError('Marque ao menos um item para cadastrar.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    let created = 0;
+    const failures: string[] = [];
+    for (const row of selected) {
+      try {
+        await createDistributorProduct({
+          name: row.name,
+          internalSku: row.internalSku,
+          supplierSku: row.supplierSku ?? undefined,
+          ncm: row.ncm ?? undefined,
+          costCents: row.costCents ?? undefined,
+          salePriceCents: row.salePriceCents ?? undefined,
+          gtin: row.gtin,
+          variants: row.sizes.length > 0 ? row.sizes : ['Único'],
+        });
+        created += 1;
+      } catch (err) {
+        failures.push(
+          `${row.name}: ${err instanceof Error ? err.message : 'falhou'}`,
+        );
+      }
+    }
+    await reload();
+    setSaving(false);
+    if (created > 0) {
+      setNotice(`${created} produto(s) cadastrados a partir do arquivo.`);
+      setQuoteRows((current) => current.filter((row) => !row.selected));
+    }
+    if (failures.length) {
+      setError(failures.slice(0, 4).join(' · '));
+    }
   }
 
   async function onLookupCa() {
@@ -435,62 +571,165 @@ export default function DistribuidoraProdutosPage() {
 
       {manager ? (
         <section className="dash-panel intake-hub" aria-label="Como incluir produtos">
-          <h2 className="dash-panel__title">Como incluir</h2>
-          <div className="intake-hub__grid" role="tablist">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={intakeMethod === 'individual'}
-              className={`intake-hub__card${intakeMethod === 'individual' ? ' intake-hub__card--active' : ''}`}
-              onClick={() => {
-                setIntakeMethod('individual');
-                setFormOpen(true);
-              }}
-            >
-              <strong>Individual</strong>
-              <span>Ficha com custo, margem e venda</span>
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={intakeMethod === 'csv'}
-              className={`intake-hub__card${intakeMethod === 'csv' ? ' intake-hub__card--active' : ''}`}
-              onClick={() => {
-                setIntakeMethod('csv');
-                setFormOpen(false);
-              }}
-            >
-              <strong>CSV</strong>
-              <span>Muitos SKUs de uma vez</span>
-            </button>
-            <Link
-              href="/distribuidora/entrada"
-              className={`intake-hub__card${intakeMethod === 'xml' ? ' intake-hub__card--active' : ''}`}
-              onClick={() => setIntakeMethod('xml')}
-            >
-              <strong>XML NF-e</strong>
-              <span>Abre a Entrada com impostos</span>
-            </Link>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={intakeMethod === 'pdf'}
-              className={`intake-hub__card${intakeMethod === 'pdf' ? ' intake-hub__card--active' : ''}`}
-              onClick={() => {
-                setIntakeMethod('pdf');
-                setFormOpen(false);
-              }}
-            >
-              <strong>PDF / foto</strong>
-              <span>Orçamento — em breve</span>
-            </button>
+          <div className="dash-panel__head">
+            <h2>Como incluir</h2>
           </div>
-          {intakeMethod === 'pdf' ? (
-            <p className="field-hint">
-              Em breve: enviar PDF ou foto de orçamento para revisão manual.
-              Por enquanto use Individual, CSV ou a Entrada com XML.
-            </p>
-          ) : null}
+          <div className="intake-hub__body">
+            <div className="intake-hub__grid" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={intakeMethod === 'individual'}
+                className={`intake-hub__card${intakeMethod === 'individual' ? ' intake-hub__card--active' : ''}`}
+                onClick={() => {
+                  setIntakeMethod('individual');
+                  setFormOpen(true);
+                }}
+              >
+                <strong>Individual</strong>
+                <span>Ficha com custo, margem e venda</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={intakeMethod === 'csv'}
+                className={`intake-hub__card${intakeMethod === 'csv' ? ' intake-hub__card--active' : ''}`}
+                onClick={() => {
+                  setIntakeMethod('csv');
+                  setFormOpen(false);
+                }}
+              >
+                <strong>CSV</strong>
+                <span>Muitos SKUs de uma vez</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={intakeMethod === 'arquivo'}
+                className={`intake-hub__card${intakeMethod === 'arquivo' ? ' intake-hub__card--active' : ''}`}
+                onClick={() => {
+                  setIntakeMethod('arquivo');
+                  setFormOpen(false);
+                }}
+              >
+                <strong>XML / PDF / foto</strong>
+                <span>NF-e, orçamento ou lista</span>
+              </button>
+            </div>
+
+            {intakeMethod === 'arquivo' ? (
+              <div className="intake-dropzone">
+                <label className="intake-dropzone__label" htmlFor="arquivo-upload">
+                  <strong>
+                    {extracting
+                      ? 'Lendo arquivo…'
+                      : 'Solte ou escolha XML, PDF ou foto'}
+                  </strong>
+                  <span>
+                    XML vai para a Entrada com impostos. PDF/foto usa Mistral
+                    (OpenRouter) e monta a lista para você confirmar.
+                  </span>
+                </label>
+                <input
+                  id="arquivo-upload"
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp,.xml,text/xml,application/xml"
+                  disabled={extracting}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    void onArquivo(file);
+                  }}
+                />
+              </div>
+            ) : null}
+
+            {quoteRows.length > 0 ? (
+              <div className="quote-review">
+                <div className="quote-review__head">
+                  <h3>Itens lidos — confira antes de cadastrar</h3>
+                  <p className="field-hint">
+                    {quoteMeta?.supplierName
+                      ? `Fornecedor: ${quoteMeta.supplierName}. `
+                      : ''}
+                    {quoteMeta?.message}
+                  </p>
+                </div>
+                <ul className="catalog-card-list">
+                  {quoteRows.map((row) => (
+                    <li key={row.key} className="catalog-card">
+                      <label className="catalog-card__check">
+                        <input
+                          type="checkbox"
+                          checked={row.selected}
+                          onChange={(event) =>
+                            setQuoteRows((current) =>
+                              current.map((item) =>
+                                item.key === row.key
+                                  ? { ...item, selected: event.target.checked }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                        <span>Incluir</span>
+                      </label>
+                      <div className="catalog-card__main">
+                        <strong>{row.name}</strong>
+                        <p className="muted">
+                          SKU {row.internalSku}
+                          {row.sizes.length
+                            ? ` · ${row.sizes.join(', ')}`
+                            : ''}
+                        </p>
+                        <p className="catalog-card__prices">
+                          Custo {moneyLabel(row.costCents)} · Venda{' '}
+                          {moneyLabel(row.salePriceCents)}
+                          {row.quantity != null ? ` · Qtd ${row.quantity}` : ''}
+                        </p>
+                      </div>
+                      <div className="field">
+                        <label htmlFor={`sku-${row.key}`}>SKU interno</label>
+                        <input
+                          id={`sku-${row.key}`}
+                          value={row.internalSku}
+                          onChange={(event) =>
+                            setQuoteRows((current) =>
+                              current.map((item) =>
+                                item.key === row.key
+                                  ? { ...item, internalSku: event.target.value }
+                                  : item,
+                              ),
+                            )
+                          }
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                <div className="product-form__actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={saving}
+                    onClick={() => void onCreateFromQuote()}
+                  >
+                    {saving ? 'Cadastrando…' : 'Cadastrar selecionados'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      setQuoteRows([]);
+                      setQuoteMeta(null);
+                    }}
+                  >
+                    Limpar leitura
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </section>
       ) : null}
 
@@ -1089,121 +1328,107 @@ export default function DistribuidoraProdutosPage() {
         </section>
       ) : null}
 
-      <div className="field">
-        <label htmlFor="busca-produto">Buscar no catálogo</label>
-        <input
-          id="busca-produto"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Nome, código, GTIN ou tamanho"
-        />
-      </div>
-      {products.length === 0 ? (
-        <div className="empty-state dash-panel">
-          <h2 className="page-title">Catálogo vazio</h2>
-          <p className="page-lead">
-            Comece pelo catálogo demo, depois bipe na Entrada e confira o Saldo.
-          </p>
-          <ol className="product-form__steps">
-            <li>
-              {manager
-                ? 'Clique em “Gerar catálogo demo (10 EPIs)” acima.'
-                : 'Peça ao gestor para gerar o catálogo demo ou cadastrar o primeiro produto.'}
-            </li>
-            <li>
-              Abra <Link href="/distribuidora/entrada">Entrada</Link> e bipe o GTIN.
-            </li>
-            <li>
-              Confira o resultado em <Link href="/distribuidora/saldo">Saldo</Link>.
-            </li>
-          </ol>
+      <section className="dash-panel catalog-section">
+        <div className="dash-panel__head">
+          <h2>Catálogo</h2>
         </div>
-      ) : null}
-      {products.length > 0 ? (
-      <div className="table-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th scope="col">Produto</th>
-              <th scope="col">Código</th>
-              <th scope="col">Barras</th>
-              <th scope="col">Tamanho</th>
-              <th scope="col">Saldo</th>
-              <th scope="col">Unidade</th>
-              <th scope="col">NCM</th>
-              <th scope="col">Mínimo</th>
-              {manager ? <th scope="col">Ficha</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {products
-              .filter((product) => {
-                const text = `${product.name} ${product.internalSku} ${product.variants
-                  .map((variant) => variant.label)
-                  .join(' ')}`.toLocaleLowerCase('pt-BR');
-                return text.includes(query.trim().toLocaleLowerCase('pt-BR'));
-              })
-              .flatMap((product) => {
-                const sizes = product.variants.length > 0 ? product.variants : [];
-                const rows = sizes.length > 0 ? sizes : [{ id: `${product.id}-vazio`, label: 'Único', quantity: 0, lots: [] }];
-                return rows.map((variant, index) => (
-              <tr key={variant.id}>
-                <td>
-                  {index === 0 ? product.name : ''}
-                  {index === 0 && product.caNumber ? (
-                    <span className="table-sub">CA {product.caNumber}</span>
-                  ) : null}
-                </td>
-                <td>{index === 0 ? product.internalSku : ''}</td>
-                <td>
-                  {index === 0
-                    ? product.gtin ?? (
-                        <span className="table-sub">sem GTIN</span>
-                      )
-                    : ''}
-                </td>
-                <td>
-                  {sizeName(variant.label) === 'Único'
-                    ? 'sem numeração'
-                    : sizeName(variant.label)}
-                </td>
-                <td>{variant.quantity}</td>
-                <td>{index === 0 ? product.unitCode : ''}</td>
-                <td>{index === 0 ? (product.ncm ?? '—') : ''}</td>
-                <td>
-                  {index === 0 && manager ? (
-                    <input
-                      aria-label={`Mínimo de ${product.name}`}
-                      defaultValue={product.minQuantity ?? ''}
-                      inputMode="numeric"
-                      onBlur={(event) => onMin(product, event.target.value)}
-                    />
-                  ) : index === 0 ? (
-                    (product.minQuantity ?? '—')
-                  ) : (
-                    ''
-                  )}
-                </td>
-                {manager ? (
-                  <td>
-                    {index === 0 ? (
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => startEdit(product)}
-                      >
-                        Ficha
-                      </button>
-                    ) : null}
-                  </td>
-                ) : null}
-              </tr>
-                ));
+        <div className="catalog-section__body">
+          <div className="field">
+            <label htmlFor="busca-produto">Buscar</label>
+            <input
+              id="busca-produto"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Nome, código, GTIN ou tamanho"
+            />
+          </div>
+          {products.length === 0 ? (
+            <div className="empty-state">
+              <p className="page-lead">
+                Catálogo vazio. Cadastre individualmente, por CSV ou mande XML/PDF/foto.
+              </p>
+              <ol className="product-form__steps">
+                <li>
+                  {manager
+                    ? 'Use “Como incluir” acima ou gere o catálogo demo.'
+                    : 'Peça ao gestor para cadastrar o primeiro produto.'}
+                </li>
+                <li>
+                  Depois dê entrada em{' '}
+                  <Link href="/distribuidora/entrada">Entrada</Link>.
+                </li>
+              </ol>
+            </div>
+          ) : (
+            <ul className="catalog-card-list">
+              {filteredProducts.map((product) => {
+                const balance = product.variants.reduce(
+                  (sum, variant) => sum + variant.quantity,
+                  0,
+                );
+                return (
+                  <li key={product.id} className="catalog-card">
+                    <div className="catalog-card__main">
+                      <strong>{product.name}</strong>
+                      <p className="muted">
+                        {product.internalSku}
+                        {product.gtin ? ` · GTIN ${product.gtin}` : ' · sem GTIN'}
+                        {product.caNumber ? ` · CA ${product.caNumber}` : ''}
+                        {` · ${product.unitCode}`}
+                      </p>
+                      <div className="catalog-card__sizes" aria-label="Tamanhos">
+                        {product.variants.map((variant) => (
+                          <span key={variant.id} className="catalog-size-pill">
+                            {sizeName(variant.label) === 'Único'
+                              ? 'Único'
+                              : sizeName(variant.label)}{' '}
+                            <em>{variant.quantity}</em>
+                          </span>
+                        ))}
+                      </div>
+                      <p className="catalog-card__prices">
+                        Custo {moneyLabel(product.costCents)} · Venda{' '}
+                        {moneyLabel(product.salePriceCents)} · Saldo {balance}
+                      </p>
+                    </div>
+                    <div className="catalog-card__side">
+                      {manager ? (
+                        <>
+                          <div className="field">
+                            <label htmlFor={`min-${product.id}`}>Mínimo</label>
+                            <input
+                              id={`min-${product.id}`}
+                              defaultValue={product.minQuantity ?? ''}
+                              inputMode="numeric"
+                              onBlur={(event) =>
+                                onMin(product, event.target.value)
+                              }
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => startEdit(product)}
+                          >
+                            Abrir ficha
+                          </button>
+                        </>
+                      ) : (
+                        <p className="muted">
+                          Mín. {product.minQuantity ?? '—'}
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                );
               })}
-          </tbody>
-        </table>
-      </div>
-      ) : null}
+            </ul>
+          )}
+          {products.length > 0 && filteredProducts.length === 0 ? (
+            <p className="muted">Nenhum produto com esse filtro.</p>
+          ) : null}
+        </div>
+      </section>
     </div>
   );
 }

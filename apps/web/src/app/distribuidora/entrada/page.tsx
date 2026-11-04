@@ -1,18 +1,20 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { PartyPicker } from '../../../components/distributor/PartyPicker';
 import {
   SizeChips,
   formatVariantConfirmLabel,
 } from '../../../components/distributor/SizeChips';
 import { DistributorScanPanel } from '../../../components/DistributorScanPanel';
+import { useSearchParams } from 'next/navigation';
 import {
   confirmDistributorInbound,
   createDistributorProduct,
   createSupplier,
   discardDistributorInbound,
   extractDistributorInvoice,
+  getDistributorInbound,
   linkDistributorLine,
   linkInboundSupplier,
   listDistributorProducts,
@@ -58,7 +60,7 @@ function productOfVariant(
   );
 }
 
-export default function DistribuidoraEntradaPage() {
+function DistribuidoraEntradaPageInner() {
   const [products, setProducts] = useState<DistributorProduct[]>([]);
   const [suppliers, setSuppliers] = useState<DistributorSupplier[]>([]);
   const [focusProductId, setFocusProductId] = useState('');
@@ -69,7 +71,7 @@ export default function DistribuidoraEntradaPage() {
   const [scanCode, setScanCode] = useState('');
   const [scannedLabel, setScannedLabel] = useState<string | null>(null);
   const [document, setDocument] = useState<DistributorInboundDocument | null>(null);
-  const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const searchParams = useSearchParams();
   const [supplierId, setSupplierId] = useState('');
   const [manualSupplierId, setManualSupplierId] = useState('');
   const [showNewProduct, setShowNewProduct] = useState(false);
@@ -98,6 +100,22 @@ export default function DistribuidoraEntradaPage() {
       );
     scanRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    const docId = searchParams.get('doc')?.trim();
+    if (!docId) return;
+    setSaving(true);
+    void getDistributorInbound(docId)
+      .then((draft) => {
+        setDocument(draft);
+        setSupplierId(draft.supplierId ?? '');
+        setNotice(draft.message || 'Nota carregada. Vincule os tamanhos e confirme.');
+      })
+      .catch((err: unknown) =>
+        setError(err instanceof Error ? err.message : 'Falha ao abrir a nota.'),
+      )
+      .finally(() => setSaving(false));
+  }, [searchParams]);
 
   const focusProduct = useMemo(
     () => products.find((row) => row.id === focusProductId) ?? null,
@@ -313,7 +331,6 @@ export default function DistribuidoraEntradaPage() {
         if (product) initial[line.id] = product.id;
       }
       setLineProductIds(initial);
-      setInvoiceOpen(true);
       setNotice(draft.message || 'Rascunho criado. O estoque ainda não mudou.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao ler a nota.');
@@ -403,7 +420,6 @@ export default function DistribuidoraEntradaPage() {
     );
     setNewSale('');
     setShowNewProduct(true);
-    setInvoiceOpen(true);
   }
 
   const tracksLot = Boolean(focusProduct?.tracksLot);
@@ -430,6 +446,32 @@ export default function DistribuidoraEntradaPage() {
           {notice}
         </p>
       ) : null}
+
+      <section className="dash-panel intake-hub" aria-label="Arquivo da nota">
+        <div className="dash-panel__head">
+          <h2>Arquivo da nota</h2>
+        </div>
+        <div className="intake-hub__body">
+          <div className="intake-dropzone">
+            <label className="intake-dropzone__label" htmlFor="nota-topo">
+              <strong>
+                {saving ? 'Lendo arquivo…' : 'XML da NF-e, PDF ou imagem'}
+              </strong>
+              <span>
+                Um clique aqui. XML traz impostos; PDF/imagem vira rascunho para
+                vincular tamanhos.
+              </span>
+            </label>
+            <input
+              id="nota-topo"
+              type="file"
+              accept="application/pdf,image/jpeg,image/png,image/webp,.xml,text/xml,application/xml"
+              disabled={saving}
+              onChange={(e) => onFile(e.target.files?.[0])}
+            />
+          </div>
+        </div>
+      </section>
 
       <DistributorScanPanel
         inputId="scan-code"
@@ -635,33 +677,12 @@ export default function DistribuidoraEntradaPage() {
         </form>
       ) : null}
 
-      <section className="dash-panel">
-        <h2 className="dash-panel__title">
-          <button
-            type="button"
-            className="product-form__toggle"
-            aria-expanded={invoiceOpen || Boolean(document)}
-            onClick={() => setInvoiceOpen((open) => !open)}
-          >
-            {invoiceOpen || document ? '▾' : '▸'} Nota de compra
-            <span className="product-form__optional">
-              XML traz impostos; sem XML use o cadastro acima
-            </span>
-          </button>
-        </h2>
-        {invoiceOpen || document ? (
-          <>
-            <div className="field">
-              <label htmlFor="nota">XML da NF-e, PDF ou imagem</label>
-              <input
-                id="nota"
-                type="file"
-                accept="application/pdf,image/jpeg,image/png,image/webp,.xml,text/xml,application/xml"
-                onChange={(e) => onFile(e.target.files?.[0])}
-              />
-            </div>
-            {document ? (
-              <>
+      {document ? (
+      <section className="dash-panel catalog-section">
+        <div className="dash-panel__head">
+          <h2>Nota de compra — vincular tamanhos</h2>
+        </div>
+        <div className="catalog-section__body">
                 <p className="field-hint">
                   {document.supplierName ?? 'Fornecedor não lido'}
                   {document.supplierCnpj ? ` · CNPJ ${document.supplierCnpj}` : ''}
@@ -874,11 +895,17 @@ export default function DistribuidoraEntradaPage() {
                     </button>
                   </div>
                 ) : null}
-              </>
-            ) : null}
-          </>
-        ) : null}
+        </div>
       </section>
+      ) : null}
     </div>
+  );
+}
+
+export default function DistribuidoraEntradaPage() {
+  return (
+    <Suspense fallback={<p className="page-lead">Carregando entrada…</p>}>
+      <DistribuidoraEntradaPageInner />
+    </Suspense>
   );
 }

@@ -17,6 +17,7 @@ import {
 import { validateCnpj } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import { extractInvoiceFromFile } from '../portal/invoice-extract';
+import { extractCatalogQuoteFromFile } from './catalog-quote-extract';
 import { StockService } from '../stock/stock.service';
 import { saveDistributorInboundFile } from './distributor-document.storage';
 import type {
@@ -287,6 +288,26 @@ export class DistributorService {
       preferredVariantId: sizes.length === 1 ? sizes[0]?.id ?? null : null,
       sizes,
     };
+  }
+
+  async extractCatalogQuote(
+    organizationId: string,
+    role: string,
+    file: Express.Multer.File | undefined,
+  ) {
+    await this.requireDistributor(organizationId, role, { manager: true });
+    if (!file?.buffer?.byteLength) {
+      throw new BadRequestException('Envie o PDF ou a foto do orçamento.');
+    }
+    const result = await extractCatalogQuoteFromFile({
+      buffer: file.buffer,
+      mimeType: file.mimetype,
+      originalName: file.originalname,
+    });
+    if (!result.ok && result.items.length === 0) {
+      throw new BadRequestException(result.message);
+    }
+    return result;
   }
 
   async importProductsCsv(
