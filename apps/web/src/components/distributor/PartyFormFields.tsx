@@ -1,0 +1,228 @@
+'use client';
+
+import type { DistributorPartyInput } from '../../lib/distributor';
+
+export const UF_OPTIONS = [
+  'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT',
+  'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO',
+] as const;
+
+export type PartyFormState = {
+  name: string;
+  cnpj: string;
+  email: string;
+  phone: string;
+  notes: string;
+  stateRegistration: string;
+  uf: string;
+  street: string;
+  number: string;
+  complement: string;
+  district: string;
+  city: string;
+  zipCode: string;
+  active: boolean;
+};
+
+export function emptyPartyForm(overrides?: Partial<PartyFormState>): PartyFormState {
+  return {
+    name: '',
+    cnpj: '',
+    email: '',
+    phone: '',
+    notes: '',
+    stateRegistration: '',
+    uf: '',
+    street: '',
+    number: '',
+    complement: '',
+    district: '',
+    city: '',
+    zipCode: '',
+    active: true,
+    ...overrides,
+  };
+}
+
+export function partyFormToInput(form: PartyFormState): DistributorPartyInput {
+  return {
+    name: form.name.trim(),
+    cnpj: form.cnpj.trim() || null,
+    email: form.email.trim() || null,
+    phone: form.phone.trim() || null,
+    notes: form.notes.trim() || null,
+    stateRegistration: form.stateRegistration.trim() || null,
+    uf: form.uf.trim() || null,
+    street: form.street.trim() || null,
+    number: form.number.trim() || null,
+    complement: form.complement.trim() || null,
+    district: form.district.trim() || null,
+    city: form.city.trim() || null,
+    zipCode: form.zipCode.trim() || null,
+    active: form.active,
+  };
+}
+
+type Props = {
+  value: PartyFormState;
+  onChange: (next: PartyFormState) => void;
+  compact?: boolean;
+  showActive?: boolean;
+};
+
+export function PartyFormFields({
+  value,
+  onChange,
+  compact = false,
+  showActive = false,
+}: Props) {
+  function set<K extends keyof PartyFormState>(key: K, next: PartyFormState[K]) {
+    onChange({ ...value, [key]: next });
+  }
+
+  return (
+    <div className={compact ? 'form-grid' : 'form-grid'} style={{ gap: '0.75rem' }}>
+      <div className="field">
+        <label>Nome *</label>
+        <input
+          value={value.name}
+          onChange={(event) => set('name', event.target.value)}
+          required
+          minLength={2}
+        />
+      </div>
+      <div className="field">
+        <label>CNPJ</label>
+        <input
+          value={value.cnpj}
+          onChange={(event) => set('cnpj', event.target.value)}
+          placeholder="Opcional"
+        />
+      </div>
+      <div className="field">
+        <label>Telefone</label>
+        <input
+          value={value.phone}
+          onChange={(event) => set('phone', event.target.value)}
+        />
+      </div>
+      <div className="field">
+        <label>E-mail</label>
+        <input
+          type="email"
+          value={value.email}
+          onChange={(event) => set('email', event.target.value)}
+        />
+      </div>
+      {!compact ? (
+        <>
+          <div className="field">
+            <label>IE</label>
+            <input
+              value={value.stateRegistration}
+              onChange={(event) => set('stateRegistration', event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>UF</label>
+            <select
+              value={value.uf}
+              onChange={(event) => set('uf', event.target.value)}
+            >
+              <option value="">—</option>
+              {UF_OPTIONS.map((uf) => (
+                <option key={uf} value={uf}>
+                  {uf}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label>Logradouro</label>
+            <input
+              value={value.street}
+              onChange={(event) => set('street', event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Número</label>
+            <input
+              value={value.number}
+              onChange={(event) => set('number', event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Complemento</label>
+            <input
+              value={value.complement}
+              onChange={(event) => set('complement', event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Bairro</label>
+            <input
+              value={value.district}
+              onChange={(event) => set('district', event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>Cidade</label>
+            <input
+              value={value.city}
+              onChange={(event) => set('city', event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>CEP</label>
+            <input
+              value={value.zipCode}
+              onChange={(event) => set('zipCode', event.target.value)}
+            />
+          </div>
+          <div className="field" style={{ gridColumn: '1 / -1' }}>
+            <label>Observações</label>
+            <textarea
+              value={value.notes}
+              onChange={(event) => set('notes', event.target.value)}
+              rows={2}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="field">
+            <label>Cidade</label>
+            <input
+              value={value.city}
+              onChange={(event) => set('city', event.target.value)}
+            />
+          </div>
+          <div className="field">
+            <label>UF</label>
+            <select
+              value={value.uf}
+              onChange={(event) => set('uf', event.target.value)}
+            >
+              <option value="">—</option>
+              {UF_OPTIONS.map((uf) => (
+                <option key={uf} value={uf}>
+                  {uf}
+                </option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
+      {showActive ? (
+        <label className="field" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <input
+            type="checkbox"
+            checked={value.active}
+            onChange={(event) => set('active', event.target.checked)}
+          />
+          Ativo
+        </label>
+      ) : null}
+    </div>
+  );
+}

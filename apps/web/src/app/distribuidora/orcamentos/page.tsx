@@ -1,13 +1,16 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { PartyPicker } from '../../../components/distributor/PartyPicker';
 import { fetchMe } from '../../../lib/auth';
 import {
   approveQuote,
+  createCustomer,
   createQuote,
   discountReport,
   getMySellerCeiling,
   isDistributorManager,
+  listCustomers,
   listDistributorProducts,
   listQuotes,
   listSellers,
@@ -15,6 +18,7 @@ import {
   rejectQuote,
   setSellerCeiling,
   variantCatalogPrice,
+  type DistributorCustomer,
   type DistributorProduct,
   type DistributorQuote,
   type MySellerCeiling,
@@ -53,7 +57,8 @@ export default function DistribuidoraOrcamentosPage() {
   const [manager, setManager] = useState(false);
   const [ceiling, setCeiling] = useState<MySellerCeiling | null>(null);
   const [priceMissing, setPriceMissing] = useState(false);
-  const [customerName, setCustomerName] = useState('');
+  const [customers, setCustomers] = useState<DistributorCustomer[]>([]);
+  const [customerId, setCustomerId] = useState('');
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [price, setPrice] = useState('');
@@ -88,17 +93,20 @@ export default function DistribuidoraOrcamentosPage() {
       listDistributorProducts(),
       listQuotes(),
       listSellers(),
+      listCustomers(),
       getMySellerCeiling(),
       fetchMe(),
     ])
-      .then(([productRows, quoteRows, sellerRows, ceilingRow, me]) => {
+      .then(([productRows, quoteRows, sellerRows, customerRows, ceilingRow, me]) => {
         setProducts(productRows);
         setQuotes(quoteRows);
         setSellers(sellerRows);
+        setCustomers(customerRows);
         setCeiling(ceilingRow);
         setManager(isDistributorManager(me.membershipRole));
         const first = productRows[0]?.variants[0]?.id;
         if (first) setVariantId(first);
+        if (customerRows[0]) setCustomerId(customerRows[0].id);
         if (sellerRows[0]) setCeilingUserId(sellerRows[0].userId);
       })
       .catch((err: unknown) =>
@@ -152,6 +160,10 @@ export default function DistribuidoraOrcamentosPage() {
     event.preventDefault();
     setError(null);
     setNotice(null);
+    if (!customerId) {
+      setError('Selecione ou cadastre o cliente.');
+      return;
+    }
     if (draftLines.length === 0) {
       setError('Inclua ao menos um item no orcamento.');
       return;
@@ -159,7 +171,7 @@ export default function DistribuidoraOrcamentosPage() {
     setSaving(true);
     try {
       const created = await createQuote({
-        customerName,
+        customerId,
         lines: draftLines.map((line) => ({
           variantId: line.variantId,
           quantity: Number(line.quantity),
@@ -167,7 +179,6 @@ export default function DistribuidoraOrcamentosPage() {
           discountPercent: Number(line.discount),
         })),
       });
-      setCustomerName('');
       setDraftLines([]);
       const teto = ceilingLabel(ceiling);
       setNotice(
@@ -293,16 +304,21 @@ export default function DistribuidoraOrcamentosPage() {
       ) : null}
       <form className="form dash-panel" onSubmit={onCreate}>
         <h2 className="dash-panel__title">Novo orcamento</h2>
-        <div className="field">
-          <label htmlFor="cliente">Cliente</label>
-          <input
-            id="cliente"
-            value={customerName}
-            onChange={(event) => setCustomerName(event.target.value)}
-            required
-            minLength={2}
-          />
-        </div>
+        <PartyPicker
+          kind="customer"
+          label="Cliente"
+          value={customerId}
+          options={customers}
+          onChange={setCustomerId}
+          onCreated={(party) =>
+            setCustomers((current) =>
+              current.some((row) => row.id === party.id)
+                ? current
+                : [{ ...(party as DistributorCustomer), visitCount: 0, lastVisitedAt: null, lastSummary: null }, ...current],
+            )
+          }
+          createParty={createCustomer}
+        />
         <div className="field">
           <label htmlFor="item-orcamento">Item</label>
           <select

@@ -1,15 +1,19 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { PartyPicker } from '../../../components/distributor/PartyPicker';
 import { fetchMe } from '../../../lib/auth';
 import {
   createPurchaseOrder,
+  createSupplier,
   listDistributorProducts,
   listPurchaseOrders,
+  listSuppliers,
   receivePurchaseOrder,
   rejectPurchaseOrder,
   releasePurchaseOrder,
   type DistributorProduct,
+  type DistributorSupplier,
   type PurchaseOrder,
   type PurchaseOrderStatus,
 } from '../../../lib/distributor';
@@ -33,7 +37,8 @@ export default function DistribuidoraComprasPage() {
   const [products, setProducts] = useState<DistributorProduct[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
   const [userId, setUserId] = useState('');
-  const [supplierName, setSupplierName] = useState('');
+  const [suppliers, setSuppliers] = useState<DistributorSupplier[]>([]);
+  const [supplierId, setSupplierId] = useState('');
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [lotCode, setLotCode] = useState('');
@@ -58,13 +63,20 @@ export default function DistribuidoraComprasPage() {
   }
 
   useEffect(() => {
-    void Promise.all([listDistributorProducts(), listPurchaseOrders(), fetchMe()])
-      .then(([productRows, orderRows, me]) => {
+    void Promise.all([
+      listDistributorProducts(),
+      listPurchaseOrders(),
+      listSuppliers(),
+      fetchMe(),
+    ])
+      .then(([productRows, orderRows, supplierRows, me]) => {
         setProducts(productRows);
         setOrders(orderRows);
+        setSuppliers(supplierRows);
         setUserId(me.id);
         const first = productRows[0]?.variants[0]?.id;
         if (first) setVariantId(first);
+        if (supplierRows[0]) setSupplierId(supplierRows[0].id);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Falha ao carregar.'),
@@ -105,6 +117,10 @@ export default function DistribuidoraComprasPage() {
     event.preventDefault();
     setError(null);
     setNotice(null);
+    if (!supplierId) {
+      setError('Selecione ou cadastre o fornecedor.');
+      return;
+    }
     if (draftLines.length === 0) {
       setError('Inclua ao menos um item no pedido.');
       return;
@@ -112,7 +128,7 @@ export default function DistribuidoraComprasPage() {
     setSaving(true);
     try {
       await createPurchaseOrder({
-        supplierName,
+        supplierId,
         lines: draftLines.map((line) => ({
           variantId: line.variantId,
           quantity: Number(line.quantity),
@@ -120,7 +136,6 @@ export default function DistribuidoraComprasPage() {
           expiresOn: line.expiresOn || undefined,
         })),
       });
-      setSupplierName('');
       setDraftLines([]);
       setNotice('Pedido aberto. O estoque ainda nao mudou.');
       await reload();
@@ -178,16 +193,21 @@ export default function DistribuidoraComprasPage() {
       {notice ? <p className="field-hint">{notice}</p> : null}
       <form className="form dash-panel" onSubmit={onCreate}>
         <h2 className="dash-panel__title">Novo pedido</h2>
-        <div className="field">
-          <label htmlFor="fornecedor">Fornecedor</label>
-          <input
-            id="fornecedor"
-            value={supplierName}
-            onChange={(event) => setSupplierName(event.target.value)}
-            required
-            minLength={2}
-          />
-        </div>
+        <PartyPicker
+          kind="supplier"
+          label="Fornecedor"
+          value={supplierId}
+          options={suppliers}
+          onChange={setSupplierId}
+          onCreated={(party) =>
+            setSuppliers((current) =>
+              current.some((row) => row.id === party.id)
+                ? current
+                : [party as DistributorSupplier, ...current],
+            )
+          }
+          createParty={createSupplier}
+        />
         <div className="field">
           <label htmlFor="item">Item</label>
           <select

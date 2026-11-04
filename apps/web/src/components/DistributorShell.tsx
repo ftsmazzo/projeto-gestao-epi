@@ -68,6 +68,16 @@ const NAV: Array<{ label: string; items: NavItem[] }> = [
     label: 'Comercial',
     items: [
       {
+        href: '/distribuidora/clientes',
+        label: 'Clientes',
+        icon: <IconUsers />,
+      },
+      {
+        href: '/distribuidora/fornecedores',
+        label: 'Fornecedores',
+        icon: <IconTruck />,
+      },
+      {
         href: '/distribuidora/compras',
         label: 'Compras',
         icon: <IconTruck />,

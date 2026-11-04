@@ -353,8 +353,7 @@ export class PurchaseOrderLineDto {
 
 export class CreatePurchaseOrderDto {
   @IsString()
-  @MinLength(2)
-  supplierName!: string;
+  supplierId!: string;
 
   @IsArray()
   @ArrayMinSize(1)
@@ -392,8 +391,7 @@ export class QuoteLineDto {
 
 export class CreateQuoteDto {
   @IsString()
-  @MinLength(2)
-  customerName!: string;
+  customerId!: string;
 
   @IsArray()
   @ArrayMinSize(1)
@@ -470,8 +468,7 @@ export class CreatePayableDto {
   description!: string;
 
   @IsString()
-  @MinLength(2)
-  supplierName!: string;
+  supplierId!: string;
 
   @Type(() => Number)
   @IsInt()
@@ -493,12 +490,7 @@ export class CreateReceivableDto {
   description!: string;
 
   @IsString()
-  @MinLength(2)
-  customerName!: string;
-
-  @IsOptional()
-  @IsString()
-  customerCnpj?: string | null;
+  customerId!: string;
 
   @Type(() => Number)
   @IsInt()
@@ -584,7 +576,43 @@ export class CreateDistributorCustomerDto {
 
   @IsOptional()
   @IsString()
+  email?: string | null;
+
+  @IsOptional()
+  @IsString()
   phone?: string | null;
+
+  @IsOptional()
+  @IsString()
+  notes?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsString()
+  stateRegistration?: string | null;
+
+  @IsOptional()
+  @IsString()
+  uf?: string | null;
+
+  @IsOptional()
+  @IsString()
+  street?: string | null;
+
+  @IsOptional()
+  @IsString()
+  number?: string | null;
+
+  @IsOptional()
+  @IsString()
+  complement?: string | null;
+
+  @IsOptional()
+  @IsString()
+  district?: string | null;
 
   @IsOptional()
   @IsString()
@@ -592,7 +620,188 @@ export class CreateDistributorCustomerDto {
 
   @IsOptional()
   @IsString()
+  zipCode?: string | null;
+}
+
+export class UpdateDistributorCustomerDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  cnpj?: string | null;
+
+  @IsOptional()
+  @IsString()
+  email?: string | null;
+
+  @IsOptional()
+  @IsString()
+  phone?: string | null;
+
+  @IsOptional()
+  @IsString()
   notes?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsString()
+  stateRegistration?: string | null;
+
+  @IsOptional()
+  @IsString()
+  uf?: string | null;
+
+  @IsOptional()
+  @IsString()
+  street?: string | null;
+
+  @IsOptional()
+  @IsString()
+  number?: string | null;
+
+  @IsOptional()
+  @IsString()
+  complement?: string | null;
+
+  @IsOptional()
+  @IsString()
+  district?: string | null;
+
+  @IsOptional()
+  @IsString()
+  city?: string | null;
+
+  @IsOptional()
+  @IsString()
+  zipCode?: string | null;
+}
+
+export class CreateDistributorSupplierDto {
+  @IsString()
+  @MinLength(2)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  cnpj?: string | null;
+
+  @IsOptional()
+  @IsString()
+  email?: string | null;
+
+  @IsOptional()
+  @IsString()
+  phone?: string | null;
+
+  @IsOptional()
+  @IsString()
+  notes?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsString()
+  stateRegistration?: string | null;
+
+  @IsOptional()
+  @IsString()
+  uf?: string | null;
+
+  @IsOptional()
+  @IsString()
+  street?: string | null;
+
+  @IsOptional()
+  @IsString()
+  number?: string | null;
+
+  @IsOptional()
+  @IsString()
+  complement?: string | null;
+
+  @IsOptional()
+  @IsString()
+  district?: string | null;
+
+  @IsOptional()
+  @IsString()
+  city?: string | null;
+
+  @IsOptional()
+  @IsString()
+  zipCode?: string | null;
+}
+
+export class UpdateDistributorSupplierDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  cnpj?: string | null;
+
+  @IsOptional()
+  @IsString()
+  email?: string | null;
+
+  @IsOptional()
+  @IsString()
+  phone?: string | null;
+
+  @IsOptional()
+  @IsString()
+  notes?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsString()
+  stateRegistration?: string | null;
+
+  @IsOptional()
+  @IsString()
+  uf?: string | null;
+
+  @IsOptional()
+  @IsString()
+  street?: string | null;
+
+  @IsOptional()
+  @IsString()
+  number?: string | null;
+
+  @IsOptional()
+  @IsString()
+  complement?: string | null;
+
+  @IsOptional()
+  @IsString()
+  district?: string | null;
+
+  @IsOptional()
+  @IsString()
+  city?: string | null;
+
+  @IsOptional()
+  @IsString()
+  zipCode?: string | null;
+}
+
+export class LinkInboundSupplierDto {
+  @IsString()
+  supplierId!: string;
 }
 
 export class CreateDistributorVisitDto {

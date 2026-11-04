@@ -10,8 +10,10 @@ import {
   downloadOutboundPdf,
   downloadOutboundXml,
   isDistributorManager,
+  listCustomers,
   listOutboundInvoices,
   listQuotes,
+  type DistributorCustomer,
   type DistributorQuote,
   type OutboundInvoice,
   type OutboundStatus,
@@ -38,6 +40,7 @@ function money(cents: number) {
 
 export default function DistribuidoraNotasPage() {
   const [quotes, setQuotes] = useState<DistributorQuote[]>([]);
+  const [customers, setCustomers] = useState<DistributorCustomer[]>([]);
   const [invoices, setInvoices] = useState<OutboundInvoice[]>([]);
   const [manager, setManager] = useState(false);
   const [quoteId, setQuoteId] = useState('');
@@ -46,6 +49,16 @@ export default function DistribuidoraNotasPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  function applyQuoteDefaults(nextQuoteId: string, quoteRows = quotes, customerRows = customers) {
+    setQuoteId(nextQuoteId);
+    const quote = quoteRows.find((row) => row.id === nextQuoteId);
+    if (!quote?.customerId) return;
+    const customer = customerRows.find((row) => row.id === quote.customerId);
+    if (!customer) return;
+    if (customer.cnpj) setCustomerCnpj(customer.cnpj);
+    if (customer.uf) setCustomerUf(customer.uf);
+  }
 
   const usedQuoteIds = new Set(
     invoices
@@ -66,13 +79,14 @@ export default function DistribuidoraNotasPage() {
   }
 
   useEffect(() => {
-    void Promise.all([listQuotes(), listOutboundInvoices(), fetchMe()])
-      .then(([quoteRows, invoiceRows, me]) => {
+    void Promise.all([listQuotes(), listOutboundInvoices(), listCustomers(), fetchMe()])
+      .then(([quoteRows, invoiceRows, customerRows, me]) => {
         setQuotes(quoteRows);
         setInvoices(invoiceRows);
+        setCustomers(customerRows);
         setManager(isDistributorManager(me.membershipRole));
         const first = quoteRows.find((quote) => quote.status === 'APPROVED');
-        if (first) setQuoteId(first.id);
+        if (first) applyQuoteDefaults(first.id, quoteRows, customerRows);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Falha ao carregar.'),
@@ -226,7 +240,7 @@ export default function DistribuidoraNotasPage() {
             <select
               className="input"
               value={quoteId}
-              onChange={(event) => setQuoteId(event.target.value)}
+              onChange={(event) => applyQuoteDefaults(event.target.value)}
               required
             >
               <option value="">Selecione</option>

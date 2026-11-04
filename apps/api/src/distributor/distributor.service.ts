@@ -25,6 +25,7 @@ import type {
   CreateBankAccountDto,
   CreateCashMovementDto,
   CreateDistributorCustomerDto,
+  CreateDistributorSupplierDto,
   CreateDistributorVisitDto,
   CreateLedgerAccountDto,
   CreateOutboundFromQuoteDto,
@@ -37,7 +38,9 @@ import type {
   ManualDistributorMovementDto,
   SetSellerCeilingDto,
   SettleWithBankDto,
+  UpdateDistributorCustomerDto,
   UpdateDistributorProductDto,
+  UpdateDistributorSupplierDto,
   UpsertPlusMappingDto,
 } from './dto/distributor.dto';
 import {
@@ -729,12 +732,22 @@ export class DistributorService {
       mimeType: 'application/xml',
       originalName: file.originalname,
     });
+    const matchedSupplier = parsed.supplierCnpj
+      ? await this.prisma.distributorSupplier.findFirst({
+          where: {
+            organizationId,
+            cnpj: parsed.supplierCnpj,
+            active: true,
+          },
+        })
+      : null;
     try {
       const document = await this.prisma.distributorInboundDocument.create({
         data: {
           organizationId,
           status: DistributorInboundStatus.DRAFT,
-          supplierName: parsed.supplierName,
+          supplierId: matchedSupplier?.id ?? null,
+          supplierName: matchedSupplier?.name ?? parsed.supplierName,
           supplierCnpj: parsed.supplierCnpj,
           invoiceNumber: parsed.invoiceNumber,
           accessKey: parsed.accessKey,
@@ -743,9 +756,12 @@ export class DistributorService {
           mimeType: 'application/xml',
           extraction: {
             method: 'NFE_XML',
-            message: profile
-              ? 'XML lido. O estoque ainda nao mudou.'
-              : 'XML lido. Cadastre o CNPJ fiscal para conferir o destinatario. O estoque ainda nao mudou.',
+            message: matchedSupplier
+              ? 'XML lido. Fornecedor vinculado pelo CNPJ. O estoque ainda nao mudou.'
+              : profile
+                ? 'XML lido. Cadastre ou vincule o fornecedor. O estoque ainda nao mudou.'
+                : 'XML lido. Cadastre o CNPJ fiscal para conferir o destinatario. O estoque ainda nao mudou.',
+            supplierMatched: Boolean(matchedSupplier),
           },
           createdByUserId: userId,
           lines: {
@@ -977,6 +993,7 @@ export class DistributorService {
         data: {
           organizationId,
           description: `Nota de entrada ${document.invoiceNumber ?? document.id.slice(0, 8)}`,
+          supplierId: document.supplierId,
           supplierName: document.supplierName?.trim() || 'Fornecedor',
           amountCents,
           dueOn: defaultDueOn(30),
@@ -1031,9 +1048,9 @@ export class DistributorService {
     dto: CreatePurchaseOrderDto,
   ) {
     await this.requireDistributor(organizationId, role);
-    const supplierName = dto.supplierName.trim();
+    const supplier = await this.requireSupplier(organizationId, dto.supplierId);
     const lines = mergePurchaseLines(dto.lines);
-    if (!supplierName || lines.length === 0) {
+    if (lines.length === 0) {
       throw new BadRequestException(
         'Informe o fornecedor e ao menos um item com quantidade.',
       );
@@ -1044,7 +1061,8 @@ export class DistributorService {
     const created = await this.prisma.distributorPurchaseOrder.create({
       data: {
         organizationId,
-        supplierName,
+        supplierId: supplier.id,
+        supplierName: supplier.name,
         createdByUserId: userId,
         lines: { create: lines },
       },
@@ -1197,6 +1215,7 @@ export class DistributorService {
         data: {
           organizationId,
           description: `Pedido de compra ${current.id.slice(0, 8)}`,
+          supplierId: current.supplierId,
           supplierName: current.supplierName,
           amountCents,
           dueOn: defaultDueOn(30),
@@ -1453,6 +1472,131 @@ export class DistributorService {
     return order;
   }
 
+  private async requireCustomer(
+    organizationId: string,
+    customerId: string,
+    opts?: { allowInactive?: boolean },
+  ) {
+    const customer = await this.prisma.distributorCustomer.findFirst({
+      where: {
+        id: customerId,
+        organizationId,
+        ...(opts?.allowInactive ? {} : { active: true }),
+      },
+    });
+    if (!customer) {
+      throw new NotFoundException(
+        'Selecione ou cadastre o cliente antes de continuar.',
+      );
+    }
+    return customer;
+  }
+
+  private async requireSupplier(
+    organizationId: string,
+    supplierId: string,
+    opts?: { allowInactive?: boolean },
+  ) {
+    const supplier = await this.prisma.distributorSupplier.findFirst({
+      where: {
+        id: supplierId,
+        organizationId,
+        ...(opts?.allowInactive ? {} : { active: true }),
+      },
+    });
+    if (!supplier) {
+      throw new NotFoundException(
+        'Selecione ou cadastre o fornecedor antes de continuar.',
+      );
+    }
+    return supplier;
+  }
+
+  private buildPartyCreateData(dto: {
+    name: string;
+    cnpj?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    notes?: string | null;
+    active?: boolean;
+    stateRegistration?: string | null;
+    uf?: string | null;
+    street?: string | null;
+    number?: string | null;
+    complement?: string | null;
+    district?: string | null;
+    city?: string | null;
+    zipCode?: string | null;
+  }) {
+    let name: string;
+    try {
+      name = normalizeCustomerName(dto.name);
+    } catch (error) {
+      throw this.asAgendaError(error);
+    }
+    return {
+      name,
+      cnpj: this.normalizeOptionalCnpj(dto.cnpj),
+      email: emptyToNull(dto.email),
+      phone: emptyToNull(dto.phone),
+      notes: emptyToNull(dto.notes),
+      active: dto.active ?? true,
+      stateRegistration: emptyToNull(dto.stateRegistration),
+      uf: this.normalizeOptionalUf(dto.uf),
+      street: emptyToNull(dto.street),
+      number: emptyToNull(dto.number),
+      complement: emptyToNull(dto.complement),
+      district: emptyToNull(dto.district),
+      city: emptyToNull(dto.city),
+      zipCode: emptyToNull(dto.zipCode)?.replace(/\D/g, '') || null,
+    };
+  }
+
+  private buildPartyUpdateData(dto: UpdateDistributorCustomerDto | UpdateDistributorSupplierDto) {
+    const data: Prisma.DistributorCustomerUpdateInput = {};
+    if (dto.name !== undefined) {
+      try {
+        data.name = normalizeCustomerName(dto.name);
+      } catch (error) {
+        throw this.asAgendaError(error);
+      }
+    }
+    if (dto.cnpj !== undefined) data.cnpj = this.normalizeOptionalCnpj(dto.cnpj);
+    if (dto.email !== undefined) data.email = emptyToNull(dto.email);
+    if (dto.phone !== undefined) data.phone = emptyToNull(dto.phone);
+    if (dto.notes !== undefined) data.notes = emptyToNull(dto.notes);
+    if (dto.active !== undefined) data.active = dto.active;
+    if (dto.stateRegistration !== undefined) {
+      data.stateRegistration = emptyToNull(dto.stateRegistration);
+    }
+    if (dto.uf !== undefined) data.uf = this.normalizeOptionalUf(dto.uf);
+    if (dto.street !== undefined) data.street = emptyToNull(dto.street);
+    if (dto.number !== undefined) data.number = emptyToNull(dto.number);
+    if (dto.complement !== undefined) data.complement = emptyToNull(dto.complement);
+    if (dto.district !== undefined) data.district = emptyToNull(dto.district);
+    if (dto.city !== undefined) data.city = emptyToNull(dto.city);
+    if (dto.zipCode !== undefined) {
+      data.zipCode = emptyToNull(dto.zipCode)?.replace(/\D/g, '') || null;
+    }
+    return data;
+  }
+
+  private normalizeOptionalCnpj(value: string | null | undefined) {
+    if (!value?.trim()) return null;
+    const validated = validateCnpj(value);
+    if (!validated.ok) throw new BadRequestException(validated.message);
+    return validated.normalized;
+  }
+
+  private normalizeOptionalUf(value: string | null | undefined) {
+    if (!value?.trim()) return null;
+    const uf = value.trim().toUpperCase();
+    if (!BRAZIL_UFS.has(uf)) {
+      throw new BadRequestException('Informe uma UF valida.');
+    }
+    return uf;
+  }
+
   private asPurchaseConflict(error: unknown): ConflictException {
     if (error instanceof PurchaseOrderRuleError) {
       return new ConflictException(error.message);
@@ -1530,10 +1674,7 @@ export class DistributorService {
     dto: CreateQuoteDto,
   ) {
     await this.requireDistributor(organizationId, role);
-    const customerName = dto.customerName.trim();
-    if (customerName.length < 2) {
-      throw new BadRequestException('Informe o cliente do orcamento.');
-    }
+    const customer = await this.requireCustomer(organizationId, dto.customerId);
     let lines: Array<{
       variantId: string;
       quantity: number;
@@ -1569,7 +1710,8 @@ export class DistributorService {
     const created = await this.prisma.distributorQuote.create({
       data: {
         organizationId,
-        customerName,
+        customerId: customer.id,
+        customerName: customer.name,
         sellerUserId: userId,
         status: decision.status,
         grantedCents: decision.grantedCents,
@@ -1645,6 +1787,7 @@ export class DistributorService {
       const quote = await tx.distributorQuote.create({
         data: {
           organizationId,
+          customerId: customer.id,
           customerName: customer.name,
           sellerUserId: userId,
           status: decision.status,
@@ -1894,8 +2037,8 @@ export class DistributorService {
         'Emitente sem CNPJ/UF no Gateway Fiscal. Contador precisa cadastrar a empresa la.',
       );
     }
-    const customer = validateCnpj(dto.customerCnpj);
-    if (!customer.ok) throw new BadRequestException(customer.message);
+    const customerCnpj = validateCnpj(dto.customerCnpj);
+    if (!customerCnpj.ok) throw new BadRequestException(customerCnpj.message);
     const customerUf = dto.customerUf.trim().toUpperCase();
     if (!BRAZIL_UFS.has(customerUf)) {
       throw new BadRequestException('Informe a UF do destinatario.');
@@ -1913,6 +2056,7 @@ export class DistributorService {
     if (existing) {
       throw new ConflictException('Este orcamento ja gerou uma nota de saida.');
     }
+    const linkedCustomerId = quote.customerId;
     let built;
     try {
       built = buildOutboundLines({
@@ -1950,10 +2094,11 @@ export class DistributorService {
         data: {
           organizationId,
           quoteId: quote.id,
+          customerId: linkedCustomerId,
           series: '1',
           number,
           customerName: quote.customerName,
-          customerCnpj: customer.normalized,
+          customerCnpj: customerCnpj.normalized,
           customerUf,
           emitterCnpj: profile.cnpj,
           emitterUf: profile.uf,
@@ -2044,6 +2189,7 @@ export class DistributorService {
         data: {
           organizationId,
           description: `Nota ${invoice.series}/${invoice.number}`,
+          customerId: invoice.customerId,
           customerName: invoice.customerName,
           customerCnpj: invoice.customerCnpj,
           amountCents: invoice.totalCents,
@@ -2410,10 +2556,10 @@ export class DistributorService {
       throw this.asFinanceOrPayableError(error);
     }
     const description = dto.description.trim();
-    const supplierName = dto.supplierName.trim();
-    if (description.length < 2 || supplierName.length < 2) {
-      throw new BadRequestException('Informe descricao e fornecedor.');
+    if (description.length < 2) {
+      throw new BadRequestException('Informe a descricao.');
     }
+    const supplier = await this.requireSupplier(organizationId, dto.supplierId);
     const accountId =
       dto.accountId?.trim() ||
       (await this.resolveLedgerAccountId(organizationId, PAYABLE_ACCOUNT_CODE));
@@ -2422,7 +2568,8 @@ export class DistributorService {
       data: {
         organizationId,
         description,
-        supplierName,
+        supplierId: supplier.id,
+        supplierName: supplier.name,
         amountCents,
         dueOn,
         accountId,
@@ -2549,16 +2696,10 @@ export class DistributorService {
       throw this.asFinanceOrPayableError(error);
     }
     const description = dto.description.trim();
-    const customerName = dto.customerName.trim();
-    if (description.length < 2 || customerName.length < 2) {
-      throw new BadRequestException('Informe descricao e cliente.');
+    if (description.length < 2) {
+      throw new BadRequestException('Informe a descricao.');
     }
-    let customerCnpj: string | null = null;
-    if (dto.customerCnpj?.trim()) {
-      const cnpj = validateCnpj(dto.customerCnpj);
-      if (!cnpj.ok) throw new BadRequestException(cnpj.message);
-      customerCnpj = cnpj.normalized;
-    }
+    const customer = await this.requireCustomer(organizationId, dto.customerId);
     const accountId =
       dto.accountId?.trim() ||
       (await this.resolveLedgerAccountId(
@@ -2570,8 +2711,9 @@ export class DistributorService {
       data: {
         organizationId,
         description,
-        customerName,
-        customerCnpj,
+        customerId: customer.id,
+        customerName: customer.name,
+        customerCnpj: customer.cnpj,
         amountCents,
         dueOn,
         accountId,
@@ -2971,12 +3113,18 @@ export class DistributorService {
     };
   }
 
-  async listCustomers(organizationId: string, role: string, q?: string) {
+  async listCustomers(
+    organizationId: string,
+    role: string,
+    q?: string,
+    activeOnly = true,
+  ) {
     await this.requireDistributor(organizationId, role);
     const query = q?.trim();
     const rows = await this.prisma.distributorCustomer.findMany({
       where: {
         organizationId,
+        ...(activeOnly ? { active: true } : {}),
         ...(query
           ? {
               OR: [
@@ -3006,33 +3154,119 @@ export class DistributorService {
     dto: CreateDistributorCustomerDto,
   ) {
     await this.requireDistributor(organizationId, role);
-    let name: string;
-    try {
-      name = normalizeCustomerName(dto.name);
-    } catch (error) {
-      throw this.asAgendaError(error);
-    }
-    let cnpj: string | null = null;
-    if (dto.cnpj?.trim()) {
-      const validated = validateCnpj(dto.cnpj);
-      if (!validated.ok) throw new BadRequestException(validated.message);
-      cnpj = validated.normalized;
-    }
+    const data = this.buildPartyCreateData(dto);
     const created = await this.prisma.distributorCustomer.create({
-      data: {
-        organizationId,
-        name,
-        cnpj,
-        phone: emptyToNull(dto.phone),
-        city: emptyToNull(dto.city),
-        notes: emptyToNull(dto.notes),
-      },
+      data: { organizationId, ...data },
       include: {
         visits: true,
         _count: { select: { visits: true } },
       },
     });
     return toCustomerView(created);
+  }
+
+  async updateCustomer(
+    organizationId: string,
+    role: string,
+    customerId: string,
+    dto: UpdateDistributorCustomerDto,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    await this.requireCustomer(organizationId, customerId, { allowInactive: true });
+    const data = this.buildPartyUpdateData(dto);
+    const updated = await this.prisma.distributorCustomer.update({
+      where: { id: customerId },
+      data,
+      include: {
+        visits: { orderBy: { visitedAt: 'desc' }, take: 1 },
+        _count: { select: { visits: true } },
+      },
+    });
+    return toCustomerView(updated);
+  }
+
+  async listSuppliers(
+    organizationId: string,
+    role: string,
+    q?: string,
+    activeOnly = true,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const query = q?.trim();
+    const rows = await this.prisma.distributorSupplier.findMany({
+      where: {
+        organizationId,
+        ...(activeOnly ? { active: true } : {}),
+        ...(query
+          ? {
+              OR: [
+                { name: { contains: query, mode: 'insensitive' } },
+                { cnpj: { contains: query.replace(/\D/g, '') } },
+                { city: { contains: query, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      orderBy: { name: 'asc' },
+      take: 100,
+    });
+    return rows.map(toSupplierView);
+  }
+
+  async createSupplier(
+    organizationId: string,
+    role: string,
+    dto: CreateDistributorSupplierDto,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const data = this.buildPartyCreateData(dto);
+    const created = await this.prisma.distributorSupplier.create({
+      data: { organizationId, ...data },
+    });
+    return toSupplierView(created);
+  }
+
+  async updateSupplier(
+    organizationId: string,
+    role: string,
+    supplierId: string,
+    dto: UpdateDistributorSupplierDto,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    await this.requireSupplier(organizationId, supplierId, { allowInactive: true });
+    const data = this.buildPartyUpdateData(dto);
+    const updated = await this.prisma.distributorSupplier.update({
+      where: { id: supplierId },
+      data,
+    });
+    return toSupplierView(updated);
+  }
+
+  async linkInboundSupplier(
+    organizationId: string,
+    role: string,
+    documentId: string,
+    supplierId: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    const supplier = await this.requireSupplier(organizationId, supplierId);
+    const document = await this.prisma.distributorInboundDocument.findFirst({
+      where: { id: documentId, organizationId },
+    });
+    if (!document) throw new NotFoundException('Rascunho nao encontrado.');
+    if (document.status !== DistributorInboundStatus.DRAFT) {
+      throw new ConflictException('So e possivel vincular fornecedor no rascunho.');
+    }
+    const updated = await this.prisma.distributorInboundDocument.update({
+      where: { id: document.id },
+      data: {
+        supplierId: supplier.id,
+        supplierName: supplier.name,
+        supplierCnpj: supplier.cnpj ?? document.supplierCnpj,
+      },
+      include: documentInclude,
+    });
+    return toDocumentView(updated);
   }
 
   async listVisits(
@@ -3933,6 +4167,7 @@ function toDocumentView(document: DocumentRow) {
   return {
     id: document.id,
     status: document.status,
+    supplierId: document.supplierId,
     supplierName: document.supplierName,
     supplierCnpj: document.supplierCnpj,
     invoiceNumber: document.invoiceNumber,
@@ -3966,6 +4201,7 @@ type PurchaseOrderRow = Prisma.DistributorPurchaseOrderGetPayload<{
 function toPurchaseOrderView(order: PurchaseOrderRow) {
   return {
     id: order.id,
+    supplierId: order.supplierId,
     supplierName: order.supplierName,
     status: order.status,
     createdAt: order.createdAt,
@@ -3992,6 +4228,7 @@ type QuoteRow = Prisma.DistributorQuoteGetPayload<{
 function toQuoteView(quote: QuoteRow) {
   return {
     id: quote.id,
+    customerId: quote.customerId,
     customerName: quote.customerName,
     sellerUserId: quote.sellerUserId,
     status: quote.status,
@@ -4030,6 +4267,7 @@ function toOutboundView(
   return {
     id: invoice.id,
     quoteId: invoice.quoteId,
+    customerId: invoice.customerId,
     status: invoice.status,
     series: invoice.series,
     number: invoice.number,
@@ -4076,6 +4314,7 @@ function toPayableView(payable: {
   id: string;
   status: string;
   description: string;
+  supplierId?: string | null;
   supplierName: string;
   amountCents: number;
   dueOn: Date | null;
@@ -4091,6 +4330,7 @@ function toPayableView(payable: {
     id: payable.id,
     status: payable.status,
     description: payable.description,
+    supplierId: payable.supplierId ?? null,
     supplierName: payable.supplierName,
     amountCents: payable.amountCents,
     dueOn: formatDueDay(payable.dueOn),
@@ -4109,6 +4349,7 @@ function toReceivableView(row: {
   id: string;
   status: string;
   description: string;
+  customerId?: string | null;
   customerName: string;
   customerCnpj: string | null;
   amountCents: number;
@@ -4124,6 +4365,7 @@ function toReceivableView(row: {
     id: row.id,
     status: row.status,
     description: row.description,
+    customerId: row.customerId ?? null,
     customerName: row.customerName,
     customerCnpj: row.customerCnpj,
     amountCents: row.amountCents,
@@ -4205,30 +4447,92 @@ function toCashMovementView(row: {
   };
 }
 
+function toPartyFields(party: {
+  id: string;
+  name: string;
+  cnpj: string | null;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  active: boolean;
+  stateRegistration: string | null;
+  uf: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  zipCode: string | null;
+  createdAt: Date;
+}) {
+  return {
+    id: party.id,
+    name: party.name,
+    cnpj: party.cnpj,
+    email: party.email,
+    phone: party.phone,
+    notes: party.notes,
+    active: party.active,
+    stateRegistration: party.stateRegistration,
+    uf: party.uf,
+    street: party.street,
+    number: party.number,
+    complement: party.complement,
+    district: party.district,
+    city: party.city,
+    zipCode: party.zipCode,
+    createdAt: party.createdAt,
+  };
+}
+
 function toCustomerView(customer: {
   id: string;
   name: string;
   cnpj: string | null;
+  email: string | null;
   phone: string | null;
-  city: string | null;
   notes: string | null;
+  active: boolean;
+  stateRegistration: string | null;
+  uf: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  zipCode: string | null;
   createdAt: Date;
   visits?: Array<{ visitedAt: Date; summary: string }>;
   _count?: { visits: number };
 }) {
   const last = customer.visits?.[0];
   return {
-    id: customer.id,
-    name: customer.name,
-    cnpj: customer.cnpj,
-    phone: customer.phone,
-    city: customer.city,
-    notes: customer.notes,
+    ...toPartyFields(customer),
     visitCount: customer._count?.visits ?? customer.visits?.length ?? 0,
     lastVisitedAt: last ? formatVisitedAt(last.visitedAt) : null,
     lastSummary: last?.summary ?? null,
-    createdAt: customer.createdAt,
   };
+}
+
+function toSupplierView(supplier: {
+  id: string;
+  name: string;
+  cnpj: string | null;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  active: boolean;
+  stateRegistration: string | null;
+  uf: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  zipCode: string | null;
+  createdAt: Date;
+}) {
+  return toPartyFields(supplier);
 }
 
 function toVisitView(

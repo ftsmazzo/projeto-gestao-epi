@@ -248,6 +248,7 @@ model Organization {
   distributorLedgerAccounts DistributorLedgerAccount[]
   distributorBankAccounts DistributorBankAccount[]
   distributorCustomers DistributorCustomer[]
+  distributorSuppliers DistributorSupplier[]
   distributorVisits DistributorVisit[]
   distributorPlusContracts DistributorPlusContract[] @relation("DistributorPlusDistributor")
   consultoriaPlusContracts DistributorPlusContract[] @relation("DistributorPlusConsultoria")
@@ -380,6 +381,7 @@ model DistributorInboundDocument {
   id              String                    @id @default(cuid())
   organizationId  String
   status          DistributorInboundStatus  @default(DRAFT)
+  supplierId      String?
   supplierName    String?
   supplierCnpj    String?
   invoiceNumber   String?
@@ -394,12 +396,14 @@ model DistributorInboundDocument {
   updatedAt       DateTime                  @updatedAt
 
   organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     DistributorSupplier?     @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   lines        DistributorInboundLine[]
   movements    DistributorMovement[]
   payable      DistributorPayable?
 
   @@unique([organizationId, accessKey])
   @@index([organizationId, status])
+  @@index([supplierId])
 }
 
 /// Identidade fiscal da distribuidora. A consulta na SEFAZ usa este CNPJ e o certificado A1.
@@ -453,6 +457,7 @@ model DistributorInboundLine {
 model DistributorPurchaseOrder {
   id                     String                         @id @default(cuid())
   organizationId         String
+  supplierId             String?
   supplierName           String
   status                 DistributorPurchaseOrderStatus @default(AWAITING_FIRST)
   createdByUserId        String
@@ -469,11 +474,13 @@ model DistributorPurchaseOrder {
   updatedAt              DateTime                       @updatedAt
 
   organization Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier     DistributorSupplier?       @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   lines        DistributorPurchaseLine[]
   movements    DistributorMovement[]
   payable      DistributorPayable?
 
   @@index([organizationId, status])
+  @@index([supplierId])
 }
 
 model DistributorPurchaseLine {
@@ -509,6 +516,7 @@ model DistributorSellerCeiling {
 model DistributorQuote {
   id               String                 @id @default(cuid())
   organizationId   String
+  customerId       String?
   customerName     String
   sellerUserId     String
   status           DistributorQuoteStatus
@@ -521,30 +529,76 @@ model DistributorQuote {
   updatedAt        DateTime               @updatedAt
 
   organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     DistributorCustomer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   lines        DistributorQuoteLine[]
   outboundInvoice DistributorOutboundInvoice?
   visits       DistributorVisit[]
 
   @@index([organizationId, status, approvedAt])
+  @@index([customerId])
 }
 
-/// Cliente comercial da distribuidora para a agenda do vendedor.
+/// Cliente comercial da distribuidora (agenda, orcamento, NF-e e receber).
 model DistributorCustomer {
-  id             String   @id @default(cuid())
-  organizationId String
-  name           String
-  cnpj           String?
-  phone          String?
-  city           String?
-  notes          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                String   @id @default(cuid())
+  organizationId    String
+  name              String
+  cnpj              String?
+  email             String?
+  phone             String?
+  notes             String?
+  active            Boolean  @default(true)
+  stateRegistration String?
+  uf                String?
+  street            String?
+  number            String?
+  complement        String?
+  district          String?
+  city              String?
+  zipCode           String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   visits       DistributorVisit[]
+  quotes       DistributorQuote[]
+  outboundInvoices DistributorOutboundInvoice[]
+  receivables  DistributorReceivable[]
 
   @@index([organizationId, name])
   @@index([organizationId, cnpj])
+  @@index([organizationId, active])
+}
+
+/// Fornecedor comercial da distribuidora (compras, pagar e NF-e de entrada).
+model DistributorSupplier {
+  id                String   @id @default(cuid())
+  organizationId    String
+  name              String
+  cnpj              String?
+  email             String?
+  phone             String?
+  notes             String?
+  active            Boolean  @default(true)
+  stateRegistration String?
+  uf                String?
+  street            String?
+  number            String?
+  complement        String?
+  district          String?
+  city              String?
+  zipCode           String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  purchaseOrders DistributorPurchaseOrder[]
+  payables       DistributorPayable[]
+  inboundDocuments DistributorInboundDocument[]
+
+  @@index([organizationId, name])
+  @@index([organizationId, cnpj])
+  @@index([organizationId, active])
 }
 
 /// Registro do que o vendedor falou com o cliente. O gestor le o historico.
@@ -574,6 +628,7 @@ model DistributorOutboundInvoice {
   id              String                    @id @default(cuid())
   organizationId  String
   quoteId         String?                   @unique
+  customerId      String?
   status          DistributorOutboundStatus @default(DRAFT)
   series          String                    @default("1")
   number          Int
@@ -597,6 +652,7 @@ model DistributorOutboundInvoice {
 
   organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   quote        DistributorQuote?         @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  customer     DistributorCustomer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
   lines        DistributorOutboundLine[]
   movements    DistributorMovement[]
   receivable   DistributorReceivable?
@@ -605,6 +661,7 @@ model DistributorOutboundInvoice {
   @@unique([organizationId, series, number])
   @@index([organizationId, status])
   @@index([gatewayDocumentId])
+  @@index([customerId])
 }
 
 /// Vinculo explicito entre a distribuidora e uma empresa ja cliente do ProntEPI.
@@ -689,6 +746,7 @@ model DistributorPayable {
   organizationId    String
   status            DistributorPayableStatus @default(OPEN)
   description       String
+  supplierId        String?
   supplierName      String
   amountCents       Int
   dueOn             DateTime?
@@ -703,6 +761,7 @@ model DistributorPayable {
   updatedAt         DateTime                 @updatedAt
 
   organization    Organization                @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  supplier        DistributorSupplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   purchaseOrder   DistributorPurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
   inboundDocument DistributorInboundDocument? @relation(fields: [inboundDocumentId], references: [id], onDelete: SetNull)
   account         DistributorLedgerAccount?   @relation(fields: [accountId], references: [id], onDelete: SetNull)
@@ -710,6 +769,7 @@ model DistributorPayable {
 
   @@index([organizationId, status, dueOn])
   @@index([accountId])
+  @@index([supplierId])
 }
 
 /// Conta a receber. Confirmacao da nota de saida gera OPEN com o total da venda.
@@ -718,6 +778,7 @@ model DistributorReceivable {
   organizationId     String
   status             DistributorReceivableStatus @default(OPEN)
   description        String
+  customerId         String?
   customerName       String
   customerCnpj       String?
   amountCents        Int
@@ -732,12 +793,14 @@ model DistributorReceivable {
   updatedAt          DateTime                    @updatedAt
 
   organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer        DistributorCustomer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
   outboundInvoice DistributorOutboundInvoice? @relation(fields: [outboundInvoiceId], references: [id], onDelete: SetNull)
   account         DistributorLedgerAccount?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
   cashMovement    DistributorCashMovement?
 
   @@index([organizationId, status, dueOn])
   @@index([accountId])
+  @@index([customerId])
 }
 
 /// Plano de contas simples da distribuidora.

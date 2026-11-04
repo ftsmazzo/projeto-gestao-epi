@@ -1,23 +1,28 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import { PartyPicker } from '../../../components/distributor/PartyPicker';
 import { fetchMe } from '../../../lib/auth';
 import {
   cancelPayable,
   cancelReceivable,
   createBankAccount,
   createCashMovement,
+  createCustomer,
   createLedgerAccount,
   createPayable,
   createReceivable,
+  createSupplier,
   getCashFlow,
   getFinanceSummary,
   isDistributorManager,
   listBankAccounts,
   listCashMovements,
+  listCustomers,
   listLedgerAccounts,
   listPayables,
   listReceivables,
+  listSuppliers,
   markPayablePaid,
   markReceivableReceived,
   reconcileCashMovement,
@@ -26,10 +31,12 @@ import {
   type CashFlowReport,
   type DistributorBankAccount,
   type DistributorCashMovement,
+  type DistributorCustomer,
   type DistributorFinanceSummary,
   type DistributorLedgerAccount,
   type DistributorPayable,
   type DistributorReceivable,
+  type DistributorSupplier,
   type LedgerKind,
   type PayableStatus,
   type ReceivableStatus,
@@ -103,7 +110,10 @@ export default function DistribuidoraFinanceiroPage() {
   const [flowFrom, setFlowFrom] = useState(initialRange.from);
   const [flowTo, setFlowTo] = useState(initialRange.to);
   const [description, setDescription] = useState('');
-  const [party, setParty] = useState('');
+  const [customers, setCustomers] = useState<DistributorCustomer[]>([]);
+  const [suppliers, setSuppliers] = useState<DistributorSupplier[]>([]);
+  const [customerId, setCustomerId] = useState('');
+  const [supplierId, setSupplierId] = useState('');
   const [amount, setAmount] = useState('');
   const [dueOn, setDueOn] = useState('');
   const [bankName, setBankName] = useState('');
@@ -149,9 +159,23 @@ export default function DistribuidoraFinanceiroPage() {
       listCashMovements(),
       getFinanceSummary(),
       getCashFlow(range),
+      listCustomers(),
+      listSuppliers(),
       fetchMe(),
     ])
-      .then(([payableRows, receivableRows, ledgerRows, bankRows, cashRows, finance, flow, me]) => {
+      .then(
+        ([
+          payableRows,
+          receivableRows,
+          ledgerRows,
+          bankRows,
+          cashRows,
+          finance,
+          flow,
+          customerRows,
+          supplierRows,
+          me,
+        ]) => {
         setPayables(payableRows);
         setReceivables(receivableRows);
         setAccounts(ledgerRows);
@@ -159,8 +183,12 @@ export default function DistribuidoraFinanceiroPage() {
         setMovements(cashRows);
         setSummary(finance);
         setCashFlow(flow);
+        setCustomers(customerRows);
+        setSuppliers(supplierRows);
         setManager(isDistributorManager(me.membershipRole));
         if (bankRows[0]) setBankAccountId(bankRows[0].id);
+        if (customerRows[0]) setCustomerId(customerRows[0].id);
+        if (supplierRows[0]) setSupplierId(supplierRows[0].id);
       })
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Falha ao carregar.'),
@@ -184,16 +212,19 @@ export default function DistribuidoraFinanceiroPage() {
       setError('Informe um valor válido.');
       return;
     }
+    if (!supplierId) {
+      setError('Selecione ou cadastre o fornecedor.');
+      return;
+    }
     setSaving(true);
     try {
       await createPayable({
         description,
-        supplierName: party,
+        supplierId,
         amountCents: cents,
         dueOn: dueOn || null,
       });
       setDescription('');
-      setParty('');
       setAmount('');
       setDueOn('');
       setNotice('Conta a pagar lançada.');
@@ -214,16 +245,19 @@ export default function DistribuidoraFinanceiroPage() {
       setError('Informe um valor válido.');
       return;
     }
+    if (!customerId) {
+      setError('Selecione ou cadastre o cliente.');
+      return;
+    }
     setSaving(true);
     try {
       await createReceivable({
         description,
-        customerName: party,
+        customerId,
         amountCents: cents,
         dueOn: dueOn || null,
       });
       setDescription('');
-      setParty('');
       setAmount('');
       setDueOn('');
       setNotice('Conta a receber lançada.');
@@ -414,15 +448,21 @@ export default function DistribuidoraFinanceiroPage() {
                     required
                   />
                 </label>
-                <label className="field">
-                  <span className="field-label">Fornecedor</span>
-                  <input
-                    className="input"
-                    value={party}
-                    onChange={(event) => setParty(event.target.value)}
-                    required
-                  />
-                </label>
+                <PartyPicker
+                  kind="supplier"
+                  label="Fornecedor"
+                  value={supplierId}
+                  options={suppliers}
+                  onChange={setSupplierId}
+                  onCreated={(party) =>
+                    setSuppliers((current) =>
+                      current.some((row) => row.id === party.id)
+                        ? current
+                        : [party as DistributorSupplier, ...current],
+                    )
+                  }
+                  createParty={createSupplier}
+                />
                 <label className="field">
                   <span className="field-label">Valor (R$)</span>
                   <input
@@ -553,15 +593,29 @@ export default function DistribuidoraFinanceiroPage() {
                     required
                   />
                 </label>
-                <label className="field">
-                  <span className="field-label">Cliente</span>
-                  <input
-                    className="input"
-                    value={party}
-                    onChange={(event) => setParty(event.target.value)}
-                    required
-                  />
-                </label>
+                <PartyPicker
+                  kind="customer"
+                  label="Cliente"
+                  value={customerId}
+                  options={customers}
+                  onChange={setCustomerId}
+                  onCreated={(party) =>
+                    setCustomers((current) =>
+                      current.some((row) => row.id === party.id)
+                        ? current
+                        : [
+                            {
+                              ...(party as DistributorCustomer),
+                              visitCount: 0,
+                              lastVisitedAt: null,
+                              lastSummary: null,
+                            },
+                            ...current,
+                          ],
+                    )
+                  }
+                  createParty={createCustomer}
+                />
                 <label className="field">
                   <span className="field-label">Valor (R$)</span>
                   <input

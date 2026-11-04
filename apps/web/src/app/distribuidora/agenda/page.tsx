@@ -1,6 +1,12 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import {
+  PartyFormFields,
+  emptyPartyForm,
+  partyFormToInput,
+  type PartyFormState,
+} from '../../../components/distributor/PartyFormFields';
 import { fetchMe } from '../../../lib/auth';
 import {
   createCustomer,
@@ -23,9 +29,7 @@ export default function DistribuidoraAgendaPage() {
   const [history, setHistory] = useState<DistributorCustomerHistory | null>(null);
   const [manager, setManager] = useState(false);
   const [search, setSearch] = useState('');
-  const [customerName, setCustomerName] = useState('');
-  const [customerCnpj, setCustomerCnpj] = useState('');
-  const [customerCity, setCustomerCity] = useState('');
+  const [customerForm, setCustomerForm] = useState<PartyFormState>(emptyPartyForm());
   const [customerId, setCustomerId] = useState('');
   const [visitedAt, setVisitedAt] = useState(
     () => new Date().toISOString().slice(0, 10),
@@ -77,14 +81,8 @@ export default function DistribuidoraAgendaPage() {
     setNotice(null);
     setSaving(true);
     try {
-      const created = await createCustomer({
-        name: customerName,
-        cnpj: customerCnpj || null,
-        city: customerCity || null,
-      });
-      setCustomerName('');
-      setCustomerCnpj('');
-      setCustomerCity('');
+      const created = await createCustomer(partyFormToInput(customerForm));
+      setCustomerForm(emptyPartyForm());
       setCustomerId(created.id);
       setNotice('Cliente cadastrado na agenda.');
       await reload(search);
@@ -183,31 +181,7 @@ export default function DistribuidoraAgendaPage() {
       <section className="dash-panel">
         <h2 className="dash-panel__title">Novo cliente</h2>
         <form className="form-grid" onSubmit={onCreateCustomer}>
-          <label className="field">
-            <span className="field-label">Nome</span>
-            <input
-              className="input"
-              value={customerName}
-              onChange={(event) => setCustomerName(event.target.value)}
-              required
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">CNPJ</span>
-            <input
-              className="input"
-              value={customerCnpj}
-              onChange={(event) => setCustomerCnpj(event.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">Cidade</span>
-            <input
-              className="input"
-              value={customerCity}
-              onChange={(event) => setCustomerCity(event.target.value)}
-            />
-          </label>
+          <PartyFormFields value={customerForm} onChange={setCustomerForm} />
           <div className="form-actions">
             <button className="btn btn-primary" type="submit" disabled={saving}>
               Cadastrar

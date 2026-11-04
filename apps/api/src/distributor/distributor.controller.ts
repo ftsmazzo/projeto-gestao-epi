@@ -27,6 +27,7 @@ import {
   CreateBankAccountDto,
   CreateCashMovementDto,
   CreateDistributorCustomerDto,
+  CreateDistributorSupplierDto,
   CreateDistributorVisitDto,
   CreateFieldQuoteDto,
   CreateLedgerAccountDto,
@@ -37,11 +38,14 @@ import {
   CreateQuoteDto,
   CreateReceivableDto,
   ImportProductsCsvDto,
+  LinkInboundSupplierDto,
   ManualDistributorMovementDto,
   RejectPurchaseOrderDto,
   SetSellerCeilingDto,
   SettleWithBankDto,
+  UpdateDistributorCustomerDto,
   UpdateDistributorProductDto,
+  UpdateDistributorSupplierDto,
   UpsertPlusMappingDto,
 } from './dto/distributor.dto';
 
@@ -752,11 +756,13 @@ export class DistributorController {
   listCustomers(
     @CurrentUser() user: JwtPayload,
     @Query('q') q?: string,
+    @Query('includeInactive') includeInactive?: string,
   ) {
     return this.distributor.listCustomers(
       user.organizationId,
       user.membershipRole,
       q,
+      includeInactive !== '1' && includeInactive !== 'true',
     );
   }
 
@@ -772,6 +778,20 @@ export class DistributorController {
     );
   }
 
+  @Patch('customers/:customerId')
+  updateCustomer(
+    @CurrentUser() user: JwtPayload,
+    @Param('customerId') customerId: string,
+    @Body() dto: UpdateDistributorCustomerDto,
+  ) {
+    return this.distributor.updateCustomer(
+      user.organizationId,
+      user.membershipRole,
+      customerId,
+      dto,
+    );
+  }
+
   @Get('customers/:customerId')
   customerHistory(
     @CurrentUser() user: JwtPayload,
@@ -781,6 +801,60 @@ export class DistributorController {
       user.organizationId,
       user.membershipRole,
       customerId,
+    );
+  }
+
+  @Get('suppliers')
+  listSuppliers(
+    @CurrentUser() user: JwtPayload,
+    @Query('q') q?: string,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return this.distributor.listSuppliers(
+      user.organizationId,
+      user.membershipRole,
+      q,
+      includeInactive !== '1' && includeInactive !== 'true',
+    );
+  }
+
+  @Post('suppliers')
+  createSupplier(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: CreateDistributorSupplierDto,
+  ) {
+    return this.distributor.createSupplier(
+      user.organizationId,
+      user.membershipRole,
+      dto,
+    );
+  }
+
+  @Patch('suppliers/:supplierId')
+  updateSupplier(
+    @CurrentUser() user: JwtPayload,
+    @Param('supplierId') supplierId: string,
+    @Body() dto: UpdateDistributorSupplierDto,
+  ) {
+    return this.distributor.updateSupplier(
+      user.organizationId,
+      user.membershipRole,
+      supplierId,
+      dto,
+    );
+  }
+
+  @Post('inbound/:documentId/supplier')
+  linkInboundSupplier(
+    @CurrentUser() user: JwtPayload,
+    @Param('documentId') documentId: string,
+    @Body() dto: LinkInboundSupplierDto,
+  ) {
+    return this.distributor.linkInboundSupplier(
+      user.organizationId,
+      user.membershipRole,
+      documentId,
+      dto.supplierId,
     );
   }
 

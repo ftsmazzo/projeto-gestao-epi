@@ -1,22 +1,28 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
+import { PartyPicker } from '../../../components/distributor/PartyPicker';
 import { DistributorScanPanel } from '../../../components/DistributorScanPanel';
 import {
   confirmDistributorInbound,
+  createSupplier,
   discardDistributorInbound,
   extractDistributorInvoice,
   linkDistributorLine,
+  linkInboundSupplier,
   listDistributorProducts,
+  listSuppliers,
   lookupDistributorProductByCode,
   moveDistributorStock,
   stockFinanceFollowUp,
   type DistributorInboundDocument,
   type DistributorProduct,
+  type DistributorSupplier,
 } from '../../../lib/distributor';
 
 export default function DistribuidoraEntradaPage() {
   const [products, setProducts] = useState<DistributorProduct[]>([]);
+  const [suppliers, setSuppliers] = useState<DistributorSupplier[]>([]);
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [lotCode, setLotCode] = useState('');
@@ -25,6 +31,7 @@ export default function DistribuidoraEntradaPage() {
   const [scannedLabel, setScannedLabel] = useState<string | null>(null);
   const [document, setDocument] = useState<DistributorInboundDocument | null>(null);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
+  const [supplierId, setSupplierId] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -32,9 +39,10 @@ export default function DistribuidoraEntradaPage() {
   const qtyRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    void listDistributorProducts()
-      .then((rows) => {
+    void Promise.all([listDistributorProducts(), listSuppliers()])
+      .then(([rows, supplierRows]) => {
         setProducts(rows);
+        setSuppliers(supplierRows);
         const first = rows[0]?.variants[0]?.id;
         if (first) setVariantId(first);
       })
@@ -124,6 +132,7 @@ export default function DistribuidoraEntradaPage() {
     try {
       const draft = await extractDistributorInvoice(file);
       setDocument(draft);
+      setSupplierId(draft.supplierId ?? '');
       setInvoiceOpen(true);
       setNotice(draft.message || 'Rascunho criado. O estoque ainda não mudou.');
     } catch (err) {
@@ -307,10 +316,50 @@ export default function DistribuidoraEntradaPage() {
               <>
                 <p className="field-hint">
                   {document.supplierName ?? 'Fornecedor não lido'}
+                  {document.supplierCnpj ? ` · CNPJ ${document.supplierCnpj}` : ''}
                   {document.invoiceNumber ? ` · Nota ${document.invoiceNumber}` : ''}
                   {document.accessKey ? ` · Chave ${document.accessKey}` : ''}
                   {` · ${document.status}`}
+                  {document.supplierId ? ' · Fornecedor vinculado' : ''}
                 </p>
+                {document.status === 'DRAFT' && !document.supplierId ? (
+                  <PartyPicker
+                    kind="supplier"
+                    label="Vincular ou cadastrar fornecedor"
+                    value={supplierId}
+                    options={suppliers}
+                    defaults={{
+                      name: document.supplierName ?? '',
+                      cnpj: document.supplierCnpj ?? '',
+                    }}
+                    onChange={(id) => {
+                      setSupplierId(id);
+                      if (!id) return;
+                      setSaving(true);
+                      void linkInboundSupplier(document.id, id)
+                        .then((updated) => {
+                          setDocument(updated as DistributorInboundDocument);
+                          setNotice('Fornecedor vinculado à nota.');
+                        })
+                        .catch((err: unknown) =>
+                          setError(
+                            err instanceof Error
+                              ? err.message
+                              : 'Falha ao vincular fornecedor.',
+                          ),
+                        )
+                        .finally(() => setSaving(false));
+                    }}
+                    onCreated={(party) =>
+                      setSuppliers((current) =>
+                        current.some((row) => row.id === party.id)
+                          ? current
+                          : [party as DistributorSupplier, ...current],
+                      )
+                    }
+                    createParty={createSupplier}
+                  />
+                ) : null}
                 <div className="table-wrap">
                   <table className="data-table">
                     <thead>

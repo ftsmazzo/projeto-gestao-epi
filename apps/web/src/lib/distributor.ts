@@ -103,6 +103,7 @@ export type DistributorInboundLine = {
 export type DistributorInboundDocument = {
   id: string;
   status: 'DRAFT' | 'CONFIRMED' | 'DISCARDED';
+  supplierId?: string | null;
   supplierName: string | null;
   supplierCnpj: string | null;
   invoiceNumber: string | null;
@@ -377,6 +378,7 @@ export type PurchaseOrderLine = {
 
 export type PurchaseOrder = {
   id: string;
+  supplierId: string | null;
   supplierName: string;
   status: PurchaseOrderStatus;
   createdAt: string;
@@ -391,7 +393,7 @@ export function listPurchaseOrders() {
 }
 
 export function createPurchaseOrder(input: {
-  supplierName: string;
+  supplierId: string;
   lines: Array<{
     variantId: string;
     quantity: number;
@@ -452,6 +454,7 @@ export type QuoteLine = {
 
 export type DistributorQuote = {
   id: string;
+  customerId: string | null;
   customerName: string;
   sellerUserId: string;
   status: QuoteStatus;
@@ -477,7 +480,7 @@ export function listQuotes() {
 }
 
 export function createQuote(input: {
-  customerName: string;
+  customerId: string;
   lines: Array<{
     variantId: string;
     quantity: number;
@@ -588,6 +591,7 @@ export type OutboundLine = {
 export type OutboundInvoice = {
   id: string;
   quoteId: string | null;
+  customerId?: string | null;
   status: OutboundStatus;
   series: string;
   number: number;
@@ -619,6 +623,7 @@ export type DistributorPayable = {
   id: string;
   status: PayableStatus;
   description: string;
+  supplierId?: string | null;
   supplierName: string;
   amountCents: number;
   dueOn: string | null;
@@ -636,6 +641,7 @@ export type DistributorReceivable = {
   id: string;
   status: ReceivableStatus;
   description: string;
+  customerId?: string | null;
   customerName: string;
   customerCnpj: string | null;
   amountCents: number;
@@ -803,7 +809,7 @@ export function listPayables() {
 
 export function createPayable(input: {
   description: string;
-  supplierName: string;
+  supplierId: string;
   amountCents: number;
   dueOn?: string | null;
 }) {
@@ -832,8 +838,7 @@ export function listReceivables() {
 
 export function createReceivable(input: {
   description: string;
-  customerName: string;
-  customerCnpj?: string | null;
+  customerId: string;
   amountCents: number;
   dueOn?: string | null;
   accountId?: string | null;
@@ -947,18 +952,49 @@ export function getCashFlow(input: {
   return apiFetch<CashFlowReport>(`/distributor/cash-flow?${params.toString()}`);
 }
 
-export type DistributorCustomer = {
+export type DistributorPartyFields = {
   id: string;
   name: string;
   cnpj: string | null;
+  email: string | null;
   phone: string | null;
-  city: string | null;
   notes: string | null;
+  active: boolean;
+  stateRegistration: string | null;
+  uf: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  zipCode: string | null;
+  createdAt: string;
+};
+
+export type DistributorPartyInput = {
+  name: string;
+  cnpj?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  notes?: string | null;
+  active?: boolean;
+  stateRegistration?: string | null;
+  uf?: string | null;
+  street?: string | null;
+  number?: string | null;
+  complement?: string | null;
+  district?: string | null;
+  city?: string | null;
+  zipCode?: string | null;
+};
+
+export type DistributorCustomer = DistributorPartyFields & {
   visitCount: number;
   lastVisitedAt: string | null;
   lastSummary: string | null;
-  createdAt: string;
 };
+
+export type DistributorSupplier = DistributorPartyFields;
 
 export type DistributorVisit = {
   id: string;
@@ -978,20 +1014,24 @@ export type DistributorCustomerHistory = DistributorCustomer & {
   visits: DistributorVisit[];
 };
 
-export function listCustomers(q?: string) {
-  const query = q?.trim() ? `?${new URLSearchParams({ q: q.trim() }).toString()}` : '';
+export function listCustomers(q?: string, opts?: { includeInactive?: boolean }) {
+  const params = new URLSearchParams();
+  if (q?.trim()) params.set('q', q.trim());
+  if (opts?.includeInactive) params.set('includeInactive', '1');
+  const query = params.toString() ? `?${params.toString()}` : '';
   return apiFetch<DistributorCustomer[]>(`/distributor/customers${query}`);
 }
 
-export function createCustomer(input: {
-  name: string;
-  cnpj?: string | null;
-  phone?: string | null;
-  city?: string | null;
-  notes?: string | null;
-}) {
+export function createCustomer(input: DistributorPartyInput) {
   return apiFetch<DistributorCustomer>('/distributor/customers', {
     method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateCustomer(customerId: string, input: DistributorPartyInput) {
+  return apiFetch<DistributorCustomer>(`/distributor/customers/${customerId}`, {
+    method: 'PATCH',
     body: JSON.stringify(input),
   });
 }
@@ -999,6 +1039,38 @@ export function createCustomer(input: {
 export function getCustomerHistory(customerId: string) {
   return apiFetch<DistributorCustomerHistory>(
     `/distributor/customers/${customerId}`,
+  );
+}
+
+export function listSuppliers(q?: string, opts?: { includeInactive?: boolean }) {
+  const params = new URLSearchParams();
+  if (q?.trim()) params.set('q', q.trim());
+  if (opts?.includeInactive) params.set('includeInactive', '1');
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return apiFetch<DistributorSupplier[]>(`/distributor/suppliers${query}`);
+}
+
+export function createSupplier(input: DistributorPartyInput) {
+  return apiFetch<DistributorSupplier>('/distributor/suppliers', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateSupplier(supplierId: string, input: DistributorPartyInput) {
+  return apiFetch<DistributorSupplier>(`/distributor/suppliers/${supplierId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function linkInboundSupplier(documentId: string, supplierId: string) {
+  return apiFetch<DistributorInboundDocument>(
+    `/distributor/inbound/${documentId}/supplier`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ supplierId }),
+    },
   );
 }
 
