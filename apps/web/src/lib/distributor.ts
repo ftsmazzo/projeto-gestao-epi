@@ -128,6 +128,20 @@ export type DistributorInboundTaxSummary = {
   invoiceCents: number;
 };
 
+export type DistributorPendingSupplier = {
+  name: string;
+  cnpj: string;
+  stateRegistration: string | null;
+  uf: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  zipCode: string | null;
+  phone: string | null;
+};
+
 export type DistributorInboundDocument = {
   id: string;
   status: 'DRAFT' | 'CONFIRMED' | 'DISCARDED';
@@ -138,6 +152,8 @@ export type DistributorInboundDocument = {
   accessKey: string | null;
   fileName: string;
   message: string;
+  supplierMatched?: boolean;
+  pendingSupplier?: DistributorPendingSupplier | null;
   taxSummary?: DistributorInboundTaxSummary | null;
   lines: DistributorInboundLine[];
 };

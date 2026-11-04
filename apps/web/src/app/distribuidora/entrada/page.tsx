@@ -8,6 +8,7 @@ import {
 } from '../../../components/distributor/SizeChips';
 import { DistributorScanPanel } from '../../../components/DistributorScanPanel';
 import { useSearchParams } from 'next/navigation';
+import { formatCnpjInput, normalizeCnpj } from '../../../lib/cnpj';
 import {
   confirmDistributorInbound,
   createDistributorProduct,
@@ -121,6 +122,30 @@ function DistribuidoraEntradaPageInner() {
     () => products.find((row) => row.id === focusProductId) ?? null,
     [products, focusProductId],
   );
+
+  const emitenteCnpjDigits = useMemo(() => {
+    if (!document?.supplierCnpj) return '';
+    const digits = normalizeCnpj(document.supplierCnpj);
+    return digits.length === 14 ? digits : '';
+  }, [document?.supplierCnpj]);
+
+  const linkedSupplierMismatch = useMemo(() => {
+    if (!document?.supplierId || !emitenteCnpjDigits) return false;
+    const linked = suppliers.find((row) => row.id === document.supplierId);
+    if (!linked?.cnpj) return true;
+    return normalizeCnpj(linked.cnpj) !== emitenteCnpjDigits;
+  }, [document?.supplierId, emitenteCnpjDigits, suppliers]);
+
+  const needsSupplierConfirm =
+    document?.status === 'DRAFT' &&
+    (!document.supplierId || linkedSupplierMismatch);
+
+  const matchingSuppliers = useMemo(() => {
+    if (!emitenteCnpjDigits) return suppliers;
+    return suppliers.filter(
+      (row) => row.cnpj && normalizeCnpj(row.cnpj) === emitenteCnpjDigits,
+    );
+  }, [emitenteCnpjDigits, suppliers]);
 
   const selectedVariant = focusProduct?.variants.find((row) => row.id === variantId);
   const confirmLabel =
@@ -367,6 +392,15 @@ function DistribuidoraEntradaPageInner() {
 
   async function onConfirm() {
     if (!document) return;
+    const emitenteDigits = document.supplierCnpj
+      ? normalizeCnpj(document.supplierCnpj)
+      : '';
+    if (emitenteDigits.length === 14 && !document.supplierId) {
+      setError(
+        'Cadastre ou vincule o fornecedor emitente (mesmo CNPJ da nota) antes de confirmar.',
+      );
+      return;
+    }
     const linked = document.lines.filter((line) => line.variantId).length;
     const total = document.lines.length;
     if (linked === 0) {
@@ -685,11 +719,13 @@ function DistribuidoraEntradaPageInner() {
         <div className="catalog-section__body">
                 <p className="field-hint">
                   {document.supplierName ?? 'Fornecedor não lido'}
-                  {document.supplierCnpj ? ` · CNPJ ${document.supplierCnpj}` : ''}
+                  {document.supplierCnpj
+                    ? ` · CNPJ ${formatCnpjInput(document.supplierCnpj)}`
+                    : ''}
                   {document.invoiceNumber ? ` · Nota ${document.invoiceNumber}` : ''}
                   {document.accessKey ? ` · Chave ${document.accessKey}` : ''}
                   {` · ${document.status}`}
-                  {document.supplierId ? ' · Fornecedor vinculado' : ''}
+                  {document.supplierId ? ' · Fornecedor vinculado' : ' · Fornecedor pendente'}
                 </p>
                 {document.taxSummary ? (
                   <div className="cnpj-lookup-slot">
@@ -721,43 +757,83 @@ function DistribuidoraEntradaPageInner() {
                     </p>
                   </div>
                 ) : null}
-                {document.status === 'DRAFT' && !document.supplierId ? (
-                  <PartyPicker
-                    kind="supplier"
-                    label="Vincular ou cadastrar fornecedor"
-                    value={supplierId}
-                    options={suppliers}
-                    defaults={{
-                      name: document.supplierName ?? '',
-                      cnpj: document.supplierCnpj ?? '',
-                    }}
-                    onChange={(id) => {
-                      setSupplierId(id);
-                      if (!id) return;
-                      setSaving(true);
-                      void linkInboundSupplier(document.id, id)
-                        .then((updated) => {
-                          setDocument(updated);
-                          setNotice('Fornecedor vinculado à nota.');
-                        })
-                        .catch((err: unknown) =>
-                          setError(
-                            err instanceof Error
-                              ? err.message
-                              : 'Falha ao vincular fornecedor.',
-                          ),
+                {linkedSupplierMismatch ? (
+                  <div className="cnpj-lookup-slot" role="alert">
+                    <p className="error">
+                      O fornecedor vinculado não tem o mesmo CNPJ do emitente da
+                      nota. Revincule ou cadastre o emitente correto.
+                    </p>
+                  </div>
+                ) : null}
+                {needsSupplierConfirm ? (
+                  <div className="field field--span-2">
+                    <PartyPicker
+                      kind="supplier"
+                      label="Fornecedor emitente da nota"
+                      value={supplierId}
+                      options={matchingSuppliers}
+                      autoOpen={!document.supplierId || Boolean(document.pendingSupplier)}
+                      fullForm
+                      title="Confirmar cadastro do emitente"
+                      submitLabel="Cadastrar e vincular à nota"
+                      hint={
+                        document.pendingSupplier
+                          ? `CNPJ ${formatCnpjInput(document.pendingSupplier.cnpj)} não está na base. Revise os dados (Buscar CNPJ / CEP) e cadastre, ou selecione o cadastro com o mesmo CNPJ.`
+                          : document.supplierCnpj
+                            ? `Só entram fornecedores com CNPJ ${formatCnpjInput(document.supplierCnpj)}. Cadastro errado é bloqueado.`
+                            : 'Selecione ou cadastre o fornecedor da nota.'
+                      }
+                      defaults={{
+                        name:
+                          document.pendingSupplier?.name ??
+                          document.supplierName ??
+                          '',
+                        cnpj: formatCnpjInput(
+                          document.pendingSupplier?.cnpj ??
+                            document.supplierCnpj ??
+                            '',
+                        ),
+                        stateRegistration:
+                          document.pendingSupplier?.stateRegistration ?? '',
+                        uf: document.pendingSupplier?.uf ?? '',
+                        street: document.pendingSupplier?.street ?? '',
+                        number: document.pendingSupplier?.number ?? '',
+                        complement: document.pendingSupplier?.complement ?? '',
+                        district: document.pendingSupplier?.district ?? '',
+                        city: document.pendingSupplier?.city ?? '',
+                        zipCode: document.pendingSupplier?.zipCode ?? '',
+                        phone: document.pendingSupplier?.phone ?? '',
+                      }}
+                      onChange={(id) => {
+                        setSupplierId(id);
+                        if (!id) return;
+                        setSaving(true);
+                        void linkInboundSupplier(document.id, id)
+                          .then((updated) => {
+                            setDocument(updated);
+                            setNotice(
+                              'Fornecedor vinculado à nota pelo CNPJ do emitente.',
+                            );
+                          })
+                          .catch((err: unknown) =>
+                            setError(
+                              err instanceof Error
+                                ? err.message
+                                : 'Falha ao vincular fornecedor.',
+                            ),
+                          )
+                          .finally(() => setSaving(false));
+                      }}
+                      onCreated={(party) =>
+                        setSuppliers((current) =>
+                          current.some((row) => row.id === party.id)
+                            ? current
+                            : [party as DistributorSupplier, ...current],
                         )
-                        .finally(() => setSaving(false));
-                    }}
-                    onCreated={(party) =>
-                      setSuppliers((current) =>
-                        current.some((row) => row.id === party.id)
-                          ? current
-                          : [party as DistributorSupplier, ...current],
-                      )
-                    }
-                    createParty={createSupplier}
-                  />
+                      }
+                      createParty={createSupplier}
+                    />
+                  </div>
                 ) : null}
                 <div className="inbound-lines">
                   {document.lines.map((line) => {

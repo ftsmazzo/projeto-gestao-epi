@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import type { DistributorPartyFields, DistributorPartyInput } from '../../lib/distributor';
 import {
   PartyFormFields,
@@ -19,6 +19,13 @@ type Props = {
   createParty: (input: DistributorPartyInput) => Promise<DistributorPartyFields>;
   required?: boolean;
   defaults?: Partial<PartyFormState>;
+  /** Abre o formulário de cadastro já expandido (ex.: emitente da NF-e sem match). */
+  autoOpen?: boolean;
+  /** Formulário completo com endereço + ViaCEP (não só cidade/UF). */
+  fullForm?: boolean;
+  title?: string;
+  submitLabel?: string;
+  hint?: string | null;
 };
 
 export function PartyPicker({
@@ -31,13 +38,29 @@ export function PartyPicker({
   createParty,
   required = true,
   defaults,
+  autoOpen = false,
+  fullForm = false,
+  title,
+  submitLabel,
+  hint,
 }: Props) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   const [form, setForm] = useState<PartyFormState>(() => emptyPartyForm(defaults));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!autoOpen) return;
+    setOpen(true);
+    setForm(emptyPartyForm(defaults));
+    setError(null);
+    // defaults mudam quando a nota é lida; reabre com dados do emitente
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage a autoOpen + CNPJ/nome
+  }, [autoOpen, defaults?.cnpj, defaults?.name]);
+
   const novoLabel = kind === 'customer' ? 'Novo cliente' : 'Novo fornecedor';
+  const panelTitle = title ?? novoLabel;
+  const saveLabel = submitLabel ?? 'Salvar e selecionar';
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -68,7 +91,7 @@ export function PartyPicker({
         <select
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          required={required}
+          required={required && !autoOpen}
           style={{ flex: '1 1 220px' }}
         >
           <option value="">Selecione…</option>
@@ -92,7 +115,11 @@ export function PartyPicker({
           {open ? 'Fechar' : novoLabel}
         </button>
       </div>
-      {!value && required ? (
+      {hint ? (
+        <p className="field-hint" style={{ marginTop: '0.35rem' }}>
+          {hint}
+        </p>
+      ) : !value && required ? (
         <p className="muted" style={{ marginTop: '0.35rem' }}>
           Selecione ou cadastre {kind === 'customer' ? 'o cliente' : 'o fornecedor'}.
         </p>
@@ -104,12 +131,12 @@ export function PartyPicker({
           onSubmit={onSubmit}
         >
           <h3 className="dash-panel__title" style={{ marginTop: 0 }}>
-            {novoLabel}
+            {panelTitle}
           </h3>
           {error ? <p className="error">{error}</p> : null}
-          <PartyFormFields value={form} onChange={setForm} compact />
+          <PartyFormFields value={form} onChange={setForm} compact={!fullForm} />
           <button className="btn btn-primary" type="submit" disabled={saving}>
-            {saving ? 'Salvando…' : 'Salvar e selecionar'}
+            {saving ? 'Salvando…' : saveLabel}
           </button>
         </form>
       ) : null}

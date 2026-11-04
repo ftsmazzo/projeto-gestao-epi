@@ -14,7 +14,7 @@ import {
   Prisma,
   ServedClientStatus,
 } from '@prisma/client';
-import { validateCnpj } from '../common/cnpj';
+import { normalizeCnpj, validateCnpj } from '../common/cnpj';
 import { PrismaService } from '../prisma/prisma.service';
 import { extractInvoiceFromFile } from '../portal/invoice-extract';
 import { extractCatalogQuoteFromFile } from './catalog-quote-extract';
@@ -750,16 +750,47 @@ export class DistributorService {
       mimeType: 'application/xml',
       originalName: file.originalname,
     });
-    const supplier = await this.resolveInboundSupplierFromXml(
+    const matchedSupplier = await this.resolveInboundSupplierFromXml(
       organizationId,
-      parsed.supplier,
+      parsed.supplier.cnpj,
     );
-    const supplierCreated = supplier.created;
-    const matchedSupplier = supplier.row;
+    const pendingSupplier = matchedSupplier
+      ? null
+      : {
+          name: parsed.supplier.name,
+          cnpj: parsed.supplier.cnpj,
+          stateRegistration: parsed.supplier.stateRegistration,
+          uf: parsed.supplier.uf,
+          street: parsed.supplier.street,
+          number: parsed.supplier.number,
+          complement: parsed.supplier.complement,
+          district: parsed.supplier.district,
+          city: parsed.supplier.city,
+          zipCode: parsed.supplier.zipCode,
+          phone: parsed.supplier.phone,
+        };
+    if (matchedSupplier && !matchedSupplier.active) {
+      await this.prisma.distributorSupplier.update({
+        where: { id: matchedSupplier.id },
+        data: {
+          active: true,
+          stateRegistration:
+            matchedSupplier.stateRegistration ?? parsed.supplier.stateRegistration,
+          uf: matchedSupplier.uf ?? parsed.supplier.uf,
+          street: matchedSupplier.street ?? parsed.supplier.street,
+          number: matchedSupplier.number ?? parsed.supplier.number,
+          complement: matchedSupplier.complement ?? parsed.supplier.complement,
+          district: matchedSupplier.district ?? parsed.supplier.district,
+          city: matchedSupplier.city ?? parsed.supplier.city,
+          zipCode: matchedSupplier.zipCode ?? parsed.supplier.zipCode,
+          phone: matchedSupplier.phone ?? parsed.supplier.phone,
+        },
+      });
+    }
     const messageParts = [
-      supplierCreated
-        ? `XML lido. Fornecedor ${matchedSupplier.name} cadastrado pelo CNPJ do emitente.`
-        : `XML lido. Fornecedor ${matchedSupplier.name} vinculado pelo CNPJ.`,
+      matchedSupplier
+        ? `XML lido. Fornecedor ${matchedSupplier.name} vinculado pelo CNPJ do emitente.`
+        : `XML lido. O CNPJ do emitente (${parsed.supplier.cnpj}) nao existe na base. Confirme o cadastro do fornecedor (Lead/ViaCEP) antes de confirmar a entrada.`,
       recipientMismatch
         ? `Atenção: o destinatário do XML (${parsed.recipientCnpj}) difere do CNPJ fiscal da distribuidora (${profileCnpj}). A nota foi importada mesmo assim.`
         : null,
@@ -770,8 +801,8 @@ export class DistributorService {
         data: {
           organizationId,
           status: DistributorInboundStatus.DRAFT,
-          supplierId: matchedSupplier.id,
-          supplierName: matchedSupplier.name,
+          supplierId: matchedSupplier?.id ?? null,
+          supplierName: matchedSupplier?.name ?? parsed.supplier.name,
           supplierCnpj: parsed.supplierCnpj,
           invoiceNumber: parsed.invoiceNumber,
           accessKey: parsed.accessKey,
@@ -781,8 +812,9 @@ export class DistributorService {
           extraction: {
             method: 'NFE_XML',
             message: messageParts.join(' '),
-            supplierMatched: true,
-            supplierCreated,
+            supplierMatched: Boolean(matchedSupplier),
+            supplierCreated: false,
+            pendingSupplier,
             recipientMismatch,
             recipientCnpj: parsed.recipientCnpj,
             fiscalCnpj: profileCnpj || null,
@@ -816,70 +848,23 @@ export class DistributorService {
     }
   }
 
+  /** Só vincula se o CNPJ (só dígitos) bater exatamente. Nunca cria nem chuta outro cadastro. */
   private async resolveInboundSupplierFromXml(
     organizationId: string,
-    supplier: {
-      name: string;
-      cnpj: string;
-      stateRegistration: string | null;
-      uf: string | null;
-      street: string | null;
-      number: string | null;
-      complement: string | null;
-      district: string | null;
-      city: string | null;
-      zipCode: string | null;
-      phone: string | null;
-    },
+    emitenteCnpj: string,
   ) {
-    const existing = await this.prisma.distributorSupplier.findFirst({
+    const wanted = normalizeCnpj(emitenteCnpj);
+    if (wanted.length !== 14) return null;
+    const rows = await this.prisma.distributorSupplier.findMany({
       where: {
         organizationId,
-        cnpj: supplier.cnpj,
+        cnpj: { not: null },
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: [{ active: 'desc' }, { updatedAt: 'desc' }],
     });
-    if (existing) {
-      if (!existing.active) {
-        const reactivated = await this.prisma.distributorSupplier.update({
-          where: { id: existing.id },
-          data: {
-            active: true,
-            name: existing.name || supplier.name,
-            stateRegistration:
-              existing.stateRegistration ?? supplier.stateRegistration,
-            uf: existing.uf ?? supplier.uf,
-            street: existing.street ?? supplier.street,
-            number: existing.number ?? supplier.number,
-            complement: existing.complement ?? supplier.complement,
-            district: existing.district ?? supplier.district,
-            city: existing.city ?? supplier.city,
-            zipCode: existing.zipCode ?? supplier.zipCode,
-            phone: existing.phone ?? supplier.phone,
-          },
-        });
-        return { row: reactivated, created: false };
-      }
-      return { row: existing, created: false };
-    }
-    const created = await this.prisma.distributorSupplier.create({
-      data: {
-        organizationId,
-        name: supplier.name.slice(0, 180),
-        cnpj: supplier.cnpj,
-        stateRegistration: supplier.stateRegistration,
-        uf: supplier.uf,
-        street: supplier.street,
-        number: supplier.number,
-        complement: supplier.complement,
-        district: supplier.district,
-        city: supplier.city,
-        zipCode: supplier.zipCode,
-        phone: supplier.phone,
-        active: true,
-      },
-    });
-    return { row: created, created: true };
+    return (
+      rows.find((row) => row.cnpj && normalizeCnpj(row.cnpj) === wanted) ?? null
+    );
   }
 
   async getFiscalProfile(organizationId: string, role: string) {
@@ -1032,6 +1017,14 @@ export class DistributorService {
       }
       if (document.status !== DistributorInboundStatus.DRAFT) {
         throw new ConflictException('Este rascunho foi descartado.');
+      }
+      const emitenteCnpj = document.supplierCnpj
+        ? normalizeCnpj(document.supplierCnpj)
+        : '';
+      if (emitenteCnpj.length === 14 && !document.supplierId) {
+        throw new BadRequestException(
+          'Cadastre ou vincule o fornecedor emitente da nota antes de confirmar a entrada.',
+        );
       }
       const ready = document.lines.filter(
         (line) => line.variantId && line.quantity > 0,
@@ -3381,12 +3374,34 @@ export class DistributorService {
     if (document.status !== DistributorInboundStatus.DRAFT) {
       throw new ConflictException('So e possivel vincular fornecedor no rascunho.');
     }
+    const emitente = document.supplierCnpj
+      ? normalizeCnpj(document.supplierCnpj)
+      : '';
+    const chosen = supplier.cnpj ? normalizeCnpj(supplier.cnpj) : '';
+    if (emitente.length === 14 && chosen.length === 14 && emitente !== chosen) {
+      throw new BadRequestException(
+        `O CNPJ do fornecedor selecionado (${chosen}) difere do emitente da nota (${emitente}). Cadastre o emitente ou escolha o cadastro com o mesmo CNPJ.`,
+      );
+    }
+    if (emitente.length === 14 && !chosen) {
+      throw new BadRequestException(
+        'O fornecedor selecionado nao tem CNPJ. Use o cadastro do emitente da nota.',
+      );
+    }
+    const extraction =
+      typeof document.extraction === 'object' && document.extraction != null
+        ? { ...(document.extraction as Record<string, unknown>) }
+        : {};
+    extraction.supplierMatched = true;
+    extraction.pendingSupplier = null;
+    extraction.message = `Fornecedor ${supplier.name} vinculado ao emitente da nota.`;
     const updated = await this.prisma.distributorInboundDocument.update({
       where: { id: document.id },
       data: {
         supplierId: supplier.id,
         supplierName: supplier.name,
-        supplierCnpj: supplier.cnpj ?? document.supplierCnpj,
+        supplierCnpj: document.supplierCnpj ?? supplier.cnpj,
+        extraction: extraction as Prisma.InputJsonValue,
       },
       include: documentInclude,
     });
@@ -4289,6 +4304,47 @@ function toBalanceRow(
   };
 }
 
+function pendingSupplierFromExtraction(
+  extraction: Record<string, unknown> | null,
+): DistributorPendingSupplierView | null {
+  if (!extraction) return null;
+  const raw = extraction.pendingSupplier;
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const cnpj = typeof row.cnpj === 'string' ? normalizeCnpj(row.cnpj) : '';
+  const name = typeof row.name === 'string' ? row.name.trim() : '';
+  if (!name || cnpj.length !== 14) return null;
+  const text = (value: unknown) =>
+    typeof value === 'string' && value.trim() ? value.trim() : null;
+  return {
+    name,
+    cnpj,
+    stateRegistration: text(row.stateRegistration),
+    uf: text(row.uf),
+    street: text(row.street),
+    number: text(row.number),
+    complement: text(row.complement),
+    district: text(row.district),
+    city: text(row.city),
+    zipCode: text(row.zipCode),
+    phone: text(row.phone),
+  };
+}
+
+type DistributorPendingSupplierView = {
+  name: string;
+  cnpj: string;
+  stateRegistration: string | null;
+  uf: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  zipCode: string | null;
+  phone: string | null;
+};
+
 function toDocumentView(document: DocumentRow) {
   const extraction =
     typeof document.extraction === 'object' && document.extraction != null
@@ -4301,6 +4357,10 @@ function toDocumentView(document: DocumentRow) {
   const lineTaxes = Array.isArray(extraction?.lineTaxes)
     ? (extraction.lineTaxes as Array<Record<string, unknown>>)
     : [];
+  const pendingSupplier =
+    document.supplierId == null
+      ? pendingSupplierFromExtraction(extraction)
+      : null;
   return {
     id: document.id,
     status: document.status,
@@ -4314,6 +4374,8 @@ function toDocumentView(document: DocumentRow) {
       extraction && 'message' in extraction
         ? String(extraction.message ?? '')
         : '',
+    supplierMatched: Boolean(document.supplierId),
+    pendingSupplier,
     taxSummary: totals
       ? {
           productsCents: Number(totals.productsCents ?? 0),
