@@ -87,6 +87,16 @@ export type DistributorBalanceRow = {
   unitCode: string;
 };
 
+export type DistributorInboundLineTax = {
+  productCents: number;
+  freightCents: number;
+  icmsCents: number;
+  icmsStCents: number;
+  ipiCents: number;
+  pisCents: number;
+  cofinsCents: number;
+};
+
 export type DistributorInboundLine = {
   id: string;
   description: string;
@@ -98,6 +108,22 @@ export type DistributorInboundLine = {
   variantId: string | null;
   lotCode: string | null;
   expiresOn: string | null;
+  productCode?: string | null;
+  gtin?: string | null;
+  tax?: DistributorInboundLineTax | null;
+};
+
+export type DistributorInboundTaxSummary = {
+  productsCents: number;
+  freightCents: number;
+  insuranceCents: number;
+  discountCents: number;
+  icmsCents: number;
+  icmsStCents: number;
+  ipiCents: number;
+  pisCents: number;
+  cofinsCents: number;
+  invoiceCents: number;
 };
 
 export type DistributorInboundDocument = {
@@ -110,6 +136,7 @@ export type DistributorInboundDocument = {
   accessKey: string | null;
   fileName: string;
   message: string;
+  taxSummary?: DistributorInboundTaxSummary | null;
   lines: DistributorInboundLine[];
 };
 

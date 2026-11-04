@@ -276,23 +276,16 @@ export class DistributorService {
       );
     }
     const view = toProductView(product);
-    const preferred =
-      view.variants.find(
-        (row) => row.label.toLocaleLowerCase('pt-BR') === 'único',
-      ) ??
-      view.variants.find(
-        (row) => row.label.toLocaleLowerCase('pt-BR') === 'unico',
-      ) ??
-      view.variants[0] ??
-      null;
+    const sizes = view.variants.map((row) => ({
+      id: row.id,
+      label: row.label,
+      quantity: row.quantity,
+    }));
+    // Com varios tamanhos a UI exige selecao explicita (nao escolhemos sozinhos).
     return {
       product: view,
-      preferredVariantId: preferred?.id ?? null,
-      sizes: view.variants.map((row) => ({
-        id: row.id,
-        label: row.label,
-        quantity: row.quantity,
-      })),
+      preferredVariantId: sizes.length === 1 ? sizes[0]?.id ?? null : null,
+      sizes,
     };
   }
 
@@ -768,6 +761,13 @@ export class DistributorService {
                 ? 'XML lido. Cadastre ou vincule o fornecedor. O estoque ainda nao mudou.'
                 : 'XML lido. Cadastre o CNPJ fiscal para conferir o destinatario. O estoque ainda nao mudou.',
             supplierMatched: Boolean(matchedSupplier),
+            totals: parsed.totals,
+            lineTaxes: parsed.lines.map((line) => ({
+              description: line.description,
+              productCode: line.productCode,
+              gtin: line.gtin,
+              tax: line.tax,
+            })),
           },
           createdByUserId: userId,
           lines: {
@@ -4197,6 +4197,17 @@ function toBalanceRow(
 }
 
 function toDocumentView(document: DocumentRow) {
+  const extraction =
+    typeof document.extraction === 'object' && document.extraction != null
+      ? (document.extraction as Record<string, unknown>)
+      : null;
+  const totals =
+    extraction && typeof extraction.totals === 'object' && extraction.totals != null
+      ? (extraction.totals as Record<string, unknown>)
+      : null;
+  const lineTaxes = Array.isArray(extraction?.lineTaxes)
+    ? (extraction.lineTaxes as Array<Record<string, unknown>>)
+    : [];
   return {
     id: document.id,
     status: document.status,
@@ -4207,23 +4218,59 @@ function toDocumentView(document: DocumentRow) {
     accessKey: document.accessKey,
     fileName: document.fileName,
     message:
-      typeof document.extraction === 'object' &&
-      document.extraction != null &&
-      'message' in document.extraction
-        ? String((document.extraction as { message?: unknown }).message ?? '')
+      extraction && 'message' in extraction
+        ? String(extraction.message ?? '')
         : '',
-    lines: document.lines.map((line) => ({
-      id: line.id,
-      description: line.description,
-      quantity: line.quantity,
-      unitCostCents: line.unitCostCents,
-      caNumber: line.caNumber,
-      ncm: line.ncm,
-      cfop: line.cfop,
-      variantId: line.variantId,
-      lotCode: line.lotCode,
-      expiresOn: formatExpiryDay(line.expiresOn),
-    })),
+    taxSummary: totals
+      ? {
+          productsCents: Number(totals.productsCents ?? 0),
+          freightCents: Number(totals.freightCents ?? 0),
+          insuranceCents: Number(totals.insuranceCents ?? 0),
+          discountCents: Number(totals.discountCents ?? 0),
+          icmsCents: Number(totals.icmsCents ?? 0),
+          icmsStCents: Number(totals.icmsStCents ?? 0),
+          ipiCents: Number(totals.ipiCents ?? 0),
+          pisCents: Number(totals.pisCents ?? 0),
+          cofinsCents: Number(totals.cofinsCents ?? 0),
+          invoiceCents: Number(totals.invoiceCents ?? 0),
+        }
+      : null,
+    lines: document.lines.map((line, index) => {
+      const taxRow = lineTaxes[index];
+      const tax =
+        taxRow && typeof taxRow.tax === 'object' && taxRow.tax != null
+          ? (taxRow.tax as Record<string, unknown>)
+          : null;
+      return {
+        id: line.id,
+        description: line.description,
+        quantity: line.quantity,
+        unitCostCents: line.unitCostCents,
+        caNumber: line.caNumber,
+        ncm: line.ncm,
+        cfop: line.cfop,
+        variantId: line.variantId,
+        lotCode: line.lotCode,
+        expiresOn: formatExpiryDay(line.expiresOn),
+        productCode:
+          taxRow && typeof taxRow.productCode === 'string'
+            ? taxRow.productCode
+            : null,
+        gtin:
+          taxRow && typeof taxRow.gtin === 'string' ? taxRow.gtin : null,
+        tax: tax
+          ? {
+              productCents: Number(tax.productCents ?? 0),
+              freightCents: Number(tax.freightCents ?? 0),
+              icmsCents: Number(tax.icmsCents ?? 0),
+              icmsStCents: Number(tax.icmsStCents ?? 0),
+              ipiCents: Number(tax.ipiCents ?? 0),
+              pisCents: Number(tax.pisCents ?? 0),
+              cofinsCents: Number(tax.cofinsCents ?? 0),
+            }
+          : null,
+      };
+    }),
   };
 }
 

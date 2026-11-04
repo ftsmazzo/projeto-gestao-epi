@@ -30,13 +30,35 @@ const parsed = parseNfeXml(`<?xml version="1.0"?>
       <dest><CNPJ>11222333000181</CNPJ><xNome>Distribuidora</xNome></dest>
       <det nItem="1">
         <prod>
+          <cProd>SKU-1</cProd>
+          <cEAN>7891234567890</cEAN>
           <xProd>Luva de vaqueta</xProd>
           <NCM>42032900</NCM>
           <CFOP>2102</CFOP>
           <qCom>10.0000</qCom>
           <vUnCom>12.50</vUnCom>
+          <vProd>125.00</vProd>
+          <vFrete>5.00</vFrete>
         </prod>
+        <imposto>
+          <ICMS><ICMS00><vICMS>12.50</vICMS></ICMS00></ICMS>
+          <IPI><IPITrib><vIPI>2.00</vIPI></IPITrib></IPI>
+          <PIS><PISAliq><vPIS>1.00</vPIS></PISAliq></PIS>
+          <COFINS><COFINSAliq><vCOFINS>3.00</vCOFINS></COFINSAliq></COFINS>
+        </imposto>
       </det>
+      <total>
+        <ICMSTot>
+          <vProd>125.00</vProd>
+          <vFrete>5.00</vFrete>
+          <vICMS>12.50</vICMS>
+          <vST>0.00</vST>
+          <vIPI>2.00</vIPI>
+          <vPIS>1.00</vPIS>
+          <vCOFINS>3.00</vCOFINS>
+          <vNF>135.00</vNF>
+        </ICMSTot>
+      </total>
     </infNFe>
   </NFe>
 </nfeProc>`);
@@ -46,5 +68,9 @@ assert('numero 123', parsed.invoiceNumber === '123');
 assert('item inteiro e custo em centavos', parsed.lines[0]?.quantity === 10 && parsed.lines[0].unitCostCents === 1250);
 assert('ncm e cfop', parsed.lines[0]?.ncm === '42032900' && parsed.lines[0].cfop === '2102');
 assert('destinatario', parsed.recipientCnpj === '11222333000181');
+assert('imposto linha icms', parsed.lines[0]?.tax.icmsCents === 1250);
+assert('imposto linha ipi', parsed.lines[0]?.tax.ipiCents === 200);
+assert('total nota', parsed.totals.invoiceCents === 13500);
+assert('frete total', parsed.totals.freightCents === 500);
 
 console.log('nfe-xml.rules.selftest ok');
