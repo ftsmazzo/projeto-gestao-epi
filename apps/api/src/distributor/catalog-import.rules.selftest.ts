@@ -23,6 +23,7 @@ const parsed = parseCsvText(catalogImportTemplateCsv());
 const built = buildCatalogImportRows(parsed.headers, parsed.records);
 assert(built.rows.length === 2, 'two products');
 assert(built.rows[0]!.sizes.length === 3, 'three sizes');
+assert(built.rows[0]!.catalog.salePriceCents === 1990, 'sale price from csv');
 assert(built.errors.length === 0, 'no errors');
 
 let bad = false;

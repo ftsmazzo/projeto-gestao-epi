@@ -1,6 +1,10 @@
 'use client';
 
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  SizeChips,
+  formatVariantConfirmLabel,
+} from '../../../components/distributor/SizeChips';
 import { DistributorScanPanel } from '../../../components/DistributorScanPanel';
 import {
   listDistributorProducts,
@@ -12,6 +16,7 @@ import {
 
 export default function DistribuidoraSaidaPage() {
   const [products, setProducts] = useState<DistributorProduct[]>([]);
+  const [focusProductId, setFocusProductId] = useState('');
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [lotCode, setLotCode] = useState('');
@@ -25,16 +30,40 @@ export default function DistribuidoraSaidaPage() {
 
   useEffect(() => {
     void listDistributorProducts()
-      .then((rows) => {
-        setProducts(rows);
-        const first = rows[0]?.variants[0]?.id;
-        if (first) setVariantId(first);
-      })
+      .then((rows) => setProducts(rows))
       .catch((err: unknown) =>
         setError(err instanceof Error ? err.message : 'Falha ao carregar.'),
       );
     scanRef.current?.focus();
   }, []);
+
+  const focusProduct = useMemo(
+    () => products.find((row) => row.id === focusProductId) ?? null,
+    [products, focusProductId],
+  );
+
+  const selectedVariant = focusProduct?.variants.find((row) => row.id === variantId);
+  const selectedLots =
+    selectedVariant?.lots.filter((lot) => lot.quantity > 0) ?? [];
+  const confirmLabel =
+    focusProduct && selectedVariant
+      ? formatVariantConfirmLabel(
+          focusProduct.name,
+          selectedVariant.label,
+          quantity.trim() || '?',
+        )
+      : null;
+
+  function selectFocusProduct(productId: string) {
+    setFocusProductId(productId);
+    setVariantId('');
+    setLotCode('');
+    setScannedLabel(null);
+    const product = products.find((row) => row.id === productId);
+    if (product && product.variants.length === 1) {
+      setVariantId(product.variants[0]?.id ?? '');
+    }
+  }
 
   async function resolveScan(code: string) {
     const trimmed = code.trim();
@@ -47,24 +76,32 @@ export default function DistribuidoraSaidaPage() {
         const others = current.filter((row) => row.id !== found.product.id);
         return [found.product, ...others];
       });
-      const nextId = found.preferredVariantId ?? found.sizes[0]?.id ?? '';
+      const multi = found.sizes.length > 1;
+      const nextId = multi ? '' : found.preferredVariantId ?? found.sizes[0]?.id ?? '';
+      setFocusProductId(found.product.id);
       setVariantId(nextId);
       setLotCode('');
       setScannedLabel(
-        `${found.product.name}${found.sizes.length > 1 ? ' — escolha o tamanho abaixo' : ''}`,
+        multi
+          ? `${found.product.name} — toque no tamanho`
+          : found.product.name,
       );
       setScanCode('');
       setQuantity('1');
       const balance =
         found.sizes.find((row) => row.id === nextId)?.quantity ??
-        found.sizes[0]?.quantity ??
-        0;
+        (multi ? null : found.sizes[0]?.quantity) ??
+        null;
       setNotice(
-        balance > 0
-          ? `Código lido. Saldo disponível: ${balance}. Confira a quantidade.`
-          : 'Código lido, mas este tamanho está zerado.',
+        multi
+          ? 'Código lido. Escolha o tamanho nos botões abaixo.'
+          : balance != null && balance > 0
+            ? `Código lido. Saldo disponível: ${balance}. Confira a quantidade.`
+            : 'Código lido, mas este tamanho está zerado.',
       );
-      window.setTimeout(() => qtyRef.current?.focus(), 50);
+      window.setTimeout(() => {
+        if (!multi) qtyRef.current?.focus();
+      }, 50);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Código não encontrado.');
       setScanCode('');
@@ -77,8 +114,16 @@ export default function DistribuidoraSaidaPage() {
     setError(null);
     setNotice(null);
     const amount = Number(quantity);
-    if (!variantId || !Number.isInteger(amount) || amount < 1) {
-      setError('Escolha o tamanho e uma quantidade inteira.');
+    if (!focusProductId) {
+      setError('Escolha o produto (ou escaneie o código).');
+      return;
+    }
+    if (!variantId) {
+      setError('Toque no tamanho antes de confirmar.');
+      return;
+    }
+    if (!Number.isInteger(amount) || amount < 1) {
+      setError('Informe uma quantidade inteira maior que zero.');
       return;
     }
     setSaving(true);
@@ -96,6 +141,8 @@ export default function DistribuidoraSaidaPage() {
       setProducts(rows);
       setQuantity('1');
       setLotCode('');
+      setVariantId('');
+      setFocusProductId('');
       setScannedLabel(null);
       scanRef.current?.focus();
     } catch (err) {
@@ -105,24 +152,6 @@ export default function DistribuidoraSaidaPage() {
     }
   }
 
-  const selectedProduct = products.find((product) =>
-    product.variants.some((variant) => variant.id === variantId),
-  );
-  const selectedLots =
-    selectedProduct?.variants
-      .find((variant) => variant.id === variantId)
-      ?.lots.filter((lot) => lot.quantity > 0) ?? [];
-  const options = products.flatMap((product) =>
-    product.variants.map((variant) => ({
-      id: variant.id,
-      label: `${product.name} · ${
-        variant.label === 'Único' || variant.label === 'Unico'
-          ? 'sem numeração'
-          : variant.label
-      } (${variant.quantity})`,
-    })),
-  );
-
   return (
     <div className="module-page">
       <header className="dash-page-header">
@@ -130,8 +159,8 @@ export default function DistribuidoraSaidaPage() {
           <p className="page-kicker">Distribuidora</p>
           <h1 className="page-title">Saída</h1>
           <p className="page-lead">
-            Escaneie o código, confira o tamanho e a quantidade. Só sai o que
-            cabe no saldo.
+            Escaneie o código, toque no tamanho e confirme. Só sai o que cabe no
+            saldo.
           </p>
         </div>
       </header>
@@ -157,60 +186,104 @@ export default function DistribuidoraSaidaPage() {
         mode="saida"
       />
 
-      <form className="form dash-panel" onSubmit={onSubmit}>
+      <form className="form dash-panel stock-confirm-form" onSubmit={onSubmit}>
         <h2 className="dash-panel__title">Confirmar saída</h2>
-        <div className="field">
-          <label htmlFor="tamanho">Produto e tamanho</label>
-          <select
-            id="tamanho"
-            value={variantId}
-            onChange={(e) => {
-              setVariantId(e.target.value);
-              setLotCode('');
-            }}
-          >
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        {selectedProduct?.tracksLot ? (
-          <div className="field">
-            <label htmlFor="lote">Lote</label>
+        <div className="form-grid">
+          <div className="field field--span-2">
+            <label htmlFor="produto-foco">Produto</label>
             <select
-              id="lote"
-              value={lotCode}
-              onChange={(e) => setLotCode(e.target.value)}
+              id="produto-foco"
+              value={focusProductId}
+              onChange={(e) => selectFocusProduct(e.target.value)}
+              required
             >
-              <option value="">O que vence primeiro</option>
-              {selectedLots.map((lot) => (
-                <option key={lot.id} value={lot.code}>
-                  {lot.code} · {lot.quantity}
-                  {lot.expiresOn ? ` · vence ${lot.expiresOn}` : ''}
+              <option value="">Selecione ou escaneie…</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name} ({product.internalSku})
                 </option>
               ))}
             </select>
           </div>
-        ) : null}
-        <div className="field">
-          <label htmlFor="qtd">Quantidade</label>
-          <input
-            ref={qtyRef}
-            id="qtd"
-            inputMode="numeric"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-          />
+
+          {focusProduct ? (
+            <div className="field field--span-2">
+              <label>Tamanho</label>
+              <SizeChips
+                options={focusProduct.variants.map((variant) => ({
+                  id: variant.id,
+                  label: variant.label,
+                  quantity: variant.quantity,
+                }))}
+                value={variantId}
+                showBalance
+                onChange={(id) => {
+                  setVariantId(id);
+                  setLotCode('');
+                  window.setTimeout(() => qtyRef.current?.focus(), 30);
+                }}
+              />
+              <p className="field-hint">
+                Só os tamanhos deste produto. Toque no número certo antes de
+                confirmar.
+              </p>
+            </div>
+          ) : null}
+
+          {focusProduct?.tracksLot ? (
+            <div className="field field--span-2">
+              <label htmlFor="lote">Lote</label>
+              <select
+                id="lote"
+                value={lotCode}
+                onChange={(e) => setLotCode(e.target.value)}
+              >
+                <option value="">O que vence primeiro</option>
+                {selectedLots.map((lot) => (
+                  <option key={lot.id} value={lot.code}>
+                    {lot.code} · {lot.quantity}
+                    {lot.expiresOn ? ` · vence ${lot.expiresOn}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+
+          <div className="field field--qty">
+            <label htmlFor="qtd">Quantidade</label>
+            <input
+              ref={qtyRef}
+              id="qtd"
+              inputMode="numeric"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+            />
+          </div>
         </div>
-        <button
-          className="btn btn-primary"
-          type="submit"
-          disabled={saving || options.length === 0}
-        >
-          Registrar saída
-        </button>
+
+        {confirmLabel ? (
+          <div className="stock-confirm-banner" role="status">
+            <strong>Vai sair:</strong> {confirmLabel}
+            {selectedVariant ? (
+              <span className="muted"> · saldo {selectedVariant.quantity}</span>
+            ) : null}
+          </div>
+        ) : (
+          <p className="field-hint">
+            Escaneie ou escolha o produto e toque no tamanho para confirmar a
+            saída.
+          </p>
+        )}
+
+        <div className="product-form__actions">
+          <button
+            className="btn btn-primary"
+            type="submit"
+            disabled={saving || !confirmLabel}
+          >
+            Confirmar saída
+          </button>
+        </div>
       </form>
     </div>
   );

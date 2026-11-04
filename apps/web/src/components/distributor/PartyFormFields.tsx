@@ -159,183 +159,201 @@ export function PartyFormFields({
   }
 
   return (
-    <div className="form-grid" style={{ gap: '0.75rem' }}>
-      <div className="field">
-        <label>Nome *</label>
-        <input
-          value={value.name}
-          onChange={(event) => set('name', event.target.value)}
-          required
-          minLength={2}
-        />
-      </div>
-      <div className="field">
-        <label>CNPJ</label>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <input
-            value={value.cnpj}
-            onChange={(event) => set('cnpj', formatCnpjInput(event.target.value))}
-            placeholder="00.000.000/0000-00"
-            style={{ flex: '1 1 160px' }}
-          />
-          <button
-            type="button"
-            className="btn"
-            disabled={lookupBusy !== null}
-            onClick={() => void onLookupCnpj()}
-          >
-            {lookupBusy === 'cnpj' ? 'Buscando…' : 'Buscar CNPJ'}
-          </button>
-        </div>
-      </div>
-      <div className="field">
-        <label>Telefone</label>
-        <input
-          value={value.phone}
-          onChange={(event) => set('phone', event.target.value)}
-        />
-      </div>
-      <div className="field">
-        <label>E-mail</label>
-        <input
-          type="email"
-          value={value.email}
-          onChange={(event) => set('email', event.target.value)}
-        />
-      </div>
-      {(lookupMsg || lookupError) && (
-        <div className="cnpj-lookup-slot" style={{ gridColumn: '1 / -1' }}>
-          {lookupError ? <p className="error">{lookupError}</p> : null}
-          {lookupMsg ? <p className="muted">{lookupMsg}</p> : null}
-        </div>
-      )}
-      {!compact ? (
-        <>
-          <div className="field">
-            <label>IE</label>
+    <div className="party-form">
+      <fieldset className="product-form__section">
+        <legend className="product-form__legend">Identificação</legend>
+        <div className="form-grid">
+          <div className="field field--span-2">
+            <label>Nome *</label>
             <input
-              value={value.stateRegistration}
-              onChange={(event) => set('stateRegistration', event.target.value)}
-              placeholder="Opcional"
+              value={value.name}
+              onChange={(event) => set('name', event.target.value)}
+              required
+              minLength={2}
             />
           </div>
-          <div className="field">
-            <label>UF</label>
-            <select
-              value={value.uf}
-              onChange={(event) => set('uf', event.target.value)}
-            >
-              <option value="">—</option>
-              {UF_OPTIONS.map((uf) => (
-                <option key={uf} value={uf}>
-                  {uf}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label>CEP</label>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <div className="field field--span-2">
+            <label>CNPJ</label>
+            <div className="product-form__inline">
               <input
-                value={value.zipCode}
-                onChange={(event) => set('zipCode', event.target.value)}
-                onBlur={() => {
-                  if (value.zipCode.replace(/\D/g, '').length === 8) {
-                    void onLookupCep();
-                  }
-                }}
-                placeholder="00000-000"
-                style={{ flex: '1 1 120px' }}
+                value={value.cnpj}
+                onChange={(event) => set('cnpj', formatCnpjInput(event.target.value))}
+                placeholder="00.000.000/0000-00"
               />
               <button
                 type="button"
                 className="btn"
                 disabled={lookupBusy !== null}
-                onClick={() => void onLookupCep()}
+                onClick={() => void onLookupCnpj()}
               >
-                {lookupBusy === 'cep' ? 'Buscando…' : 'Buscar CEP'}
+                {lookupBusy === 'cnpj' ? 'Buscando…' : 'Buscar CNPJ'}
               </button>
             </div>
           </div>
           <div className="field">
-            <label>Logradouro</label>
+            <label>Telefone</label>
             <input
-              value={value.street}
-              onChange={(event) => set('street', event.target.value)}
+              value={value.phone}
+              onChange={(event) => set('phone', event.target.value)}
             />
           </div>
           <div className="field">
-            <label>Número</label>
+            <label>E-mail</label>
             <input
-              value={value.number}
-              onChange={(event) => set('number', event.target.value)}
+              type="email"
+              value={value.email}
+              onChange={(event) => set('email', event.target.value)}
             />
           </div>
-          <div className="field">
-            <label>Complemento</label>
-            <input
-              value={value.complement}
-              onChange={(event) => set('complement', event.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label>Bairro</label>
-            <input
-              value={value.district}
-              onChange={(event) => set('district', event.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label>Cidade</label>
-            <input
-              value={value.city}
-              onChange={(event) => set('city', event.target.value)}
-            />
-          </div>
-          <div className="field" style={{ gridColumn: '1 / -1' }}>
-            <label>Observações</label>
-            <textarea
-              value={value.notes}
-              onChange={(event) => set('notes', event.target.value)}
-              rows={2}
-            />
-          </div>
+          {(lookupMsg || lookupError) && (
+            <div className="cnpj-lookup-slot field--span-2">
+              {lookupError ? <p className="error">{lookupError}</p> : null}
+              {lookupMsg ? <p className="muted">{lookupMsg}</p> : null}
+            </div>
+          )}
+          {showActive ? (
+            <label className="field product-form__check field--span-2">
+              <input
+                type="checkbox"
+                checked={value.active}
+                onChange={(event) => set('active', event.target.checked)}
+              />
+              Ativo
+            </label>
+          ) : null}
+        </div>
+      </fieldset>
+
+      {!compact ? (
+        <>
+          <fieldset className="product-form__section">
+            <legend className="product-form__legend">Endereço fiscal</legend>
+            <div className="form-grid">
+              <div className="field">
+                <label>IE</label>
+                <input
+                  value={value.stateRegistration}
+                  onChange={(event) => set('stateRegistration', event.target.value)}
+                  placeholder="Opcional"
+                />
+              </div>
+              <div className="field">
+                <label>UF</label>
+                <select
+                  value={value.uf}
+                  onChange={(event) => set('uf', event.target.value)}
+                >
+                  <option value="">—</option>
+                  {UF_OPTIONS.map((uf) => (
+                    <option key={uf} value={uf}>
+                      {uf}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field field--span-2">
+                <label>CEP</label>
+                <div className="product-form__inline">
+                  <input
+                    value={value.zipCode}
+                    onChange={(event) => set('zipCode', event.target.value)}
+                    onBlur={() => {
+                      if (value.zipCode.replace(/\D/g, '').length === 8) {
+                        void onLookupCep();
+                      }
+                    }}
+                    placeholder="00000-000"
+                  />
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={lookupBusy !== null}
+                    onClick={() => void onLookupCep()}
+                  >
+                    {lookupBusy === 'cep' ? 'Buscando…' : 'Buscar CEP'}
+                  </button>
+                </div>
+              </div>
+              <div className="field field--span-2">
+                <label>Logradouro</label>
+                <input
+                  value={value.street}
+                  onChange={(event) => set('street', event.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Número</label>
+                <input
+                  value={value.number}
+                  onChange={(event) => set('number', event.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Complemento</label>
+                <input
+                  value={value.complement}
+                  onChange={(event) => set('complement', event.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Bairro</label>
+                <input
+                  value={value.district}
+                  onChange={(event) => set('district', event.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>Cidade</label>
+                <input
+                  value={value.city}
+                  onChange={(event) => set('city', event.target.value)}
+                />
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset className="product-form__section">
+            <legend className="product-form__legend">Observações</legend>
+            <div className="form-grid">
+              <div className="field field--span-2">
+                <label>Notas internas</label>
+                <textarea
+                  value={value.notes}
+                  onChange={(event) => set('notes', event.target.value)}
+                  rows={2}
+                />
+              </div>
+            </div>
+          </fieldset>
         </>
       ) : (
-        <>
-          <div className="field">
-            <label>Cidade</label>
-            <input
-              value={value.city}
-              onChange={(event) => set('city', event.target.value)}
-            />
+        <fieldset className="product-form__section">
+          <legend className="product-form__legend">Local</legend>
+          <div className="form-grid">
+            <div className="field">
+              <label>Cidade</label>
+              <input
+                value={value.city}
+                onChange={(event) => set('city', event.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label>UF</label>
+              <select
+                value={value.uf}
+                onChange={(event) => set('uf', event.target.value)}
+              >
+                <option value="">—</option>
+                {UF_OPTIONS.map((uf) => (
+                  <option key={uf} value={uf}>
+                    {uf}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="field">
-            <label>UF</label>
-            <select
-              value={value.uf}
-              onChange={(event) => set('uf', event.target.value)}
-            >
-              <option value="">—</option>
-              {UF_OPTIONS.map((uf) => (
-                <option key={uf} value={uf}>
-                  {uf}
-                </option>
-              ))}
-            </select>
-          </div>
-        </>
+        </fieldset>
       )}
-      {showActive ? (
-        <label className="field" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <input
-            type="checkbox"
-            checked={value.active}
-            onChange={(event) => set('active', event.target.checked)}
-          />
-          Ativo
-        </label>
-      ) : null}
     </div>
   );
 }

@@ -115,12 +115,15 @@ export default function DistribuidoraClientesPage() {
         </button>
       </form>
 
-      <form className="form dash-panel" onSubmit={onSave}>
+      <form className="form dash-panel party-form-page" onSubmit={onSave}>
         <h2 className="dash-panel__title">
           {editingId ? 'Editar cliente' : 'Novo cliente'}
         </h2>
+        <p className="field-hint">
+          Nome é obrigatório. CNPJ, endereço e IE são opcionais e ajudam na NF-e.
+        </p>
         <PartyFormFields value={form} onChange={setForm} showActive={Boolean(editingId)} />
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div className="product-form__actions">
           <button className="btn btn-primary" type="submit" disabled={saving}>
             {saving ? 'Salvando…' : editingId ? 'Salvar alterações' : 'Cadastrar'}
           </button>

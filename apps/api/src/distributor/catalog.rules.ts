@@ -18,6 +18,7 @@ export type CatalogInput = {
   gtin?: string | null;
   warehouseLocation?: string | null;
   costCents?: number | null;
+  salePriceCents?: number | null;
   lengthCm?: number | null;
   widthCm?: number | null;
   heightCm?: number | null;
@@ -43,6 +44,7 @@ export type StoredCatalog = {
   gtin: string | null;
   warehouseLocation: string | null;
   costCents: number | null;
+  salePriceCents: number | null;
   lengthMm: number | null;
   widthMm: number | null;
   heightMm: number | null;
@@ -81,6 +83,7 @@ export function normalizeCatalog(input: CatalogInput): StoredCatalog {
     gtin: readGtin(input.gtin),
     warehouseLocation: readLocation(input.warehouseLocation),
     costCents: readCost(input.costCents),
+    salePriceCents: readCost(input.salePriceCents, 'preço de venda'),
     lengthMm: dimensions[0],
     widthMm: dimensions[1],
     heightMm: dimensions[2],
@@ -112,6 +115,9 @@ export function normalizeCatalogPatch(
     patch.warehouseLocation = readLocation(input.warehouseLocation);
   }
   if ('costCents' in input) patch.costCents = readCost(input.costCents);
+  if ('salePriceCents' in input) {
+    patch.salePriceCents = readCost(input.salePriceCents, 'preço de venda');
+  }
   if ('lengthCm' in input || 'widthCm' in input || 'heightCm' in input) {
     const [lengthMm, widthMm, heightMm] = readTrio(
       input.lengthCm,
@@ -202,10 +208,13 @@ function readLocation(value: string | null | undefined): string | null {
   return text;
 }
 
-function readCost(value: number | null | undefined): number | null {
+function readCost(
+  value: number | null | undefined,
+  label = 'custo',
+): number | null {
   if (value == null) return null;
   if (!Number.isInteger(value) || value < 0 || value > 100_000_000) {
-    throw new CatalogRuleError('O custo precisa ser um valor em centavos.');
+    throw new CatalogRuleError(`O ${label} precisa ser um valor em centavos.`);
   }
   return value;
 }

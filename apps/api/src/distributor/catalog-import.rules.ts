@@ -53,6 +53,9 @@ const HEADER_ALIASES: Record<string, string> = {
   custo: 'costReais',
   custo_reais: 'costReais',
   preco_custo: 'costReais',
+  preco_venda: 'saleReais',
+  preco: 'saleReais',
+  venda: 'saleReais',
   controla_lote: 'tracksLot',
   lote: 'tracksLot',
   trackslot: 'tracksLot',
@@ -154,6 +157,7 @@ export function buildCatalogImportRows(
         gtin: values.gtin || null,
         ncm: values.ncm || null,
         costCents: parseCostReaisToCents(values.costReais ?? ''),
+        salePriceCents: parseCostReaisToCents(values.saleReais ?? ''),
       };
       const catalog = normalizeCatalog(catalogInput);
       rows.push({
@@ -184,8 +188,8 @@ export function buildCatalogImportRows(
 
 export function catalogImportTemplateCsv(): string {
   return [
-    'nome;codigo_interno;tamanhos;codigo_fornecedor;ca;gtin;unidade;ncm;minimo;custo;controla_lote',
-    'Luva nitrilica;LUVA-NIT;P|M|G;FORN-01;12345;7891234567890;PAR;40151900;10;12,90;sim',
-    'Capacete;CAP-01;Unico;;;7891234567891;UN;65061000;5;45,00;nao',
+    'nome;codigo_interno;tamanhos;codigo_fornecedor;ca;gtin;unidade;ncm;minimo;custo;preco_venda;controla_lote',
+    'Luva nitrilica;LUVA-NIT;P|M|G;FORN-01;12345;7891234567890;PAR;40151900;10;12,90;19,90;sim',
+    'Capacete;CAP-01;Unico;;;7891234567891;UN;65061000;5;45,00;69,90;nao',
   ].join('\n');
 }

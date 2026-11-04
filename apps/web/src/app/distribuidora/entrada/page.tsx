@@ -1,7 +1,11 @@
 'use client';
 
-import { FormEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { PartyPicker } from '../../../components/distributor/PartyPicker';
+import {
+  SizeChips,
+  formatVariantConfirmLabel,
+} from '../../../components/distributor/SizeChips';
 import { DistributorScanPanel } from '../../../components/DistributorScanPanel';
 import {
   confirmDistributorInbound,
@@ -42,9 +46,22 @@ function lineTaxHint(line: DistributorInboundLine) {
   return parts.length ? parts.join(' · ') : null;
 }
 
+function productOfVariant(
+  products: DistributorProduct[],
+  variantId: string | null | undefined,
+) {
+  if (!variantId) return null;
+  return (
+    products.find((product) =>
+      product.variants.some((variant) => variant.id === variantId),
+    ) ?? null
+  );
+}
+
 export default function DistribuidoraEntradaPage() {
   const [products, setProducts] = useState<DistributorProduct[]>([]);
   const [suppliers, setSuppliers] = useState<DistributorSupplier[]>([]);
+  const [focusProductId, setFocusProductId] = useState('');
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [lotCode, setLotCode] = useState('');
@@ -60,12 +77,14 @@ export default function DistribuidoraEntradaPage() {
   const [newSku, setNewSku] = useState('');
   const [newSizes, setNewSizes] = useState('Único');
   const [newNcm, setNewNcm] = useState('');
+  const [newCost, setNewCost] = useState('');
+  const [newSale, setNewSale] = useState('');
   const [createForLineId, setCreateForLineId] = useState<string | null>(null);
+  const [lineProductIds, setLineProductIds] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const scanRef = useRef<HTMLInputElement>(null);
-  const sizeRef = useRef<HTMLSelectElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -80,6 +99,21 @@ export default function DistribuidoraEntradaPage() {
     scanRef.current?.focus();
   }, []);
 
+  const focusProduct = useMemo(
+    () => products.find((row) => row.id === focusProductId) ?? null,
+    [products, focusProductId],
+  );
+
+  const selectedVariant = focusProduct?.variants.find((row) => row.id === variantId);
+  const confirmLabel =
+    focusProduct && selectedVariant
+      ? formatVariantConfirmLabel(
+          focusProduct.name,
+          selectedVariant.label,
+          quantity.trim() || '?',
+        )
+      : null;
+
   async function resolveScan(code: string) {
     const trimmed = code.trim();
     if (!trimmed) return;
@@ -93,29 +127,37 @@ export default function DistribuidoraEntradaPage() {
       });
       const multi = found.sizes.length > 1;
       const nextId = multi ? '' : found.preferredVariantId ?? found.sizes[0]?.id ?? '';
+      setFocusProductId(found.product.id);
       setVariantId(nextId);
       setScannedLabel(
         multi
-          ? `${found.product.name} — escolha o tamanho abaixo`
+          ? `${found.product.name} — toque no tamanho`
           : found.product.name,
       );
       setScanCode('');
       setQuantity('1');
       setNotice(
         multi
-          ? 'Código lido. Selecione o tamanho antes de registrar.'
+          ? 'Código lido. Escolha o tamanho nos botões abaixo antes de confirmar.'
           : found.product.gtin
-            ? 'Código lido. Confira a quantidade e registre a entrada.'
+            ? 'Código lido. Confira a quantidade e confirme a entrada.'
             : 'Produto encontrado pelo SKU. Vale cadastrar o GTIN na ficha para o leitor.',
       );
-      window.setTimeout(() => {
-        if (multi) sizeRef.current?.focus();
-        else qtyRef.current?.focus();
-      }, 50);
+      window.setTimeout(() => qtyRef.current?.focus(), 50);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Código não encontrado.');
       setScanCode('');
       scanRef.current?.focus();
+    }
+  }
+
+  function selectFocusProduct(productId: string) {
+    setFocusProductId(productId);
+    setVariantId('');
+    setScannedLabel(null);
+    const product = products.find((row) => row.id === productId);
+    if (product && product.variants.length === 1) {
+      setVariantId(product.variants[0]?.id ?? '');
     }
   }
 
@@ -124,17 +166,23 @@ export default function DistribuidoraEntradaPage() {
     setError(null);
     setNotice(null);
     const amount = Number(quantity);
+    if (!focusProductId) {
+      setError('Escolha o produto (ou escaneie o código).');
+      return;
+    }
     if (!variantId) {
-      setError('Escolha o produto e o tamanho antes de registrar.');
+      setError('Toque no tamanho antes de confirmar.');
       return;
     }
     if (!Number.isInteger(amount) || amount < 1) {
       setError('Informe uma quantidade inteira maior que zero.');
       return;
     }
-    const selected = products.find((product) =>
-      product.variants.some((variant) => variant.id === variantId),
-    );
+    if (!confirmLabel) {
+      setError('Confira produto, tamanho e quantidade.');
+      return;
+    }
+    const selected = productOfVariant(products, variantId);
     if (selected?.tracksLot && !lotCode.trim()) {
       setError('Este produto controla lote. Informe o código do lote.');
       return;
@@ -161,6 +209,7 @@ export default function DistribuidoraEntradaPage() {
       setLotCode('');
       setExpiresOn('');
       setVariantId('');
+      setFocusProductId('');
       setScannedLabel(null);
       scanRef.current?.focus();
     } catch (err) {
@@ -168,6 +217,16 @@ export default function DistribuidoraEntradaPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function parseMoneyToCents(raw: string): number | null {
+    const text = raw.trim().replace(',', '.');
+    if (!text) return null;
+    const value = Number(text);
+    if (!Number.isFinite(value) || value < 0) {
+      throw new Error('Valor em R$ inválido.');
+    }
+    return Math.round(value * 100);
   }
 
   async function onCreateProduct(event: FormEvent) {
@@ -188,24 +247,39 @@ export default function DistribuidoraEntradaPage() {
         name: newName.trim(),
         internalSku: newSku.trim(),
         ncm: newNcm.trim() || undefined,
+        costCents: parseMoneyToCents(newCost) ?? undefined,
+        salePriceCents: parseMoneyToCents(newSale) ?? undefined,
         variants,
       });
       const refreshed = await listDistributorProducts();
       setProducts(refreshed);
       const firstVariant = created.variants[0]?.id ?? '';
-      if (createForLineId && document && firstVariant) {
-        const updated = await linkDistributorLine(
-          document.id,
-          createForLineId,
-          firstVariant,
-        );
-        setDocument(updated);
-        setNotice(`Produto cadastrado e vinculado à linha da nota.`);
+      if (createForLineId && document) {
+        if (variants.length === 1 && firstVariant) {
+          const updated = await linkDistributorLine(
+            document.id,
+            createForLineId,
+            firstVariant,
+          );
+          setDocument(updated);
+          setLineProductIds((current) => ({
+            ...current,
+            [createForLineId]: created.id,
+          }));
+          setNotice('Produto cadastrado e vinculado à linha da nota.');
+        } else {
+          setLineProductIds((current) => ({
+            ...current,
+            [createForLineId]: created.id,
+          }));
+          setNotice('Produto cadastrado. Escolha o tamanho na linha da nota.');
+        }
       } else {
-        setVariantId(firstVariant);
+        setFocusProductId(created.id);
+        setVariantId(variants.length === 1 ? firstVariant : '');
         setNotice(
           variants.length > 1
-            ? 'Produto cadastrado. Escolha o tamanho e registre a entrada.'
+            ? 'Produto cadastrado. Toque no tamanho e confirme a entrada.'
             : 'Produto cadastrado e selecionado para entrada.',
         );
       }
@@ -215,6 +289,8 @@ export default function DistribuidoraEntradaPage() {
       setNewSku('');
       setNewSizes('Único');
       setNewNcm('');
+      setNewCost('');
+      setNewSale('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao cadastrar produto.');
     } finally {
@@ -231,6 +307,12 @@ export default function DistribuidoraEntradaPage() {
       const draft = await extractDistributorInvoice(file);
       setDocument(draft);
       setSupplierId(draft.supplierId ?? '');
+      const initial: Record<string, string> = {};
+      for (const line of draft.lines) {
+        const product = productOfVariant(products, line.variantId);
+        if (product) initial[line.id] = product.id;
+      }
+      setLineProductIds(initial);
       setInvoiceOpen(true);
       setNotice(draft.message || 'Rascunho criado. O estoque ainda não mudou.');
     } catch (err) {
@@ -255,6 +337,12 @@ export default function DistribuidoraEntradaPage() {
         lot,
       );
       setDocument(updated);
+      if (nextVariantId) {
+        const product = productOfVariant(products, nextVariantId);
+        if (product) {
+          setLineProductIds((current) => ({ ...current, [lineId]: product.id }));
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao vincular.');
     }
@@ -308,20 +396,17 @@ export default function DistribuidoraEntradaPage() {
     setNewSku(line.productCode || line.gtin || `SKU-${Date.now().toString().slice(-6)}`);
     setNewSizes('Único');
     setNewNcm(line.ncm ?? '');
+    setNewCost(
+      line.unitCostCents != null
+        ? (line.unitCostCents / 100).toFixed(2).replace('.', ',')
+        : '',
+    );
+    setNewSale('');
     setShowNewProduct(true);
     setInvoiceOpen(true);
   }
 
-  const tracksLot = products.some(
-    (product) =>
-      product.tracksLot && product.variants.some((variant) => variant.id === variantId),
-  );
-  const options = products.flatMap((product) =>
-    product.variants.map((variant) => ({
-      id: variant.id,
-      label: `${product.name} · ${variant.label === 'Único' || variant.label === 'Unico' ? 'sem numeração' : variant.label}`,
-    })),
-  );
+  const tracksLot = Boolean(focusProduct?.tracksLot);
 
   return (
     <div className="module-page">
@@ -330,8 +415,8 @@ export default function DistribuidoraEntradaPage() {
           <p className="page-kicker">Distribuidora</p>
           <h1 className="page-title">Entrada</h1>
           <p className="page-lead">
-            Escaneie o código, escolha o tamanho e registre. Sem XML, cadastre
-            produto e fornecedor aqui. Com XML, impostos e totais vêm organizados.
+            Escaneie o código, toque no tamanho e confirme o que vai entrar. Sem
+            XML, cadastre produto e fornecedor aqui.
           </p>
         </div>
       </header>
@@ -357,75 +442,118 @@ export default function DistribuidoraEntradaPage() {
         mode="entrada"
       />
 
-      <form className="form dash-panel" onSubmit={onManual}>
+      <form className="form dash-panel stock-confirm-form" onSubmit={onManual}>
         <h2 className="dash-panel__title">Confirmar entrada</h2>
-        <PartyPicker
-          kind="supplier"
-          label="Fornecedor (opcional nesta entrada rápida)"
-          value={manualSupplierId}
-          options={suppliers}
-          required={false}
-          onChange={setManualSupplierId}
-          onCreated={(party) =>
-            setSuppliers((current) =>
-              current.some((row) => row.id === party.id)
-                ? current
-                : [party as DistributorSupplier, ...current],
-            )
-          }
-          createParty={createSupplier}
-        />
-        <div className="field">
-          <label htmlFor="tamanho">Produto e tamanho</label>
-          <select
-            id="tamanho"
-            ref={sizeRef}
-            value={variantId}
-            onChange={(e) => setVariantId(e.target.value)}
-            required
-          >
-            <option value="">Selecione o tamanho…</option>
-            {options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <p className="field-hint">
-            Obrigatório escolher o tamanho. Com vários tamanhos o sistema não
-            escolhe sozinho.
-          </p>
-        </div>
-        {tracksLot ? (
-          <>
-            <div className="field">
-              <label htmlFor="lote">Lote</label>
-              <input id="lote" value={lotCode} onChange={(e) => setLotCode(e.target.value)} />
-            </div>
-            <div className="field">
-              <label htmlFor="validade">Validade</label>
-              <input
-                id="validade"
-                type="date"
-                value={expiresOn}
-                onChange={(e) => setExpiresOn(e.target.value)}
+        <div className="form-grid">
+          <div className="field field--span-2">
+            <PartyPicker
+              kind="supplier"
+              label="Fornecedor (opcional nesta entrada rápida)"
+              value={manualSupplierId}
+              options={suppliers}
+              required={false}
+              onChange={setManualSupplierId}
+              onCreated={(party) =>
+                setSuppliers((current) =>
+                  current.some((row) => row.id === party.id)
+                    ? current
+                    : [party as DistributorSupplier, ...current],
+                )
+              }
+              createParty={createSupplier}
+            />
+          </div>
+
+          <div className="field field--span-2">
+            <label htmlFor="produto-foco">Produto</label>
+            <select
+              id="produto-foco"
+              value={focusProductId}
+              onChange={(e) => selectFocusProduct(e.target.value)}
+              required
+            >
+              <option value="">Selecione ou escaneie…</option>
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name} ({product.internalSku})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {focusProduct ? (
+            <div className="field field--span-2">
+              <label>Tamanho</label>
+              <SizeChips
+                options={focusProduct.variants.map((variant) => ({
+                  id: variant.id,
+                  label: variant.label,
+                }))}
+                value={variantId}
+                onChange={(id) => {
+                  setVariantId(id);
+                  window.setTimeout(() => qtyRef.current?.focus(), 30);
+                }}
               />
+              <p className="field-hint">
+                Só aparecem os tamanhos deste produto. Toque no número certo
+                (ex.: 42, não o vizinho 44).
+              </p>
             </div>
-          </>
-        ) : null}
-        <div className="field">
-          <label htmlFor="qtd">Quantidade</label>
-          <input
-            ref={qtyRef}
-            id="qtd"
-            inputMode="numeric"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-          />
+          ) : null}
+
+          {tracksLot ? (
+            <>
+              <div className="field">
+                <label htmlFor="lote">Lote</label>
+                <input
+                  id="lote"
+                  value={lotCode}
+                  onChange={(e) => setLotCode(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="validade">Validade</label>
+                <input
+                  id="validade"
+                  type="date"
+                  value={expiresOn}
+                  onChange={(e) => setExpiresOn(e.target.value)}
+                />
+              </div>
+            </>
+          ) : null}
+
+          <div className="field field--qty">
+            <label htmlFor="qtd">Quantidade</label>
+            <input
+              ref={qtyRef}
+              id="qtd"
+              inputMode="numeric"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+            />
+          </div>
         </div>
-        <div className="header-actions">
-          <button className="btn btn-primary" type="submit" disabled={saving}>
-            Registrar entrada
+
+        {confirmLabel ? (
+          <div className="stock-confirm-banner" role="status">
+            <strong>Vai entrar:</strong> {confirmLabel}
+          </div>
+        ) : (
+          <p className="field-hint">
+            Escaneie ou escolha o produto, toque no tamanho e informe a
+            quantidade para ver a confirmação.
+          </p>
+        )}
+
+        <div className="header-actions product-form__actions">
+          <button
+            className="btn btn-primary"
+            type="submit"
+            disabled={saving || !confirmLabel}
+          >
+            Confirmar entrada
           </button>
           <button
             className="btn"
@@ -443,33 +571,67 @@ export default function DistribuidoraEntradaPage() {
       {showNewProduct ? (
         <form className="form dash-panel" onSubmit={onCreateProduct}>
           <h2 className="dash-panel__title">
-            {createForLineId ? 'Cadastrar produto da linha da nota' : 'Cadastrar produto na entrada'}
+            {createForLineId
+              ? 'Cadastrar produto da linha da nota'
+              : 'Cadastrar produto na entrada'}
           </h2>
-          <div className="field">
-            <label>Nome *</label>
-            <input value={newName} onChange={(e) => setNewName(e.target.value)} required />
+          <div className="form-grid">
+            <div className="field field--span-2">
+              <label>Nome *</label>
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                required
+              />
+            </div>
+            <div className="field">
+              <label>SKU interno *</label>
+              <input
+                value={newSku}
+                onChange={(e) => setNewSku(e.target.value)}
+                required
+              />
+            </div>
+            <div className="field">
+              <label>Tamanhos *</label>
+              <input
+                value={newSizes}
+                onChange={(e) => setNewSizes(e.target.value)}
+                placeholder="Único ou 38, 39, 40"
+                required
+              />
+              <p className="field-hint">Separe por vírgula. Ex.: 38, 39, 40.</p>
+            </div>
+            <div className="field">
+              <label>Custo (R$)</label>
+              <input
+                value={newCost}
+                onChange={(e) => setNewCost(e.target.value)}
+                inputMode="decimal"
+                placeholder="0,00"
+              />
+            </div>
+            <div className="field">
+              <label>Preço de venda (R$)</label>
+              <input
+                value={newSale}
+                onChange={(e) => setNewSale(e.target.value)}
+                inputMode="decimal"
+                placeholder="0,00"
+              />
+            </div>
+            <div className="field">
+              <label>NCM</label>
+              <input value={newNcm} onChange={(e) => setNewNcm(e.target.value)} />
+            </div>
           </div>
-          <div className="field">
-            <label>SKU interno *</label>
-            <input value={newSku} onChange={(e) => setNewSku(e.target.value)} required />
+          <div className="product-form__actions">
+            <button className="btn btn-primary" type="submit" disabled={saving}>
+              {createForLineId
+                ? 'Cadastrar e vincular à nota'
+                : 'Cadastrar e selecionar'}
+            </button>
           </div>
-          <div className="field">
-            <label>Tamanhos *</label>
-            <input
-              value={newSizes}
-              onChange={(e) => setNewSizes(e.target.value)}
-              placeholder="Único ou 38, 39, 40"
-              required
-            />
-            <p className="field-hint">Separe por vírgula. Ex.: 38, 39, 40 ou Único.</p>
-          </div>
-          <div className="field">
-            <label>NCM</label>
-            <input value={newNcm} onChange={(e) => setNewNcm(e.target.value)} />
-          </div>
-          <button className="btn btn-primary" type="submit" disabled={saving}>
-            {createForLineId ? 'Cadastrar e vincular à nota' : 'Cadastrar e selecionar'}
-          </button>
         </form>
       ) : null}
 
@@ -576,57 +738,81 @@ export default function DistribuidoraEntradaPage() {
                     createParty={createSupplier}
                   />
                 ) : null}
-                <div className="table-wrap">
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Item lido</th>
-                        <th scope="col">Qtd</th>
-                        <th scope="col">Custo</th>
-                        <th scope="col">Tamanho</th>
-                        <th scope="col">Lote</th>
-                        <th scope="col" />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {document.lines.map((line) => (
-                        <tr key={line.id}>
-                          <td>
-                            {line.description}
-                            {line.ncm ? (
-                              <span className="table-sub">NCM {line.ncm}</span>
-                            ) : null}
-                            {line.caNumber ? (
-                              <span className="table-sub">CA {line.caNumber}</span>
-                            ) : null}
-                            {lineTaxHint(line) ? (
-                              <span className="table-sub">{lineTaxHint(line)}</span>
-                            ) : null}
-                          </td>
-                          <td>{line.quantity}</td>
-                          <td>
+                <div className="inbound-lines">
+                  {document.lines.map((line) => {
+                    const linkedProduct =
+                      productOfVariant(products, line.variantId) ??
+                      products.find((row) => row.id === lineProductIds[line.id]) ??
+                      null;
+                    const productId = linkedProduct?.id ?? lineProductIds[line.id] ?? '';
+                    const sizeOptions =
+                      products
+                        .find((row) => row.id === productId)
+                        ?.variants.map((variant) => ({
+                          id: variant.id,
+                          label: variant.label,
+                        })) ?? [];
+                    return (
+                      <article key={line.id} className="inbound-line-card">
+                        <header>
+                          <strong>{line.description}</strong>
+                          <span className="muted">
+                            Qtd {line.quantity}
                             {line.unitCostCents != null
-                              ? money(line.unitCostCents)
-                              : '—'}
-                          </td>
-                          <td>
+                              ? ` · ${money(line.unitCostCents)}`
+                              : ''}
+                          </span>
+                          {line.ncm ? (
+                            <span className="table-sub">NCM {line.ncm}</span>
+                          ) : null}
+                          {line.caNumber ? (
+                            <span className="table-sub">CA {line.caNumber}</span>
+                          ) : null}
+                          {lineTaxHint(line) ? (
+                            <span className="table-sub">{lineTaxHint(line)}</span>
+                          ) : null}
+                        </header>
+                        <div className="form-grid">
+                          <div className="field field--span-2">
+                            <label htmlFor={`prod-${line.id}`}>Produto do catálogo</label>
                             <select
-                              aria-label={`Tamanho de ${line.description}`}
-                              value={line.variantId ?? ''}
+                              id={`prod-${line.id}`}
+                              value={productId}
                               disabled={document.status !== 'DRAFT'}
-                              onChange={(e) => onLink(line.id, e.target.value)}
+                              onChange={(e) => {
+                                const next = e.target.value;
+                                setLineProductIds((current) => ({
+                                  ...current,
+                                  [line.id]: next,
+                                }));
+                                if (line.variantId) {
+                                  void onLink(line.id, '');
+                                }
+                              }}
                             >
-                              <option value="">Não entra</option>
-                              {options.map((option) => (
-                                <option key={option.id} value={option.id}>
-                                  {option.label}
+                              <option value="">Não entra / escolher…</option>
+                              {products.map((product) => (
+                                <option key={product.id} value={product.id}>
+                                  {product.name} ({product.internalSku})
                                 </option>
                               ))}
                             </select>
-                          </td>
-                          <td>
+                          </div>
+                          {productId ? (
+                            <div className="field field--span-2">
+                              <label>Tamanho</label>
+                              <SizeChips
+                                options={sizeOptions}
+                                value={line.variantId ?? ''}
+                                disabled={document.status !== 'DRAFT'}
+                                onChange={(id) => void onLink(line.id, id)}
+                              />
+                            </div>
+                          ) : null}
+                          <div className="field">
+                            <label htmlFor={`lote-${line.id}`}>Lote</label>
                             <input
-                              aria-label={`Lote de ${line.description}`}
+                              id={`lote-${line.id}`}
                               defaultValue={line.lotCode ?? ''}
                               disabled={document.status !== 'DRAFT'}
                               onBlur={(e) =>
@@ -636,8 +822,11 @@ export default function DistribuidoraEntradaPage() {
                                 })
                               }
                             />
+                          </div>
+                          <div className="field">
+                            <label htmlFor={`val-${line.id}`}>Validade</label>
                             <input
-                              aria-label={`Validade de ${line.description}`}
+                              id={`val-${line.id}`}
                               type="date"
                               defaultValue={line.expiresOn ?? ''}
                               disabled={document.status !== 'DRAFT'}
@@ -648,32 +837,32 @@ export default function DistribuidoraEntradaPage() {
                                 })
                               }
                             />
-                          </td>
-                          <td>
-                            {document.status === 'DRAFT' && !line.variantId ? (
-                              <button
-                                type="button"
-                                className="btn"
-                                onClick={() => startCreateFromLine(line)}
-                              >
-                                Criar produto
-                              </button>
-                            ) : null}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </div>
+                        </div>
+                        {document.status === 'DRAFT' && !line.variantId ? (
+                          <div className="product-form__actions">
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={() => startCreateFromLine(line)}
+                            >
+                              Criar produto
+                            </button>
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })}
                 </div>
                 {document.status === 'DRAFT' ? (
-                  <div className="header-actions">
+                  <div className="header-actions product-form__actions">
                     <button
                       type="button"
                       className="btn btn-primary"
                       disabled={saving}
                       onClick={onConfirm}
                     >
-                      Confirmar entrada
+                      Confirmar entrada da nota
                     </button>
                     <button
                       type="button"

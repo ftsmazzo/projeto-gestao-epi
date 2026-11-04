@@ -27,6 +27,7 @@ export type DistributorProduct = {
   gtin: string | null;
   warehouseLocation: string | null;
   costCents: number | null;
+  salePriceCents: number | null;
   lengthCm: number | null;
   widthCm: number | null;
   heightCm: number | null;
@@ -57,6 +58,7 @@ export type DistributorCatalogInput = {
   gtin?: string | null;
   warehouseLocation?: string | null;
   costCents?: number | null;
+  salePriceCents?: number | null;
   lengthCm?: number | null;
   widthCm?: number | null;
   heightCm?: number | null;
@@ -297,15 +299,25 @@ export function stockFinanceFollowUp(
 }
 
 export function variantCatalogPrice(
-  products: Array<{ costCents: number | null; variants: Array<{ id: string }> }>,
+  products: Array<{
+    costCents: number | null;
+    salePriceCents?: number | null;
+    variants: Array<{ id: string }>;
+  }>,
   variantId: string,
 ): { price: string; missingValue: boolean } {
   const product = products.find((item) =>
     item.variants.some((variant) => variant.id === variantId),
   );
   if (!product || !variantId) return { price: '', missingValue: false };
-  if (product.costCents != null && product.costCents > 0) {
-    return { price: centsToReaisInput(product.costCents), missingValue: false };
+  const table =
+    product.salePriceCents != null && product.salePriceCents > 0
+      ? product.salePriceCents
+      : product.costCents != null && product.costCents > 0
+        ? product.costCents
+        : null;
+  if (table != null) {
+    return { price: centsToReaisInput(table), missingValue: false };
   }
   return { price: '', missingValue: true };
 }

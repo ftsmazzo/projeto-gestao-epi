@@ -78,6 +78,12 @@ export class CreateDistributorProductDto {
 
   @IsOptional()
   @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  salePriceCents?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
   @IsNumber()
   @Min(0)
   @Max(1000)
@@ -209,6 +215,12 @@ export class UpdateDistributorProductDto {
   @IsInt()
   @Min(0)
   costCents?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  salePriceCents?: number | null;
 
   @IsOptional()
   @Type(() => Number)

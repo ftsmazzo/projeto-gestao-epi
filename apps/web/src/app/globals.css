@@ -8993,6 +8993,139 @@ a.btn-primary:hover {
   border-color: color-mix(in srgb, var(--accent, #1d6b4f) 35%, transparent);
 }
 
+.product-form__pricing {
+  background: color-mix(in srgb, var(--accent, #1d6b4f) 6%, transparent);
+}
+
+/* Formulários da distribuidora: título + lead + seções com ar. */
+.form.dash-panel.party-form-page,
+.form.dash-panel.product-form,
+.form.dash-panel.stock-confirm-form {
+  display: grid;
+  gap: 0.85rem;
+  padding-top: 0.85rem;
+}
+
+.form.dash-panel > .dash-panel__title {
+  margin: 0;
+  padding-top: 0.85rem;
+}
+
+.form.dash-panel > .field-hint,
+.form.dash-panel > .party-form,
+.form.dash-panel > .form-grid,
+.form.dash-panel > .product-form__section,
+.form.dash-panel > .stock-confirm-banner,
+.form.dash-panel > .product-form__actions,
+.form.dash-panel > .header-actions {
+  margin-top: 0;
+}
+
+.party-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.intake-hub__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+  padding: 0.85rem 0 0.35rem;
+}
+
+.intake-hub__card {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 0.55rem;
+  background: var(--color-surface, #fff);
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  font: inherit;
+  min-height: 4.5rem;
+}
+
+.intake-hub__card span {
+  font-size: 0.85rem;
+  opacity: 0.75;
+  line-height: 1.35;
+}
+
+.intake-hub__card--active {
+  border-color: color-mix(in srgb, var(--accent, #1d6b4f) 55%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent, #1d6b4f) 35%, transparent);
+  background: color-mix(in srgb, var(--accent, #1d6b4f) 8%, transparent);
+}
+
+.size-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.size-chip {
+  min-width: 3rem;
+  min-height: 2.75rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-radius: 0.45rem;
+  background: var(--color-surface, #fff);
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.size-chip:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent, #1d6b4f) 45%, transparent);
+}
+
+.size-chip--selected {
+  background: color-mix(in srgb, var(--accent, #1d6b4f) 88%, #000);
+  border-color: transparent;
+  color: #fff;
+}
+
+.size-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.stock-confirm-banner {
+  margin: 0.25rem 0 0;
+  padding: 0.85rem 1rem;
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--accent, #1d6b4f) 12%, transparent);
+  font-size: 1.05rem;
+}
+
+.field--qty {
+  max-width: 8rem;
+}
+
+.inbound-lines {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0.85rem 0;
+}
+
+.inbound-line-card {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 0.55rem;
+}
+
+.inbound-line-card header {
+  display: grid;
+  gap: 0.2rem;
+}
+
 /* Tablet do representante: alvos grandes, empilhado. */
 .tablet-field__ceiling {
   margin: 0;

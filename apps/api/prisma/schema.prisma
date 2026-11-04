@@ -273,6 +273,8 @@ model DistributorProduct {
   gtin           String?
   warehouseLocation String?
   costCents      Int?
+  /// Preço de tabela (venda). Margem = (venda - custo) / custo; desconto de orçamento parte deste teto.
+  salePriceCents Int?
   lengthMm       Int?
   widthMm        Int?
   heightMm       Int?

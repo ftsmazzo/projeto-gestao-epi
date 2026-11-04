@@ -36,6 +36,7 @@ type Draft = {
   gtin: string;
   warehouseLocation: string;
   costReais: string;
+  saleReais: string;
   lengthCm: string;
   widthCm: string;
   heightCm: string;
@@ -61,6 +62,7 @@ const emptyDraft = (): Draft => ({
   gtin: '',
   warehouseLocation: '',
   costReais: '',
+  saleReais: '',
   lengthCm: '',
   widthCm: '',
   heightCm: '',
@@ -95,6 +97,7 @@ function draftFromProduct(product: DistributorProduct): Draft {
     gtin: product.gtin ?? '',
     warehouseLocation: product.warehouseLocation ?? '',
     costReais: showCents(product.costCents),
+    saleReais: showCents(product.salePriceCents),
     lengthCm: showDecimal(product.lengthCm),
     widthCm: showDecimal(product.widthCm),
     heightCm: showDecimal(product.heightCm),
@@ -131,12 +134,38 @@ function optionalInt(raw: string, label: string): number | null {
   return value;
 }
 
-function reaisToCents(raw: string): number | null {
+function reaisToCents(raw: string, label = 'Valor'): number | null {
   const text = raw.trim().replace(',', '.');
   if (!text) return null;
   const value = Number(text);
-  if (!Number.isFinite(value) || value < 0) throw new Error('Custo invalido.');
+  if (!Number.isFinite(value) || value < 0) throw new Error(`${label} inválido.`);
   return Math.round(value * 100);
+}
+
+function parseReais(raw: string): number | null {
+  const text = raw.trim().replace(',', '.');
+  if (!text) return null;
+  const value = Number(text);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return value;
+}
+
+function formatReais(value: number): string {
+  return value.toFixed(2).replace('.', ',');
+}
+
+function marginPercentFromPrices(costReais: string, saleReais: string): string {
+  const cost = parseReais(costReais);
+  const sale = parseReais(saleReais);
+  if (cost == null || cost <= 0 || sale == null) return '';
+  return formatReais(((sale - cost) / cost) * 100);
+}
+
+function saleFromMargin(costReais: string, marginPercent: string): string {
+  const cost = parseReais(costReais);
+  const margin = parseReais(marginPercent);
+  if (cost == null || margin == null) return '';
+  return formatReais(cost * (1 + margin / 100));
 }
 
 function catalogFromDraft(draft: Draft): DistributorCatalogInput {
@@ -145,7 +174,8 @@ function catalogFromDraft(draft: Draft): DistributorCatalogInput {
     itemsPerBox: optionalInt(draft.itemsPerBox, 'Itens por caixa'),
     gtin: draft.gtin.trim() || null,
     warehouseLocation: draft.warehouseLocation.trim() || null,
-    costCents: reaisToCents(draft.costReais),
+    costCents: reaisToCents(draft.costReais, 'Custo'),
+    salePriceCents: reaisToCents(draft.saleReais, 'Preço de venda'),
     lengthCm: optionalDecimal(draft.lengthCm, 'Comprimento'),
     widthCm: optionalDecimal(draft.widthCm, 'Largura'),
     heightCm: optionalDecimal(draft.heightCm, 'Altura'),
@@ -188,7 +218,10 @@ export default function DistribuidoraProdutosPage() {
   const [saving, setSaving] = useState(false);
   const [depotOpen, setDepotOpen] = useState(false);
   const [fiscalOpen, setFiscalOpen] = useState(false);
-  const [csvOpen, setCsvOpen] = useState(false);
+  const [intakeMethod, setIntakeMethod] = useState<
+    'individual' | 'csv' | 'xml' | 'pdf'
+  >('individual');
+  const [marginPercent, setMarginPercent] = useState('');
   const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -218,6 +251,7 @@ export default function DistribuidoraProdutosPage() {
     setNewSize('');
     setMinQuantity('');
     setDraft(emptyDraft());
+    setMarginPercent('');
     setEditingId(null);
     setFormOpen(false);
     setDepotOpen(false);
@@ -266,7 +300,12 @@ export default function DistribuidoraProdutosPage() {
     setVariantRows(product.variants.map((variant) => sizeName(variant.label)));
     setFormOpen(true);
     setMinQuantity(product.minQuantity == null ? '' : String(product.minQuantity));
-    setDraft(draftFromProduct(product));
+    const nextDraft = draftFromProduct(product);
+    setDraft(nextDraft);
+    setMarginPercent(
+      marginPercentFromPrices(nextDraft.costReais, nextDraft.saleReais),
+    );
+    setIntakeMethod('individual');
     setDepotOpen(true);
     setFiscalOpen(Boolean(product.ncm || product.cest || product.icmsSt));
   }
@@ -365,8 +404,8 @@ export default function DistribuidoraProdutosPage() {
           <p className="page-kicker">Distribuidora</p>
           <h1 className="page-title">Produtos</h1>
           <p className="page-lead">
-            Para testar, basta nome, código interno e tamanho. Depósito e fiscal
-            ficam opcionais e abrem só quando precisar.
+            Cadastre um a um, por CSV ou pela NF-e na Entrada. Preço de custo,
+            margem e venda ficam claros na ficha.
           </p>
         </div>
         {manager ? (
@@ -375,6 +414,7 @@ export default function DistribuidoraProdutosPage() {
             className="btn btn-primary"
             onClick={() => {
               resetForm();
+              setIntakeMethod('individual');
               setFormOpen(true);
             }}
           >
@@ -392,14 +432,76 @@ export default function DistribuidoraProdutosPage() {
           {notice}
         </p>
       ) : null}
-      {manager && formOpen ? (
+
+      {manager ? (
+        <section className="dash-panel intake-hub" aria-label="Como incluir produtos">
+          <h2 className="dash-panel__title">Como incluir</h2>
+          <div className="intake-hub__grid" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={intakeMethod === 'individual'}
+              className={`intake-hub__card${intakeMethod === 'individual' ? ' intake-hub__card--active' : ''}`}
+              onClick={() => {
+                setIntakeMethod('individual');
+                setFormOpen(true);
+              }}
+            >
+              <strong>Individual</strong>
+              <span>Ficha com custo, margem e venda</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={intakeMethod === 'csv'}
+              className={`intake-hub__card${intakeMethod === 'csv' ? ' intake-hub__card--active' : ''}`}
+              onClick={() => {
+                setIntakeMethod('csv');
+                setFormOpen(false);
+              }}
+            >
+              <strong>CSV</strong>
+              <span>Muitos SKUs de uma vez</span>
+            </button>
+            <Link
+              href="/distribuidora/entrada"
+              className={`intake-hub__card${intakeMethod === 'xml' ? ' intake-hub__card--active' : ''}`}
+              onClick={() => setIntakeMethod('xml')}
+            >
+              <strong>XML NF-e</strong>
+              <span>Abre a Entrada com impostos</span>
+            </Link>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={intakeMethod === 'pdf'}
+              className={`intake-hub__card${intakeMethod === 'pdf' ? ' intake-hub__card--active' : ''}`}
+              onClick={() => {
+                setIntakeMethod('pdf');
+                setFormOpen(false);
+              }}
+            >
+              <strong>PDF / foto</strong>
+              <span>Orçamento — em breve</span>
+            </button>
+          </div>
+          {intakeMethod === 'pdf' ? (
+            <p className="field-hint">
+              Em breve: enviar PDF ou foto de orçamento para revisão manual.
+              Por enquanto use Individual, CSV ou a Entrada com XML.
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {manager && formOpen && intakeMethod === 'individual' ? (
         <form className="form dash-panel product-form" onSubmit={onCreate}>
           <h2 className="dash-panel__title">
             {editingId ? 'Editar ficha' : 'Novo produto'}
           </h2>
           <p className="field-hint">
-            Campos com * são o mínimo para entrar no estoque. O restante pode
-            completar depois pela ficha.
+            Campos com * são o mínimo para estoque. Custo, margem e venda
+            ficam sempre visíveis para montar a tabela.
           </p>
 
           <fieldset className="product-form__section">
@@ -547,7 +649,7 @@ export default function DistribuidoraProdutosPage() {
                   placeholder="Opcional"
                 />
               </div>
-              <div className="field">
+              <div className="field field--span-2">
                 <label htmlFor="lote" className="product-form__check">
                   <input
                     id="lote"
@@ -557,6 +659,71 @@ export default function DistribuidoraProdutosPage() {
                   />
                   Controla lote e validade (FEFO)
                 </label>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset className="product-form__section product-form__pricing">
+            <legend className="product-form__legend">Preço de tabela</legend>
+            <p className="field-hint">
+              Custo âncora a margem; venda é o teto do orçamento/visita. Desconto
+              comercial se aplica na venda, não no custo.
+            </p>
+            <div className="form-grid">
+              <div className="field">
+                <label htmlFor="custo">Custo (R$)</label>
+                <input
+                  id="custo"
+                  inputMode="decimal"
+                  value={draft.costReais}
+                  onChange={(e) => {
+                    const costReais = e.target.value;
+                    setDraft((current) => {
+                      const next = { ...current, costReais };
+                      if (marginPercent.trim()) {
+                        next.saleReais = saleFromMargin(costReais, marginPercent);
+                      }
+                      return next;
+                    });
+                  }}
+                  placeholder="0,00"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="margem">Margem (%)</label>
+                <input
+                  id="margem"
+                  inputMode="decimal"
+                  value={marginPercent}
+                  onChange={(e) => {
+                    const nextMargin = e.target.value;
+                    setMarginPercent(nextMargin);
+                    setDraft((current) => ({
+                      ...current,
+                      saleReais: saleFromMargin(current.costReais, nextMargin),
+                    }));
+                  }}
+                  placeholder="Ex.: 40"
+                />
+                <p className="field-hint">
+                  Ajuste aqui para dar desconto na tabela sem perder o custo.
+                </p>
+              </div>
+              <div className="field">
+                <label htmlFor="venda">Preço de venda (R$)</label>
+                <input
+                  id="venda"
+                  inputMode="decimal"
+                  value={draft.saleReais}
+                  onChange={(e) => {
+                    const saleReais = e.target.value;
+                    setDraft((current) => ({ ...current, saleReais }));
+                    setMarginPercent(
+                      marginPercentFromPrices(draft.costReais, saleReais),
+                    );
+                  }}
+                  placeholder="0,00"
+                />
               </div>
             </div>
           </fieldset>
@@ -582,16 +749,6 @@ export default function DistribuidoraProdutosPage() {
                     value={draft.warehouseLocation}
                     onChange={(e) => setField('warehouseLocation', e.target.value)}
                     placeholder="Ex.: A-12"
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="custo">Custo (R$)</label>
-                  <input
-                    id="custo"
-                    inputMode="decimal"
-                    value={draft.costReais}
-                    onChange={(e) => setField('costReais', e.target.value)}
-                    placeholder="0,00"
                   />
                 </div>
                 <div className="field">
@@ -850,98 +1007,85 @@ export default function DistribuidoraProdutosPage() {
         </section>
       ) : null}
 
-      {manager ? (
+      {manager && intakeMethod === 'csv' ? (
         <section className="dash-panel">
-          <h2 className="dash-panel__title">
+          <h2 className="dash-panel__title">Carga em lote (CSV)</h2>
+          <p className="field-hint">
+            Colunas: nome, codigo_interno, tamanhos (P|M|G ou Unico), gtin,
+            unidade, ncm, minimo, custo, preco_venda, controla_lote. Separador ;
+            ou ,.
+          </p>
+          <div className="product-form__actions">
             <button
               type="button"
-              className="product-form__toggle"
-              aria-expanded={csvOpen}
-              onClick={() => setCsvOpen((open) => !open)}
+              className="btn btn-secondary"
+              onClick={() => {
+                void getDistributorImportTemplate()
+                  .then((tpl) => {
+                    const blob = new Blob([tpl.csv], {
+                      type: 'text/csv;charset=utf-8',
+                    });
+                    const url = URL.createObjectURL(blob);
+                    const anchor = document.createElement('a');
+                    anchor.href = url;
+                    anchor.download = tpl.fileName;
+                    anchor.click();
+                    URL.revokeObjectURL(url);
+                  })
+                  .catch((err: unknown) =>
+                    setError(
+                      err instanceof Error
+                        ? err.message
+                        : 'Falha ao baixar o modelo.',
+                    ),
+                  );
+              }}
             >
-              {csvOpen ? '▾' : '▸'} Carga em lote (CSV)
-              <span className="product-form__optional">muitos SKUs de uma vez</span>
+              Baixar modelo CSV
             </button>
-          </h2>
-          {csvOpen ? (
-            <>
-              <p className="field-hint">
-                Colunas: nome, codigo_interno, tamanhos (P|M|G ou Unico), gtin,
-                unidade, ncm, minimo, custo, controla_lote. Separador ; ou ,.
-              </p>
-              <div className="product-form__actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    void getDistributorImportTemplate()
-                      .then((tpl) => {
-                        const blob = new Blob([tpl.csv], {
-                          type: 'text/csv;charset=utf-8',
-                        });
-                        const url = URL.createObjectURL(blob);
-                        const anchor = document.createElement('a');
-                        anchor.href = url;
-                        anchor.download = tpl.fileName;
-                        anchor.click();
-                        URL.revokeObjectURL(url);
-                      })
-                      .catch((err: unknown) =>
-                        setError(
-                          err instanceof Error
-                            ? err.message
-                            : 'Falha ao baixar o modelo.',
-                        ),
-                      );
-                  }}
-                >
-                  Baixar modelo CSV
-                </button>
-                <label className="btn btn-primary" htmlFor="csv-upload">
-                  {importing ? 'Importando…' : 'Enviar CSV'}
-                </label>
-                <input
-                  id="csv-upload"
-                  type="file"
-                  accept=".csv,text/csv"
-                  hidden
-                  disabled={importing}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    event.target.value = '';
-                    if (!file) return;
-                    setError(null);
-                    setNotice(null);
-                    setImporting(true);
-                    void file
-                      .text()
-                      .then((text) => importDistributorProductsCsv(text))
-                      .then(async (result) => {
-                        setNotice(
-                          `${result.createdCount} produto(s) criados` +
-                            (result.skippedCount
-                              ? ` · ${result.skippedCount} linha(s) ignoradas`
-                              : '') +
-                            '.',
-                        );
-                        if (result.skipped.length > 0) {
-                          setError(result.skipped.slice(0, 5).join(' '));
-                        }
-                        await reload();
-                      })
-                      .catch((err: unknown) =>
-                        setError(
-                          err instanceof Error
-                            ? err.message
-                            : 'Falha na importação.',
-                        ),
-                      )
-                      .finally(() => setImporting(false));
-                  }}
-                />
-              </div>
-            </>
-          ) : null}
+            <label className="btn btn-primary" htmlFor="csv-upload">
+              {importing ? 'Importando…' : 'Enviar CSV'}
+            </label>
+            <input
+              id="csv-upload"
+              type="file"
+              accept=".csv,text/csv"
+              hidden
+              disabled={importing}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (!file) return;
+                setError(null);
+                setNotice(null);
+                setImporting(true);
+                void file
+                  .text()
+                  .then((text) => importDistributorProductsCsv(text))
+                  .then(async (result) => {
+                    setNotice(
+                      `${result.createdCount} produto(s) criados` +
+                        (result.skippedCount
+                          ? ` · ${result.skippedCount} linha(s) ignoradas`
+                          : '') +
+                        '.',
+                    );
+                    if (result.skipped.length > 0) {
+                      setError(result.skipped.slice(0, 5).join(' '));
+                    }
+                    await reload();
+                  })
+                  .catch((err: unknown) =>
+                    setError(
+                      err instanceof Error
+                        ? err.message
+                        : 'Falha na importação.',
+                    ),
+                  )
+                  .finally(() => setImporting(false));
+              }}
+            />
+          </div>
         </section>
       ) : null}
 
