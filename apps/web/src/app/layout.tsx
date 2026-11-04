@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { APP_FULL_NAME, APP_NAME, APP_PITCH } from '@gestao-epi/shared';
 import { PwaManifestSwitch } from '../components/PwaManifestSwitch';
 import { ServiceWorkerRegister } from '../components/ServiceWorkerRegister';
+import { ThemeProvider } from '../components/ThemeProvider';
 import './globals.css';
 import './adminlte-skin.css';
 
@@ -48,17 +49,24 @@ export const viewport: Viewport = {
   ],
 };
 
+const themeBootScript = `(function(){try{var k='prontepi-theme';var t=localStorage.getItem(k);if(t!=='light'&&t!=='dark'&&t!=='colorblind')t='light';document.documentElement.setAttribute('data-theme',t);document.documentElement.style.colorScheme=t==='dark'?'dark':'light';}catch(e){document.documentElement.setAttribute('data-theme','light');}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootScript }} />
+      </head>
       <body>
-        {children}
-        <PwaManifestSwitch />
-        <ServiceWorkerRegister />
+        <ThemeProvider>
+          {children}
+          <PwaManifestSwitch />
+          <ServiceWorkerRegister />
+        </ThemeProvider>
       </body>
     </html>
   );

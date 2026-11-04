@@ -7,6 +7,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { PoweredBy } from './PoweredBy';
 import { SupportChatWidget } from './SupportChatWidget';
 import { TenantBrand } from './TenantBrand';
+import { ThemeSwitcher } from './ThemeSwitcher';
 import {
   IconBuilding,
   IconCertificate,
@@ -230,6 +231,7 @@ export function DistributorShell({
             <span className="ops-topbar-crumb">{current}</span>
           </div>
           <div className="ops-topbar-right">
+            <ThemeSwitcher />
             {user ? (
               <div className="ops-user">
                 <Link href="/conta" className="ops-user-name">

@@ -9,6 +9,7 @@ import { PoweredBy } from './PoweredBy';
 import { InstallAppBanner } from './InstallAppBanner';
 import { TenantBrand } from './TenantBrand';
 import { SupportChatWidget } from './SupportChatWidget';
+import { ThemeSwitcher } from './ThemeSwitcher';
 import {
   IconBuilding,
   IconCertificate,
@@ -146,6 +147,7 @@ export function OpsShell({ children, user, onLogout }: OpsShellProps) {
             <span className="ops-topbar-crumb">{currentNavLabel(pathname)}</span>
           </div>
           <div className="ops-topbar-right">
+            <ThemeSwitcher />
             {user ? (
               <div className="ops-user">
                 <Link href="/conta" className="ops-user-name">

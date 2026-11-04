@@ -1073,6 +1073,29 @@ a.btn-ghost:hover {
   }
 }
 
+/* Cards: texto escuro e links sem azul (claro / daltonismo). */
+html[data-theme='light'] .dash-panel,
+html[data-theme='light'] .catalog-card,
+html[data-theme='light'] .intake-hub__card,
+html[data-theme='colorblind'] .dash-panel,
+html[data-theme='colorblind'] .catalog-card,
+html[data-theme='colorblind'] .intake-hub__card {
+  color: var(--color-ink);
+}
+
+html[data-theme='light'] .dash-panel a:not(.btn),
+html[data-theme='light'] .module-page a:not(.btn):not(.ops-nav-link),
+html[data-theme='colorblind'] .dash-panel a:not(.btn),
+html[data-theme='colorblind'] .module-page a:not(.btn):not(.ops-nav-link) {
+  color: var(--color-ink) !important;
+  text-decoration: underline;
+}
+
+html[data-theme='colorblind'] .flow-sticky-bar,
+html[data-theme='colorblind'] .btn-primary {
+  color: #fff !important;
+}
+
 /* Menu compacto: item de lista, nao botao gordo que estica com a tela. */
 :root {
   --sidebar-width: 14.5rem;
