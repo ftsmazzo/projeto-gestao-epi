@@ -741,33 +741,37 @@ export class DistributorService {
     const profile = await this.prisma.distributorFiscalProfile.findUnique({
       where: { organizationId },
     });
-    if (profile && profile.cnpj !== parsed.recipientCnpj) {
-      throw new BadRequestException(
-        'Esta nota nao foi emitida para o CNPJ cadastrado da distribuidora.',
-      );
-    }
+    const profileCnpj = profile?.cnpj?.replace(/\D/g, '') ?? '';
+    const recipientMismatch =
+      Boolean(profileCnpj) && profileCnpj !== parsed.recipientCnpj;
     const saved = await saveDistributorInboundFile({
       organizationId,
       buffer: file.buffer,
       mimeType: 'application/xml',
       originalName: file.originalname,
     });
-    const matchedSupplier = parsed.supplierCnpj
-      ? await this.prisma.distributorSupplier.findFirst({
-          where: {
-            organizationId,
-            cnpj: parsed.supplierCnpj,
-            active: true,
-          },
-        })
-      : null;
+    const supplier = await this.resolveInboundSupplierFromXml(
+      organizationId,
+      parsed.supplier,
+    );
+    const supplierCreated = supplier.created;
+    const matchedSupplier = supplier.row;
+    const messageParts = [
+      supplierCreated
+        ? `XML lido. Fornecedor ${matchedSupplier.name} cadastrado pelo CNPJ do emitente.`
+        : `XML lido. Fornecedor ${matchedSupplier.name} vinculado pelo CNPJ.`,
+      recipientMismatch
+        ? `Atenção: o destinatário do XML (${parsed.recipientCnpj}) difere do CNPJ fiscal da distribuidora (${profileCnpj}). A nota foi importada mesmo assim.`
+        : null,
+      'O estoque ainda nao mudou.',
+    ].filter(Boolean);
     try {
       const document = await this.prisma.distributorInboundDocument.create({
         data: {
           organizationId,
           status: DistributorInboundStatus.DRAFT,
-          supplierId: matchedSupplier?.id ?? null,
-          supplierName: matchedSupplier?.name ?? parsed.supplierName,
+          supplierId: matchedSupplier.id,
+          supplierName: matchedSupplier.name,
           supplierCnpj: parsed.supplierCnpj,
           invoiceNumber: parsed.invoiceNumber,
           accessKey: parsed.accessKey,
@@ -776,12 +780,12 @@ export class DistributorService {
           mimeType: 'application/xml',
           extraction: {
             method: 'NFE_XML',
-            message: matchedSupplier
-              ? 'XML lido. Fornecedor vinculado pelo CNPJ. O estoque ainda nao mudou.'
-              : profile
-                ? 'XML lido. Cadastre ou vincule o fornecedor. O estoque ainda nao mudou.'
-                : 'XML lido. Cadastre o CNPJ fiscal para conferir o destinatario. O estoque ainda nao mudou.',
-            supplierMatched: Boolean(matchedSupplier),
+            message: messageParts.join(' '),
+            supplierMatched: true,
+            supplierCreated,
+            recipientMismatch,
+            recipientCnpj: parsed.recipientCnpj,
+            fiscalCnpj: profileCnpj || null,
             totals: parsed.totals,
             lineTaxes: parsed.lines.map((line) => ({
               description: line.description,
@@ -810,6 +814,72 @@ export class DistributorService {
       }
       throw error;
     }
+  }
+
+  private async resolveInboundSupplierFromXml(
+    organizationId: string,
+    supplier: {
+      name: string;
+      cnpj: string;
+      stateRegistration: string | null;
+      uf: string | null;
+      street: string | null;
+      number: string | null;
+      complement: string | null;
+      district: string | null;
+      city: string | null;
+      zipCode: string | null;
+      phone: string | null;
+    },
+  ) {
+    const existing = await this.prisma.distributorSupplier.findFirst({
+      where: {
+        organizationId,
+        cnpj: supplier.cnpj,
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (existing) {
+      if (!existing.active) {
+        const reactivated = await this.prisma.distributorSupplier.update({
+          where: { id: existing.id },
+          data: {
+            active: true,
+            name: existing.name || supplier.name,
+            stateRegistration:
+              existing.stateRegistration ?? supplier.stateRegistration,
+            uf: existing.uf ?? supplier.uf,
+            street: existing.street ?? supplier.street,
+            number: existing.number ?? supplier.number,
+            complement: existing.complement ?? supplier.complement,
+            district: existing.district ?? supplier.district,
+            city: existing.city ?? supplier.city,
+            zipCode: existing.zipCode ?? supplier.zipCode,
+            phone: existing.phone ?? supplier.phone,
+          },
+        });
+        return { row: reactivated, created: false };
+      }
+      return { row: existing, created: false };
+    }
+    const created = await this.prisma.distributorSupplier.create({
+      data: {
+        organizationId,
+        name: supplier.name.slice(0, 180),
+        cnpj: supplier.cnpj,
+        stateRegistration: supplier.stateRegistration,
+        uf: supplier.uf,
+        street: supplier.street,
+        number: supplier.number,
+        complement: supplier.complement,
+        district: supplier.district,
+        city: supplier.city,
+        zipCode: supplier.zipCode,
+        phone: supplier.phone,
+        active: true,
+      },
+    });
+    return { row: created, created: true };
   }
 
   async getFiscalProfile(organizationId: string, role: string) {

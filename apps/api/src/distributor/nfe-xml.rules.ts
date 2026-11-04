@@ -39,12 +39,27 @@ export type ParsedNfeTotals = {
   invoiceCents: number;
 };
 
+export type ParsedNfeSupplier = {
+  name: string;
+  cnpj: string;
+  stateRegistration: string | null;
+  uf: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  zipCode: string | null;
+  phone: string | null;
+};
+
 export type ParsedNfe = {
   accessKey: string;
   invoiceNumber: string;
   series: string;
   supplierName: string;
   supplierCnpj: string;
+  supplier: ParsedNfeSupplier;
   recipientCnpj: string;
   totals: ParsedNfeTotals;
   lines: ParsedNfeLine[];
@@ -82,6 +97,7 @@ export function parseNfeXml(xml: string): ParsedNfe {
   const keyTag = tagText(source, 'chNFe');
   const accessKey = assertAccessKey(idMatch?.[1] ?? keyTag ?? '');
   const emit = block(source, 'emit');
+  const enderEmit = block(emit, 'enderEmit') || block(source, 'enderEmit');
   const dest = block(source, 'dest');
   const ide = block(source, 'ide');
   const supplierName = tagText(emit, 'xNome');
@@ -105,12 +121,27 @@ export function parseNfeXml(xml: string): ParsedNfe {
   }
   const totalsBlock = block(source, 'ICMSTot') || block(source, 'total');
   const totals = parseTotals(totalsBlock, lines);
+  const uf = (tagText(enderEmit, 'UF') ?? '').trim().toUpperCase() || null;
+  const supplier: ParsedNfeSupplier = {
+    name: supplierName,
+    cnpj: supplierCnpj,
+    stateRegistration: tagText(emit, 'IE'),
+    uf,
+    street: tagText(enderEmit, 'xLgr'),
+    number: tagText(enderEmit, 'nro'),
+    complement: tagText(enderEmit, 'xCpl'),
+    district: tagText(enderEmit, 'xBairro'),
+    city: tagText(enderEmit, 'xMun'),
+    zipCode: digits(tagText(enderEmit, 'CEP')) || null,
+    phone: tagText(enderEmit, 'fone') || tagText(emit, 'fone'),
+  };
   return {
     accessKey,
     invoiceNumber,
     series,
     supplierName,
     supplierCnpj,
+    supplier,
     recipientCnpj,
     totals,
     lines,

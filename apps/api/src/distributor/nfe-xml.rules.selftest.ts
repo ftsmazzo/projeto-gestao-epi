@@ -26,7 +26,20 @@ const parsed = parseNfeXml(`<?xml version="1.0"?>
   <NFe>
     <infNFe Id="NFe${key}">
       <ide><serie>1</serie><nNF>123</nNF></ide>
-      <emit><CNPJ>12345678000195</CNPJ><xNome>Fornecedor EPI</xNome></emit>
+      <emit>
+        <CNPJ>12345678000195</CNPJ>
+        <xNome>Fornecedor EPI</xNome>
+        <IE>123456789</IE>
+        <enderEmit>
+          <xLgr>Rua das Luvas</xLgr>
+          <nro>100</nro>
+          <xBairro>Centro</xBairro>
+          <xMun>Campinas</xMun>
+          <UF>SP</UF>
+          <CEP>13000000</CEP>
+          <fone>1933334444</fone>
+        </enderEmit>
+      </emit>
       <dest><CNPJ>11222333000181</CNPJ><xNome>Distribuidora</xNome></dest>
       <det nItem="1">
         <prod>
@@ -68,6 +81,8 @@ assert('numero 123', parsed.invoiceNumber === '123');
 assert('item inteiro e custo em centavos', parsed.lines[0]?.quantity === 10 && parsed.lines[0].unitCostCents === 1250);
 assert('ncm e cfop', parsed.lines[0]?.ncm === '42032900' && parsed.lines[0].cfop === '2102');
 assert('destinatario', parsed.recipientCnpj === '11222333000181');
+assert('fornecedor endereco', parsed.supplier.city === 'Campinas' && parsed.supplier.uf === 'SP');
+assert('fornecedor ie', parsed.supplier.stateRegistration === '123456789');
 assert('imposto linha icms', parsed.lines[0]?.tax.icmsCents === 1250);
 assert('imposto linha ipi', parsed.lines[0]?.tax.ipiCents === 200);
 assert('total nota', parsed.totals.invoiceCents === 13500);
