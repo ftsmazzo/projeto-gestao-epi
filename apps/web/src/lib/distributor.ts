@@ -1022,6 +1022,52 @@ export function listCustomers(q?: string, opts?: { includeInactive?: boolean }) 
   return apiFetch<DistributorCustomer[]>(`/distributor/customers${query}`);
 }
 
+export type PartyCnpjLookup = {
+  name: string;
+  cnpj: string;
+  email: string | null;
+  phone: string | null;
+  uf: string | null;
+  street: string | null;
+  number: string | null;
+  complement: string | null;
+  district: string | null;
+  city: string | null;
+  zipCode: string | null;
+  tradeName: string | null;
+  situation: string | null;
+  source: 'lead-api';
+};
+
+export function lookupPartyByCnpj(cnpj: string) {
+  const query = new URLSearchParams({ cnpj: cnpj.trim() });
+  return apiFetch<PartyCnpjLookup>(
+    `/distributor/parties/cnpj-lookup?${query.toString()}`,
+  );
+}
+
+export type ViaCepAddress = {
+  cep: string;
+  logradouro: string;
+  complemento: string;
+  bairro: string;
+  localidade: string;
+  uf: string;
+  erro?: boolean;
+};
+
+export async function lookupAddressByCep(cepRaw: string): Promise<ViaCepAddress> {
+  const cep = cepRaw.replace(/\D/g, '');
+  if (cep.length !== 8) {
+    throw new Error('Informe um CEP com 8 digitos.');
+  }
+  const res = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+  if (!res.ok) throw new Error('Falha ao consultar o CEP.');
+  const data = (await res.json()) as ViaCepAddress;
+  if (data.erro) throw new Error('CEP nao encontrado.');
+  return data;
+}
+
 export function createCustomer(input: DistributorPartyInput) {
   return apiFetch<DistributorCustomer>('/distributor/customers', {
     method: 'POST',

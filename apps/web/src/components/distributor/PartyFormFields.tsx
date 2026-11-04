@@ -1,6 +1,12 @@
 'use client';
 
-import type { DistributorPartyInput } from '../../lib/distributor';
+import { useState } from 'react';
+import { formatCnpjInput, isValidCnpj, normalizeCnpj } from '../../lib/cnpj';
+import {
+  lookupAddressByCep,
+  lookupPartyByCnpj,
+  type DistributorPartyInput,
+} from '../../lib/distributor';
 
 export const UF_OPTIONS = [
   'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT',
@@ -76,12 +82,84 @@ export function PartyFormFields({
   compact = false,
   showActive = false,
 }: Props) {
+  const [lookupBusy, setLookupBusy] = useState<'cnpj' | 'cep' | null>(null);
+  const [lookupMsg, setLookupMsg] = useState<string | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+
   function set<K extends keyof PartyFormState>(key: K, next: PartyFormState[K]) {
     onChange({ ...value, [key]: next });
   }
 
+  async function onLookupCnpj() {
+    setLookupError(null);
+    setLookupMsg(null);
+    const digits = normalizeCnpj(value.cnpj);
+    if (!isValidCnpj(digits)) {
+      setLookupError('Informe um CNPJ válido para buscar.');
+      return;
+    }
+    setLookupBusy('cnpj');
+    try {
+      const lead = await lookupPartyByCnpj(digits);
+      onChange({
+        ...value,
+        name: lead.name || value.name,
+        cnpj: formatCnpjInput(lead.cnpj),
+        email: lead.email ?? value.email,
+        phone: lead.phone ?? value.phone,
+        uf: lead.uf ?? value.uf,
+        street: lead.street ?? value.street,
+        number: lead.number ?? value.number,
+        complement: lead.complement ?? value.complement,
+        district: lead.district ?? value.district,
+        city: lead.city ?? value.city,
+        zipCode: lead.zipCode ?? value.zipCode,
+      });
+      const hint = [
+        lead.situation ? `Situação: ${lead.situation}` : null,
+        lead.tradeName ? `Fantasia: ${lead.tradeName}` : null,
+        'IE continua manual (não vem da Receita).',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      setLookupMsg(hint);
+    } catch (err: unknown) {
+      setLookupError(err instanceof Error ? err.message : 'Falha ao consultar CNPJ.');
+    } finally {
+      setLookupBusy(null);
+    }
+  }
+
+  async function onLookupCep() {
+    setLookupError(null);
+    setLookupMsg(null);
+    const cep = value.zipCode.replace(/\D/g, '');
+    if (cep.length !== 8) {
+      setLookupError('Informe um CEP com 8 dígitos.');
+      return;
+    }
+    setLookupBusy('cep');
+    try {
+      const address = await lookupAddressByCep(cep);
+      onChange({
+        ...value,
+        zipCode: address.cep?.replace(/\D/g, '') || cep,
+        street: address.logradouro || value.street,
+        complement: address.complemento || value.complement,
+        district: address.bairro || value.district,
+        city: address.localidade || value.city,
+        uf: address.uf || value.uf,
+      });
+      setLookupMsg('Endereço preenchido pelo ViaCEP.');
+    } catch (err: unknown) {
+      setLookupError(err instanceof Error ? err.message : 'Falha ao consultar CEP.');
+    } finally {
+      setLookupBusy(null);
+    }
+  }
+
   return (
-    <div className={compact ? 'form-grid' : 'form-grid'} style={{ gap: '0.75rem' }}>
+    <div className="form-grid" style={{ gap: '0.75rem' }}>
       <div className="field">
         <label>Nome *</label>
         <input
@@ -93,11 +171,22 @@ export function PartyFormFields({
       </div>
       <div className="field">
         <label>CNPJ</label>
-        <input
-          value={value.cnpj}
-          onChange={(event) => set('cnpj', event.target.value)}
-          placeholder="Opcional"
-        />
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <input
+            value={value.cnpj}
+            onChange={(event) => set('cnpj', formatCnpjInput(event.target.value))}
+            placeholder="00.000.000/0000-00"
+            style={{ flex: '1 1 160px' }}
+          />
+          <button
+            type="button"
+            className="btn"
+            disabled={lookupBusy !== null}
+            onClick={() => void onLookupCnpj()}
+          >
+            {lookupBusy === 'cnpj' ? 'Buscando…' : 'Buscar CNPJ'}
+          </button>
+        </div>
       </div>
       <div className="field">
         <label>Telefone</label>
@@ -114,6 +203,12 @@ export function PartyFormFields({
           onChange={(event) => set('email', event.target.value)}
         />
       </div>
+      {(lookupMsg || lookupError) && (
+        <div className="cnpj-lookup-slot" style={{ gridColumn: '1 / -1' }}>
+          {lookupError ? <p className="error">{lookupError}</p> : null}
+          {lookupMsg ? <p className="muted">{lookupMsg}</p> : null}
+        </div>
+      )}
       {!compact ? (
         <>
           <div className="field">
@@ -121,6 +216,7 @@ export function PartyFormFields({
             <input
               value={value.stateRegistration}
               onChange={(event) => set('stateRegistration', event.target.value)}
+              placeholder="Opcional"
             />
           </div>
           <div className="field">
@@ -136,6 +232,30 @@ export function PartyFormFields({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="field">
+            <label>CEP</label>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <input
+                value={value.zipCode}
+                onChange={(event) => set('zipCode', event.target.value)}
+                onBlur={() => {
+                  if (value.zipCode.replace(/\D/g, '').length === 8) {
+                    void onLookupCep();
+                  }
+                }}
+                placeholder="00000-000"
+                style={{ flex: '1 1 120px' }}
+              />
+              <button
+                type="button"
+                className="btn"
+                disabled={lookupBusy !== null}
+                onClick={() => void onLookupCep()}
+              >
+                {lookupBusy === 'cep' ? 'Buscando…' : 'Buscar CEP'}
+              </button>
+            </div>
           </div>
           <div className="field">
             <label>Logradouro</label>
@@ -170,13 +290,6 @@ export function PartyFormFields({
             <input
               value={value.city}
               onChange={(event) => set('city', event.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label>CEP</label>
-            <input
-              value={value.zipCode}
-              onChange={(event) => set('zipCode', event.target.value)}
             />
           </div>
           <div className="field" style={{ gridColumn: '1 / -1' }}>

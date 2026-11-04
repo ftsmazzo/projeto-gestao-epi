@@ -68,6 +68,12 @@ import {
   plusShipmentNotes,
 } from './plus.rules';
 import {
+  LeadApiClientError,
+  fetchLeadByCnpj,
+  leadApiConfig,
+} from './lead-api.client';
+import { mapLeadToPartyLookup } from './party-lookup.rules';
+import {
   CatalogRuleError,
   measureCubage,
   normalizeCatalog,
@@ -3240,6 +3246,33 @@ export class DistributorService {
       data,
     });
     return toSupplierView(updated);
+  }
+
+  async lookupPartyByCnpj(
+    organizationId: string,
+    role: string,
+    cnpjRaw: string,
+  ) {
+    await this.requireDistributor(organizationId, role);
+    if (!leadApiConfig().configured) {
+      throw new BadRequestException(
+        'Consulta CNPJ nao configurada. Peça ao admin para definir LEAD_API_BASE_URL e LEAD_API_KEY.',
+      );
+    }
+    const validated = validateCnpj(cnpjRaw);
+    if (!validated.ok) throw new BadRequestException(validated.message);
+    try {
+      const lead = await fetchLeadByCnpj(validated.normalized);
+      return mapLeadToPartyLookup(lead);
+    } catch (error) {
+      if (error instanceof LeadApiClientError) {
+        if (error.status === 404) {
+          throw new NotFoundException(error.message);
+        }
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
   }
 
   async linkInboundSupplier(

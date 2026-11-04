@@ -752,6 +752,18 @@ export class DistributorController {
     );
   }
 
+  @Get('parties/cnpj-lookup')
+  lookupPartyByCnpj(
+    @CurrentUser() user: JwtPayload,
+    @Query('cnpj') cnpj: string,
+  ) {
+    return this.distributor.lookupPartyByCnpj(
+      user.organizationId,
+      user.membershipRole,
+      cnpj ?? '',
+    );
+  }
+
   @Get('customers')
   listCustomers(
     @CurrentUser() user: JwtPayload,
