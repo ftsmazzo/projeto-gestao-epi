@@ -36,7 +36,9 @@ export function ResetSection({ role }: { role: MembershipRole }) {
       const result = await hardResetOrganization(resetConfirm);
       setResetConfirm('');
       setResetOk(
-        `Reset ok: ${result.servedClients} clientes, ${result.epiItems} EPIs, ${result.workers} trabalhadores removidos. Voce continua logado.`,
+        result.kind === 'DISTRIBUIDORA'
+          ? `Reset ok: ${result.distributorProducts} produtos, ${result.distributorMovements} movimentos, ${result.distributorInboundDocuments} notas removidos. Voce continua logado.`
+          : `Reset ok: ${result.servedClients} clientes, ${result.epiItems} EPIs, ${result.workers} trabalhadores removidos. Voce continua logado.`,
       );
     } catch (err) {
       setResetError(
@@ -52,9 +54,11 @@ export function ResetSection({ role }: { role: MembershipRole }) {
       <header className="settings-section__head">
         <h2 className="settings-section__title">Reset geral</h2>
         <p className="page-lead">
-          Apaga clientes, estrutura, trabalhadores, entregas, biometria, EPIs,
-          estoque, PGR e usuarios do cliente deste tenant. Mantem seu login, a
-          organizacao e a base CAEPI.
+          Na distribuidora, apaga produtos, saldos, movimentos, notas de entrada,
+          compras, orçamentos, clientes/fornecedores de teste e financeiro
+          operacional. Mantém login, usuários, marca e perfil fiscal. Na
+          consultoria, limpa clientes, trabalhadores, estoque e PGR — sem
+          remover acesso.
         </p>
       </header>
 

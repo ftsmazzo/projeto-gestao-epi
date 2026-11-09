@@ -5,7 +5,13 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { MembershipRole, OrganizationContactRole } from '@prisma/client';
+import {
+  MembershipRole,
+  OrganizationContactRole,
+  OrganizationKind,
+} from '@prisma/client';
+import { wipeDistributorOperationalData } from '../distributor/distributor-reset.rules';
+import { getDistributorInboundRoot } from '../distributor/distributor-document.storage';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import { createReadStream, existsSync } from 'fs';
@@ -33,6 +39,7 @@ import {
 } from './org-logo.storage';
 
 export type HardResetSummary = {
+  kind: 'CONSULTORIA' | 'DISTRIBUIDORA';
   servedClients: number;
   workers: number;
   epiItems: number;
@@ -44,6 +51,14 @@ export type HardResetSummary = {
   auditLogs: number;
   epiDeliveries: number;
   facialReferences: number;
+  distributorProducts: number;
+  distributorMovements: number;
+  distributorInboundDocuments: number;
+  distributorPurchaseOrders: number;
+  distributorQuotes: number;
+  distributorOutboundInvoices: number;
+  distributorCustomers: number;
+  distributorSuppliers: number;
 };
 
 @Injectable()
@@ -939,7 +954,7 @@ export class OrganizationService {
 
   /**
    * Limpa dados operacionais de teste do tenant.
-   * Mantem Organization, Users, Memberships, contatos e base CAEPI global.
+   * Mantem Organization, Users, Memberships, contatos, marca e (na distribuidora) perfil fiscal.
    */
   async hardResetOperationalData(
     organizationId: string,
@@ -959,7 +974,25 @@ export class OrganizationService {
       );
     }
 
-    const summary: HardResetSummary = {
+    const organization = await this.prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { id: true, kind: true, name: true },
+    });
+    if (!organization) {
+      throw new NotFoundException('Organizacao nao encontrada.');
+    }
+
+    if (organization.kind === OrganizationKind.DISTRIBUIDORA) {
+      return this.hardResetDistributor(organizationId, userId);
+    }
+    return this.hardResetConsultoria(organizationId, userId);
+  }
+
+  private emptyHardResetSummary(
+    kind: 'CONSULTORIA' | 'DISTRIBUIDORA',
+  ): HardResetSummary {
+    return {
+      kind,
       servedClients: 0,
       workers: 0,
       epiItems: 0,
@@ -971,7 +1004,82 @@ export class OrganizationService {
       auditLogs: 0,
       epiDeliveries: 0,
       facialReferences: 0,
+      distributorProducts: 0,
+      distributorMovements: 0,
+      distributorInboundDocuments: 0,
+      distributorPurchaseOrders: 0,
+      distributorQuotes: 0,
+      distributorOutboundInvoices: 0,
+      distributorCustomers: 0,
+      distributorSuppliers: 0,
     };
+  }
+
+  private async hardResetDistributor(
+    organizationId: string,
+    userId: string,
+  ): Promise<HardResetSummary> {
+    const summary = this.emptyHardResetSummary('DISTRIBUIDORA');
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const wiped = await wipeDistributorOperationalData(tx, organizationId);
+        summary.distributorProducts = wiped.products;
+        summary.distributorMovements = wiped.movements;
+        summary.distributorInboundDocuments = wiped.inboundDocuments;
+        summary.distributorPurchaseOrders = wiped.purchaseOrders;
+        summary.distributorQuotes = wiped.quotes;
+        summary.distributorOutboundInvoices = wiped.outboundInvoices;
+        summary.distributorCustomers = wiped.customers;
+        summary.distributorSuppliers = wiped.suppliers;
+        summary.auditLogs = await tx.auditLog.count({
+          where: { organizationId },
+        });
+        await tx.auditLog.deleteMany({ where: { organizationId } });
+      });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Falha desconhecida no hard reset.';
+      this.logger.error(`Hard reset distribuidora falhou: ${message}`);
+      throw new BadRequestException(
+        `Nao foi possivel concluir o hard reset: ${message.slice(0, 240)}`,
+      );
+    }
+
+    await rm(join(getDistributorInboundRoot(), organizationId), {
+      recursive: true,
+      force: true,
+    }).catch(() => undefined);
+
+    await this.audit.log({
+      action: 'organization.hard_reset_distributor',
+      organizationId,
+      userId,
+      entityType: 'Organization',
+      entityId: organizationId,
+      metadata: {
+        confirmation: 'RESETAR',
+        deleted: summary,
+        preserved: [
+          'Organization',
+          'User',
+          'Membership',
+          'OrganizationContact',
+          'logo',
+          'DistributorFiscalProfile',
+          'DistributorDfeCursor',
+          'DistributorSellerCeiling',
+        ],
+      },
+    });
+
+    return summary;
+  }
+
+  private async hardResetConsultoria(
+    organizationId: string,
+    userId: string,
+  ): Promise<HardResetSummary> {
+    const summary = this.emptyHardResetSummary('CONSULTORIA');
 
     try {
       await this.prisma.$transaction(async (tx) => {
@@ -1003,7 +1111,6 @@ export class OrganizationService {
           where: { organizationId },
         });
 
-        // 1) Cadeia de entregas (FKs Restrict em worker/item/estoque)
         await tx.epiDeliveryReturnItem.deleteMany({
           where: { returnEvent: { organizationId } },
         });
@@ -1016,7 +1123,6 @@ export class OrganizationService {
         });
         await tx.epiDelivery.deleteMany({ where: { organizationId } });
 
-        // 2) Biometria (antes dos trabalhadores)
         await tx.workerFacialEnrollmentLink.deleteMany({
           where: { organizationId },
         });
@@ -1027,12 +1133,10 @@ export class OrganizationService {
           where: { organizationId },
         });
 
-        // 3) Estoque
         await tx.epiStockMovement.deleteMany({ where: { organizationId } });
         await tx.epiStockBalance.deleteMany({ where: { organizationId } });
         await tx.stockLocation.deleteMany({ where: { organizationId } });
 
-        // 4) Estrutura / pessoas / clientes
         await tx.epiItemNeed.deleteMany({ where: { organizationId } });
         await tx.jobFunctionEpiRequirement.deleteMany({
           where: { organizationId },
@@ -1050,7 +1154,6 @@ export class OrganizationService {
         await tx.clientSubscription.deleteMany({ where: { organizationId } });
         await tx.servedClient.deleteMany({ where: { organizationId } });
 
-        // 5) Catalogo do tenant
         await tx.epiVariant.deleteMany({ where: { organizationId } });
         await tx.epiItem.deleteMany({ where: { organizationId } });
         await tx.epiNeed.deleteMany({ where: { organizationId } });
@@ -1067,7 +1170,6 @@ export class OrganizationService {
       );
     }
 
-    // Arquivos biometricos do tenant (melhor esforco; DB ja limpo).
     await Promise.all([
       rm(join(getWorkerFaceReferenceRoot(), organizationId), {
         recursive: true,

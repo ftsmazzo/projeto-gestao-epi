@@ -8,6 +8,7 @@ import type {
 import { apiFetch, getAccessToken, getApiUrl } from './auth';
 
 export type HardResetSummary = {
+  kind: 'CONSULTORIA' | 'DISTRIBUIDORA';
   servedClients: number;
   workers: number;
   epiItems: number;
@@ -19,6 +20,14 @@ export type HardResetSummary = {
   auditLogs: number;
   epiDeliveries: number;
   facialReferences: number;
+  distributorProducts: number;
+  distributorMovements: number;
+  distributorInboundDocuments: number;
+  distributorPurchaseOrders: number;
+  distributorQuotes: number;
+  distributorOutboundInvoices: number;
+  distributorCustomers: number;
+  distributorSuppliers: number;
 };
 
 export function hardResetOrganization(confirmation: string) {

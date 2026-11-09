@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { RequireAuth } from '../../components/RequireAuth';
 import { MarcaSection } from '../../components/settings/MarcaSection';
+import { ResetSection } from '../../components/settings/ResetSection';
 import { SenhaSection } from '../../components/settings/SenhaSection';
 
 function ContaForm() {
@@ -31,6 +32,7 @@ function ContaForm() {
             </header>
             {isDistributor ? <MarcaSection user={user} /> : null}
             <SenhaSection user={user} obrigatorio={obrigatorio} />
+            {isDistributor ? <ResetSection role={user.membershipRole} /> : null}
           </div>
         );
       }}
