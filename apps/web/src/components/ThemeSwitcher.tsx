@@ -7,20 +7,28 @@ export function ThemeSwitcher({ className = '' }: { className?: string }) {
   const { theme, setTheme } = useTheme();
 
   return (
-    <label className={`theme-switcher ${className}`.trim()}>
-      <span className="theme-switcher__label">Visual</span>
-      <select
-        className="theme-switcher__select"
-        value={theme}
-        aria-label="Modo de visualização"
-        onChange={(event) => setTheme(event.target.value as AppTheme)}
-      >
-        {THEME_OPTIONS.map((option) => (
-          <option key={option.id} value={option.id}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
+    <div
+      className={`theme-switcher ${className}`.trim()}
+      role="group"
+      aria-label="Tema"
+    >
+      <span className="theme-switcher__label">Tema</span>
+      <div className="theme-switcher__seg">
+        {THEME_OPTIONS.map((option) => {
+          const active = theme === option.id;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              className={`theme-switcher__btn${active ? ' is-active' : ''}`}
+              aria-pressed={active}
+              onClick={() => setTheme(option.id as AppTheme)}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

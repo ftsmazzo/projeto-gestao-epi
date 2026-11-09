@@ -172,7 +172,7 @@ export function DistributorShell({
         <div className="ops-sidebar-brand">
           <TenantBrand
             name={user?.organization.name ?? 'Distribuidora'}
-            hasLogo={user?.organization.hasLogo}
+            mode="name"
             subtitle="Distribuidora"
           />
         </div>
@@ -229,6 +229,11 @@ export function DistributorShell({
             >
               <IconMenu />
             </button>
+            <TenantBrand
+              name={user?.organization.name ?? 'Distribuidora'}
+              hasLogo={user?.organization.hasLogo}
+              mode="logo"
+            />
             <span className="ops-topbar-crumb">{current}</span>
           </div>
           <div className="ops-topbar-right">
