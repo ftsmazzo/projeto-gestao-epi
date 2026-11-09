@@ -3,6 +3,7 @@
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { RequireAuth } from '../../components/RequireAuth';
+import { MarcaSection } from '../../components/settings/MarcaSection';
 import { SenhaSection } from '../../components/settings/SenhaSection';
 
 function ContaForm() {
@@ -11,20 +12,28 @@ function ContaForm() {
 
   return (
     <RequireAuth>
-      {(user) => (
-        <div className="module-page">
-          <header className="module-header">
-            <div>
-              <p className="page-kicker">Consultoria</p>
-              <h1 className="page-title">Minha conta</h1>
-              <p className="page-lead">
-                Troque a senha provisoria ou atualize a senha desta gestao.
-              </p>
-            </div>
-          </header>
-          <SenhaSection user={user} obrigatorio={obrigatorio} />
-        </div>
-      )}
+      {(user) => {
+        const isDistributor = user.organization.kind === 'DISTRIBUIDORA';
+        return (
+          <div className="module-page">
+            <header className="module-header">
+              <div>
+                <p className="page-kicker">
+                  {isDistributor ? 'Distribuidora' : 'Consultoria'}
+                </p>
+                <h1 className="page-title">Minha conta</h1>
+                <p className="page-lead">
+                  {isDistributor
+                    ? 'Marca da distribuidora e senha de acesso.'
+                    : 'Troque a senha provisoria ou atualize a senha desta gestao.'}
+                </p>
+              </div>
+            </header>
+            {isDistributor ? <MarcaSection user={user} /> : null}
+            <SenhaSection user={user} obrigatorio={obrigatorio} />
+          </div>
+        );
+      }}
     </RequireAuth>
   );
 }

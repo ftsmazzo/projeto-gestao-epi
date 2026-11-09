@@ -138,6 +138,13 @@ export function getOrganizationBranding() {
   return apiFetch<{ name: string; hasLogo: boolean }>('/organization/branding');
 }
 
+export function updateOrganizationBranding(input: { name: string }) {
+  return apiFetch<{ name: string; hasLogo: boolean }>('/organization/branding', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
 export async function uploadOrganizationLogo(file: File) {
   const token = getAccessToken();
   const body = new FormData();

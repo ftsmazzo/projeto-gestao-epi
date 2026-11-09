@@ -28,6 +28,7 @@ import {
   UpdateOrganizationMemberDto,
   UpdateOrganizationMemberRoleDto,
 } from './dto/organization-member.dto';
+import { UpdateOrganizationBrandingDto } from './dto/organization-branding.dto';
 import { OrganizationService } from './organization.service';
 
 @Controller('organization')
@@ -172,6 +173,19 @@ export class OrganizationController {
   @Get('branding')
   branding(@CurrentUser() user: JwtPayload) {
     return this.organization.getBranding(user.organizationId);
+  }
+
+  @Patch('branding')
+  updateBranding(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: UpdateOrganizationBrandingDto,
+  ) {
+    return this.organization.updateBranding(
+      user.organizationId,
+      user.sub,
+      user.membershipRole,
+      dto,
+    );
   }
 
   @Get('logo')

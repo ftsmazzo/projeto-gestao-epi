@@ -6,9 +6,15 @@ import { fetchOrganizationLogoObjectUrl } from '../lib/organization';
 type Props = {
   name: string;
   hasLogo?: boolean;
+  /** Subtitulo quando nao ha logo (ex.: Gestao / Distribuidora). */
+  subtitle?: string;
 };
 
-export function TenantBrand({ name, hasLogo = false }: Props) {
+export function TenantBrand({
+  name,
+  hasLogo = false,
+  subtitle = 'Gestao',
+}: Props) {
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,18 +38,27 @@ export function TenantBrand({ name, hasLogo = false }: Props) {
     };
   }, [hasLogo]);
 
+  if (src) {
+    return (
+      <div className="tenant-brand tenant-brand--with-logo">
+        <div className="tenant-brand__logo-plate">
+          <img src={src} alt={name} className="tenant-brand__logo" />
+        </div>
+        <span className="tenant-brand__text tenant-brand__text--compact">
+          <strong>{name}</strong>
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="tenant-brand">
-      {src ? (
-        <img src={src} alt={name} className="tenant-brand__logo" />
-      ) : (
-        <span className="tenant-brand__mark" aria-hidden="true">
-          {name.slice(0, 1).toUpperCase()}
-        </span>
-      )}
+      <span className="tenant-brand__mark" aria-hidden="true">
+        {name.slice(0, 1).toUpperCase()}
+      </span>
       <span className="tenant-brand__text">
         <strong>{name}</strong>
-        <span>Gestao</span>
+        <span>{subtitle}</span>
       </span>
     </div>
   );

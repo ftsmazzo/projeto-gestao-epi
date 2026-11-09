@@ -720,6 +720,36 @@ export class OrganizationService {
     };
   }
 
+  async updateBranding(
+    organizationId: string,
+    actorUserId: string,
+    actorRole: string,
+    dto: { name?: string },
+  ) {
+    this.assertCanManageBrand(actorRole);
+    const nextName = dto.name?.trim();
+    if (!nextName) {
+      throw new BadRequestException('Informe o nome da organizacao.');
+    }
+    const organization = await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { name: nextName },
+      select: { id: true, name: true, logoPath: true },
+    });
+    await this.audit.log({
+      action: 'organization.branding_updated',
+      organizationId,
+      userId: actorUserId,
+      entityType: 'Organization',
+      entityId: organizationId,
+      metadata: { name: organization.name },
+    });
+    return {
+      name: organization.name,
+      hasLogo: Boolean(organization.logoPath),
+    };
+  }
+
   async uploadLogo(
     organizationId: string,
     actorUserId: string,

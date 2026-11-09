@@ -173,6 +173,7 @@ export function DistributorShell({
           <TenantBrand
             name={user?.organization.name ?? 'Distribuidora'}
             hasLogo={user?.organization.hasLogo}
+            subtitle="Distribuidora"
           />
         </div>
         <nav className="ops-nav">
