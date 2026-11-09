@@ -78,6 +78,9 @@ function DistribuidoraEntradaPageInner() {
   const [showNewProduct, setShowNewProduct] = useState(false);
   const [newName, setNewName] = useState('');
   const [newSku, setNewSku] = useState('');
+  const [newSupplierSku, setNewSupplierSku] = useState('');
+  const [newGtin, setNewGtin] = useState('');
+  const [newCa, setNewCa] = useState('');
   const [newSizes, setNewSizes] = useState('Único');
   const [newNcm, setNewNcm] = useState('');
   const [newCost, setNewCost] = useState('');
@@ -289,6 +292,9 @@ function DistribuidoraEntradaPageInner() {
       const created = await createDistributorProduct({
         name: newName.trim(),
         internalSku: newSku.trim(),
+        supplierSku: newSupplierSku.trim() || undefined,
+        gtin: newGtin.trim() || undefined,
+        caNumber: newCa.trim() || undefined,
         ncm: newNcm.trim() || undefined,
         costCents: parseMoneyToCents(newCost) ?? undefined,
         salePriceCents: parseMoneyToCents(newSale) ?? undefined,
@@ -309,13 +315,15 @@ function DistribuidoraEntradaPageInner() {
             ...current,
             [createForLineId]: created.id,
           }));
-          setNotice('Produto cadastrado e vinculado à linha da nota.');
+          setNotice('Produto cadastrado com dados da nota e vinculado à linha.');
         } else {
           setLineProductIds((current) => ({
             ...current,
             [createForLineId]: created.id,
           }));
-          setNotice('Produto cadastrado. Escolha o tamanho na linha da nota.');
+          setNotice(
+            'Produto cadastrado com dados da nota. Escolha o tamanho na linha.',
+          );
         }
       } else {
         setFocusProductId(created.id);
@@ -326,14 +334,7 @@ function DistribuidoraEntradaPageInner() {
             : 'Produto cadastrado e selecionado para entrada.',
         );
       }
-      setShowNewProduct(false);
-      setCreateForLineId(null);
-      setNewName('');
-      setNewSku('');
-      setNewSizes('Único');
-      setNewNcm('');
-      setNewCost('');
-      setNewSale('');
+      resetNewProductForm();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao cadastrar produto.');
     } finally {
@@ -351,12 +352,44 @@ function DistribuidoraEntradaPageInner() {
       setDocument(draft);
       setSupplierId(draft.supplierId ?? '');
       const initial: Record<string, string> = {};
+      let suggested = 0;
+      let missing = 0;
       for (const line of draft.lines) {
-        const product = productOfVariant(products, line.variantId);
-        if (product) initial[line.id] = product.id;
+        const linked = productOfVariant(products, line.variantId);
+        if (linked) {
+          initial[line.id] = linked.id;
+          continue;
+        }
+        const suggestedProduct = products.find((product) => {
+          const gtin = line.gtin?.replace(/\D/g, '') ?? '';
+          if (gtin && product.gtin && product.gtin.replace(/\D/g, '') === gtin) {
+            return true;
+          }
+          const code = line.productCode?.trim().toLowerCase();
+          if (!code) return false;
+          return (
+            product.internalSku.trim().toLowerCase() === code ||
+            product.supplierSku?.trim().toLowerCase() === code
+          );
+        });
+        if (suggestedProduct) {
+          initial[line.id] = suggestedProduct.id;
+          suggested += 1;
+        } else if (line.quantity > 0) {
+          missing += 1;
+        }
       }
       setLineProductIds(initial);
-      setNotice(draft.message || 'Rascunho criado. O estoque ainda não mudou.');
+      const hints = [
+        draft.message || 'Rascunho criado. O estoque ainda não mudou.',
+        suggested
+          ? `${suggested} linha(s) sugeridas por código/GTIN — confirme o tamanho.`
+          : null,
+        missing
+          ? `${missing} linha(s) sem produto no catálogo: cadastre com os dados da nota antes de confirmar.`
+          : null,
+      ].filter(Boolean);
+      setNotice(hints.join(' '));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Falha ao ler a nota.');
     } finally {
@@ -401,17 +434,18 @@ function DistribuidoraEntradaPageInner() {
       );
       return;
     }
-    const linked = document.lines.filter((line) => line.variantId).length;
-    const total = document.lines.length;
-    if (linked === 0) {
-      setError('Vincule ao menos uma linha a um tamanho antes de confirmar.');
+    const pendingLines = document.lines.filter(
+      (line) => line.quantity > 0 && !line.variantId,
+    );
+    if (pendingLines.length > 0) {
+      setError(
+        `${pendingLines.length} linha(s) ainda sem produto cadastrado/vinculado. Cadastre com os dados da nota ou vincule a um produto existente antes de confirmar.`,
+      );
       return;
     }
-    if (linked < total) {
-      const ok = window.confirm(
-        `${total - linked} linha(s) sem tamanho serão ignoradas no estoque. Confirmar mesmo assim?`,
-      );
-      if (!ok) return;
+    if (document.lines.every((line) => line.quantity <= 0)) {
+      setError('A nota não tem linhas com quantidade para entrar no estoque.');
+      return;
     }
     setSaving(true);
     setError(null);
@@ -441,10 +475,84 @@ function DistribuidoraEntradaPageInner() {
     }
   }
 
-  function startCreateFromLine(line: DistributorInboundLine) {
+  function resetNewProductForm() {
+    setShowNewProduct(false);
+    setCreateForLineId(null);
+    setNewName('');
+    setNewSku('');
+    setNewSupplierSku('');
+    setNewGtin('');
+    setNewCa('');
+    setNewSizes('Único');
+    setNewNcm('');
+    setNewCost('');
+    setNewSale('');
+  }
+
+  function suggestCatalogProduct(line: DistributorInboundLine) {
+    const code = line.productCode?.trim();
+    const gtin = line.gtin?.replace(/\D/g, '') ?? '';
+    return (
+      products.find((product) => {
+        if (gtin && product.gtin && product.gtin.replace(/\D/g, '') === gtin) {
+          return true;
+        }
+        if (code) {
+          const sku = product.internalSku.trim().toLowerCase();
+          const supplier = product.supplierSku?.trim().toLowerCase() ?? '';
+          const needle = code.toLowerCase();
+          if (sku === needle || supplier === needle) return true;
+        }
+        return false;
+      }) ?? null
+    );
+  }
+
+  async function startCreateFromLine(line: DistributorInboundLine) {
+    if (!document) return;
+    const existing = suggestCatalogProduct(line);
+    if (existing) {
+      setLineProductIds((current) => ({ ...current, [line.id]: existing.id }));
+      setCreateForLineId(null);
+      setShowNewProduct(false);
+      if (existing.variants.length === 1 && existing.variants[0]?.id) {
+        setSaving(true);
+        try {
+          const updated = await linkDistributorLine(
+            document.id,
+            line.id,
+            existing.variants[0].id,
+          );
+          setDocument(updated);
+          setNotice(
+            `Produto existente ${existing.name} vinculado automaticamente à linha.`,
+          );
+        } catch (err: unknown) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'Falha ao vincular produto sugerido.',
+          );
+        } finally {
+          setSaving(false);
+        }
+      } else {
+        setNotice(
+          `Produto já existe no catálogo: ${existing.name}. Selecione o tamanho na linha.`,
+        );
+      }
+      return;
+    }
     setCreateForLineId(line.id);
     setNewName(line.description.slice(0, 120));
-    setNewSku(line.productCode || line.gtin || `SKU-${Date.now().toString().slice(-6)}`);
+    setNewSku(
+      line.productCode ||
+        line.gtin ||
+        `SKU-${Date.now().toString().slice(-6)}`,
+    );
+    setNewSupplierSku(line.productCode ?? '');
+    setNewGtin(line.gtin ?? '');
+    setNewCa(line.caNumber ?? '');
     setNewSizes('Único');
     setNewNcm(line.ncm ?? '');
     setNewCost(
@@ -454,6 +562,9 @@ function DistribuidoraEntradaPageInner() {
     );
     setNewSale('');
     setShowNewProduct(true);
+    setNotice(
+      'Cadastre o produto com os dados da nota. Sem cadastro/vínculo a linha não entra no estoque.',
+    );
   }
 
   const tracksLot = Boolean(focusProduct?.tracksLot);
@@ -465,8 +576,8 @@ function DistribuidoraEntradaPageInner() {
           <p className="page-kicker">Distribuidora</p>
           <h1 className="page-title">Entrada</h1>
           <p className="page-lead">
-            Escaneie o código, toque no tamanho e confirme o que vai entrar. Sem
-            XML, cadastre produto e fornecedor aqui.
+            Na nota, cada linha precisa de produto no catálogo (cadastro com
+            dados da NF ou vínculo). Sem isso a entrada não confirma.
           </p>
         </div>
       </header>
@@ -635,8 +746,12 @@ function DistribuidoraEntradaPageInner() {
             className="btn"
             type="button"
             onClick={() => {
-              setShowNewProduct((open) => !open);
-              setCreateForLineId(null);
+              if (showNewProduct) {
+                resetNewProductForm();
+              } else {
+                setCreateForLineId(null);
+                setShowNewProduct(true);
+              }
             }}
           >
             {showNewProduct ? 'Fechar cadastro' : 'Novo produto'}
@@ -648,9 +763,15 @@ function DistribuidoraEntradaPageInner() {
         <form className="form dash-panel" onSubmit={onCreateProduct}>
           <h2 className="dash-panel__title">
             {createForLineId
-              ? 'Cadastrar produto da linha da nota'
+              ? 'Cadastrar produto com dados da nota'
               : 'Cadastrar produto na entrada'}
           </h2>
+          {createForLineId ? (
+            <p className="field-hint">
+              Os campos vieram da linha da NF. Revise e salve para o item entrar
+              no catálogo e no estoque juntos.
+            </p>
+          ) : null}
           <div className="form-grid">
             <div className="field field--span-2">
               <label>Nome *</label>
@@ -666,6 +787,30 @@ function DistribuidoraEntradaPageInner() {
                 value={newSku}
                 onChange={(e) => setNewSku(e.target.value)}
                 required
+              />
+            </div>
+            <div className="field">
+              <label>SKU fornecedor</label>
+              <input
+                value={newSupplierSku}
+                onChange={(e) => setNewSupplierSku(e.target.value)}
+                placeholder="cProd da nota"
+              />
+            </div>
+            <div className="field">
+              <label>GTIN / EAN</label>
+              <input
+                value={newGtin}
+                onChange={(e) => setNewGtin(e.target.value)}
+                placeholder="Código de barras"
+              />
+            </div>
+            <div className="field">
+              <label>CA</label>
+              <input
+                value={newCa}
+                onChange={(e) => setNewCa(e.target.value)}
+                placeholder="Quando houver"
               />
             </div>
             <div className="field">
@@ -704,7 +849,7 @@ function DistribuidoraEntradaPageInner() {
           <div className="product-form__actions">
             <button className="btn btn-primary" type="submit" disabled={saving}>
               {createForLineId
-                ? 'Cadastrar e vincular à nota'
+                ? 'Cadastrar produto e vincular à nota'
                 : 'Cadastrar e selecionar'}
             </button>
           </div>
@@ -835,6 +980,17 @@ function DistribuidoraEntradaPageInner() {
                     />
                   </div>
                 ) : null}
+                {document.status === 'DRAFT' ? (
+                  <p className="field-hint">
+                    {
+                      document.lines.filter(
+                        (line) => line.quantity > 0 && !line.variantId,
+                      ).length
+                    }{' '}
+                    linha(s) pendente(s) de cadastro/vínculo. Produto novo usa
+                    nome, SKU, GTIN, NCM, CA e custo da nota.
+                  </p>
+                ) : null}
                 <div className="inbound-lines">
                   {document.lines.map((line) => {
                     const linkedProduct =
@@ -849,6 +1005,10 @@ function DistribuidoraEntradaPageInner() {
                           id: variant.id,
                           label: variant.label,
                         })) ?? [];
+                    const needsProduct =
+                      document.status === 'DRAFT' &&
+                      line.quantity > 0 &&
+                      !line.variantId;
                     return (
                       <article key={line.id} className="inbound-line-card">
                         <header>
@@ -859,6 +1019,14 @@ function DistribuidoraEntradaPageInner() {
                               ? ` · ${money(line.unitCostCents)}`
                               : ''}
                           </span>
+                          {line.productCode ? (
+                            <span className="table-sub">
+                              Cód. {line.productCode}
+                            </span>
+                          ) : null}
+                          {line.gtin ? (
+                            <span className="table-sub">GTIN {line.gtin}</span>
+                          ) : null}
                           {line.ncm ? (
                             <span className="table-sub">NCM {line.ncm}</span>
                           ) : null}
@@ -868,10 +1036,19 @@ function DistribuidoraEntradaPageInner() {
                           {lineTaxHint(line) ? (
                             <span className="table-sub">{lineTaxHint(line)}</span>
                           ) : null}
+                          {needsProduct ? (
+                            <span className="table-sub error">
+                              Precisa cadastrar ou vincular produto
+                            </span>
+                          ) : line.variantId ? (
+                            <span className="table-sub">Pronto para entrar</span>
+                          ) : null}
                         </header>
                         <div className="form-grid">
                           <div className="field field--span-2">
-                            <label htmlFor={`prod-${line.id}`}>Produto do catálogo</label>
+                            <label htmlFor={`prod-${line.id}`}>
+                              Produto do catálogo
+                            </label>
                             <select
                               id={`prod-${line.id}`}
                               value={productId}
@@ -887,7 +1064,9 @@ function DistribuidoraEntradaPageInner() {
                                 }
                               }}
                             >
-                              <option value="">Não entra / escolher…</option>
+                              <option value="">
+                                Selecione produto existente…
+                              </option>
                               {products.map((product) => (
                                 <option key={product.id} value={product.id}>
                                   {product.name} ({product.internalSku})
@@ -936,14 +1115,17 @@ function DistribuidoraEntradaPageInner() {
                             />
                           </div>
                         </div>
-                        {document.status === 'DRAFT' && !line.variantId ? (
+                        {needsProduct ? (
                           <div className="product-form__actions">
                             <button
                               type="button"
-                              className="btn"
-                              onClick={() => startCreateFromLine(line)}
+                              className="btn btn-primary"
+                              disabled={saving}
+                              onClick={() => void startCreateFromLine(line)}
                             >
-                              Criar produto
+                              {suggestCatalogProduct(line)
+                                ? 'Usar produto sugerido do catálogo'
+                                : 'Cadastrar produto com dados da nota'}
                             </button>
                           </div>
                         ) : null}
@@ -956,7 +1138,12 @@ function DistribuidoraEntradaPageInner() {
                     <button
                       type="button"
                       className="btn btn-primary"
-                      disabled={saving}
+                      disabled={
+                        saving ||
+                        document.lines.some(
+                          (line) => line.quantity > 0 && !line.variantId,
+                        )
+                      }
                       onClick={onConfirm}
                     >
                       Confirmar entrada da nota

@@ -1026,14 +1026,19 @@ export class DistributorService {
           'Cadastre ou vincule o fornecedor emitente da nota antes de confirmar a entrada.',
         );
       }
-      const ready = document.lines.filter(
-        (line) => line.variantId && line.quantity > 0,
-      );
-      if (ready.length === 0) {
+      const inboundLines = document.lines.filter((line) => line.quantity > 0);
+      if (inboundLines.length === 0) {
         throw new BadRequestException(
-          'Vincule ao menos uma linha com quantidade a uma variante.',
+          'A nota nao tem linhas com quantidade para entrar no estoque.',
         );
       }
+      const pending = inboundLines.filter((line) => !line.variantId);
+      if (pending.length > 0) {
+        throw new BadRequestException(
+          `${pending.length} linha(s) ainda sem produto/tamanho. Cadastre o produto com os dados da nota (ou vincule a um existente) antes de confirmar a entrada.`,
+        );
+      }
+      const ready = inboundLines;
       const claimed = await tx.distributorInboundDocument.updateMany({
         where: {
           id: document.id,
